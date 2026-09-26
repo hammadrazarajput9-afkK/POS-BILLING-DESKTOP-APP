@@ -1,0 +1,652 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  }
+  
+  .font-mono, .tabular-nums {
+    font-family: 'JetBrains Mono', monospace;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* ========================================================
+   ROBUST DYNAMIC THEME SYSTEM (7 Complete Themes)
+   - blue-white (Default)
+   - green-white
+   - red-white
+   - orange-white
+   - purple-white
+   - light
+   - dark
+   ======================================================== */
+
+/* Root & Default Blue-White Theme */
+:root, [data-theme="blue-white"] {
+  --theme-primary: #2563eb;
+  --theme-primary-hover: #1d4ed8;
+  --theme-primary-light: #eff6ff;
+  --theme-primary-border: #bfdbfe;
+  --theme-primary-text: #1d4ed8;
+  --theme-app-bg: #f8fafc;
+  --theme-card-bg: #ffffff;
+  --theme-card-border: #e2e8f0;
+
+  --color-blue-50: #eff6ff;
+  --color-blue-100: #dbeafe;
+  --color-blue-200: #bfdbfe;
+  --color-blue-300: #93c5fd;
+  --color-blue-400: #60a5fa;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
+  --color-blue-700: #1d4ed8;
+  --color-blue-800: #1e40af;
+  --color-blue-900: #1e3a8a;
+  --color-blue-950: #172554;
+}
+
+/* 1. GREEN & WHITE THEME */
+[data-theme="green-white"] {
+  --theme-primary: #059669;
+  --theme-primary-hover: #047857;
+  --theme-primary-light: #ecfdf5;
+  --theme-primary-border: #a7f3d0;
+  --theme-primary-text: #047857;
+  --theme-app-bg: #f2fbf5;
+  --theme-card-bg: #ffffff;
+  --theme-card-border: #d1fae5;
+
+  --color-blue-50: #ecfdf5;
+  --color-blue-100: #d1fae5;
+  --color-blue-200: #a7f3d0;
+  --color-blue-300: #6ee7b7;
+  --color-blue-400: #34d399;
+  --color-blue-500: #10b981;
+  --color-blue-600: #059669;
+  --color-blue-700: #047857;
+  --color-blue-800: #065f46;
+  --color-blue-900: #064e3b;
+  --color-blue-950: #022c22;
+}
+
+[data-theme="green-white"] body,
+[data-theme="green-white"] .app-root-container {
+  background-color: #f2fbf5 !important;
+}
+[data-theme="green-white"] .bg-blue-600,
+[data-theme="green-white"] .btn-primary {
+  background-color: #059669 !important;
+}
+[data-theme="green-white"] .hover\:bg-blue-700:hover,
+[data-theme="green-white"] .btn-primary:hover {
+  background-color: #047857 !important;
+}
+[data-theme="green-white"] .text-blue-600,
+[data-theme="green-white"] .text-blue-700 {
+  color: #059669 !important;
+}
+[data-theme="green-white"] .bg-blue-50,
+[data-theme="green-white"] .bg-blue-50\/80,
+[data-theme="green-white"] .bg-blue-50\/50,
+[data-theme="green-white"] .bg-blue-50\/40 {
+  background-color: #ecfdf5 !important;
+}
+[data-theme="green-white"] .bg-blue-100 {
+  background-color: #d1fae5 !important;
+}
+[data-theme="green-white"] .border-blue-200,
+[data-theme="green-white"] .border-blue-300,
+[data-theme="green-white"] .border-blue-400,
+[data-theme="green-white"] .border-blue-500 {
+  border-color: #10b981 !important;
+}
+[data-theme="green-white"] .focus\:border-blue-600:focus {
+  border-color: #059669 !important;
+}
+[data-theme="green-white"] .brand-badge {
+  background-color: #059669 !important;
+}
+
+/* 2. RED & WHITE THEME */
+[data-theme="red-white"] {
+  --theme-primary: #dc2626;
+  --theme-primary-hover: #b91c1c;
+  --theme-primary-light: #fef2f2;
+  --theme-primary-border: #fecaca;
+  --theme-primary-text: #b91c1c;
+  --theme-app-bg: #fff5f5;
+  --theme-card-bg: #ffffff;
+  --theme-card-border: #fee2e2;
+
+  --color-blue-50: #fef2f2;
+  --color-blue-100: #fee2e2;
+  --color-blue-200: #fecaca;
+  --color-blue-300: #fca5a5;
+  --color-blue-400: #f87171;
+  --color-blue-500: #ef4444;
+  --color-blue-600: #dc2626;
+  --color-blue-700: #b91c1c;
+  --color-blue-800: #991b1b;
+  --color-blue-900: #7f1d1d;
+  --color-blue-950: #450a0a;
+}
+
+[data-theme="red-white"] body,
+[data-theme="red-white"] .app-root-container {
+  background-color: #fff5f5 !important;
+}
+[data-theme="red-white"] .bg-blue-600,
+[data-theme="red-white"] .btn-primary {
+  background-color: #dc2626 !important;
+}
+[data-theme="red-white"] .hover\:bg-blue-700:hover,
+[data-theme="red-white"] .btn-primary:hover {
+  background-color: #b91c1c !important;
+}
+[data-theme="red-white"] .text-blue-600,
+[data-theme="red-white"] .text-blue-700 {
+  color: #dc2626 !important;
+}
+[data-theme="red-white"] .bg-blue-50,
+[data-theme="red-white"] .bg-blue-50\/80,
+[data-theme="red-white"] .bg-blue-50\/50,
+[data-theme="red-white"] .bg-blue-50\/40 {
+  background-color: #fef2f2 !important;
+}
+[data-theme="red-white"] .bg-blue-100 {
+  background-color: #fee2e2 !important;
+}
+[data-theme="red-white"] .border-blue-200,
+[data-theme="red-white"] .border-blue-300,
+[data-theme="red-white"] .border-blue-400,
+[data-theme="red-white"] .border-blue-500 {
+  border-color: #f87171 !important;
+}
+[data-theme="red-white"] .focus\:border-blue-600:focus {
+  border-color: #dc2626 !important;
+}
+[data-theme="red-white"] .brand-badge {
+  background-color: #dc2626 !important;
+}
+
+/* 3. ORANGE & WHITE THEME */
+[data-theme="orange-white"] {
+  --theme-primary: #ea580c;
+  --theme-primary-hover: #c2410c;
+  --theme-primary-light: #fff7ed;
+  --theme-primary-border: #fed7aa;
+  --theme-primary-text: #c2410c;
+  --theme-app-bg: #fff8f0;
+  --theme-card-bg: #ffffff;
+  --theme-card-border: #ffedd5;
+
+  --color-blue-50: #fff7ed;
+  --color-blue-100: #ffedd5;
+  --color-blue-200: #fed7aa;
+  --color-blue-300: #fdba74;
+  --color-blue-400: #fb923c;
+  --color-blue-500: #f97316;
+  --color-blue-600: #ea580c;
+  --color-blue-700: #c2410c;
+  --color-blue-800: #9a3412;
+  --color-blue-900: #7c2d12;
+  --color-blue-950: #431407;
+}
+
+[data-theme="orange-white"] body,
+[data-theme="orange-white"] .app-root-container {
+  background-color: #fff8f0 !important;
+}
+[data-theme="orange-white"] .bg-blue-600,
+[data-theme="orange-white"] .btn-primary {
+  background-color: #ea580c !important;
+}
+[data-theme="orange-white"] .hover\:bg-blue-700:hover,
+[data-theme="orange-white"] .btn-primary:hover {
+  background-color: #c2410c !important;
+}
+[data-theme="orange-white"] .text-blue-600,
+[data-theme="orange-white"] .text-blue-700 {
+  color: #ea580c !important;
+}
+[data-theme="orange-white"] .bg-blue-50,
+[data-theme="orange-white"] .bg-blue-50\/80,
+[data-theme="orange-white"] .bg-blue-50\/50,
+[data-theme="orange-white"] .bg-blue-50\/40 {
+  background-color: #fff7ed !important;
+}
+[data-theme="orange-white"] .bg-blue-100 {
+  background-color: #ffedd5 !important;
+}
+[data-theme="orange-white"] .border-blue-200,
+[data-theme="orange-white"] .border-blue-300,
+[data-theme="orange-white"] .border-blue-400,
+[data-theme="orange-white"] .border-blue-500 {
+  border-color: #fb923c !important;
+}
+[data-theme="orange-white"] .focus\:border-blue-600:focus {
+  border-color: #ea580c !important;
+}
+[data-theme="orange-white"] .brand-badge {
+  background-color: #ea580c !important;
+}
+
+/* 4. PURPLE & WHITE THEME */
+[data-theme="purple-white"] {
+  --theme-primary: #7c3aed;
+  --theme-primary-hover: #6d28d9;
+  --theme-primary-light: #f5f3ff;
+  --theme-primary-border: #ddd6fe;
+  --theme-primary-text: #6d28d9;
+  --theme-app-bg: #f9f6ff;
+  --theme-card-bg: #ffffff;
+  --theme-card-border: #ede9fe;
+
+  --color-blue-50: #f5f3ff;
+  --color-blue-100: #ede9fe;
+  --color-blue-200: #ddd6fe;
+  --color-blue-300: #c4b5fd;
+  --color-blue-400: #a78bfa;
+  --color-blue-500: #8b5cf6;
+  --color-blue-600: #7c3aed;
+  --color-blue-700: #6d28d9;
+  --color-blue-800: #5b21b6;
+  --color-blue-900: #4c1d95;
+  --color-blue-950: #2e1065;
+}
+
+[data-theme="purple-white"] body,
+[data-theme="purple-white"] .app-root-container {
+  background-color: #f9f6ff !important;
+}
+[data-theme="purple-white"] .bg-blue-600,
+[data-theme="purple-white"] .btn-primary {
+  background-color: #7c3aed !important;
+}
+[data-theme="purple-white"] .hover\:bg-blue-700:hover,
+[data-theme="purple-white"] .btn-primary:hover {
+  background-color: #6d28d9 !important;
+}
+[data-theme="purple-white"] .text-blue-600,
+[data-theme="purple-white"] .text-blue-700 {
+  color: #7c3aed !important;
+}
+[data-theme="purple-white"] .bg-blue-50,
+[data-theme="purple-white"] .bg-blue-50\/80,
+[data-theme="purple-white"] .bg-blue-50\/50,
+[data-theme="purple-white"] .bg-blue-50\/40 {
+  background-color: #f5f3ff !important;
+}
+[data-theme="purple-white"] .bg-blue-100 {
+  background-color: #ede9fe !important;
+}
+[data-theme="purple-white"] .border-blue-200,
+[data-theme="purple-white"] .border-blue-300,
+[data-theme="purple-white"] .border-blue-400,
+[data-theme="purple-white"] .border-blue-500 {
+  border-color: #a78bfa !important;
+}
+[data-theme="purple-white"] .focus\:border-blue-600:focus {
+  border-color: #7c3aed !important;
+}
+[data-theme="purple-white"] .brand-badge {
+  background-color: #7c3aed !important;
+}
+
+/* 5. LIGHT MONOCHROME THEME */
+[data-theme="light"] {
+  --theme-primary: #334155;
+  --theme-primary-hover: #1e293b;
+  --theme-primary-light: #f1f5f9;
+  --theme-primary-border: #cbd5e1;
+  --theme-primary-text: #1e293b;
+  --theme-app-bg: #f8fafc;
+  --theme-card-bg: #ffffff;
+  --theme-card-border: #e2e8f0;
+
+  --color-blue-50: #f1f5f9;
+  --color-blue-100: #e2e8f0;
+  --color-blue-200: #cbd5e1;
+  --color-blue-300: #94a3b8;
+  --color-blue-400: #64748b;
+  --color-blue-500: #475569;
+  --color-blue-600: #334155;
+  --color-blue-700: #1e293b;
+  --color-blue-800: #0f172a;
+  --color-blue-900: #0f172a;
+  --color-blue-950: #020617;
+}
+
+[data-theme="light"] body,
+[data-theme="light"] .app-root-container {
+  background-color: #f8fafc !important;
+}
+[data-theme="light"] .bg-blue-600,
+[data-theme="light"] .btn-primary {
+  background-color: #334155 !important;
+}
+[data-theme="light"] .hover\:bg-blue-700:hover,
+[data-theme="light"] .btn-primary:hover {
+  background-color: #1e293b !important;
+}
+[data-theme="light"] .text-blue-600,
+[data-theme="light"] .text-blue-700 {
+  color: #334155 !important;
+}
+[data-theme="light"] .bg-blue-50,
+[data-theme="light"] .bg-blue-50\/80,
+[data-theme="light"] .bg-blue-50\/50,
+[data-theme="light"] .bg-blue-50\/40 {
+  background-color: #f1f5f9 !important;
+}
+[data-theme="light"] .bg-blue-100 {
+  background-color: #e2e8f0 !important;
+}
+[data-theme="light"] .border-blue-200,
+[data-theme="light"] .border-blue-300,
+[data-theme="light"] .border-blue-400,
+[data-theme="light"] .border-blue-500 {
+  border-color: #94a3b8 !important;
+}
+[data-theme="light"] .focus\:border-blue-600:focus {
+  border-color: #334155 !important;
+}
+[data-theme="light"] .brand-badge {
+  background-color: #334155 !important;
+}
+
+/* 6. DARK THEME OVERRIDES */
+[data-theme="dark"] {
+  --theme-primary: #0284c7;
+  --theme-primary-hover: #0369a1;
+  --theme-primary-light: #0c4a6e;
+  --theme-primary-border: #0369a1;
+  --theme-primary-text: #38bdf8;
+  --theme-app-bg: #0b1120;
+  --theme-card-bg: #131c2e;
+  --theme-card-border: #24324c;
+
+  --color-blue-50: #0c4a6e;
+  --color-blue-100: #0369a1;
+  --color-blue-200: #0284c7;
+  --color-blue-300: #38bdf8;
+  --color-blue-400: #7dd3fc;
+  --color-blue-500: #0ea5e9;
+  --color-blue-600: #0284c7;
+  --color-blue-700: #0369a1;
+  --color-blue-800: #075985;
+  --color-blue-900: #0c4a6e;
+  --color-blue-950: #082f49;
+}
+
+[data-theme="dark"] body,
+[data-theme="dark"] .app-root-container {
+  background-color: #0b1120 !important;
+  color: #f1f5f9 !important;
+}
+[data-theme="dark"] .bg-white {
+  background-color: #131c2e !important;
+  color: #f1f5f9 !important;
+  border-color: #24324c !important;
+}
+[data-theme="dark"] .bg-slate-50 {
+  background-color: #0f172a !important;
+  color: #e2e8f0 !important;
+}
+[data-theme="dark"] .bg-slate-100 {
+  background-color: #1e293b !important;
+  color: #cbd5e1 !important;
+}
+[data-theme="dark"] .text-slate-900,
+[data-theme="dark"] .text-slate-800 {
+  color: #f8fafc !important;
+}
+[data-theme="dark"] .text-slate-700,
+[data-theme="dark"] .text-slate-600 {
+  color: #cbd5e1 !important;
+}
+[data-theme="dark"] .text-slate-500,
+[data-theme="dark"] .text-slate-400 {
+  color: #94a3b8 !important;
+}
+[data-theme="dark"] .border-slate-200,
+[data-theme="dark"] .border-slate-100 {
+  border-color: #24324c !important;
+}
+[data-theme="dark"] input,
+[data-theme="dark"] select,
+[data-theme="dark"] textarea {
+  background-color: #0f172a !important;
+  color: #f8fafc !important;
+  border-color: #334155 !important;
+}
+[data-theme="dark"] .bg-blue-600,
+[data-theme="dark"] .btn-primary {
+  background-color: #0284c7 !important;
+}
+[data-theme="dark"] .hover\:bg-blue-700:hover,
+[data-theme="dark"] .btn-primary:hover {
+  background-color: #0369a1 !important;
+}
+[data-theme="dark"] .text-blue-600,
+[data-theme="dark"] .text-blue-700 {
+  color: #38bdf8 !important;
+}
+[data-theme="dark"] .bg-blue-50,
+[data-theme="dark"] .bg-blue-50\/80,
+[data-theme="dark"] .bg-blue-50\/50,
+[data-theme="dark"] .bg-blue-50\/40 {
+  background-color: #0c4a6e !important;
+}
+[data-theme="dark"] .brand-badge {
+  background-color: #0284c7 !important;
+}
+
+/* Print thermal receipt & PDF report styles */
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  
+  #printable-receipt-area,
+  #printable-receipt-area *,
+  #printable-report-area,
+  #printable-report-area *,
+  #printable-purchase-area,
+  #printable-purchase-area * {
+    visibility: visible !important;
+  }
+
+  #printable-receipt-area {
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 80mm !important;
+    margin: 0 !important;
+    padding: 10px !important;
+    background: white !important;
+    color: black !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  #printable-report-area,
+  #printable-purchase-area {
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 20px !important;
+    background: white !important;
+    color: black !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2563eb;
+}
+
+/* Dashboard Animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-card-in {
+  animation: fadeInUp 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.dashboard-metric-card {
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.dashboard-metric-card:hover {
+  transform: translateY(-4px) scale(1.008);
+}
+
+.dashboard-metric-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  opacity: 0.9;
+  transition: height 0.25s ease;
+}
+
+.metric-profit::after {
+  background: linear-gradient(90deg, #10b981, #059669);
+}
+.metric-expense::after {
+  background: linear-gradient(90deg, #f43f5e, #e11d48);
+}
+.metric-purchase::after {
+  background: linear-gradient(90deg, #f59e0b, #d97706);
+}
+.metric-stock::after {
+  background: linear-gradient(90deg, #3b82f6, #6366f1);
+}
+
+.dashboard-metric-card:hover::after {
+  height: 4px;
+}
+
+/* Fluid micro-interactions */
+button:not(:disabled) {
+  transition: all 0.15s ease-in-out;
+}
+
+button:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.table-row-hover {
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+
+.table-row-hover:hover {
+  background-color: rgba(248, 250, 252, 0.9);
+}
+
+/* ========================================================
+   NATIVE STYLED THERMAL RECEIPT PRINTING (80mm / 58mm / A4)
+   ======================================================== */
+@media print {
+  @page {
+    margin: 0;
+    size: auto;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Isolate receipt: hide all other UI chrome */
+  body * {
+    visibility: hidden;
+  }
+
+  #printable-receipt,
+  #printable-receipt *,
+  #printable-thermal-invoice,
+  #printable-thermal-invoice * {
+    visibility: visible;
+  }
+
+  #printable-receipt,
+  #printable-thermal-invoice {
+    position: absolute;
+    left: 0;
+    top: 0;
+    margin: 0 auto !important;
+    padding: 3mm 4mm !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  /* 80mm Standard Thermal Paper Layout (approx 79mm printable) */
+  .thermal-80-print {
+    width: 79mm !important;
+    max-width: 79mm !important;
+    font-size: 11px !important;
+    line-height: 1.25 !important;
+    letter-spacing: -0.01em !important;
+  }
+
+  /* 58mm Mini Thermal Paper Layout (approx 56mm printable) */
+  .thermal-58-print {
+    width: 56mm !important;
+    max-width: 56mm !important;
+    font-size: 9.5px !important;
+    line-height: 1.15 !important;
+    letter-spacing: -0.02em !important;
+    padding: 2mm !important;
+  }
+
+  /* A4 Full Sheet Print Layout */
+  .a4-print {
+    width: 210mm !important;
+    max-width: 210mm !important;
+    padding: 15mm !important;
+    font-size: 13px !important;
+  }
+
+  .no-print,
+  .no-print * {
+    display: none !important;
+    visibility: hidden !important;
+  }
+}
+
