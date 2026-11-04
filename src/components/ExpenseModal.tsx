@@ -1,8 +1,10 @@
-import React, { useRef } from 'react';
-import { ExpenseCategory } from '../types';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
+import { ExpenseCategory, ExpenseItem, OnlineAccount } from '../types';
 import { X, Receipt, Upload, Camera, Trash2, CheckCircle2, RotateCcw } from 'lucide-react';
 import { useToast } from './Toast';
 import { useFormDraft } from '../hooks/useFormDraft';
+import { CameraCaptureModal } from './CameraCaptureModal';
+import { normalizePaymentChannel } from '../utils/accounting';
 
 export interface ExpenseModalProps {
   isOpen: boolean;
@@ -14,10 +16,13 @@ export interface ExpenseModalProps {
     date: string;
     image?: string;
     paymentMethod?: string;
-  }) => void;
+    accountId?: string;
+  }, existingId?: string) => void;
   currency: string;
   categories?: string[];
+  onlineAccounts?: OnlineAccount[];
   onOpenManageCategories?: () => void;
+  editExpense?: ExpenseItem | null;
 }
 
 interface ExpenseDraftData {
@@ -27,6 +32,7 @@ interface ExpenseDraftData {
   date: string;
   image: string;
   paymentMethod: string;
+  accountId: string;
 }
 
 const DEFAULT_CATEGORIES = [
@@ -36,7 +42,7 @@ const DEFAULT_CATEGORIES = [
   'Refreshment & Food',
   'Transportation & Cargo',
   'Packaging & Printing',
-  'Maintenance & Repairs',
+  'Shop Maintenance & Utilities',
   'Miscellaneous & Others',
 ];
 
@@ -46,6 +52,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
   onSave,
   currency,
   categories = DEFAULT_CATEGORIES,
+  onlineAccounts = [],
   onOpenManageCategories,
 }) => {
   const { showToast } = useToast();
@@ -58,12 +65,29 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
     date: new Date().toISOString().substring(0, 10),
     image: '',
     paymentMethod: 'Cash',
+    accountId: '',
   };
 
   const [formData, setFormData, resetDraft, hasActiveDraft] = useFormDraft<ExpenseDraftData>(
     'expense_modal_form',
     initialDraft
   );
+
+  const matchingAccounts = useMemo(() => {
+    return onlineAccounts.filter(a => normalizePaymentChannel(a.bankType || a.name) === formData.paymentMethod);
+  }, [onlineAccounts, formData.paymentMethod]);
+
+  useEffect(() => {
+    if (matchingAccounts.length === 1) {
+      if (formData.accountId !== matchingAccounts[0].id) {
+        setFormData(prev => ({ ...prev, accountId: matchingAccounts[0].id }));
+      }
+    } else if (matchingAccounts.length === 0) {
+      if (formData.accountId !== '') {
+        setFormData(prev => ({ ...prev, accountId: '' }));
+      }
+    }
+  }, [formData.paymentMethod, matchingAccounts, formData.accountId]);
 
   if (!isOpen) return null;
 
@@ -115,6 +139,11 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
       return;
     }
 
+    if (matchingAccounts.length > 1 && !formData.accountId) {
+      showToast(`Please select the specific ${formData.paymentMethod} account.`, 'warning');
+      return;
+    }
+
     onSave({
       description: formData.description.trim(),
       category: formData.category || categories[0] || 'Miscellaneous & Others',
@@ -122,6 +151,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
       date: new Date(formData.date).toISOString(),
       image: formData.image || undefined,
       paymentMethod: formData.paymentMethod || 'Cash',
+      accountId: matchingAccounts.length > 0 ? formData.accountId || undefined : undefined,
     });
 
     showToast('Daily expense recorded successfully', 'success');
@@ -290,8 +320,8 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
             <label className="block font-semibold text-slate-700 mb-1">
               Paid From (Payment Channel)
             </label>
-            <div className="grid grid-cols-3 gap-1.5">
-              {['Cash', 'Bank', 'Easypaisa / JazzCash'].map(pm => (
+            <div className="grid grid-cols-5 gap-1.5">
+              {['Cash', 'Bank', 'JazzCash', 'Easypaisa', 'Card'].map(pm => (
                 <button
                   key={pm}
                   type="button"
@@ -306,35 +336,54 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
                 </button>
               ))}
             </div>
+            {matchingAccounts.length > 1 && (
+              <div className="mt-2.5">
+                <label className="block text-[11px] font-bold text-rose-900 mb-1">
+                  Select Specific {formData.paymentMethod} Account *
+                </label>
+                <select
+                  value={formData.accountId}
+                  onChange={e => setFormData(prev => ({ ...prev, accountId: e.target.value }))}
+                  className="w-full px-3 py-2 bg-white border border-rose-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-rose-600"
+                >
+                  <option value="">-- Choose Account --</option>
+                  {matchingAccounts.map((acc: OnlineAccount) => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.name} {acc.accountNumber ? `(${acc.accountNumber})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           {/* Actions */}
-          <div className="pt-3 flex items-center justify-between border-t border-slate-100">
+          <div className="pt-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 border-t border-slate-100">
             {hasActiveDraft ? (
               <button
                 type="button"
                 onClick={resetDraft}
-                className="text-slate-400 hover:text-rose-600 font-semibold text-xs flex items-center gap-1 transition cursor-pointer"
+                className="text-slate-400 hover:text-rose-600 font-semibold text-xs flex items-center justify-center sm:justify-start gap-1 transition cursor-pointer py-1"
                 title="Discard all entered fields"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Reset Form</span>
               </button>
             ) : (
-              <div />
+              <div className="hidden sm:block" />
             )}
 
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               <button
                 type="button"
                 onClick={handleExplicitCancel}
-                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium transition cursor-pointer"
+                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium transition cursor-pointer text-center"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold shadow-md shadow-rose-500/20 transition cursor-pointer"
+                className="w-full sm:w-auto px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold shadow-md shadow-rose-500/20 transition cursor-pointer text-center"
               >
                 Save Expense
               </button>

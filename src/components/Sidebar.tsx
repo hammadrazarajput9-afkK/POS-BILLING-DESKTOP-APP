@@ -12,9 +12,10 @@ import {
   X,
   Activity,
   Calculator,
-  Barcode
+  Barcode,
+  Lock
 } from 'lucide-react';
-import { ShopSettings } from '../types';
+import { ShopSettings, UserRole } from '../types';
 
 interface SidebarProps {
   activeTab: string;
@@ -24,6 +25,7 @@ interface SidebarProps {
   onOpenSettings: () => void;
   settings: ShopSettings;
   activityCount?: number;
+  currentRole?: UserRole;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -34,19 +36,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenSettings,
   settings,
   activityCount = 0,
+  currentRole = 'admin',
 }) => {
   const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, adminOnly: true },
     { id: 'pos', label: 'POS & Billing', icon: ShoppingCart },
     { id: 'inventory', label: 'Inventory Master', icon: Boxes },
-    { id: 'purchases', label: 'Purchases (Stock Inward)', icon: Truck },
+    { id: 'purchases', label: 'Purchases (Stock Inward)', icon: Truck, adminOnly: true },
     { id: 'barcode', label: 'Barcode Generator', icon: Barcode },
     { id: 'khata', label: 'Customer Ledger (Credit)', icon: BookOpen },
     { id: 'expenses', label: 'Daily Expense', icon: Receipt },
     { id: 'dailyClosing', label: 'Daily Closing', icon: Calculator },
-    { id: 'reports', label: 'Reports', icon: BarChart3 },
-    { id: 'activity', label: 'Activity Center', icon: Activity, badge: activityCount },
+    { id: 'reports', label: 'Reports', icon: BarChart3, adminOnly: true },
+    { id: 'activity', label: 'Activity Center', icon: Activity, badge: activityCount, adminOnly: true },
   ];
+
+  const visibleNavItems = navItems.filter(item => currentRole === 'admin' || !item.adminOnly);
 
   const handleNavClick = (id: string) => {
     onSelectTab(id);
@@ -80,14 +85,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="h-16 flex items-center justify-between px-5 border-b border-slate-100">
             <div className="flex items-center gap-2.5 min-w-0">
               {logoSrc ? (
-                <img
-                  src={logoSrc}
-                  alt={settings.shopName}
-                  className="w-9 h-9 rounded-xl object-contain bg-white border border-slate-200 p-0.5 shadow-xs shrink-0"
-                />
+                <div className="w-12 h-12 rounded-full overflow-hidden bg-white border-2 border-blue-500/30 p-0.5 shadow-sm shrink-0 flex items-center justify-center">
+                  <img
+                    src={logoSrc}
+                    alt={settings.shopName}
+                    className="w-full h-full rounded-full object-cover"
+                  />
+                </div>
               ) : (
-                <div className="w-9 h-9 rounded-xl brand-badge bg-blue-600 text-white flex items-center justify-center font-extrabold text-lg shadow-md shadow-blue-500/25 shrink-0">
-                  <Smartphone className="w-5 h-5" />
+                <div className="w-12 h-12 rounded-full brand-badge bg-blue-600 text-white flex items-center justify-center font-extrabold text-lg shadow-md shadow-blue-500/25 shrink-0">
+                  <Smartphone className="w-6 h-6" />
                 </div>
               )}
               <div className="min-w-0">
@@ -113,7 +120,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           {/* Navigation Links */}
           <nav className="p-3 space-y-1">
-            {navItems.map(item => {
+            {visibleNavItems.map(item => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
               return (
@@ -144,39 +151,49 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Sidebar Footer with Shop Profile */}
-        <div className="w-64 min-w-[16rem] p-3 border-t border-slate-100 space-y-2">
-          <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 flex items-center justify-between">
-            <div className="flex items-center gap-2 min-w-0">
+        <div className="w-64 min-w-[16rem] p-3 border-t border-slate-100 bg-slate-50/50">
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-2.5 flex items-center justify-between gap-2 shadow-2xs">
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
               {logoSrc ? (
                 <img
                   src={logoSrc}
                   alt={settings.shopName}
-                  className="w-7 h-7 rounded-lg object-contain bg-white border border-slate-200 p-0.5 shrink-0"
+                  className="w-9 h-9 rounded-full object-cover bg-white border-2 border-slate-200 p-0.5 shadow-xs shrink-0"
                 />
               ) : (
-                <div className="w-7 h-7 rounded-lg brand-badge bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
+                <div className="w-9 h-9 rounded-full brand-badge bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
                   POS
                 </div>
               )}
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="text-xs font-bold text-slate-900 truncate">
-                  {settings.shopName}
+                  {settings.shopName || 'FMZ Mobile POS'}
                 </p>
-                <p className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  Active Terminal
+                <p className={`text-[10px] font-semibold flex items-center gap-1 truncate ${
+                  currentRole === 'admin' ? 'text-emerald-600' : 'text-amber-600'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                    currentRole === 'admin' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+                  }`}></span>
+                  <span className="truncate">{currentRole === 'admin' ? 'Admin Terminal' : 'Salesman Terminal'}</span>
                 </p>
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={onOpenSettings}
-              className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-200/60 transition cursor-pointer"
-              title="Shop Settings & Backup"
-            >
-              <Settings className="w-4 h-4" />
-            </button>
+            {currentRole === 'admin' ? (
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                className="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition cursor-pointer shrink-0 min-h-[36px] min-w-[36px] flex items-center justify-center"
+                title="Shop Settings & Backup"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+            ) : (
+              <div className="p-2 text-slate-300 shrink-0" title="Settings restricted to Administrator">
+                <Lock className="w-3.5 h-3.5" />
+              </div>
+            )}
           </div>
         </div>
       </aside>

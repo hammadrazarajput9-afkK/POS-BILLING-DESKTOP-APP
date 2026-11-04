@@ -1,4 +1,5 @@
 export type ItemCategory = string;
+export type ItemStatus = 'ACTIVE' | 'ARCHIVED';
 
 export interface InventoryItem {
   id: string;
@@ -12,29 +13,70 @@ export interface InventoryItem {
   salePrice: number;
   qty: number;
   createdAt: string;
+  status?: ItemStatus;
+  ram?: string;
+  storage?: string;
+  color?: string;
 }
 
-export type RepairStatus = 'Pending' | 'In-Progress' | 'Ready' | 'Delivered';
+export type ImeiStatus = 'AVAILABLE' | 'SOLD' | 'RETURNED';
 
-export interface RepairTicket {
+export interface ImeiRecord {
   id: string;
-  ticketNo: string;
-  custName: string;
-  custPhone: string;
-  device: string;
-  problem: string;
-  cost: number;
-  advancePaid?: number;
-  status: RepairStatus;
-  date: string;
-  technicianNotes?: string;
+  imei: string;
+  productId: string;
+  productName: string;
+  category?: string;
+  status: ImeiStatus;
+  invoiceNo?: string;
+  soldDate?: string;
+  customerName?: string;
+  customerPhone?: string;
+  purchaseBillNo?: string;
+  purchaseParty?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type StockAdjustmentReason =
+  | 'Damaged'
+  | 'Lost'
+  | 'Stock Correction'
+  | 'Manual Adjustment'
+  | 'Found Stock'
+  | 'Other';
+
+export interface StockAdjustment {
+  id: string;
+  productId: string;
+  productName: string;
+  previousQty: number;
+  newQty: number;
+  difference: number;
+  reason: StockAdjustmentReason | string;
+  notes?: string;
+  adjustedAt: string;
+  adjustedBy: string;
+}
+
+export interface MobileVariant {
+  id: string;
+  ram: string;
+  storage: string;
+  color?: string;
+  costPrice: number | '';
+  salePrice: number | '';
+  qty: number | '';
+  imeis: string[];
 }
 
 export interface KhataTransaction {
   id: string;
   date: string;
-  type: 'credit' | 'payment';
+  type: 'credit' | 'payment' | 'debit';
   amount: number;
+  paymentMethod?: string; // 'Cash' | 'Bank' | 'JazzCash' | 'Easypaisa' | 'Card' | 'Other'
+  accountId?: string;
   note?: string;
 }
 
@@ -55,8 +97,13 @@ export interface ActivityLog {
   timestamp: string;
   title: string;
   details: string;
-  category: 'Sale' | 'Inventory' | 'Khata' | 'Expense' | 'Category' | 'Settings' | 'Purchase';
-  type?: 'create' | 'update' | 'delete' | 'sale' | 'payment';
+  category: 'Sale' | 'Inventory' | 'Khata' | 'Expense' | 'Category' | 'Settings' | 'Purchase' | 'Closing' | 'Security';
+  type?: 'create' | 'update' | 'delete' | 'sale' | 'payment' | 'reversal' | 'return' | 'restore';
+  user?: string;
+  userRole?: UserRole;
+  relatedRecordId?: string;
+  beforeValue?: string;
+  afterValue?: string;
 }
 
 export type ExpenseCategory = string;
@@ -69,6 +116,7 @@ export interface ExpenseItem {
   date: string;
   image?: string;
   paymentMethod?: string;
+  accountId?: string;
 }
 
 export interface OnlineAccount {
@@ -83,6 +131,15 @@ export interface DailyClosingRecord {
   id: string;
   date: string;
   time: string;
+  createdAt?: string;
+  openingCash?: number;
+  openingOnlineBalances?: {
+    accountId: string;
+    accountName: string;
+    balance: number;
+  }[];
+  openingTotalOnline?: number;
+  openingGrandTotal?: number;
   denominations: Record<string, number>;
   coins: number;
   totalCash: number;
@@ -94,22 +151,46 @@ export interface DailyClosingRecord {
   totalOnline: number;
   grandTotal: number;
   expectedCash?: number;
+  expectedOnlineBalances?: {
+    accountId: string;
+    accountName: string;
+    balance: number;
+  }[];
+  expectedOnlineTotal?: number;
+  expectedGrandTotal?: number;
   difference?: number;
+  onlineDifference?: number;
+  totalDifference?: number;
   closedBy?: string;
   notes?: string;
+  status?: 'closed' | 'reopened';
 }
 
 export interface TabPreferences {
-  [tabId: string]: Record<string, any>;
+  [tabId: string]: Record<string, unknown>;
 }
 
 export interface CartItem extends InventoryItem {
   cartQty: number;
+  selectedImeis?: string[];
 }
 
 export type PaymentMethod = 'Cash' | 'JazzCash' | 'Easypaisa' | 'Bank' | 'Card';
 
 export type InvoiceType = 'cash' | 'credit';
+
+export interface SaleItem {
+  id: string;
+  name: string;
+  category: ItemCategory;
+  imei?: string;
+  imeis?: string[];
+  salePrice: number;
+  costPrice: number;
+  qty: number;
+  returnedQty?: number;
+  barcode?: string;
+}
 
 export interface SaleRecord {
   invNo: string;
@@ -119,22 +200,52 @@ export interface SaleRecord {
   amountPaid?: number;
   amountDue?: number;
   khataCustomerId?: string;
-  items: {
-    id: string;
-    name: string;
-    category: ItemCategory;
-    imei?: string;
-    salePrice: number;
-    costPrice: number;
-    qty: number;
-  }[];
+  items: SaleItem[];
   subtotal: number;
   discount: number;
   grandTotal: number;
   totalCost: number;
   netProfit: number;
   paymentMethod: PaymentMethod;
+  accountId?: string;
   date: string;
+  returnStatus?: 'NONE' | 'PARTIAL' | 'FULL';
+  totalRefunded?: number;
+  status?: 'COMPLETED' | 'CANCELLED';
+  notes?: string;
+}
+
+export interface SalesReturnItem {
+  itemId: string;
+  productId: string;
+  name: string;
+  category: ItemCategory;
+  qty: number;
+  costPrice: number;
+  salePrice: number;
+  refundAmount: number;
+  imei?: string;
+  imeis?: string[];
+  returnReason: string;
+}
+
+export interface SalesReturnRecord {
+  id: string;
+  returnNo: string;
+  originalInvNo: string;
+  customerName: string;
+  customerPhone?: string;
+  khataCustomerId?: string;
+  items: SalesReturnItem[];
+  totalRefundAmount: number;
+  refundPaymentMethod: PaymentMethod;
+  accountId?: string;
+  totalCostReversed: number;
+  netProfitDeducted: number;
+  reason: string;
+  returnDate: string;
+  returnedBy: string;
+  notes?: string;
 }
 
 export interface PurchaseLedgerEntry {
@@ -144,6 +255,8 @@ export interface PurchaseLedgerEntry {
   qty: number;
   costPrice: number;
   total: number;
+  isReversed?: boolean;
+  reversedPurchaseId?: string;
 }
 
 export interface PurchaseItem {
@@ -159,6 +272,8 @@ export interface PurchaseItem {
   imeis?: string[];
 }
 
+export type PurchaseStatus = 'ACTIVE' | 'REVERSED';
+
 export interface SupplierPurchase {
   id: string;
   billNo: string;
@@ -172,9 +287,15 @@ export interface SupplierPurchase {
   paymentMethod: string;
   notes?: string;
   invoiceImage?: string;
+  status?: PurchaseStatus;
+  reversedAt?: string;
+  reversedBy?: string;
+  reversalReason?: string;
+  reversalNotes?: string;
 }
 
 export type AppTheme =
+  | 'gold-black'
   | 'dark'
   | 'light'
   | 'blue-white'
@@ -184,6 +305,15 @@ export type AppTheme =
   | 'purple-white';
 
 export type UserRole = 'admin' | 'salesman';
+
+export interface UserAccount {
+  id: string;
+  name: string;
+  email: string;
+  password?: string;
+  role: UserRole;
+  createdAt: string;
+}
 
 export interface ShopSettings {
   shopName: string;
@@ -195,16 +325,21 @@ export interface ShopSettings {
   theme?: AppTheme;
   logo?: string;
   shopLogo?: string;
+  invoiceLogo?: string;
   returnPolicy?: string;
   lowStockThreshold?: number;
+  loginPageName?: string;
+  loginPageLogo?: string;
 }
 
 export interface AppData {
+  backupVersion?: number;
+  lastModified?: string;
   inventory: InventoryItem[];
-  repairs: RepairTicket[];
   khata: KhataCustomer[];
   expenses: ExpenseItem[];
   sales: SaleRecord[];
+  salesReturns?: SalesReturnRecord[];
   purchasesLedger: PurchaseLedgerEntry[];
   supplierPurchases?: SupplierPurchase[];
   settings: ShopSettings;
@@ -213,6 +348,10 @@ export interface AppData {
   activities: ActivityLog[];
   dailyClosings?: DailyClosingRecord[];
   onlineAccounts?: OnlineAccount[];
+  imeiRecords?: ImeiRecord[];
+  stockAdjustments?: StockAdjustment[];
   tabPreferences?: TabPreferences;
   currentRole?: UserRole;
+  users?: UserAccount[];
+  currentUser?: UserAccount;
 }

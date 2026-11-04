@@ -30,7 +30,7 @@ interface ActivityCenterTabProps {
 
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 
-export const ActivityCenterTab: React.FC<ActivityCenterTabProps> = ({
+const ActivityCenterTabComponent: React.FC<ActivityCenterTabProps> = ({
   activities,
   onClearActivities,
   onOpenPdfReport,
@@ -181,29 +181,29 @@ export const ActivityCenterTab: React.FC<ActivityCenterTabProps> = ({
       </div>
 
       {/* Metrics Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total (Last 24 Hours)</span>
-          <h3 className="text-2xl font-extrabold font-mono text-slate-900 tabular-nums mt-1">{stats.total}</h3>
-          <p className="text-[11px] text-slate-400 mt-0.5">Live activities logged</p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3.5">
+        <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs flex flex-col justify-between">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 line-clamp-1">24h Total</span>
+          <h3 className="text-sm sm:text-2xl font-extrabold font-mono text-slate-900 tabular-nums mt-0.5 sm:mt-1 truncate">{stats.total}</h3>
+          <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Live activities</p>
         </div>
 
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sales Processed</span>
-          <h3 className="text-2xl font-extrabold font-mono text-emerald-600 tabular-nums mt-1">{stats.sales}</h3>
-          <p className="text-[11px] text-slate-400 mt-0.5">Invoices completed</p>
+        <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs flex flex-col justify-between">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 line-clamp-1">Sales Done</span>
+          <h3 className="text-sm sm:text-2xl font-extrabold font-mono text-emerald-600 tabular-nums mt-0.5 sm:mt-1 truncate">{stats.sales}</h3>
+          <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Invoices made</p>
         </div>
 
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Stock Modifications</span>
-          <h3 className="text-2xl font-extrabold font-mono text-blue-600 tabular-nums mt-1">{stats.inventory}</h3>
-          <p className="text-[11px] text-slate-400 mt-0.5">Product additions/updates</p>
+        <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs flex flex-col justify-between">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 line-clamp-1">Stock Updates</span>
+          <h3 className="text-sm sm:text-2xl font-extrabold font-mono text-blue-600 tabular-nums mt-0.5 sm:mt-1 truncate">{stats.inventory}</h3>
+          <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Stock modified</p>
         </div>
 
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Expenses Logged</span>
-          <h3 className="text-2xl font-extrabold font-mono text-rose-600 tabular-nums mt-1">{stats.expense}</h3>
-          <p className="text-[11px] text-slate-400 mt-0.5">Disbursements made</p>
+        <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs flex flex-col justify-between">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 line-clamp-1">Expenses Logged</span>
+          <h3 className="text-sm sm:text-2xl font-extrabold font-mono text-rose-600 tabular-nums mt-0.5 sm:mt-1 truncate">{stats.expense}</h3>
+          <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Disbursements</p>
         </div>
       </div>
 
@@ -340,3 +340,5 @@ export const ActivityCenterTab: React.FC<ActivityCenterTabProps> = ({
     </div>
   );
 };
+
+export const ActivityCenterTab = React.memo(ActivityCenterTabComponent);

@@ -11,15 +11,25 @@ import {
   CheckCircle2,
   AlertCircle,
   QrCode,
-  Store
+  Store,
+  Edit,
+  Trash2,
+  RotateCcw,
+  Bluetooth,
+  Loader2
 } from 'lucide-react';
 import { useToast } from './Toast';
+import { printInvoiceViaBluetooth, isWebBluetoothSupported } from '../utils/bluetoothPrinter';
+import { shareInvoiceOnWhatsApp } from '../utils/whatsappInvoice';
 
 export interface InvoiceModalProps {
   sale: SaleRecord | null;
   settings: ShopSettings;
   isOpen: boolean;
   onClose: () => void;
+  onOpenSalesReturn?: (sale: SaleRecord) => void;
+  onEditSale?: (sale: SaleRecord) => void;
+  onDeleteSale?: (invNo: string, permanent?: boolean, reason?: string) => void;
 }
 
 export type InvoiceFormat = 'thermal-80' | 'thermal-58' | 'a4';
@@ -29,10 +39,16 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   settings,
   isOpen,
   onClose,
+  onOpenSalesReturn,
+  onEditSale,
+  onDeleteSale,
 }) => {
   const { showToast } = useToast();
   const [copied, setCopied] = useState(false);
   const [printFormat, setPrintFormat] = useState<InvoiceFormat>('thermal-80');
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteMode, setDeleteMode] = useState<'cancel' | 'permanent'>('cancel');
+  const [cancelReason, setCancelReason] = useState('Customer request / cancelled');
 
   if (!isOpen || !sale) return null;
 
@@ -55,8 +71,36 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
     ? 'bg-amber-600 text-white'
     : 'bg-rose-600 text-white';
 
+  const [isPrintingBluetooth, setIsPrintingBluetooth] = useState(false);
+
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleBluetoothPrint = async () => {
+    if (!isWebBluetoothSupported()) {
+      showToast(
+        'Web Bluetooth is not supported on this browser. Please use Google Chrome, Edge, or Bluefy on mobile, or use the standard Print button.',
+        'error'
+      );
+      return;
+    }
+
+    try {
+      setIsPrintingBluetooth(true);
+      showToast('Opening Bluetooth scanner... Please select your 58mm/80mm Thermal Printer', 'info');
+      const format = printFormat === 'thermal-58' ? 'thermal-58' : 'thermal-80';
+      const result = await printInvoiceViaBluetooth(sale, settings, format);
+      if (result.success) {
+        showToast(result.message, 'success');
+      } else {
+        showToast(result.message, result.message.includes('cancelled') ? 'info' : 'error');
+      }
+    } catch (err: any) {
+      showToast(`Bluetooth printing failed: ${err?.message || 'Connection error'}`, 'error');
+    } finally {
+      setIsPrintingBluetooth(false);
+    }
   };
 
   const handleCopyText = () => {
@@ -97,33 +141,15 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   };
 
   const handleWhatsApp = () => {
-    const phone = sale.custPhone ? sale.custPhone.replace(/[^0-9]/g, '') : '';
-    const textLines = [
-      `*${settings.shopName.toUpperCase()}*`,
-      `*Customer Receipt - Invoice #${sale.invNo}*`,
-      `Date: ${new Date(sale.date).toLocaleDateString()}`,
-      `Customer: ${sale.custName || 'Valued Customer'}`,
-      `Status: *${paymentStatusText}*`,
-      `------------------------`,
-      ...sale.items.map(
-        i => `• ${i.name} (Qty: ${i.qty}) = ${settings.currency} ${(i.salePrice * i.qty).toLocaleString()}${i.imei ? `\n  (IMEI: ${i.imei})` : ''}`
-      ),
-      `------------------------`,
-      `*Grand Total: ${settings.currency} ${grandTotal.toLocaleString()}*`,
-      `*Paid: ${settings.currency} ${amountPaid.toLocaleString()}*`,
-      amountDue > 0 ? `*Remaining Due: ${settings.currency} ${amountDue.toLocaleString()}*` : '',
-      `------------------------`,
-      settings.returnPolicy || settings.receiptFooter || 'Thank you for shopping with us!',
-    ].filter(Boolean);
-
-    const message = encodeURIComponent(textLines.join('\n'));
-    const url = phone
-      ? `https://wa.me/${phone.startsWith('0') ? '92' + phone.substring(1) : phone}?text=${message}`
-      : `https://wa.me/?text=${message}`;
-    window.open(url, '_blank');
+    try {
+      shareInvoiceOnWhatsApp(sale, settings);
+      showToast(`Opening WhatsApp for Invoice #${sale.invNo}...`, 'success');
+    } catch (err: any) {
+      showToast(`Could not open WhatsApp: ${err?.message || 'Error'}`, 'error');
+    }
   };
 
-  const logoSrc = settings.shopLogo || settings.logo;
+  const logoSrc = settings.invoiceLogo || settings.shopLogo || settings.logo;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
@@ -233,18 +259,18 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
       {/* ============================================================== */}
       {/* SCREEN MODAL DIALOG (Interactive preview with options) */}
       {/* ============================================================== */}
-      <div className="print:hidden bg-white rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl space-y-4 border border-slate-100 my-auto animate-in fade-in zoom-in-95 max-h-[92vh] flex flex-col">
+      <div className="print:hidden bg-white rounded-2xl max-w-lg w-full max-w-full overflow-x-hidden p-3.5 sm:p-6 shadow-2xl space-y-4 border border-slate-100 my-auto animate-in fade-in zoom-in-95 max-h-[92vh] flex flex-col">
         {/* Modal Top Bar */}
         <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="p-2 bg-blue-50 text-blue-600 rounded-xl shrink-0">
               <Printer className="w-5 h-5" />
             </div>
-            <div>
-              <h3 className="font-black text-slate-900 text-sm sm:text-base leading-tight">
+            <div className="min-w-0">
+              <h3 className="font-black text-slate-900 text-sm sm:text-base leading-tight truncate">
                 Customer Invoice & Receipt
               </h3>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-400 truncate">
                 Invoice #{sale.invNo} • {new Date(sale.date).toLocaleDateString()}
               </p>
             </div>
@@ -253,20 +279,20 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer shrink-0 ml-1"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Print Format Switcher Toolbar */}
-        <div className="flex items-center justify-between bg-slate-50 p-1.5 rounded-xl border border-slate-200 text-xs shrink-0">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 bg-slate-50 p-1.5 rounded-xl border border-slate-200 text-xs shrink-0">
           <span className="text-[11px] font-bold text-slate-500 pl-2">Print Layout:</span>
-          <div className="flex gap-1">
+          <div className="grid grid-cols-3 sm:flex gap-1 w-full sm:w-auto">
             <button
               type="button"
               onClick={() => setPrintFormat('thermal-80')}
-              className={`px-3 py-1 rounded-lg font-bold text-[11px] transition cursor-pointer ${
+              className={`px-2.5 py-1.5 sm:py-1 rounded-lg font-bold text-[11px] text-center transition cursor-pointer ${
                 printFormat === 'thermal-80'
                   ? 'bg-blue-600 text-white shadow-2xs'
                   : 'text-slate-600 hover:bg-slate-200/60'
@@ -277,7 +303,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
             <button
               type="button"
               onClick={() => setPrintFormat('thermal-58')}
-              className={`px-3 py-1 rounded-lg font-bold text-[11px] transition cursor-pointer ${
+              className={`px-2.5 py-1.5 sm:py-1 rounded-lg font-bold text-[11px] text-center transition cursor-pointer ${
                 printFormat === 'thermal-58'
                   ? 'bg-blue-600 text-white shadow-2xs'
                   : 'text-slate-600 hover:bg-slate-200/60'
@@ -288,7 +314,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
             <button
               type="button"
               onClick={() => setPrintFormat('a4')}
-              className={`px-3 py-1 rounded-lg font-bold text-[11px] transition cursor-pointer ${
+              className={`px-2.5 py-1.5 sm:py-1 rounded-lg font-bold text-[11px] text-center transition cursor-pointer ${
                 printFormat === 'a4'
                   ? 'bg-blue-600 text-white shadow-2xs'
                   : 'text-slate-600 hover:bg-slate-200/60'
@@ -300,9 +326,9 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
         </div>
 
         {/* Scrollable Receipt Preview */}
-        <div className="overflow-y-auto pr-1 flex-1">
+        <div className="overflow-y-auto overflow-x-hidden pr-1 flex-1">
           <div
-            className={`mx-auto bg-slate-50 border border-slate-200 rounded-2xl p-5 font-mono text-xs text-slate-800 space-y-4 shadow-inner ${
+            className={`mx-auto bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 font-mono text-xs text-slate-800 space-y-4 shadow-inner w-full overflow-x-hidden ${
               printFormat === 'thermal-58' ? 'max-w-xs' : 'max-w-md'
             }`}
           >
@@ -310,15 +336,17 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
             <div className="text-center border-b border-dashed border-slate-300 pb-3 space-y-1">
               {logoSrc ? (
                 <div className="flex justify-center mb-2">
-                  <img
-                    src={logoSrc}
-                    alt={settings.shopName}
-                    className="w-14 h-14 object-contain rounded-lg border border-slate-200 bg-white p-1 shadow-2xs"
-                  />
+                  <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-slate-200 bg-white p-1 shadow-2xs flex items-center justify-center">
+                    <img
+                      src={logoSrc}
+                      alt={settings.shopName}
+                      className="w-full h-full object-contain rounded-full"
+                    />
+                  </div>
                 </div>
               ) : (
-                <div className="w-10 h-10 bg-blue-600 text-white rounded-xl mx-auto flex items-center justify-center font-black mb-1">
-                  <Store className="w-5 h-5" />
+                <div className="w-12 h-12 bg-blue-600 text-white rounded-full mx-auto flex items-center justify-center font-black mb-1 shadow-xs">
+                  <Store className="w-6 h-6" />
                 </div>
               )}
 
@@ -444,36 +472,213 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
           </div>
         </div>
 
+        {/* Return Status Alert */}
+        {sale.returnStatus && sale.returnStatus !== 'NONE' && (
+          <div className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between ${
+            sale.returnStatus === 'FULL'
+              ? 'bg-rose-50 border-rose-200 text-rose-700'
+              : 'bg-amber-50 border-amber-200 text-amber-700'
+          }`}>
+            <span>
+              {sale.returnStatus === 'FULL' ? '⚠️ This sale invoice has been fully returned & refunded.' : '⚠️ This sale invoice has items partially returned.'}
+            </span>
+            {sale.totalRefunded && sale.totalRefunded > 0 && (
+              <span className="font-mono">
+                Total Refunded: {settings.currency} {sale.totalRefunded.toLocaleString()}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Action Buttons */}
-        <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 shrink-0">
+        <div className="space-y-2 pt-2 border-t border-slate-100 shrink-0">
+          {/* Quick Edit & Delete Row */}
+          {(onEditSale || onDeleteSale) && (
+            <div className="grid grid-cols-2 gap-2">
+              {onEditSale && sale.status !== 'CANCELLED' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onEditSale(sale);
+                  }}
+                  className="flex items-center justify-center gap-1.5 py-2 px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold transition cursor-pointer"
+                  title="Load invoice in POS Cart to edit"
+                >
+                  <Edit className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Edit Invoice</span>
+                </button>
+              )}
+              {onDeleteSale && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteMode(sale.status === 'CANCELLED' ? 'permanent' : 'cancel');
+                    setDeleteConfirmOpen(true);
+                  }}
+                  className={`flex items-center justify-center gap-1.5 py-2 px-3 border rounded-xl text-xs font-bold transition cursor-pointer ${
+                    sale.status === 'CANCELLED'
+                      ? 'bg-rose-100 hover:bg-rose-200 text-rose-800 border-rose-300'
+                      : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                  }`}
+                  title={sale.status === 'CANCELLED' ? 'Delete Permanently' : 'Delete / Void Invoice'}
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                  <span>{sale.status === 'CANCELLED' ? 'Delete Permanently' : 'Delete / Void Invoice'}</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Direct Bluetooth Thermal Printer Action */}
           <button
             type="button"
-            onClick={handleCopyText}
-            className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer"
+            onClick={handleBluetoothPrint}
+            disabled={isPrintingBluetooth}
+            className={`w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-extrabold transition cursor-pointer active:scale-98 shadow-sm ${
+              isPrintingBluetooth
+                ? 'bg-indigo-100 text-indigo-800 cursor-wait border border-indigo-300'
+                : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/20'
+            }`}
+            title="Connect & print directly to paired Bluetooth ESC/POS 80mm/58mm thermal printer"
           >
-            {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4 text-slate-500" />}
-            <span>{copied ? 'Copied!' : 'Copy Text'}</span>
+            {isPrintingBluetooth ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-white shrink-0" />
+                <span>Connecting to Bluetooth Printer...</span>
+              </>
+            ) : (
+              <>
+                <Bluetooth className="w-4 h-4 shrink-0" />
+                <span>Print via Bluetooth Thermal Printer ({printFormat === 'thermal-58' ? '58mm' : '80mm'})</span>
+              </>
+            )}
           </button>
 
-          <button
-            type="button"
-            onClick={handleWhatsApp}
-            className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition cursor-pointer"
-          >
-            <Share2 className="w-4 h-4 text-emerald-600" />
-            <span>WhatsApp</span>
-          </button>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={handleCopyText}
+              className="w-full flex items-center justify-center gap-1.5 py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer"
+            >
+              {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4 text-slate-500" />}
+              <span>{copied ? 'Copied!' : 'Copy Text'}</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={handlePrint}
-            className="flex items-center justify-center gap-1.5 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold shadow-lg shadow-blue-600/25 transition cursor-pointer active:scale-95"
-          >
-            <Printer className="w-4 h-4" />
-            <span>Print Receipt</span>
-          </button>
+            <button
+              type="button"
+              onClick={handleWhatsApp}
+              className="w-full flex items-center justify-center gap-1.5 py-2.5 px-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-xs transition cursor-pointer active:scale-95"
+              title="Share itemized bill directly with customer on WhatsApp"
+            >
+              <Share2 className="w-4 h-4" />
+              <span>Share via WhatsApp</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="w-full flex items-center justify-center gap-1.5 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold shadow-lg shadow-blue-600/25 transition cursor-pointer active:scale-95"
+              title="Standard browser print dialog (A4 or thermal driver)"
+            >
+              <Printer className="w-4 h-4" />
+              <span>Standard Print</span>
+            </button>
+          </div>
+
+          {onOpenSalesReturn && sale.returnStatus !== 'FULL' && (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenSalesReturn(sale);
+              }}
+              className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-xl text-xs font-bold transition cursor-pointer"
+            >
+              <span className="text-base">↩️</span>
+              <span>Sales Return & Refund for Inv #{sale.invNo}</span>
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Delete / Void confirmation dialog inside InvoiceModal */}
+      {deleteConfirmOpen && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl space-y-4 border border-slate-100 animate-in zoom-in-95">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-extrabold text-slate-900 text-base">
+                  {deleteMode === 'permanent' || sale.status === 'CANCELLED'
+                    ? 'Delete Invoice Permanently'
+                    : 'Void & Cancel Invoice'}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5 font-mono">Invoice #{sale.invNo}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {sale.status !== 'CANCELLED' ? (
+              <div className="space-y-2">
+                <div
+                  onClick={() => setDeleteMode('cancel')}
+                  className={`p-2.5 rounded-xl border text-left cursor-pointer transition ${
+                    deleteMode === 'cancel' ? 'border-rose-400 bg-rose-50' : 'border-slate-200'
+                  }`}
+                >
+                  <p className="font-bold text-xs text-slate-900">Void & Cancel (Restore Stock)</p>
+                  <p className="text-[11px] text-slate-500">Restores inventory stock and marks invoice status as CANCELLED.</p>
+                </div>
+                <div
+                  onClick={() => setDeleteMode('permanent')}
+                  className={`p-2.5 rounded-xl border text-left cursor-pointer transition ${
+                    deleteMode === 'permanent' ? 'border-rose-400 bg-rose-50' : 'border-slate-200'
+                  }`}
+                >
+                  <p className="font-bold text-xs text-rose-700">Permanently Delete</p>
+                  <p className="text-[11px] text-slate-500">Completely purges this record from the database.</p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-600">
+                Are you sure you want to permanently remove this cancelled invoice from records?
+              </p>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmOpen(false)}
+                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDeleteSale) {
+                    onDeleteSale(sale.invNo, deleteMode === 'permanent', cancelReason);
+                  }
+                  setDeleteConfirmOpen(false);
+                  onClose();
+                }}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold shadow-sm"
+              >
+                Confirm Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

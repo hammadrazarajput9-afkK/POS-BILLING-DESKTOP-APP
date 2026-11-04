@@ -1,0 +1,160 @@
+{
+  "entities": {
+    "StoreConfig": {
+      "title": "StoreConfig",
+      "description": "Root POS store configuration, settings, categories, and metadata",
+      "type": "object",
+      "properties": {
+        "backupVersion": {
+          "type": "string",
+          "description": "Schema backup version tag"
+        },
+        "lastModified": {
+          "type": "string",
+          "description": "ISO timestamp of last modification"
+        },
+        "settings": {
+          "type": "object",
+          "description": "Shop customization and profile settings"
+        },
+        "categories": {
+          "type": "array",
+          "description": "List of active product categories"
+        }
+      }
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "Sales invoice transaction record",
+      "type": "object",
+      "properties": {
+        "invNo": {
+          "type": "string",
+          "description": "Unique invoice identifier"
+        },
+        "grandTotal": {
+          "type": "number",
+          "description": "Total bill amount"
+        },
+        "date": {
+          "type": "string",
+          "description": "ISO date of transaction"
+        }
+      }
+    },
+    "InventoryItem": {
+      "title": "InventoryItem",
+      "description": "Inventory product item in stock",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique inventory product identifier"
+        },
+        "name": {
+          "type": "string",
+          "description": "Product display name"
+        },
+        "qty": {
+          "type": "number",
+          "description": "Current quantity in stock"
+        },
+        "salePrice": {
+          "type": "number",
+          "description": "Retail selling price"
+        }
+      }
+    },
+    "KhataCustomer": {
+      "title": "KhataCustomer",
+      "description": "Customer credit ledger record",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique customer account identifier"
+        },
+        "name": {
+          "type": "string",
+          "description": "Customer or business name"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Primary contact number"
+        },
+        "balance": {
+          "type": "number",
+          "description": "Current pending ledger balance"
+        }
+      }
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Operational expense record",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique expense record identifier"
+        },
+        "description": {
+          "type": "string",
+          "description": "Expense description or purpose"
+        },
+        "amount": {
+          "type": "number",
+          "description": "Monetary cost of expense"
+        },
+        "date": {
+          "type": "string",
+          "description": "ISO date of expenditure"
+        }
+      }
+    },
+    "ActivityLog": {
+      "title": "ActivityLog",
+      "description": "Audit trail log record",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique activity log identifier"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "ISO timestamp of recorded action"
+        },
+        "title": {
+          "type": "string",
+          "description": "Action summary title"
+        }
+      }
+    }
+  },
+  "firestore": {
+    "/pos_data/{storeId}": {
+      "schema": "StoreConfig",
+      "description": "Root store document containing settings, categories, and store metadata"
+    },
+    "/pos_data/{storeId}/sales/{saleId}": {
+      "schema": "Sale",
+      "description": "Individual sales invoices sub-collection"
+    },
+    "/pos_data/{storeId}/inventory/{itemId}": {
+      "schema": "InventoryItem",
+      "description": "Inventory stock items sub-collection"
+    },
+    "/pos_data/{storeId}/khata/{customerId}": {
+      "schema": "KhataCustomer",
+      "description": "Customer credit accounts and ledgers sub-collection"
+    },
+    "/pos_data/{storeId}/expenses/{expenseId}": {
+      "schema": "Expense",
+      "description": "Shop daily operational expenses sub-collection"
+    },
+    "/pos_data/{storeId}/activities/{activityId}": {
+      "schema": "ActivityLog",
+      "description": "System and operator audit log entries sub-collection"
+    }
+  }
+}

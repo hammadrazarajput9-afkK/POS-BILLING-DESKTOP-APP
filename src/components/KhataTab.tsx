@@ -28,13 +28,20 @@ interface KhataTabProps {
   onOpenAddModal: () => void;
   onOpenSettleModal: (customer: KhataCustomer) => void;
   onDeleteCustomer: (id: string) => void;
-  onAddTransaction: (customerId: string, type: 'credit' | 'payment', amount: number, note?: string) => void;
+  onAddTransaction: (
+    customerId: string,
+    type: 'credit' | 'payment',
+    amount: number,
+    paymentMethod?: string,
+    accountId?: string,
+    note?: string
+  ) => void;
   selectedCustomerId?: string | null;
   onClearSelectedCustomer?: () => void;
   onOpenPdfReport?: () => void;
 }
 
-export const KhataTab: React.FC<KhataTabProps> = ({
+const KhataTabComponent: React.FC<KhataTabProps> = ({
   khata,
   settings,
   isAdmin = true,
@@ -99,37 +106,37 @@ export const KhataTab: React.FC<KhataTabProps> = ({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Khata Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-4.5 shadow-xs">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-4">
+        <div className="col-span-2 sm:col-span-1 bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4.5 shadow-xs flex flex-col justify-between">
+          <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">
             Total Outstanding Credit
           </span>
-          <h3 className="text-2xl font-extrabold text-purple-700 font-mono tabular-nums mt-1">
+          <h3 className="text-sm sm:text-2xl font-extrabold text-purple-700 font-mono tabular-nums mt-0.5 sm:mt-1 truncate">
             {settings.currency} {totalOutstanding.toLocaleString()}
           </h3>
-          <p className="text-xs text-slate-400 mt-1">Pending receivables from customers</p>
+          <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">Pending receivables from customers</p>
         </div>
 
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-4.5 shadow-xs">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-            Accounts with Pending Balance
+        <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4.5 shadow-xs flex flex-col justify-between">
+          <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">
+            Pending Balance
           </span>
-          <h3 className="text-2xl font-extrabold text-slate-900 font-mono tabular-nums mt-1">
+          <h3 className="text-sm sm:text-2xl font-extrabold text-slate-900 font-mono tabular-nums mt-0.5 sm:mt-1 truncate">
             {debtorCount} Customers
           </h3>
-          <p className="text-xs text-slate-400 mt-1">Active credit ledger accounts</p>
+          <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">Active credit accounts</p>
         </div>
 
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-4.5 shadow-xs">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-            Total Customer Ledger Accounts
+        <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4.5 shadow-xs flex flex-col justify-between">
+          <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">
+            Total Ledger Accounts
           </span>
-          <h3 className="text-2xl font-extrabold text-slate-900 font-mono tabular-nums mt-1">
+          <h3 className="text-sm sm:text-2xl font-extrabold text-slate-900 font-mono tabular-nums mt-0.5 sm:mt-1 truncate">
             {khata.length} Accounts
           </h3>
-          <p className="text-xs text-slate-400 mt-1">Credit clients & regular buyers</p>
+          <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">Credit clients & buyers</p>
         </div>
       </div>
 
@@ -174,8 +181,8 @@ export const KhataTab: React.FC<KhataTabProps> = ({
           />
         </div>
 
-        {/* Ledger Table */}
-        <div className="border border-slate-200/80 rounded-xl overflow-hidden">
+        {/* Desktop Ledger Table (>= lg: breakpoint) */}
+        <div className="hidden lg:block border border-slate-200/80 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
@@ -282,6 +289,109 @@ export const KhataTab: React.FC<KhataTabProps> = ({
             </table>
           </div>
         </div>
+
+        {/* Mobile Customer Cards View (< lg: breakpoint) */}
+        <div className="block lg:hidden space-y-3">
+          {filtered.length === 0 ? (
+            <div className="text-center py-10 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-400 space-y-1">
+              <BookOpen className="w-8 h-8 mx-auto text-slate-300" />
+              <p className="font-semibold text-slate-700">No khata accounts found</p>
+              <p className="text-[11px] text-slate-400">Add customers to maintain customer credit ledgers</p>
+            </div>
+          ) : (
+            filtered.map(cust => (
+              <div
+                key={cust.id}
+                onClick={() => setActiveAccountCustomer(cust)}
+                className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-xs transition hover:border-purple-300 cursor-pointer"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-11 h-11 rounded-xl bg-purple-100 text-purple-700 font-bold flex items-center justify-center shrink-0 border border-purple-200 overflow-hidden">
+                      {cust.image ? (
+                        <img src={cust.image} alt={cust.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <User className="w-6 h-6 text-purple-600" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="font-bold text-slate-900 text-sm leading-snug truncate">
+                        {cust.name}
+                      </h4>
+                      <p className="text-xs text-slate-500 font-mono flex items-center gap-1 mt-0.5">
+                        <Phone className="w-3 h-3 text-slate-400" />
+                        <span>{cust.phone}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="text-right shrink-0">
+                    <span
+                      className={`inline-block px-2.5 py-1 rounded-full text-xs font-black font-mono tabular-nums ${
+                        cust.balance > 0
+                          ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                          : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      }`}
+                    >
+                      {cust.balance > 0 ? `${settings.currency} ${cust.balance.toLocaleString()} DUE` : 'Settled (0)'}
+                    </span>
+                  </div>
+                </div>
+
+                {cust.address && (
+                  <p className="text-[11px] text-slate-500 flex items-center gap-1 bg-slate-50 p-2 rounded-xl border border-slate-100 truncate">
+                    <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                    <span className="truncate">{cust.address}</span>
+                  </p>
+                )}
+
+                {/* Mobile Touch Action Bar */}
+                <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center gap-2">
+                    {/* Direct Call touch link */}
+                    <a
+                      href={`tel:${cust.phone.replace(/[^0-9+]/g, '')}`}
+                      className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold flex items-center gap-1.5 transition min-h-[44px] min-w-[44px] justify-center"
+                      title="Direct Call"
+                    >
+                      <Phone className="w-4 h-4 text-slate-600" />
+                    </a>
+
+                    {/* WhatsApp Reminder */}
+                    <button
+                      type="button"
+                      onClick={() => handleSendWhatsAppReminder(cust)}
+                      className="p-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl font-bold flex items-center gap-1.5 transition border border-emerald-200 min-h-[44px] min-w-[44px] justify-center cursor-pointer"
+                      title="WhatsApp Reminder"
+                    >
+                      <MessageSquare className="w-4 h-4 text-emerald-600" />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setActiveAccountCustomer(cust)}
+                      className="px-3.5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs transition flex items-center gap-1.5 min-h-[44px] cursor-pointer shadow-xs"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" /> Open Ledger
+                    </button>
+
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => setCustomerToDelete(cust)}
+                        className="p-2.5 text-slate-400 hover:text-rose-600 rounded-xl hover:bg-rose-50 transition border border-slate-200 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
       {/* Full Dedicated Customer Account Modal */}
@@ -316,3 +426,5 @@ export const KhataTab: React.FC<KhataTabProps> = ({
     </div>
   );
 };
+
+export const KhataTab = React.memo(KhataTabComponent);

@@ -100,21 +100,21 @@ export const AddKhataModal: React.FC<AddKhataModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-      <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-100 animate-in zoom-in-95">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in overflow-y-auto">
+      <div className="bg-white rounded-2xl max-w-md w-full max-w-full overflow-x-hidden p-4 sm:p-6 shadow-2xl space-y-4 border border-slate-100 animate-in zoom-in-95 my-auto">
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center font-bold shrink-0">
               <UserPlus className="w-4 h-4" />
             </div>
-            <div>
-              <h3 className="font-bold text-slate-900 text-sm">New Khata Customer Account</h3>
-              <p className="text-[11px] text-slate-500">Register customer profile and open ledger account</p>
+            <div className="min-w-0">
+              <h3 className="font-bold text-slate-900 text-sm truncate">New Khata Customer Account</h3>
+              <p className="text-[10px] sm:text-[11px] text-slate-500 truncate">Register customer profile and open ledger account</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer shrink-0 ml-1"
           >
             <X className="w-4 h-4" />
           </button>
@@ -175,7 +175,7 @@ export const AddKhataModal: React.FC<AddKhataModalProps> = ({
               value={name}
               onChange={e => setName(e.target.value)}
               placeholder="Customer Name"
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-medium focus:outline-none focus:border-purple-600 focus:bg-white transition"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-medium focus:outline-none focus:border-purple-600 focus:bg-white transition min-h-[44px]"
             />
           </div>
 
@@ -193,7 +193,7 @@ export const AddKhataModal: React.FC<AddKhataModalProps> = ({
                   value={phone}
                   onChange={e => setPhone(e.target.value)}
                   placeholder="Primary Phone Number"
-                  className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:outline-none focus:border-purple-600 focus:bg-white transition"
+                  className="w-full pl-8 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:outline-none focus:border-purple-600 focus:bg-white transition min-h-[44px]"
                 />
               </div>
             </div>
@@ -209,7 +209,7 @@ export const AddKhataModal: React.FC<AddKhataModalProps> = ({
                   value={phone2}
                   onChange={e => setPhone2(e.target.value)}
                   placeholder="Secondary Phone Number"
-                  className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:outline-none focus:border-purple-600 focus:bg-white transition"
+                  className="w-full pl-8 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:outline-none focus:border-purple-600 focus:bg-white transition min-h-[44px]"
                 />
               </div>
             </div>
@@ -226,21 +226,21 @@ export const AddKhataModal: React.FC<AddKhataModalProps> = ({
               value={address}
               onChange={e => setAddress(e.target.value)}
               placeholder="Address / Location"
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-medium focus:outline-none focus:border-purple-600 focus:bg-white transition"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-medium focus:outline-none focus:border-purple-600 focus:bg-white transition min-h-[44px]"
             />
           </div>
 
-          <div className="pt-3 flex justify-end gap-2 border-t border-slate-100">
+          <div className="pt-3 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 border-t border-slate-100">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium text-xs transition cursor-pointer"
+              className="w-full sm:w-auto px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium text-xs transition cursor-pointer text-center"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-md shadow-purple-500/20 transition cursor-pointer"
+              className="w-full sm:w-auto px-5 py-2.5 sm:py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-md shadow-purple-500/20 transition cursor-pointer text-center"
             >
               Save & Open Account
             </button>
@@ -255,7 +255,14 @@ interface SettleKhataModalProps {
   customer: KhataCustomer | null;
   isOpen: boolean;
   onClose: () => void;
-  onSave: (customerId: string, type: 'credit' | 'payment', amount: number, note?: string) => void;
+  onSave: (
+    customerId: string,
+    type: 'credit' | 'payment',
+    amount: number,
+    paymentMethod?: string,
+    accountId?: string,
+    note?: string
+  ) => void;
   currency: string;
 }
 
@@ -269,6 +276,7 @@ export const SettleKhataModal: React.FC<SettleKhataModalProps> = ({
   const { showToast } = useToast();
   const [type, setType] = useState<'payment' | 'credit'>('payment');
   const [amount, setAmount] = useState<number | ''>('');
+  const [paymentMethod, setPaymentMethod] = useState<string>('Cash');
   const [note, setNote] = useState('');
 
   if (!isOpen || !customer) return null;
@@ -281,12 +289,20 @@ export const SettleKhataModal: React.FC<SettleKhataModalProps> = ({
       return;
     }
 
-    onSave(customer.id, type, amt, note.trim() || undefined);
+    onSave(
+      customer.id,
+      type,
+      amt,
+      type === 'payment' ? paymentMethod : undefined,
+      undefined,
+      note.trim() || undefined
+    );
     setAmount('');
     setNote('');
+    setPaymentMethod('Cash');
     showToast(
       type === 'payment'
-        ? `Payment of ${currency} ${amt.toLocaleString()} recorded`
+        ? `Payment of ${currency} ${amt.toLocaleString()} received via ${paymentMethod}`
         : `Credit of ${currency} ${amt.toLocaleString()} added`,
       'success'
     );
@@ -311,7 +327,7 @@ export const SettleKhataModal: React.FC<SettleKhataModalProps> = ({
 
         {/* Current Balance Notice */}
         <div className="p-3 bg-purple-50/70 border border-purple-100 rounded-xl flex items-center justify-between">
-          <span className="text-xs text-purple-900 font-medium">Outstanding Udhar:</span>
+          <span className="text-xs text-purple-900 font-medium">Outstanding Balance:</span>
           <span className="text-base font-extrabold text-purple-700 font-mono tabular-nums">
             {currency} {customer.balance.toLocaleString()}
           </span>
@@ -371,6 +387,36 @@ export const SettleKhataModal: React.FC<SettleKhataModalProps> = ({
             />
           </div>
 
+          {/* Structured Payment Channel (Only for Received Payment) */}
+          {type === 'payment' && (
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">
+                Payment Channel (Destination Account) *
+              </label>
+              <div className="grid grid-cols-4 gap-1.5">
+                {[
+                  { id: 'Cash', label: 'Cash Drawer' },
+                  { id: 'JazzCash', label: 'JazzCash' },
+                  { id: 'Easypaisa', label: 'Easypaisa' },
+                  { id: 'Bank', label: 'Bank' },
+                ].map(channel => (
+                  <button
+                    key={channel.id}
+                    type="button"
+                    onClick={() => setPaymentMethod(channel.id)}
+                    className={`py-2 px-1 rounded-xl text-[11px] font-bold text-center border transition cursor-pointer ${
+                      paymentMethod === channel.id
+                        ? 'border-purple-600 bg-purple-50 text-purple-700 shadow-2xs'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {channel.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="block font-semibold text-slate-700 mb-1">Note / Remarks (Optional)</label>
             <input
@@ -382,17 +428,17 @@ export const SettleKhataModal: React.FC<SettleKhataModalProps> = ({
             />
           </div>
 
-          <div className="pt-3 flex justify-end gap-2 border-t border-slate-100">
+          <div className="pt-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 border-t border-slate-100">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium text-xs transition cursor-pointer"
+              className="w-full sm:w-auto px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium text-xs transition cursor-pointer text-center"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className={`px-5 py-2 rounded-xl text-white font-bold text-xs shadow-md transition cursor-pointer ${
+              className={`w-full sm:w-auto px-5 py-2 rounded-xl text-white font-bold text-xs shadow-md transition cursor-pointer text-center ${
                 type === 'payment'
                   ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20'
                   : 'bg-rose-600 hover:bg-rose-700 shadow-rose-500/20'

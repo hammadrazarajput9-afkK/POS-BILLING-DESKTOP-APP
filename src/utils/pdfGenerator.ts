@@ -52,7 +52,7 @@ export function getDateFilterBounds(range: DateFilterRange): { start: Date; end:
 }
 
 export interface GeneratePdfOptions {
-  tab: 'sales' | 'inventory' | 'khata' | 'expenses' | 'activity' | 'dailyClosing';
+  tab: 'sales' | 'inventory' | 'khata' | 'expenses' | 'activity' | 'dailyClosing' | 'purchases' | 'pnl' | 'top_products';
   dateFilter: DateFilterRange;
   data: AppData;
 }
@@ -73,7 +73,7 @@ export async function generatePdfReport({ tab, dateFilter, data }: GeneratePdfOp
   const shopName = (data.settings.shopName || 'Mobile Shop Pro').toUpperCase();
   const address = data.settings.address || 'Mobile Market';
   const phone = data.settings.phone || '';
-  const tagline = data.settings.tagline || 'Mobile POS & Repair Management Suite';
+  const tagline = data.settings.tagline || 'Mobile POS & Shop Management Suite';
 
   // --- HEADER SECTION ---
   doc.setFillColor(30, 58, 138); // Deep Navy #1e3a8a
@@ -107,9 +107,11 @@ export async function generatePdfReport({ tab, dateFilter, data }: GeneratePdfOp
     });
 
     const totalRevenue = filteredSales.reduce((acc, s) => acc + s.grandTotal, 0);
+    const totalRefundedSum = filteredSales.reduce((acc, s) => acc + (s.totalRefunded || 0), 0);
+    const netRevenue = Math.max(0, totalRevenue - totalRefundedSum);
     const totalCost = filteredSales.reduce((acc, s) => acc + s.totalCost, 0);
-    const totalProfit = Math.max(0, totalRevenue - totalCost);
-    const profitMargin = totalRevenue > 0 ? Math.round((totalProfit / totalRevenue) * 100) : 0;
+    const totalProfit = Math.max(0, netRevenue - totalCost);
+    const profitMargin = netRevenue > 0 ? Math.round((totalProfit / netRevenue) * 100) : 0;
 
     const cashSales = filteredSales
       .filter(s => (s.paymentMethod || 'Cash').toLowerCase() === 'cash')
@@ -138,14 +140,14 @@ export async function generatePdfReport({ tab, dateFilter, data }: GeneratePdfOp
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
     doc.setTextColor(71, 85, 105);
-    doc.text('TOTAL REVENUE', 20, yCursor + 7);
+    doc.text(totalRefundedSum > 0 ? 'NET REVENUE (POST-RETURNS)' : 'TOTAL REVENUE', 20, yCursor + 7);
     doc.text('NET PROFIT MARGIN', 75, yCursor + 7);
     doc.text('CASH VS ONLINE', 130, yCursor + 7);
     doc.text('CREDIT/UDHARI', pageWidth - 20, yCursor + 7, { align: 'right' });
 
     doc.setFontSize(11);
     doc.setTextColor(15, 23, 42);
-    doc.text(`${currency} ${totalRevenue.toLocaleString()}`, 20, yCursor + 15);
+    doc.text(`${currency} ${netRevenue.toLocaleString()}`, 20, yCursor + 15);
     doc.setTextColor(16, 185, 129); // Green
     doc.text(`${currency} ${totalProfit.toLocaleString()} (${profitMargin}%)`, 75, yCursor + 15);
     doc.setTextColor(37, 99, 235); // Blue
@@ -157,21 +159,24 @@ export async function generatePdfReport({ tab, dateFilter, data }: GeneratePdfOp
 
     // Table of Sales
     const tableRows = filteredSales.map((s, idx) => {
+      const isFullRet = s.returnStatus === 'FULL';
+      const isPartRet = s.returnStatus === 'PARTIAL';
       const itemSummaries = s.items
-        .map(i => `${i.name} (x${i.qty})${i.imei ? ' [IMEI: ' + i.imei + ']' : ''}`)
+        .map(i => `${i.name} (x${i.qty})${i.imei ? ' [IMEI: ' + i.imei + ']' : ''}${i.returnedQty ? ' (Returned: ' + i.returnedQty + ')' : ''}`)
         .join(', ');
 
       const cost = s.totalCost || 0;
-      const profit = Math.max(0, s.grandTotal - cost);
+      const netSaleVal = Math.max(0, s.grandTotal - (s.totalRefunded || 0));
+      const profit = isFullRet ? 0 : Math.max(0, netSaleVal - cost);
 
       return [
         (idx + 1).toString(),
         new Date(s.date).toLocaleDateString() + ' ' + new Date(s.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        s.invNo,
+        isFullRet ? `[RETURNED] ${s.invNo}` : isPartRet ? `[PART-RET] ${s.invNo}` : s.invNo,
         s.custName || 'Walk-in Customer',
         itemSummaries || 'N/A',
         s.paymentMethod || 'Cash',
-        `${currency} ${s.grandTotal.toLocaleString()}`,
+        isFullRet ? `${currency} 0 (Refunded)` : `${currency} ${netSaleVal.toLocaleString()}`,
         `${currency} ${profit.toLocaleString()}`,
       ];
     });
@@ -720,6 +725,220 @@ export async function generatePdfReport({ tab, dateFilter, data }: GeneratePdfOp
         fontSize: 7.5,
       },
     });
+  } else if (tab === 'purchases') {
+    // 7. Supplier Purchases & Stock Inward Ledger Report
+    const filteredPurchases = (data.supplierPurchases || []).filter(p => {
+      const pDate = new Date(p.date).getTime();
+      return pDate >= start.getTime() && pDate <= end.getTime();
+    });
+
+    const activePurchases = filteredPurchases.filter(p => p.status !== 'REVERSED');
+    const totalPurchasesCost = activePurchases.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
+    const totalPaidSum = activePurchases.reduce((sum, p) => sum + (p.paidAmount || 0), 0);
+    const totalBalanceDue = activePurchases.reduce((sum, p) => sum + (p.balanceDue || 0), 0);
+
+    doc.setTextColor(15, 23, 42);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.text('SUPPLIER PURCHASES & STOCK INWARD LEDGER REPORT', 14, yCursor);
+    yCursor += 6;
+
+    // KPI Summary Box
+    doc.setDrawColor(226, 232, 240);
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(14, yCursor, pageWidth - 28, 22, 2, 2, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text('TOTAL PURCHASES', 20, yCursor + 7);
+    doc.text('TOTAL PAID OUTFLOW', 80, yCursor + 7);
+    doc.text('PENDING SUPPLIER DUE', 140, yCursor + 7);
+    doc.text('BILLS COUNT', pageWidth - 20, yCursor + 7, { align: 'right' });
+
+    doc.setFontSize(11);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`${currency} ${totalPurchasesCost.toLocaleString()}`, 20, yCursor + 15);
+    doc.setTextColor(5, 150, 105);
+    doc.text(`${currency} ${totalPaidSum.toLocaleString()}`, 80, yCursor + 15);
+    doc.setTextColor(225, 29, 72);
+    doc.text(`${currency} ${totalBalanceDue.toLocaleString()}`, 140, yCursor + 15);
+    doc.setTextColor(37, 99, 235);
+    doc.text(`${filteredPurchases.length} Inward Bills`, pageWidth - 20, yCursor + 15, { align: 'right' });
+
+    yCursor += 28;
+
+    const tableRows = filteredPurchases.map((p, idx) => {
+      const isReversed = p.status === 'REVERSED';
+      const itemSummaries = (p.items || [])
+        .map(i => `${i.name} (x${i.qty}) @ ${currency} ${i.costPrice}`)
+        .join(', ');
+
+      return [
+        (idx + 1).toString(),
+        p.date,
+        isReversed ? `[REVERSED] ${p.billNo || '-'}` : (p.billNo || '-'),
+        `${p.partyName}\n${p.partyPhone || ''}`,
+        itemSummaries || 'Direct Stock Inward',
+        p.paymentMethod || 'Cash',
+        `${currency} ${(p.totalAmount || 0).toLocaleString()}`,
+        `${currency} ${(p.paidAmount || 0).toLocaleString()}`,
+        isReversed ? 'REVERSED' : (p.balanceDue > 0 ? `${currency} ${p.balanceDue.toLocaleString()}` : 'Cleared'),
+      ];
+    });
+
+    autoTable(doc, {
+      startY: yCursor,
+      head: [['#', 'Date', 'Bill #', 'Vendor / Supplier', 'Inward Products List', 'Payment', 'Bill Total', 'Amount Paid', 'Balance Due']],
+      body: tableRows,
+      theme: 'striped',
+      headStyles: {
+        fillColor: [30, 58, 138],
+        textColor: 255,
+        fontStyle: 'bold',
+        fontSize: 7.5,
+      },
+      styles: {
+        fontSize: 7,
+        cellPadding: 2,
+        valign: 'middle',
+      },
+      columnStyles: {
+        0: { cellWidth: 7 },
+        1: { cellWidth: 18 },
+        2: { cellWidth: 18 },
+        3: { cellWidth: 26 },
+        4: { cellWidth: 46 },
+        5: { cellWidth: 16 },
+        6: { cellWidth: 20, halign: 'right' },
+        7: { cellWidth: 18, halign: 'right' },
+        8: { cellWidth: 18, halign: 'center' },
+      },
+      foot: [
+        ['', 'TOTALS', `${filteredPurchases.length} Bills`, '', '', '', `${currency} ${totalPurchasesCost.toLocaleString()}`, `${currency} ${totalPaidSum.toLocaleString()}`, `${currency} ${totalBalanceDue.toLocaleString()}`]
+      ],
+      footStyles: {
+        fillColor: [241, 245, 249],
+        textColor: [15, 23, 42],
+        fontStyle: 'bold',
+        fontSize: 7.5,
+      },
+    });
+
+  } else if (tab === 'pnl') {
+    // 8. Comprehensive Profit & Loss Statement
+    const filteredSales = data.sales.filter(s => {
+      const sDate = new Date(s.date).getTime();
+      return sDate >= start.getTime() && sDate <= end.getTime();
+    });
+    const filteredExpenses = data.expenses.filter(e => {
+      const eDate = new Date(e.date).getTime();
+      return eDate >= start.getTime() && eDate <= end.getTime();
+    });
+
+    const totalRev = filteredSales.reduce((sum, s) => sum + s.grandTotal, 0);
+    const totalCogs = filteredSales.reduce((sum, s) => sum + s.totalCost, 0);
+    const grossP = Math.max(0, totalRev - totalCogs);
+    const totalExp = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+    const netP = grossP - totalExp;
+    const margin = totalRev > 0 ? Math.round((netP / totalRev) * 100) : 0;
+
+    doc.setTextColor(15, 23, 42);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.text('COMPREHENSIVE PROFIT & LOSS (P&L) STATEMENT', 14, yCursor);
+    yCursor += 6;
+
+    const pnlRows = [
+      ['1. REVENUE', 'Total Gross Sales Invoiced', `${filteredSales.length} Invoices`, `${currency} ${totalRev.toLocaleString()}`],
+      ['2. COST OF GOODS', 'Total Inventory Cost of Sold Items (COGS)', 'Wholesale Cost', `-${currency} ${totalCogs.toLocaleString()}`],
+      ['3. GROSS PROFIT', 'Gross Trading Margin (Revenue - COGS)', `${totalRev > 0 ? Math.round((grossP / totalRev) * 100) : 0}% Margin`, `${currency} ${grossP.toLocaleString()}`],
+      ['4. OPERATING EXPENSES', 'Shop Rents, Salaries, Utilities & Miscellaneous', `${filteredExpenses.length} Expense Logs`, `-${currency} ${totalExp.toLocaleString()}`],
+      ['5. NET PROFIT', 'Final Net Business Profit / Earnings', `${margin}% Net Return`, `${currency} ${netP.toLocaleString()}`],
+    ];
+
+    autoTable(doc, {
+      startY: yCursor,
+      head: [['Line Item', 'Description / Account Name', 'Volume / Margin', 'Total Amount']],
+      body: pnlRows,
+      theme: 'grid',
+      headStyles: {
+        fillColor: [30, 58, 138],
+        textColor: 255,
+        fontStyle: 'bold',
+        fontSize: 8,
+      },
+      styles: {
+        fontSize: 8,
+        cellPadding: 3.5,
+        valign: 'middle',
+      },
+      columnStyles: {
+        0: { cellWidth: 40, fontStyle: 'bold' },
+        1: { cellWidth: 75 },
+        2: { cellWidth: 35 },
+        3: { cellWidth: 35, halign: 'right', fontStyle: 'bold' },
+      },
+    });
+
+  } else if (tab === 'top_products') {
+    // 9. Top Selling Products Report
+    const map: Record<string, { id: string; name: string; category: string; unitsSold: number; totalRevenue: number }> = {};
+    data.sales.forEach(sale => {
+      sale.items.forEach(item => {
+        if (!map[item.id]) {
+          map[item.id] = {
+            id: item.id,
+            name: item.name,
+            category: item.category,
+            unitsSold: 0,
+            totalRevenue: 0,
+          };
+        }
+        map[item.id].unitsSold += item.qty;
+        map[item.id].totalRevenue += item.salePrice * item.qty;
+      });
+    });
+
+    const topList = Object.values(map).sort((a, b) => b.unitsSold - a.unitsSold);
+
+    doc.setTextColor(15, 23, 42);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.text('TOP SELLING INVENTORY PRODUCTS REPORT', 14, yCursor);
+    yCursor += 6;
+
+    const rows = topList.map((p, idx) => [
+      `#${idx + 1}`,
+      p.name,
+      p.category,
+      `${p.unitsSold} Units`,
+      `${currency} ${p.totalRevenue.toLocaleString()}`,
+    ]);
+
+    autoTable(doc, {
+      startY: yCursor,
+      head: [['Rank', 'Product Name', 'Category', 'Units Sold', 'Revenue Generated']],
+      body: rows,
+      theme: 'striped',
+      headStyles: {
+        fillColor: [30, 58, 138],
+        textColor: 255,
+        fontStyle: 'bold',
+        fontSize: 8,
+      },
+      styles: {
+        fontSize: 7.5,
+        cellPadding: 2.5,
+      },
+      columnStyles: {
+        0: { cellWidth: 15 },
+        1: { cellWidth: 80 },
+        2: { cellWidth: 35 },
+        3: { cellWidth: 25, halign: 'center' },
+        4: { cellWidth: 30, halign: 'right', fontStyle: 'bold' },
+      },
+    });
   }
 
   // --- FOOTER SECTION (Page numbers & Branding) ---
@@ -735,8 +954,28 @@ export async function generatePdfReport({ tab, dateFilter, data }: GeneratePdfOp
     doc.text(`Page ${i} of ${pageCount}`, pageWidth - 14, 290, { align: 'right' });
   }
 
-  // Trigger download with sanitized filename
+  // Robust universal download trigger (Works smoothly in iframes and all browsers)
   const cleanShop = shopName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
-  const fileName = `${cleanShop}_${tab}_report_${new Date().toISOString().substring(0, 10)}.pdf`;
-  doc.save(fileName);
+  const fileName = `${cleanShop}_${tab}_detailed_report_${new Date().toISOString().substring(0, 10)}.pdf`;
+
+  try {
+    const pdfBlob = doc.output('blob');
+    const blobUrl = URL.createObjectURL(pdfBlob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = fileName;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+
+    setTimeout(() => {
+      if (document.body.contains(link)) {
+        document.body.removeChild(link);
+      }
+      URL.revokeObjectURL(blobUrl);
+    }, 2000);
+  } catch (err) {
+    console.warn('Blob download fallback to direct doc.save:', err);
+    doc.save(fileName);
+  }
 }

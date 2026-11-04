@@ -12,7 +12,8 @@
 }
 
 /* ========================================================
-   ROBUST DYNAMIC THEME SYSTEM (7 Complete Themes)
+   ROBUST DYNAMIC THEME SYSTEM (8 Complete Themes)
+   - gold-black (👑 Royal Luxury Gold & Black)
    - blue-white (Default)
    - green-white
    - red-white
@@ -443,6 +444,118 @@
   background-color: #0284c7 !important;
 }
 
+/* 7. ROYAL LUXURY GOLD & BLACK THEME */
+[data-theme="gold-black"] {
+  --theme-primary: #d97706;
+  --theme-primary-hover: #b45309;
+  --theme-primary-light: #261b05;
+  --theme-primary-border: #785212;
+  --theme-primary-text: #fbbf24;
+  --theme-app-bg: #09090c;
+  --theme-card-bg: #121217;
+  --theme-card-border: #2e2615;
+
+  --color-blue-50: #261b05;
+  --color-blue-100: #453109;
+  --color-blue-200: #785212;
+  --color-blue-300: #b45309;
+  --color-blue-400: #d97706;
+  --color-blue-500: #f59e0b;
+  --color-blue-600: #eab308;
+  --color-blue-700: #ca8a04;
+  --color-blue-800: #a16207;
+  --color-blue-900: #713f12;
+  --color-blue-950: #422006;
+}
+
+[data-theme="gold-black"] body,
+[data-theme="gold-black"] .app-root-container {
+  background-color: #09090c !important;
+  color: #fdfaf3 !important;
+}
+[data-theme="gold-black"] .bg-white {
+  background-color: #121217 !important;
+  color: #fdfaf3 !important;
+  border-color: #2e2615 !important;
+}
+[data-theme="gold-black"] .bg-slate-50 {
+  background-color: #0f0f14 !important;
+  color: #e8ded0 !important;
+}
+[data-theme="gold-black"] .bg-slate-100 {
+  background-color: #1c1c24 !important;
+  color: #d4c8b2 !important;
+}
+[data-theme="gold-black"] .text-slate-900,
+[data-theme="gold-black"] .text-slate-800 {
+  color: #fffdf5 !important;
+}
+[data-theme="gold-black"] .text-slate-700,
+[data-theme="gold-black"] .text-slate-600 {
+  color: #e4dac5 !important;
+}
+[data-theme="gold-black"] .text-slate-500,
+[data-theme="gold-black"] .text-slate-400 {
+  color: #a89b82 !important;
+}
+[data-theme="gold-black"] .border-slate-200,
+[data-theme="gold-black"] .border-slate-100 {
+  border-color: #2e2615 !important;
+}
+[data-theme="gold-black"] input,
+[data-theme="gold-black"] select,
+[data-theme="gold-black"] textarea {
+  background-color: #0d0d12 !important;
+  color: #fffdf5 !important;
+  border-color: #3f3319 !important;
+}
+[data-theme="gold-black"] input:focus,
+[data-theme="gold-black"] select:focus,
+[data-theme="gold-black"] textarea:focus {
+  border-color: #f59e0b !important;
+  outline-color: #f59e0b !important;
+}
+[data-theme="gold-black"] .bg-blue-600,
+[data-theme="gold-black"] .btn-primary {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
+  color: #000000 !important;
+  font-weight: 800 !important;
+  box-shadow: 0 4px 14px rgba(217, 119, 6, 0.35) !important;
+}
+[data-theme="gold-black"] .hover\:bg-blue-700:hover,
+[data-theme="gold-black"] .btn-primary:hover {
+  background: linear-gradient(135deg, #fbbf24 0%, #ea580c 100%) !important;
+  color: #000000 !important;
+}
+[data-theme="gold-black"] .text-blue-600,
+[data-theme="gold-black"] .text-blue-700 {
+  color: #fbbf24 !important;
+}
+[data-theme="gold-black"] .bg-blue-50,
+[data-theme="gold-black"] .bg-blue-50\/80,
+[data-theme="gold-black"] .bg-blue-50\/50,
+[data-theme="gold-black"] .bg-blue-50\/40 {
+  background-color: #261b05 !important;
+  color: #fef08a !important;
+}
+[data-theme="gold-black"] .bg-blue-100 {
+  background-color: #453109 !important;
+  color: #fef08a !important;
+}
+[data-theme="gold-black"] .border-blue-200,
+[data-theme="gold-black"] .border-blue-300,
+[data-theme="gold-black"] .border-blue-400,
+[data-theme="gold-black"] .border-blue-500 {
+  border-color: #785212 !important;
+}
+[data-theme="gold-black"] .focus\:border-blue-600:focus {
+  border-color: #f59e0b !important;
+}
+[data-theme="gold-black"] .brand-badge {
+  background: linear-gradient(135deg, #fbbf24 0%, #d97706 100%) !important;
+  color: #000000 !important;
+}
+
 /* Print thermal receipt & PDF report styles */
 @media print {
   body * {
@@ -649,4 +762,103 @@ button:not(:disabled):active {
     visibility: hidden !important;
   }
 }
+
+/* ========================================================
+   MOBILE ANIMATIONS & DELIGHTFUL INTERACTION EFFECTS
+   ======================================================== */
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes floatBounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.25s ease-out forwards;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-float {
+  animation: floatBounce 2.5s ease-in-out infinite;
+}
+
+.safe-pb {
+  padding-bottom: calc(1.2rem + env(safe-area-inset-bottom));
+}
+
+.mobile-bottom-sheet {
+  @apply fixed inset-x-0 bottom-0 rounded-t-3xl max-h-[90dvh] overflow-y-auto z-50 sm:relative sm:inset-auto sm:rounded-2xl shadow-2xl;
+}
+
+.mobile-glass-dock {
+  backdrop-filter: blur(16px);
+  background-color: rgba(255, 255, 255, 0.85);
+  border-top: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+@keyframes tactilePop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(0.93);
+  }
+  75% {
+    transform: scale(1.04);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.animate-pop:active,
+button:active:not(:disabled),
+.interactive-card:active {
+  animation: tactilePop 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
 

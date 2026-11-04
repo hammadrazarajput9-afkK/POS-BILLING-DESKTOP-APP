@@ -23,7 +23,14 @@ interface CustomerAccountModalProps {
   isOpen: boolean;
   onClose: () => void;
   settings: ShopSettings;
-  onAddTransaction: (customerId: string, type: 'credit' | 'payment', amount: number, note?: string) => void;
+  onAddTransaction: (
+    customerId: string,
+    type: 'credit' | 'payment',
+    amount: number,
+    paymentMethod?: string,
+    accountId?: string,
+    note?: string
+  ) => void;
 }
 
 export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
@@ -36,6 +43,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   const { showToast } = useToast();
   const [showTransactor, setShowTransactor] = useState<'payment' | 'credit' | null>(null);
   const [amount, setAmount] = useState<number | ''>('');
+  const [paymentMethod, setPaymentMethod] = useState<string>('Cash');
   const [note, setNote] = useState('');
 
   if (!isOpen || !customer) return null;
@@ -94,7 +102,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
       `*Account Statement - ${settings.shopName}*\n\n` +
         `Customer: *${customer.name}*\n` +
         `Phone: ${customer.phone}\n` +
-        `Current Outstanding Udhar: *${currency} ${customer.balance.toLocaleString()}*\n\n` +
+        `Current Outstanding Balance: *${currency} ${customer.balance.toLocaleString()}*\n\n` +
         `*Recent Transactions:*\n${recentLines || 'No transactions yet'}\n\n` +
         `Thank you for doing business with us!\n` +
         `Contact: ${settings.phone} | ${settings.address}`
@@ -200,9 +208,17 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
       return;
     }
 
-    onAddTransaction(customer.id, showTransactor!, amt, note.trim() || undefined);
+    onAddTransaction(
+      customer.id,
+      showTransactor!,
+      amt,
+      showTransactor === 'payment' ? paymentMethod : undefined,
+      undefined,
+      note.trim() || undefined
+    );
     setAmount('');
     setNote('');
+    setPaymentMethod('Cash');
     setShowTransactor(null);
   };
 
@@ -270,7 +286,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
           <div className="grid grid-cols-3 gap-3 mt-4 pt-3 border-t border-white/10">
             <div className="bg-white/10 rounded-xl p-2.5 backdrop-blur-2xs">
               <span className="text-[10px] font-bold uppercase tracking-wider text-purple-200">
-                Pending Balance (Udhar)
+                Pending Balance (Receivable)
               </span>
               <p
                 className={`text-base font-extrabold font-mono tabular-nums ${
@@ -302,54 +318,50 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
         </div>
 
         {/* Action Button Strip */}
-        <div className="p-3 bg-slate-50 border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-2 shrink-0">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setShowTransactor('credit');
-                setAmount('');
-                setNote('');
-              }}
-              className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
-            >
-              <CreditCard className="w-3.5 h-3.5" />
-              <span>Give New Udhar (+)</span>
-            </button>
+        <div className="p-3 bg-slate-50 border-b border-slate-200/80 grid grid-cols-2 sm:flex sm:flex-wrap sm:items-center sm:justify-between gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              setShowTransactor('credit');
+              setAmount('');
+              setNote('');
+            }}
+            className="w-full sm:w-auto px-3 py-2 sm:py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <CreditCard className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">Add Credit (+)</span>
+          </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setShowTransactor('payment');
-                setAmount('');
-                setNote('');
-              }}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
-            >
-              <DollarSign className="w-3.5 h-3.5" />
-              <span>Receive Payment (-)</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setShowTransactor('payment');
+              setAmount('');
+              setNote('');
+            }}
+            className="w-full sm:w-auto px-3 py-2 sm:py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <DollarSign className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">Receive Payment (-)</span>
+          </button>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleSendWhatsAppStatement}
-              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer"
-            >
-              <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-              <span>WhatsApp Ledger</span>
-            </button>
+          <button
+            type="button"
+            onClick={handleSendWhatsAppStatement}
+            className="w-full sm:w-auto px-3 py-2 sm:py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <MessageSquare className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span className="truncate">WhatsApp Ledger</span>
+          </button>
 
-            <button
-              type="button"
-              onClick={handlePrintStatement}
-              className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>Print Statement</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handlePrintStatement}
+            className="w-full sm:w-auto px-3 py-2 sm:py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <Printer className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">Print Statement</span>
+          </button>
         </div>
 
         {/* Inline Transaction Entry Drawer */}
@@ -359,7 +371,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
               <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
                 {showTransactor === 'credit' ? (
                   <span className="text-rose-600 font-extrabold flex items-center gap-1">
-                    <ArrowUpRight className="w-4 h-4" /> Add Udhar to Customer Account
+                    <ArrowUpRight className="w-4 h-4" /> Add Credit to Customer Account
                   </span>
                 ) : (
                   <span className="text-emerald-600 font-extrabold flex items-center gap-1">
@@ -376,33 +388,55 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSaveTransaction} className="flex flex-col sm:flex-row gap-2">
-              <input
-                type="number"
-                min="1"
-                required
-                value={amount}
-                onChange={e => setAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                placeholder="Amount"
-                className="w-full sm:w-48 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono font-bold focus:outline-none focus:border-purple-600"
-              />
-              <input
-                type="text"
-                value={note}
-                onChange={e => setNote(e.target.value)}
-                placeholder="Remarks / Item details"
-                className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-purple-600"
-              />
-              <button
-                type="submit"
-                className={`px-4 py-2 text-white font-bold text-xs rounded-xl shadow-xs transition shrink-0 cursor-pointer ${
-                  showTransactor === 'credit'
-                    ? 'bg-rose-600 hover:bg-rose-700'
-                    : 'bg-emerald-600 hover:bg-emerald-700'
-                }`}
-              >
-                {showTransactor === 'credit' ? 'Confirm Credit' : 'Confirm Payment'}
-              </button>
+            <form onSubmit={handleSaveTransaction} className="space-y-2">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  value={amount}
+                  onChange={e => setAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="Amount"
+                  className="w-full sm:w-48 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono font-bold focus:outline-none focus:border-purple-600"
+                />
+                <input
+                  type="text"
+                  value={note}
+                  onChange={e => setNote(e.target.value)}
+                  placeholder="Remarks / Item details"
+                  className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-purple-600"
+                />
+                <button
+                  type="submit"
+                  className={`px-4 py-2 text-white font-bold text-xs rounded-xl shadow-xs transition shrink-0 cursor-pointer ${
+                    showTransactor === 'credit'
+                      ? 'bg-rose-600 hover:bg-rose-700'
+                      : 'bg-emerald-600 hover:bg-emerald-700'
+                  }`}
+                >
+                  {showTransactor === 'credit' ? 'Confirm Credit' : 'Confirm Payment'}
+                </button>
+              </div>
+
+              {showTransactor === 'payment' && (
+                <div className="flex items-center gap-1.5 pt-1">
+                  <span className="text-[10px] font-bold text-slate-500">Channel:</span>
+                  {(['Cash', 'JazzCash', 'Easypaisa', 'Bank'] as const).map(channel => (
+                    <button
+                      key={channel}
+                      type="button"
+                      onClick={() => setPaymentMethod(channel)}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
+                        paymentMethod === channel
+                          ? 'border-purple-600 bg-purple-100 text-purple-800'
+                          : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {channel}
+                    </button>
+                  ))}
+                </div>
+              )}
             </form>
           </div>
         )}
@@ -417,8 +451,8 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
             <span className="text-[11px] text-slate-400">Chronological ledger with running balance</span>
           </div>
 
-          <div className="border border-slate-200/90 rounded-xl overflow-hidden shadow-2xs">
-            <table className="w-full text-left border-collapse text-xs">
+          <div className="border border-slate-200/90 rounded-xl overflow-x-auto shadow-2xs">
+            <table className="w-full min-w-[500px] text-left border-collapse text-xs">
               <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
                 <tr>
                   <th className="p-2.5">Date & Time</th>
@@ -432,7 +466,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                 {runningLedger.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="text-center py-10 text-slate-400">
-                      No transaction history recorded yet. Use the buttons above to record an udhar or payment.
+                      No transaction history recorded yet. Use the buttons above to record a credit entry or payment.
                     </td>
                   </tr>
                 ) : (
@@ -449,7 +483,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                         <td className="p-2.5 whitespace-nowrap">
                           {tx.type === 'credit' ? (
                             <span className="inline-flex items-center gap-1 font-bold text-[10px] px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
-                              <ArrowUpRight className="w-3 h-3" /> Udhar Added
+                              <ArrowUpRight className="w-3 h-3" /> Credit Added
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 font-bold text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">

@@ -188,23 +188,23 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-      <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 border border-slate-100 animate-in zoom-in-95">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in overflow-y-auto">
+      <div className="bg-white rounded-2xl max-w-lg w-full max-w-full overflow-x-hidden p-3.5 sm:p-6 shadow-2xl space-y-4 sm:space-y-5 border border-slate-100 animate-in zoom-in-95 my-auto">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center shadow-2xs">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center shadow-2xs shrink-0">
               {tabMeta.icon}
             </div>
-            <div>
-              <h3 className="font-extrabold text-slate-900 text-sm">{tabMeta.title}</h3>
-              <p className="text-[11px] text-slate-400">{tabMeta.subtitle}</p>
+            <div className="min-w-0">
+              <h3 className="font-extrabold text-slate-900 text-xs sm:text-sm truncate">{tabMeta.title}</h3>
+              <p className="text-[10px] sm:text-[11px] text-slate-400 truncate">{tabMeta.subtitle}</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer shrink-0 ml-1"
           >
             <X className="w-4 h-4" />
           </button>
@@ -292,11 +292,11 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
         </div>
 
         {/* Actions */}
-        <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+        <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 border-t border-slate-100">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-xs transition cursor-pointer"
+            className="w-full sm:w-auto px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-xs transition cursor-pointer text-center"
           >
             Cancel
           </button>
@@ -304,9 +304,9 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
             type="button"
             onClick={handleExport}
             disabled={isGenerating}
-            className="flex items-center gap-2 px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition cursor-pointer disabled:opacity-50"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 sm:py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs whitespace-normal shadow-md shadow-blue-500/20 transition cursor-pointer disabled:opacity-50"
           >
-            <Download className="w-3.5 h-3.5" />
+            <Download className="w-3.5 h-3.5 shrink-0" />
             <span>{isGenerating ? 'Generating PDF...' : 'Download PDF Report'}</span>
           </button>
         </div>

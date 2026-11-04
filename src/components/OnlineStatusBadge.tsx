@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Wifi, WifiOff } from 'lucide-react';
+import { Cloud, CloudOff } from 'lucide-react';
 
 export const OnlineStatusBadge: React.FC = () => {
   const [isOnline, setIsOnline] = useState<boolean>(() => {
@@ -23,13 +23,13 @@ export const OnlineStatusBadge: React.FC = () => {
     <div
       className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition ${
         isOnline
-          ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80'
+          ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80 shadow-2xs'
           : 'bg-amber-50 text-amber-800 border-amber-300'
       }`}
       title={
         isOnline
-          ? 'Connected: Local IndexedDB active and ready'
-          : 'Offline Mode: Local database active. Full POS functionality works without internet.'
+          ? 'Cloud Connected: Firebase Firestore Database is active & synchronized'
+          : 'Offline Mode: Local cache active. Full POS functionality works without internet and syncs when reconnected.'
       }
     >
       <span className="relative flex h-2 w-2">
@@ -42,7 +42,12 @@ export const OnlineStatusBadge: React.FC = () => {
           }`}
         />
       </span>
-      <span className="hidden sm:inline">{isOnline ? 'Online' : 'Offline Mode'}</span>
+      {isOnline ? (
+        <Cloud className="w-3.5 h-3.5 text-emerald-600 hidden sm:inline" />
+      ) : (
+        <CloudOff className="w-3.5 h-3.5 text-amber-600 hidden sm:inline" />
+      )}
+      <span className="hidden sm:inline">{isOnline ? 'Cloud Database Active' : 'Offline Mode'}</span>
     </div>
   );
 };

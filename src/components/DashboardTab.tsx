@@ -28,7 +28,9 @@ import {
   Search,
   Truck,
   Eye,
-  EyeOff
+  Store,
+  EyeOff,
+  Lock
 } from 'lucide-react';
 
 interface DashboardTabProps {
@@ -38,7 +40,7 @@ interface DashboardTabProps {
   onOpenSettings?: () => void;
 }
 
-export const DashboardTab: React.FC<DashboardTabProps> = ({
+const DashboardTabComponent: React.FC<DashboardTabProps> = ({
   data,
   onSwitchTab,
   onOpenModal,
@@ -73,6 +75,27 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     });
   };
 
+  // Separate Eye toggle to show / hide the 4 bottom metric boxes (persisted in localStorage)
+  const [showBottomMetrics, setShowBottomMetrics] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('mobilepos_dashboard_show_bottom_metrics') !== 'false';
+    } catch {
+      return true;
+    }
+  });
+
+  const toggleShowBottomMetrics = () => {
+    setShowBottomMetrics(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('mobilepos_dashboard_show_bottom_metrics', String(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
+
   // Low Stock items according to custom threshold or default 2
   const threshold = data.settings.lowStockThreshold ?? 2;
   const lowStockItems = useMemo(
@@ -84,6 +107,20 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     () => (data.inventory || []).reduce((acc, i) => acc + (i.qty || 0), 0),
     [data.inventory]
   );
+
+  // Aaj ka kul udhar (Customer credit) calculated in real time
+  const todayUdharGiven = useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    let total = 0;
+    (data.khata || []).forEach(cust => {
+      (cust.history || []).forEach(tx => {
+        if (tx.type === 'credit' && tx.date && tx.date.startsWith(todayStr)) {
+          total += tx.amount;
+        }
+      });
+    });
+    return total;
+  }, [data.khata]);
 
   // Direct, instant, high-performance real-time values (no animated lag or frame drops when switching tabs)
   const cashVal = cashDrawer.cashInHand;
@@ -124,19 +161,37 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         <div className="absolute -left-10 -top-10 w-72 h-72 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative z-10">
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                Cash In Hand
-              </span>
-
-              {logoSrc && (
-                <span className="text-xs text-slate-300 font-bold flex items-center gap-1">
-                  • {data.settings.shopName}
+          <div className="flex items-center gap-4 sm:gap-5">
+            {logoSrc ? (
+              <div className="relative shrink-0">
+                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden bg-white border-3 border-white/60 p-1 shadow-2xl ring-4 ring-indigo-400/40 flex items-center justify-center">
+                  <img
+                    src={logoSrc}
+                    alt={data.settings.shopName || 'Shop Logo'}
+                    className="w-full h-full rounded-full object-cover"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="relative shrink-0">
+                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-white/10 backdrop-blur-md border-2 border-white/30 flex flex-col items-center justify-center text-white shadow-xl">
+                  <Store className="w-9 h-9 sm:w-11 sm:h-11 text-indigo-200" />
+                </div>
+              </div>
+            )}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  Cash In Hand
                 </span>
-              )}
-            </div>
+
+                {data.settings.shopName && (
+                  <span className="text-xs text-slate-300 font-bold flex items-center gap-1">
+                    • {data.settings.shopName}
+                  </span>
+                )}
+              </div>
 
             <div className="flex flex-wrap items-center gap-3">
               <div
@@ -144,17 +199,19 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 className="group cursor-pointer flex items-baseline gap-2.5"
                 title="Click to view Cash Ledger Drilldown"
               >
-                <h2 className="text-3xl sm:text-5xl font-black font-mono tracking-tight text-white tabular-nums group-hover:text-emerald-400 transition">
+                <h2 className={`text-2xl sm:text-4xl lg:text-5xl font-black font-mono tracking-tight tabular-nums transition truncate max-w-full ${
+                  cashVal < 0 ? 'text-rose-400' : 'text-white group-hover:text-emerald-400'
+                }`}>
                   {data.settings.currency} {showBalance ? cashVal.toLocaleString() : '••••••'}
                 </h2>
               </div>
 
-              {/* Eye icon to toggle hide/unhide balance */}
+              {/* Eye icon to toggle hide/unhide top balance */}
               <button
                 type="button"
                 onClick={toggleShowBalance}
                 className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition cursor-pointer border border-white/10"
-                title={showBalance ? 'Hide balance figures' : 'Unhide balance figures'}
+                title={showBalance ? 'Hide top drawer balance figures' : 'Unhide top drawer balance figures'}
               >
                 {showBalance ? <Eye className="w-4 h-4 text-emerald-400" /> : <EyeOff className="w-4 h-4 text-amber-300" />}
               </button>
@@ -169,6 +226,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               )}
             </div>
           </div>
+        </div>
 
           {/* Quick Ledger Action */}
           <div className="flex items-center gap-2">
@@ -221,7 +279,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               <span>(=) Drawer Cash</span>
               <ArrowRight className="w-3 h-3 text-emerald-400" />
             </span>
-            <p className="font-mono font-black text-white mt-0.5">
+            <p className={`font-mono font-black mt-0.5 ${cashVal < 0 ? 'text-rose-400' : 'text-white'}`}>
               {data.settings.currency} {showBalance ? cashVal.toLocaleString() : '••••••'}
             </p>
           </div>
@@ -230,84 +288,161 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
       {/* ======================================================== */}
       {/* 4 PRIMARY METRICS: Profit, Expense, Purchases, Stock Val */}
+      {/* (With its OWN INDEPENDENT Eye Hide / Unhide Toggle)      */}
       {/* ======================================================== */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* 1. REAL-TIME NET PROFIT */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs transition hover:border-emerald-400 hover:shadow-md">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-              Net Profit
-            </span>
-            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-              <TrendingUp className="w-5 h-5" />
-            </div>
-          </div>
-          <div>
-            <h3
-              className={`text-2xl font-black font-mono tabular-nums tracking-tight ${
-                profitVal >= 0 ? 'text-emerald-600' : 'text-rose-600'
-              }`}
-            >
-              {data.settings.currency} {showBalance ? profitVal.toLocaleString() : '••••••'}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between px-1">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+            <h3 className="text-xs font-black uppercase tracking-wider text-slate-700">
+              Store Performance & Financial Metrics
             </h3>
           </div>
+
+          {/* Independent Eye toggle specifically for the bottom 4 boxes */}
+          <button
+            type="button"
+            onClick={toggleShowBottomMetrics}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold transition cursor-pointer shadow-2xs"
+            title={showBottomMetrics ? 'Hide performance figures' : 'Unhide performance figures'}
+          >
+            {showBottomMetrics ? (
+              <>
+                <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Hide Metrics</span>
+              </>
+            ) : (
+              <>
+                <EyeOff className="w-3.5 h-3.5 text-amber-600" />
+                <span>Show Metrics</span>
+              </>
+            )}
+          </button>
         </div>
 
-        {/* 2. DAILY EXPENSES */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs transition hover:border-rose-400 hover:shadow-md">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-              Total Expenses
-            </span>
-            <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold">
-              <Receipt className="w-5 h-5" />
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-2 lg:grid-cols-5 sm:gap-4">
+          {/* 1. REAL-TIME NET PROFIT */}
+          <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 shadow-xs transition hover:border-emerald-400 hover:shadow-md flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-1.5 sm:mb-3">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                <span className="truncate">Net Profit</span>
+              </span>
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold shrink-0">
+                <TrendingUp className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+              </div>
+            </div>
+            <div>
+              {data.currentRole === 'salesman' ? (
+                <span className="text-xs sm:text-sm font-bold text-slate-400 flex items-center gap-1 sm:gap-1.5 py-1">
+                  <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" /> Restricted
+                </span>
+              ) : (
+                <h3
+                  className={`text-sm sm:text-2xl font-black font-mono tabular-nums tracking-tight truncate ${
+                    profitVal >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                  }`}
+                >
+                  {data.settings.currency} {showBottomMetrics ? profitVal.toLocaleString() : '••••••'}
+                </h3>
+              )}
             </div>
           </div>
-          <div>
-            <h3 className="text-2xl font-black text-slate-900 font-mono tabular-nums tracking-tight">
-              {data.settings.currency} {showBalance ? expensesVal.toLocaleString() : '••••••'}
-            </h3>
-          </div>
-        </div>
 
-        {/* 3. SUPPLIER PURCHASES */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs transition hover:border-amber-400 hover:shadow-md">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-              Supplier Outflow
-            </span>
-            <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
-              <ShoppingBag className="w-5 h-5" />
+          {/* 2. DAILY EXPENSES */}
+          <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 shadow-xs transition hover:border-rose-400 hover:shadow-md flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-1.5 sm:mb-3">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0"></span>
+                <span className="truncate">Expenses</span>
+              </span>
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold shrink-0">
+                <Receipt className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+              </div>
+            </div>
+            <div>
+              {data.currentRole === 'salesman' ? (
+                <span className="text-xs sm:text-sm font-bold text-slate-400 flex items-center gap-1 sm:gap-1.5 py-1">
+                  <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" /> Restricted
+                </span>
+              ) : (
+                <h3 className="text-sm sm:text-2xl font-black text-slate-900 font-mono tabular-nums tracking-tight truncate">
+                  {data.settings.currency} {showBottomMetrics ? expensesVal.toLocaleString() : '••••••'}
+                </h3>
+              )}
             </div>
           </div>
-          <div>
-            <h3 className="text-2xl font-black text-slate-900 font-mono tabular-nums tracking-tight">
-              {data.settings.currency} {showBalance ? purchasesVal.toLocaleString() : '••••••'}
-            </h3>
-          </div>
-        </div>
 
-        {/* 4. TOTAL STOCK VALUE */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs transition hover:border-blue-400 hover:shadow-md">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-              Stock Asset Value
-            </span>
-            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-              <Layers className="w-5 h-5" />
+          {/* 3. SUPPLIER PURCHASES */}
+          <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 shadow-xs transition hover:border-amber-400 hover:shadow-md flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-1.5 sm:mb-3">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
+                <span className="truncate">Outflow</span>
+              </span>
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold shrink-0">
+                <ShoppingBag className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+              </div>
+            </div>
+            <div>
+              {data.currentRole === 'salesman' ? (
+                <span className="text-xs sm:text-sm font-bold text-slate-400 flex items-center gap-1 sm:gap-1.5 py-1">
+                  <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" /> Restricted
+                </span>
+              ) : (
+                <h3 className="text-sm sm:text-2xl font-black text-slate-900 font-mono tabular-nums tracking-tight truncate">
+                  {data.settings.currency} {showBottomMetrics ? purchasesVal.toLocaleString() : '••••••'}
+                </h3>
+              )}
             </div>
           </div>
-          <div>
-            <h3 className="text-2xl font-black text-slate-900 font-mono tabular-nums tracking-tight">
-              {data.settings.currency} {showBalance ? stockCostVal.toLocaleString() : '••••••'}
-            </h3>
-            <p className="text-[11px] text-slate-400 mt-1">
-              {totalInStockUnits} units in stock
-            </p>
+
+          {/* 4. TOTAL STOCK VALUE */}
+          <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 shadow-xs transition hover:border-blue-400 hover:shadow-md flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-1.5 sm:mb-3">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0"></span>
+                <span className="truncate">Stock Asset</span>
+              </span>
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold shrink-0">
+                <Layers className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+              </div>
+            </div>
+            <div>
+              {data.currentRole === 'salesman' ? (
+                <span className="text-xs sm:text-sm font-bold text-slate-400 flex items-center gap-1 sm:gap-1.5 py-1">
+                  <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" /> Restricted
+                </span>
+              ) : (
+                <h3 className="text-sm sm:text-2xl font-black text-slate-900 font-mono tabular-nums tracking-tight truncate">
+                  {data.settings.currency} {showBottomMetrics ? stockCostVal.toLocaleString() : '••••••'}
+                </h3>
+              )}
+              <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 sm:mt-1 truncate">
+                {totalInStockUnits} units in stock
+              </p>
+            </div>
+          </div>
+
+          {/* 5. TODAY'S CREDIT (UDHAR) GIVEN */}
+          <div className="col-span-2 sm:col-span-1 bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 shadow-xs transition hover:border-orange-500 hover:shadow-md flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-1.5 sm:mb-3">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse shrink-0"></span>
+                <span className="truncate">Credit Issued (Today)</span>
+              </span>
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center font-bold shrink-0">
+                <Banknote className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm sm:text-2xl font-black text-slate-900 font-mono tabular-nums tracking-tight truncate">
+                {data.settings.currency} {showBottomMetrics ? todayUdharGiven.toLocaleString() : '••••••'}
+              </h3>
+              <p className="text-[10px] text-slate-400 mt-0.5 sm:mt-1 font-semibold truncate">
+                Credit sales & Khata balance today
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -581,3 +716,5 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     </div>
   );
 };
+
+export const DashboardTab = React.memo(DashboardTabComponent);

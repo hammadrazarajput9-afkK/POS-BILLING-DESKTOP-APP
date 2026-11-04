@@ -28,11 +28,18 @@ import {
   Truck,
   BookOpen,
   Clock,
-  X
+  X,
+  Lock,
+  Unlock,
+  ArrowDownRight,
+  ArrowUpRight,
+  ShieldCheck,
+  CreditCard
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { ConfirmModal } from './ConfirmModal';
 import { generatePdfReport } from '../utils/pdfGenerator';
+import { calculateAccountingSummary, normalizePaymentChannel, AccountingSummary } from '../utils/accounting';
 
 interface DailyClosingTabProps {
   data: AppData;
@@ -45,10 +52,9 @@ interface DailyClosingTabProps {
   onOpenPdfReport?: () => void;
 }
 
-// 75 Rupee note removed as per user instruction
 const PAK_DENOMINATIONS = [5000, 1000, 500, 100, 50, 20, 10];
 
-export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
+const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
   data,
   isAdmin = true,
   onSaveClosing,
@@ -59,9 +65,12 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
   onOpenPdfReport,
 }) => {
   const { showToast } = useToast();
-  const currency = data.settings.currency;
+  const currency = data.settings.currency || 'Rs.';
 
-  // Active closing form state
+  const [activeDate, setActiveDate] = useState(() => new Date().toISOString().substring(0, 10));
+  const [isUnlockedForEdit, setIsUnlockedForEdit] = useState<boolean>(false);
+
+  // Active counted physical cash form state
   const [denominations, setDenominations] = useState<Record<string, number>>({
     '5000': 0,
     '1000': 0,
@@ -75,31 +84,41 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
   const [onlineBalances, setOnlineBalances] = useState<Record<string, number | ''>>({});
   const [closedBy, setClosedBy] = useState('Counter Cashier');
   const [closingNotes, setClosingNotes] = useState('');
-  const [activeDate, setActiveDate] = useState(() => new Date().toISOString().substring(0, 10));
-
-  // Live Auto-Save status
-  const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
-  const isSyncingFromRecordRef = useRef<boolean>(false);
 
   // Modals state
   const [isAddAccountModalOpen, setIsAddAccountModalOpen] = useState(false);
   const [newAccountName, setNewAccountName] = useState('');
   const [newAccountNumber, setNewAccountNumber] = useState('');
   const [newAccountTitle, setNewAccountTitle] = useState('');
-  const [newBankType, setNewBankType] = useState('Wallet');
+  const [newBankType, setNewBankType] = useState('Bank');
 
   const [accountToDelete, setAccountToDelete] = useState<OnlineAccount | null>(null);
   const [closingToDelete, setClosingToDelete] = useState<DailyClosingRecord | null>(null);
   const [selectedClosingForPrint, setSelectedClosingForPrint] = useState<DailyClosingRecord | null>(null);
-
-  // Interactive Real-Time History Detail Drill-Down Modal
   const [selectedHistoryRecord, setSelectedHistoryRecord] = useState<DailyClosingRecord | null>(null);
 
   // History filtering state
   const [historyFilter, setHistoryFilter] = useState<'all' | 'daily' | 'weekly' | 'monthly' | 'yearly'>('all');
   const [filterDate, setFilterDate] = useState<string>('');
 
-  // 1. Calculate Total Physical Cash from Denominations
+  // 1. Existing committed closing check for active business date
+  const existingClosingForActiveDate = useMemo(() => {
+    return (data.dailyClosings || []).find(r => r.date === activeDate);
+  }, [data.dailyClosings, activeDate]);
+
+  const isDayFinalized = Boolean(existingClosingForActiveDate) && !isUnlockedForEdit;
+
+  // 2. Compute Master Accounting Summary for active date (using previous closing cutoff)
+  const accounting: AccountingSummary = useMemo(() => {
+    return calculateAccountingSummary(
+      data,
+      activeDate,
+      undefined,
+      existingClosingForActiveDate?.id
+    );
+  }, [data, activeDate, existingClosingForActiveDate?.id]);
+
+  // 3. Counted Physical Cash Total
   const totalPhysicalCash = useMemo(() => {
     let sum = 0;
     PAK_DENOMINATIONS.forEach(denom => {
@@ -110,7 +129,7 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
     return sum;
   }, [denominations, coins]);
 
-  // 2. Calculate Total Online Accounts Balance
+  // 4. Counted Digital Balances Total
   const totalOnlineBalance = useMemo(() => {
     let sum = 0;
     (data.onlineAccounts || []).forEach(acc => {
@@ -120,58 +139,18 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
     return sum;
   }, [data.onlineAccounts, onlineBalances]);
 
-  // 3. Grand Total (Cash + Online)
+  // 5. Grand Actual Counted Total
   const grandTotal = totalPhysicalCash + totalOnlineBalance;
 
-  // 4. Expected Cash Calculation from Day's Transactions
-  const expectedCashForDate = useMemo(() => {
-    const cashSales = data.sales
-      .filter(
-        s =>
-          ((s.paymentMethod || 'Cash').trim().toLowerCase() === 'cash') &&
-          s.date.substring(0, 10) === activeDate
-      )
-      .reduce((acc, s) => {
-        const isCredit = s.invoiceType === 'credit';
-        const paid = !isCredit
-          ? (s.amountPaid !== undefined && s.amountPaid !== null ? s.amountPaid : s.grandTotal)
-          : (s.amountPaid !== undefined ? s.amountPaid : 0);
-        return acc + paid;
-      }, 0);
+  // 6. Reconciliation Differences
+  const cashDifference = totalPhysicalCash - accounting.totalExpectedCash;
+  const onlineDifference = totalOnlineBalance - accounting.totalExpectedOnline;
+  const totalDifference = grandTotal - accounting.totalExpectedGrand;
 
-    const khataCash = data.khata.reduce((acc, c) => {
-      const payments = c.history.filter(
-        tx => tx.type === 'payment' && tx.date.substring(0, 10) === activeDate
-      );
-      return acc + payments.reduce((sum, p) => sum + p.amount, 0);
-    }, 0);
-
-    const cashExpenses = data.expenses
-      .filter(
-        e =>
-          ((e.paymentMethod || 'Cash').trim().toLowerCase() === 'cash') &&
-          e.date.substring(0, 10) === activeDate
-      )
-      .reduce((acc, e) => acc + e.amount, 0);
-
-    const supplierPaidCash = (data.supplierPurchases || [])
-      .filter(
-        p =>
-          ((p.paymentMethod || 'Cash').trim().toLowerCase() === 'cash') &&
-          p.date.substring(0, 10) === activeDate
-      )
-      .reduce((acc, p) => acc + (p.paidAmount || 0), 0);
-
-    return Math.max(0, cashSales + khataCash - cashExpenses - supplierPaidCash);
-  }, [data.sales, data.khata, data.expenses, data.supplierPurchases, activeDate]);
-
-  const cashDifference = totalPhysicalCash - expectedCashForDate;
-
-  // Sync state whenever activeDate changes: load existing closing if present
+  // Sync state whenever activeDate changes or closing is loaded
   useEffect(() => {
-    isSyncingFromRecordRef.current = true;
-    const existing = (data.dailyClosings || []).find(r => r.date === activeDate);
-    if (existing) {
+    setIsUnlockedForEdit(false);
+    if (existingClosingForActiveDate) {
       setDenominations({
         '5000': 0,
         '1000': 0,
@@ -180,18 +159,18 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
         '50': 0,
         '20': 0,
         '10': 0,
-        ...(existing.denominations || {}),
+        ...(existingClosingForActiveDate.denominations || {}),
       });
-      setCoins(existing.coins || 0);
-      const onlineMap: Record<string, number | ''> = {};
-      (existing.onlineBalances || []).forEach(b => {
-        onlineMap[b.accountId] = b.balance;
+      setCoins(existingClosingForActiveDate.coins || 0);
+      const map: Record<string, number | ''> = {};
+      (existingClosingForActiveDate.onlineBalances || []).forEach(b => {
+        map[b.accountId] = b.balance;
       });
-      setOnlineBalances(onlineMap);
-      setClosedBy(existing.closedBy || 'Counter Cashier');
-      setClosingNotes(existing.notes || '');
-      setLastSavedTime(existing.time ? `Saved at ${existing.time}` : 'Saved');
+      setOnlineBalances(map);
+      setClosedBy(existingClosingForActiveDate.closedBy || 'Counter Cashier');
+      setClosingNotes(existingClosingForActiveDate.notes || '');
     } else {
+      // New / Unclosed day: reset physical counts and prepopulate digital accounts with expected balances
       setDenominations({
         '5000': 0,
         '1000': 0,
@@ -202,100 +181,15 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
         '10': 0,
       });
       setCoins(0);
-      setOnlineBalances({});
+
+      const prepopulatedOnline: Record<string, number | ''> = {};
+      accounting.onlineAccounts.forEach(acc => {
+        prepopulatedOnline[acc.accountId] = acc.expectedClosing;
+      });
+      setOnlineBalances(prepopulatedOnline);
       setClosingNotes('');
-      setLastSavedTime(null);
     }
-
-    const t = setTimeout(() => {
-      isSyncingFromRecordRef.current = false;
-    }, 100);
-    return () => clearTimeout(t);
-  }, [activeDate, data.dailyClosings]);
-
-  // AUTO-SAVE: Whenever user updates denominations, coins, online accounts, cashier, or notes, save seamlessly
-  useEffect(() => {
-    if (isSyncingFromRecordRef.current) return;
-
-    const hasAnyContent =
-      totalPhysicalCash > 0 ||
-      totalOnlineBalance > 0 ||
-      closingNotes.trim() !== '' ||
-      (data.dailyClosings || []).some(r => r.date === activeDate);
-
-    if (!hasAnyContent) return;
-
-    const timer = setTimeout(() => {
-      const onlineList = (data.onlineAccounts || []).map(acc => ({
-        accountId: acc.id,
-        accountName: acc.name,
-        balance: Number(onlineBalances[acc.id]) || 0,
-      }));
-
-      const now = new Date();
-      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-
-      onSaveClosing({
-        date: activeDate,
-        time: timeStr,
-        denominations: { ...denominations },
-        coins: Number(coins) || 0,
-        totalCash: totalPhysicalCash,
-        onlineBalances: onlineList,
-        totalOnline: totalOnlineBalance,
-        grandTotal,
-        expectedCash: expectedCashForDate,
-        difference: cashDifference,
-        closedBy: closedBy.trim() || 'Counter Cashier',
-        notes: closingNotes.trim() || undefined,
-      });
-
-      setLastSavedTime(`Saved at ${timeStr}`);
-    }, 400);
-
-    return () => clearTimeout(timer);
-  }, [
-    denominations,
-    coins,
-    onlineBalances,
-    closedBy,
-    closingNotes,
-    activeDate,
-    totalPhysicalCash,
-    totalOnlineBalance,
-    grandTotal,
-    expectedCashForDate,
-    cashDifference,
-  ]);
-
-  // Real-time drilldown transactions for selected history record
-  const selectedHistorySales = useMemo(() => {
-    if (!selectedHistoryRecord) return [];
-    return (data.sales || []).filter(s => s.date.substring(0, 10) === selectedHistoryRecord.date);
-  }, [selectedHistoryRecord, data.sales]);
-
-  const selectedHistoryExpenses = useMemo(() => {
-    if (!selectedHistoryRecord) return [];
-    return (data.expenses || []).filter(e => e.date.substring(0, 10) === selectedHistoryRecord.date);
-  }, [selectedHistoryRecord, data.expenses]);
-
-  const selectedHistoryPurchases = useMemo(() => {
-    if (!selectedHistoryRecord) return [];
-    return (data.supplierPurchases || []).filter(p => p.date === selectedHistoryRecord.date);
-  }, [selectedHistoryRecord, data.supplierPurchases]);
-
-  const selectedHistoryKhataRecoveries = useMemo(() => {
-    if (!selectedHistoryRecord) return [];
-    const list: Array<{ customerName: string; amount: number; note?: string }> = [];
-    (data.khata || []).forEach(c => {
-      (c.history || []).forEach(tx => {
-        if (tx.type === 'payment' && tx.date.substring(0, 10) === selectedHistoryRecord.date) {
-          list.push({ customerName: c.name, amount: tx.amount, note: tx.note });
-        }
-      });
-    });
-    return list;
-  }, [selectedHistoryRecord, data.khata]);
+  }, [activeDate, existingClosingForActiveDate]);
 
   // Update Denomination Count
   const handleDenomChange = (denom: number, count: number) => {
@@ -338,11 +232,13 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
     showToast(`Online account "${name}" added`, 'success');
   };
 
-  // Save Closing Record
-  const handleSaveCurrentClosing = () => {
-    if (grandTotal <= 0) {
-      showToast('Please enter cash counts or online balances first', 'warning');
-      return;
+  // Commit & Finalize Closing
+  const handleFinalizeClosing = () => {
+    if (totalPhysicalCash === 0 && totalOnlineBalance === 0) {
+      const confirmZero = window.confirm(
+        'Both physical cash notes and digital balances are 0. Are you sure you want to save this closing?'
+      );
+      if (!confirmZero) return;
     }
 
     const onlineList = (data.onlineAccounts || []).map(acc => ({
@@ -351,34 +247,64 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
       balance: Number(onlineBalances[acc.id]) || 0,
     }));
 
+    const expectedOnlineList = accounting.onlineAccounts.map(a => ({
+      accountId: a.accountId,
+      accountName: a.accountName,
+      balance: a.expectedClosing,
+    }));
+
+    const openingOnlineList = (data.onlineAccounts || []).map(acc => {
+      const found = accounting.previousClosing?.onlineBalances?.find(b => b.accountId === acc.id);
+      return {
+        accountId: acc.id,
+        accountName: acc.name,
+        balance: found ? Number(found.balance) || 0 : 0,
+      };
+    });
+
     const now = new Date();
     const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
     onSaveClosing({
       date: activeDate,
       time: timeStr,
+      createdAt: now.toISOString(),
+      openingCash: accounting.openingCash,
+      openingOnlineBalances: openingOnlineList,
+      openingTotalOnline: accounting.openingOnlineTotal,
+      openingGrandTotal: accounting.openingGrandTotal,
       denominations: { ...denominations },
       coins: Number(coins) || 0,
       totalCash: totalPhysicalCash,
       onlineBalances: onlineList,
       totalOnline: totalOnlineBalance,
       grandTotal,
-      expectedCash: expectedCashForDate,
+      expectedCash: accounting.totalExpectedCash,
+      expectedOnlineBalances: expectedOnlineList,
+      expectedOnlineTotal: accounting.totalExpectedOnline,
+      expectedGrandTotal: accounting.totalExpectedGrand,
       difference: cashDifference,
+      onlineDifference: onlineDifference,
+      totalDifference: totalDifference,
       closedBy: closedBy.trim() || 'Counter Cashier',
       notes: closingNotes.trim() || undefined,
+      status: 'closed',
     });
 
-    showToast('Daily closing record saved successfully!', 'success');
-    setClosingNotes('');
+    setIsUnlockedForEdit(false);
+    showToast(`Daily Closing for ${activeDate} successfully finalized and locked!`, 'success');
   };
 
   // Generate WhatsApp formatted text
   const generateWhatsAppClosingText = (record: DailyClosingRecord): string => {
     const lines: string[] = [];
-    lines.push(`📊 *${data.settings.shopName.toUpperCase()}* - DAILY CLOSING REPORT`);
+    lines.push(`📊 *${(data.settings.shopName || 'MOBILE SHOP').toUpperCase()}* - DAILY CLOSING REPORT`);
     lines.push(`📅 *Date:* ${record.date}  |  🕒 *Time:* ${record.time}`);
     lines.push(`👤 *Closed By:* ${record.closedBy || 'Cashier'}`);
+    lines.push(`----------------------------------------`);
+    lines.push(`🏁 *OPENING BALANCE:*`);
+    lines.push(`• Opening Cash: ${currency} ${(record.openingCash || 0).toLocaleString()}`);
+    lines.push(`• Opening Digital: ${currency} ${(record.openingTotalOnline || 0).toLocaleString()}`);
     lines.push(`----------------------------------------`);
     lines.push(`💵 *PHYSICAL CASH NOTES COUNT:*`);
 
@@ -392,42 +318,36 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
     if (record.coins > 0) {
       lines.push(`• Coins/Change = ${currency} ${record.coins.toLocaleString()}`);
     }
-    lines.push(`💰 *Total Physical Cash:* ${currency} ${record.totalCash.toLocaleString()}`);
+    lines.push(`💰 *Total Counted Cash:* ${currency} ${record.totalCash.toLocaleString()}`);
+    if (record.expectedCash !== undefined) {
+      lines.push(`🎯 *Expected Cash:* ${currency} ${record.expectedCash.toLocaleString()}`);
+      const diff = record.totalCash - record.expectedCash;
+      lines.push(`⚖️ *Cash Difference:* ${diff >= 0 ? '+' : ''}${currency} ${diff.toLocaleString()}`);
+    }
     lines.push(`----------------------------------------`);
 
     if (record.onlineBalances && record.onlineBalances.length > 0) {
-      lines.push(`💳 *ONLINE & BANK ACCOUNTS:*`);
+      lines.push(`💳 *DIGITAL & BANK ACCOUNTS:*`);
       record.onlineBalances.forEach(acc => {
-        if (acc.balance > 0) {
-          lines.push(`• ${acc.accountName}: ${currency} ${acc.balance.toLocaleString()}`);
-        }
+        lines.push(`• ${acc.accountName}: ${currency} ${acc.balance.toLocaleString()}`);
       });
-      lines.push(`🏦 *Total Online Balance:* ${currency} ${record.totalOnline.toLocaleString()}`);
+      lines.push(`📱 *Total Digital:* ${currency} ${record.totalOnline.toLocaleString()}`);
       lines.push(`----------------------------------------`);
     }
 
-    lines.push(`💎 *GRAND CLOSING TOTAL:* ${currency} ${record.grandTotal.toLocaleString()}`);
-
-    if (record.difference !== undefined && record.difference !== 0) {
-      const diffLabel = record.difference > 0 ? `Surplus (+${currency} ${record.difference.toLocaleString()})` : `Shortage (-${currency} ${Math.abs(record.difference).toLocaleString()})`;
-      lines.push(`⚖️ *Difference:* ${diffLabel}`);
-    }
-
+    lines.push(`🏆 *GRAND TOTAL RECONCILED:* ${currency} ${record.grandTotal.toLocaleString()}`);
     if (record.notes) {
-      lines.push(`📝 *Note:* ${record.notes}`);
+      lines.push(`📝 *Notes:* ${record.notes}`);
     }
+    lines.push(`----------------------------------------`);
+    lines.push(`_Automated closing generated via POS Suite_`);
 
-    lines.push(`\nCreated by HAMMAD RAZA DEVELOPMENT`);
     return lines.join('\n');
   };
 
   const handleShareWhatsApp = (record: DailyClosingRecord) => {
     const text = generateWhatsAppClosingText(record);
-    const encoded = encodeURIComponent(text);
-    const targetPhone = data.tabPreferences?.dailyClosing?.whatsappPhone || '';
-    const url = targetPhone
-      ? `https://api.whatsapp.com/send?phone=${targetPhone}&text=${encoded}`
-      : `https://api.whatsapp.com/send?text=${encoded}`;
+    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
     window.open(url, '_blank');
   };
 
@@ -435,18 +355,24 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
     setSelectedClosingForPrint(record);
     setTimeout(() => {
       window.print();
-    }, 150);
+    }, 200);
   };
 
   // Filtered History
   const filteredHistory = useMemo(() => {
-    const history = data.dailyClosings || [];
-    const now = new Date();
+    const closings = [...(data.dailyClosings || [])].sort((a, b) => {
+      const dateTimeA = `${a.date}T${a.time || '00:00'}`;
+      const dateTimeB = `${b.date}T${b.time || '00:00'}`;
+      return dateTimeB.localeCompare(dateTimeA);
+    });
 
-    return history.filter(record => {
-      if (filterDate) {
-        return record.date === filterDate;
-      }
+    if (filterDate) {
+      return closings.filter(c => c.date === filterDate);
+    }
+
+    const now = new Date();
+    return closings.filter(record => {
+      if (historyFilter === 'all') return true;
 
       if (historyFilter === 'daily') {
         const today = now.toISOString().substring(0, 10);
@@ -476,19 +402,25 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top Banner & Quick Controls */}
+      {/* Top Banner & Date Selector */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-              <Calculator className="w-5 h-5 text-emerald-600" /> Daily Closing
+              <Calculator className="w-5 h-5 text-emerald-600" /> Daily Closing & Cash Drawer
             </h2>
-            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-              End-of-Day Reconciliation
-            </span>
+            {isDayFinalized ? (
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                <Lock className="w-3 h-3 text-emerald-700" /> Finalized & Closed
+              </span>
+            ) : (
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
+                <Unlock className="w-3 h-3 text-amber-600" /> Reconciling in Progress
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Count cash notes, enter digital account balances, reconcile difference and export records
+            Strict opening → period transactions → closing reconciliation. No historical double-counting.
           </p>
         </div>
 
@@ -506,7 +438,7 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
 
           <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs shadow-2xs">
             <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <span className="font-semibold text-slate-600">Date:</span>
+            <span className="font-semibold text-slate-600">Business Date:</span>
             <input
               type="date"
               value={activeDate}
@@ -517,69 +449,270 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
         </div>
       </div>
 
+      {/* Status Warning Banner for Finalized Day */}
+      {isDayFinalized && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-start gap-3">
+            <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+            <div>
+              <h4 className="text-xs font-bold text-emerald-900">
+                Business Date ({activeDate}) is officially Closed & Locked
+              </h4>
+              <p className="text-[11px] text-emerald-700 mt-0.5">
+                Saved by <strong>{existingClosingForActiveDate?.closedBy || 'Cashier'}</strong> at {existingClosingForActiveDate?.time}. Opening for next day will carry forward from this closing.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => handlePrintRecord(existingClosingForActiveDate!)}
+              className="px-3 py-1.5 bg-white border border-emerald-200 hover:bg-emerald-100 text-emerald-800 font-bold text-xs rounded-xl shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" /> Print Closing Slip
+            </button>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm(`Re-open closing for ${activeDate}? This will unlock counts for modification.`)) {
+                    setIsUnlockedForEdit(true);
+                    showToast(`Closing for ${activeDate} unlocked for adjustments`, 'info');
+                  }
+                }}
+                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <Unlock className="w-3.5 h-3.5" /> Unlock / Edit Closing
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ACCOUNTING LEDGER BREAKDOWN STRIP (OPENING -> INFLOWS -> OUTFLOWS -> EXPECTED) */}
+      <div className="bg-slate-900 text-white rounded-2xl p-4.5 space-y-3.5 border border-slate-800 shadow-lg">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-emerald-400" />
+            <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-200">
+              Period Accounting Ledger (After Prev Closing: {accounting.previousClosing ? `${accounting.previousClosing.date} (${accounting.previousClosing.time || ''})` : 'Initial Inception'})
+            </h3>
+          </div>
+          <span className="text-[10px] font-bold text-slate-400">
+            Isolated Accounts (Cash ≠ Bank ≠ JazzCash ≠ Easypaisa)
+          </span>
+        </div>
+
+        {/* Ledger Grid: Cash vs Digital Channels */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+          {/* Cash Drawer Channel */}
+          <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700/80 space-y-1.5">
+            <div className="flex justify-between items-center pb-1 border-b border-slate-700">
+              <span className="font-bold text-emerald-400 flex items-center gap-1">
+                <Wallet className="w-3.5 h-3.5" /> Cash Drawer
+              </span>
+              <span className="font-mono text-[10px] text-slate-400">
+                Op: {currency} {accounting.cash.opening.toLocaleString()}
+              </span>
+            </div>
+            <div className="space-y-0.5 text-[11px] text-slate-300 font-mono">
+              <div className="flex justify-between text-emerald-300">
+                <span>+ Cash Sales ({accounting.periodSales.filter(s => normalizePaymentChannel(s.paymentMethod) === 'Cash').length}):</span>
+                <span>+{accounting.cash.sales.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-emerald-300">
+                <span>+ Khata Recoveries:</span>
+                <span>+{accounting.cash.khataRecoveries.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-rose-300">
+                <span>- Cash Expenses:</span>
+                <span>-{accounting.cash.expenses.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-rose-300">
+                <span>- Supplier Payments:</span>
+                <span>-{accounting.cash.supplierPayments.toLocaleString()}</span>
+              </div>
+            </div>
+            <div className="pt-1.5 border-t border-slate-700 flex justify-between items-center font-bold">
+              <span className="text-slate-400 text-[10px]">Expected Cash:</span>
+              <span className="font-mono text-emerald-400 text-sm">
+                {currency} {accounting.cash.expectedClosing.toLocaleString()}
+              </span>
+            </div>
+          </div>
+
+          {/* Bank Accounts Channel */}
+          <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700/80 space-y-1.5">
+            <div className="flex justify-between items-center pb-1 border-b border-slate-700">
+              <span className="font-bold text-blue-400 flex items-center gap-1">
+                <Building2 className="w-3.5 h-3.5" /> Bank Account
+              </span>
+              <span className="font-mono text-[10px] text-slate-400">
+                Op: {currency} {accounting.bank.opening.toLocaleString()}
+              </span>
+            </div>
+            <div className="space-y-0.5 text-[11px] text-slate-300 font-mono">
+              <div className="flex justify-between text-blue-300">
+                <span>+ Bank Sales:</span>
+                <span>+{accounting.bank.sales.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-blue-300">
+                <span>+ Khata Bank Recoveries:</span>
+                <span>+{accounting.bank.khataRecoveries.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-rose-300">
+                <span>- Bank Expenses / Pur:</span>
+                <span>-{(accounting.bank.expenses + accounting.bank.supplierPayments).toLocaleString()}</span>
+              </div>
+            </div>
+            <div className="pt-1.5 border-t border-slate-700 flex justify-between items-center font-bold">
+              <span className="text-slate-400 text-[10px]">Expected Bank:</span>
+              <span className="font-mono text-blue-400 text-sm">
+                {currency} {accounting.bank.expectedClosing.toLocaleString()}
+              </span>
+            </div>
+          </div>
+
+          {/* JazzCash Channel */}
+          <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700/80 space-y-1.5">
+            <div className="flex justify-between items-center pb-1 border-b border-slate-700">
+              <span className="font-bold text-amber-400 flex items-center gap-1">
+                <Smartphone className="w-3.5 h-3.5" /> JazzCash
+              </span>
+              <span className="font-mono text-[10px] text-slate-400">
+                Op: {currency} {accounting.jazzCash.opening.toLocaleString()}
+              </span>
+            </div>
+            <div className="space-y-0.5 text-[11px] text-slate-300 font-mono">
+              <div className="flex justify-between text-amber-300">
+                <span>+ JazzCash Sales:</span>
+                <span>+{accounting.jazzCash.sales.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-amber-300">
+                <span>+ Khata Recoveries:</span>
+                <span>+{accounting.jazzCash.khataRecoveries.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-rose-300">
+                <span>- Expenses / Outflows:</span>
+                <span>-{(accounting.jazzCash.expenses + accounting.jazzCash.supplierPayments).toLocaleString()}</span>
+              </div>
+            </div>
+            <div className="pt-1.5 border-t border-slate-700 flex justify-between items-center font-bold">
+              <span className="text-slate-400 text-[10px]">Expected JazzCash:</span>
+              <span className="font-mono text-amber-400 text-sm">
+                {currency} {accounting.jazzCash.expectedClosing.toLocaleString()}
+              </span>
+            </div>
+          </div>
+
+          {/* Easypaisa Channel */}
+          <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700/80 space-y-1.5">
+            <div className="flex justify-between items-center pb-1 border-b border-slate-700">
+              <span className="font-bold text-emerald-400 flex items-center gap-1">
+                <CreditCard className="w-3.5 h-3.5" /> Easypaisa
+              </span>
+              <span className="font-mono text-[10px] text-slate-400">
+                Op: {currency} {accounting.easypaisa.opening.toLocaleString()}
+              </span>
+            </div>
+            <div className="space-y-0.5 text-[11px] text-slate-300 font-mono">
+              <div className="flex justify-between text-emerald-300">
+                <span>+ Easypaisa Sales:</span>
+                <span>+{accounting.easypaisa.sales.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-emerald-300">
+                <span>+ Khata Recoveries:</span>
+                <span>+{accounting.easypaisa.khataRecoveries.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-rose-300">
+                <span>- Expenses / Outflows:</span>
+                <span>-{(accounting.easypaisa.expenses + accounting.easypaisa.supplierPayments).toLocaleString()}</span>
+              </div>
+            </div>
+            <div className="pt-1.5 border-t border-slate-700 flex justify-between items-center font-bold">
+              <span className="text-slate-400 text-[10px]">Expected Easypaisa:</span>
+              <span className="font-mono text-emerald-400 text-sm">
+                {currency} {accounting.easypaisa.expectedClosing.toLocaleString()}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Grand Summary Strip: 3 Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-4">
         {/* Physical Cash Card */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-4.5 shadow-xs transition hover:border-emerald-400">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-              <Wallet className="w-3.5 h-3.5 text-emerald-600" /> Physical Cash Notes
+        <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4.5 shadow-xs transition hover:border-emerald-400 flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-1 sm:mb-2">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
+              <Wallet className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span className="truncate">Physical Cash</span>
             </span>
-            <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+            <span className="text-[9px] sm:text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 sm:px-2 sm:py-0.5 rounded-full shrink-0">
               Counted
             </span>
           </div>
-          <h3 className="text-2xl font-extrabold font-mono text-emerald-600 tabular-nums">
+          <h3 className="text-sm sm:text-2xl font-extrabold font-mono text-emerald-600 tabular-nums truncate">
             {currency} {totalPhysicalCash.toLocaleString()}
           </h3>
-          <p className="text-xs text-slate-400 mt-1">
-            Total from denomination notes & coins
-          </p>
+          <div className="flex justify-between text-[10px] sm:text-xs text-slate-500 mt-1 truncate">
+            <span className="truncate">Exp: {currency} {accounting.totalExpectedCash.toLocaleString()}</span>
+            <span className={`font-bold font-mono shrink-0 ml-1 ${cashDifference === 0 ? 'text-emerald-600' : cashDifference > 0 ? 'text-blue-600' : 'text-rose-600'}`}>
+              {cashDifference === 0 ? '0' : `${cashDifference > 0 ? '+' : ''}${currency} ${cashDifference.toLocaleString()}`}
+            </span>
+          </div>
         </div>
 
         {/* Online Accounts Card */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-4.5 shadow-xs transition hover:border-blue-400">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-              <Building2 className="w-3.5 h-3.5 text-blue-600" /> Digital Accounts
+        <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4.5 shadow-xs transition hover:border-blue-400 flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-1 sm:mb-2">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
+              <Building2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+              <span className="truncate">Digital Balances</span>
             </span>
-            <span className="text-[10px] font-extrabold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">
-              {(data.onlineAccounts || []).length} Accounts
+            <span className="text-[9px] sm:text-[10px] font-extrabold text-blue-700 bg-blue-50 px-1.5 py-0.2 sm:px-2 sm:py-0.5 rounded-full shrink-0">
+              {(data.onlineAccounts || []).length} A/C
             </span>
           </div>
-          <h3 className="text-2xl font-extrabold font-mono text-blue-600 tabular-nums">
+          <h3 className="text-sm sm:text-2xl font-extrabold font-mono text-blue-600 tabular-nums truncate">
             {currency} {totalOnlineBalance.toLocaleString()}
           </h3>
-          <p className="text-xs text-slate-400 mt-1">
-            Wallets and Bank account balances
-          </p>
+          <div className="flex justify-between text-[10px] sm:text-xs text-slate-500 mt-1 truncate">
+            <span className="truncate">Exp: {currency} {accounting.totalExpectedOnline.toLocaleString()}</span>
+            <span className={`font-bold font-mono shrink-0 ml-1 ${onlineDifference === 0 ? 'text-emerald-600' : onlineDifference > 0 ? 'text-blue-600' : 'text-rose-600'}`}>
+              {onlineDifference === 0 ? '0' : `${onlineDifference > 0 ? '+' : ''}${currency} ${onlineDifference.toLocaleString()}`}
+            </span>
+          </div>
         </div>
 
         {/* Grand Total Card */}
-        <div className="bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-2xl p-4.5 shadow-lg border border-indigo-900/50">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-              <TrendingUp className="w-3.5 h-3.5 text-emerald-400" /> Grand Closing Total
+        <div className="col-span-2 sm:col-span-1 bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-xl sm:rounded-2xl p-2.5 sm:p-4.5 shadow-lg border border-indigo-900/50 flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-1 sm:mb-2">
+            <span className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider text-emerald-400 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span className="truncate">Grand Total Reconciled</span>
             </span>
-            <span className="text-[10px] font-bold text-slate-300 bg-white/10 px-2 py-0.5 rounded-full">
+            <span className="text-[9px] sm:text-[10px] font-bold text-slate-300 bg-white/10 px-1.5 py-0.2 sm:px-2 sm:py-0.5 rounded-full shrink-0">
               Cash + Digital
             </span>
           </div>
-          <h3 className="text-2xl sm:text-3xl font-extrabold font-mono text-white tabular-nums">
+          <h3 className="text-sm sm:text-2xl font-extrabold font-mono text-white tabular-nums truncate">
             {currency} {grandTotal.toLocaleString()}
           </h3>
-          <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-300">
-            {cashDifference === 0 ? (
-              <span className="text-emerald-400 font-bold flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3" /> Exact match with daily transactions
+          <div className="mt-1 flex items-center justify-between text-[10px] sm:text-[11px] text-slate-300 truncate">
+            <span className="truncate">Exp: {currency} {accounting.totalExpectedGrand.toLocaleString()}</span>
+            {totalDifference === 0 ? (
+              <span className="text-emerald-400 font-bold flex items-center gap-1 shrink-0 ml-1">
+                <CheckCircle2 className="w-3 h-3" /> Matched
               </span>
-            ) : cashDifference > 0 ? (
-              <span className="text-blue-300 font-bold">
-                +{currency} {cashDifference.toLocaleString()} surplus
+            ) : totalDifference > 0 ? (
+              <span className="text-blue-300 font-bold font-mono shrink-0 ml-1">
+                +{currency} {totalDifference.toLocaleString()}
               </span>
             ) : (
-              <span className="text-rose-300 font-bold">
-                -{currency} {Math.abs(cashDifference).toLocaleString()} shortage
+              <span className="text-rose-400 font-bold font-mono shrink-0 ml-1">
+                {currency} {totalDifference.toLocaleString()}
               </span>
             )}
           </div>
@@ -588,28 +721,30 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
 
       {/* Main Closing Entry Section: 2 Columns */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Cash Notes Denomination Table (Quick add removed, 75 removed) */}
+        {/* Left Column: Cash Notes Denomination Table */}
         <div className="lg:col-span-7 bg-white border border-slate-200/90 rounded-2xl p-5 space-y-4 shadow-xs">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
               <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                <Wallet className="w-4 h-4 text-emerald-600" /> Daily Cash Notes Counter
+                <Wallet className="w-4 h-4 text-emerald-600" /> Physical Cash Notes Counter
               </h3>
               <p className="text-[11px] text-slate-400">
-                Enter quantity of each currency note
+                Count notes in cash drawer at closing
               </p>
             </div>
-            <button
-              type="button"
-              onClick={handleClearDenominations}
-              className="text-xs font-semibold text-slate-500 hover:text-rose-600 flex items-center gap-1 transition cursor-pointer"
-            >
-              <RotateCcw className="w-3 h-3" /> Reset
-            </button>
+            {!isDayFinalized && (
+              <button
+                type="button"
+                onClick={handleClearDenominations}
+                className="text-xs font-semibold text-slate-500 hover:text-rose-600 flex items-center gap-1 transition cursor-pointer"
+              >
+                <RotateCcw className="w-3 h-3" /> Reset
+              </button>
+            )}
           </div>
 
-          {/* Notes Rows Table */}
-          <div className="border border-slate-200/80 rounded-xl overflow-hidden">
+          {/* Desktop Notes Rows Table (>= lg: breakpoint) */}
+          <div className="hidden lg:block border border-slate-200/80 rounded-xl overflow-hidden">
             <table className="w-full text-left border-collapse text-xs">
               <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
                 <tr>
@@ -635,6 +770,7 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
                         <input
                           type="number"
                           min="0"
+                          disabled={isDayFinalized}
                           value={count === 0 ? '' : count}
                           onChange={e =>
                             handleDenomChange(
@@ -642,7 +778,8 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
                               e.target.value === '' ? 0 : Number(e.target.value)
                             )
                           }
-                          className="w-24 text-center font-mono font-bold text-xs bg-slate-50 border border-slate-200 rounded-lg py-1 px-2 focus:outline-none focus:border-emerald-600 focus:bg-white"
+                          placeholder="0"
+                          className="w-24 text-center font-mono font-bold text-xs bg-slate-50 border border-slate-200 rounded-lg py-1 px-2 focus:outline-none focus:border-emerald-600 focus:bg-white disabled:opacity-75 disabled:cursor-not-allowed"
                         />
                       </td>
 
@@ -667,11 +804,13 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
                     <input
                       type="number"
                       min="0"
+                      disabled={isDayFinalized}
                       value={coins === '' ? '' : coins}
                       onChange={e =>
                         setCoins(e.target.value === '' ? '' : Number(e.target.value))
                       }
-                      className="w-24 text-right font-mono font-bold text-xs bg-white border border-slate-200 rounded-lg py-1 px-2 focus:outline-none focus:border-emerald-600"
+                      placeholder="0"
+                      className="w-24 text-right font-mono font-bold text-xs bg-white border border-slate-200 rounded-lg py-1 px-2 focus:outline-none focus:border-emerald-600 disabled:opacity-75 disabled:cursor-not-allowed"
                     />
                   </td>
                 </tr>
@@ -679,7 +818,7 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
                 {/* Total Cash Notes Row */}
                 <tr className="bg-emerald-50/60 border-t-2 border-emerald-200">
                   <td colSpan={2} className="p-3 font-extrabold text-slate-900 text-xs">
-                    Total Physical Cash:
+                    Total Physical Counted Cash:
                   </td>
                   <td className="p-3 text-right font-mono font-extrabold text-emerald-700 text-sm tabular-nums">
                     {currency} {totalPhysicalCash.toLocaleString()}
@@ -688,67 +827,146 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
               </tbody>
             </table>
           </div>
+
+          {/* Mobile 2-Column Denomination Grid (< lg: breakpoint) */}
+          <div className="block lg:hidden space-y-3">
+            <div className="grid grid-cols-2 gap-2.5">
+              {PAK_DENOMINATIONS.map(denom => {
+                const count = denominations[denom.toString()] || 0;
+                const rowSubtotal = denom * count;
+
+                return (
+                  <div
+                    key={denom}
+                    className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 flex flex-col justify-between space-y-2 shadow-2xs"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-extrabold text-xs font-mono bg-emerald-100/80 text-emerald-800 px-2 py-0.5 rounded-lg border border-emerald-200">
+                        Rs. {denom.toLocaleString()}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-bold">Note</span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min="0"
+                        disabled={isDayFinalized}
+                        value={count === 0 ? '' : count}
+                        onChange={e =>
+                          handleDenomChange(
+                            denom,
+                            e.target.value === '' ? 0 : Number(e.target.value)
+                          )
+                        }
+                        placeholder="Qty (0)"
+                        className="w-full text-center font-mono font-bold text-sm bg-white border border-slate-300 rounded-xl py-2 px-2 focus:outline-none focus:border-emerald-600 min-h-[44px] shadow-2xs"
+                      />
+                    </div>
+
+                    <div className="flex justify-between items-center text-[11px] pt-1.5 border-t border-slate-200/60 font-mono">
+                      <span className="text-slate-400 text-[10px]">Total:</span>
+                      <span className="font-extrabold text-slate-800 tabular-nums">
+                        {currency} {rowSubtotal.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Loose Coins Card */}
+            <div className="bg-amber-50/60 border border-amber-200 rounded-2xl p-3.5 flex items-center justify-between gap-2">
+              <div>
+                <span className="font-bold text-xs text-amber-900 block">Loose Coins / Change</span>
+                <span className="text-[10px] text-amber-700">Enter loose coin amount</span>
+              </div>
+              <input
+                type="number"
+                min="0"
+                disabled={isDayFinalized}
+                value={coins === '' ? '' : coins}
+                onChange={e =>
+                  setCoins(e.target.value === '' ? '' : Number(e.target.value))
+                }
+                placeholder="0"
+                className="w-28 text-right font-mono font-bold text-xs bg-white border border-amber-300 rounded-xl p-2.5 focus:outline-none focus:border-amber-600 min-h-[44px]"
+              />
+            </div>
+
+            {/* Mobile Total Physical Cash Banner */}
+            <div className="bg-emerald-600 text-white rounded-2xl p-3.5 flex items-center justify-between shadow-md shadow-emerald-600/20">
+              <span className="font-black text-xs">Total Physical Counted Cash:</span>
+              <span className="font-mono font-black text-base tabular-nums">
+                {currency} {totalPhysicalCash.toLocaleString()}
+              </span>
+            </div>
+          </div>
         </div>
 
-        {/* Right Column: Online Balances & Closing Submission (5 Cols) */}
+        {/* Right Column: Digital Accounts & Finalize Action */}
         <div className="lg:col-span-5 space-y-4">
-          {/* Online Accounts Card */}
+          {/* Digital Accounts Input Card */}
           <div className="bg-white border border-slate-200/90 rounded-2xl p-5 space-y-4 shadow-xs">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-blue-600" /> Digital Accounts Balance
+                  <Building2 className="w-4 h-4 text-blue-600" /> Digital Accounts Count
                 </h3>
                 <p className="text-[11px] text-slate-400">
-                  Enter closing balances for online accounts
+                  Enter counted closing balance for each account
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setIsAddAccountModalOpen(true)}
-                className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg text-xs font-bold flex items-center gap-1 transition cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" /> Add Account
-              </button>
+              {!isDayFinalized && (
+                <button
+                  type="button"
+                  onClick={() => setIsAddAccountModalOpen(true)}
+                  className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Account
+                </button>
+              )}
             </div>
 
             {/* Online Accounts Inputs */}
             <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
               {(data.onlineAccounts || []).length === 0 ? (
                 <div className="text-center py-6 text-slate-400 text-xs">
-                  No accounts added. Click "Add Account" to configure.
+                  No digital accounts configured. Click "+ Add Account" to configure.
                 </div>
               ) : (
                 (data.onlineAccounts || []).map(acc => {
                   const val = onlineBalances[acc.id] ?? '';
+                  const expectedAcc = accounting.onlineAccounts.find(a => a.accountId === acc.id)?.expectedClosing ?? 0;
 
                   return (
                     <div
                       key={acc.id}
-                      className="flex items-center justify-between p-2.5 rounded-xl border border-slate-100 bg-slate-50/70 hover:bg-slate-50 transition gap-2"
+                      className="p-2.5 rounded-xl border border-slate-100 bg-slate-50/70 hover:bg-slate-50 transition space-y-1"
                     >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-slate-900 text-xs truncate">
-                            {acc.name}
-                          </span>
-                          <span className="text-[10px] bg-slate-200 px-1.5 py-0.2 rounded font-semibold text-slate-600 shrink-0">
-                            {acc.bankType || 'Wallet'}
-                          </span>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-slate-900 text-xs truncate">
+                              {acc.name}
+                            </span>
+                            <span className="text-[10px] bg-slate-200 px-1.5 py-0.2 rounded font-semibold text-slate-600 shrink-0">
+                              {acc.bankType || 'Wallet'}
+                            </span>
+                          </div>
+                          {acc.accountNumber && (
+                            <p className="text-[10px] text-slate-400 font-mono truncate">
+                              {acc.accountNumber}
+                            </p>
+                          )}
                         </div>
-                        {acc.accountNumber && (
-                          <p className="text-[10px] text-slate-400 font-mono truncate">
-                            {acc.accountNumber}
-                          </p>
-                        )}
-                      </div>
 
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <div className="relative">
+                        <div className="flex items-center gap-1.5 shrink-0">
                           <input
                             type="number"
                             min="0"
+                            disabled={isDayFinalized}
                             value={val}
                             onChange={e =>
                               setOnlineBalances(prev => ({
@@ -756,19 +974,29 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
                                 [acc.id]: e.target.value === '' ? '' : Number(e.target.value),
                               }))
                             }
-                            className="w-28 text-right font-mono font-bold text-xs bg-white border border-slate-200 rounded-lg py-1 px-2 focus:outline-none focus:border-blue-600"
+                            placeholder="0"
+                            className="w-28 text-right font-mono font-bold text-xs bg-white border border-slate-200 rounded-lg py-1 px-2 focus:outline-none focus:border-blue-600 disabled:opacity-75 disabled:cursor-not-allowed"
                           />
-                        </div>
 
-                        {isAdmin && (
-                          <button
-                            type="button"
-                            onClick={() => setAccountToDelete(acc)}
-                            className="text-slate-300 hover:text-rose-600 p-1 rounded transition cursor-pointer"
-                            title="Delete Account"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {isAdmin && !isDayFinalized && (
+                            <button
+                              type="button"
+                              onClick={() => setAccountToDelete(acc)}
+                              className="text-slate-300 hover:text-rose-600 p-1 rounded transition cursor-pointer"
+                              title="Delete Account"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex justify-between items-center text-[10px] text-slate-400 font-mono pt-0.5 border-t border-slate-200/50">
+                        <span>Expected: {currency} {expectedAcc.toLocaleString()}</span>
+                        {val !== '' && (
+                          <span className={Number(val) - expectedAcc === 0 ? 'text-emerald-600' : 'text-amber-600'}>
+                            Diff: {Number(val) - expectedAcc >= 0 ? '+' : ''}{currency} {(Number(val) - expectedAcc).toLocaleString()}
+                          </span>
                         )}
                       </div>
                     </div>
@@ -779,93 +1007,107 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
 
             {/* Total Online Balances */}
             <div className="pt-2 border-t border-slate-100 flex justify-between items-center text-xs">
-              <span className="font-semibold text-slate-600">Total Digital Balance:</span>
+              <span className="font-semibold text-slate-600">Total Counted Digital:</span>
               <span className="font-mono font-bold text-blue-600 text-sm tabular-nums">
                 {currency} {totalOnlineBalance.toLocaleString()}
               </span>
             </div>
           </div>
 
-          {/* Verification & Live Auto-Save Box (Manual save button removed) */}
+          {/* Closing Finalization Box */}
           <div className="bg-white border border-slate-200/90 rounded-2xl p-5 space-y-3.5 shadow-xs">
-            <div className="flex items-center justify-between">
-              <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider text-slate-500">
-                Closing Verification
-              </h4>
-              <span className="inline-flex items-center gap-1.5 text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                Auto-Save Enabled
-              </span>
-            </div>
+            <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider text-slate-500 flex items-center justify-between">
+              <span>Closing Verification & Authorization</span>
+              {isDayFinalized ? (
+                <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-bold text-[10px]">
+                  Locked
+                </span>
+              ) : (
+                <span className="text-amber-700 bg-amber-50 px-2 py-0.5 rounded font-bold text-[10px]">
+                  Pending Submission
+                </span>
+              )}
+            </h4>
 
             <div className="space-y-2.5 text-xs">
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
-                  Cashier / Staff Name
+                  Cashier / Staff Name *
                 </label>
                 <input
                   type="text"
+                  disabled={isDayFinalized}
                   value={closedBy}
                   onChange={e => setClosedBy(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:outline-none focus:border-emerald-600 focus:bg-white transition"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:outline-none focus:border-emerald-600 focus:bg-white transition disabled:opacity-75 disabled:cursor-not-allowed"
                 />
               </div>
 
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
-                  Closing Notes (Optional - Auto Saves)
+                  Closing Notes & Explanations (Optional)
                 </label>
                 <textarea
                   rows={2}
+                  disabled={isDayFinalized}
                   value={closingNotes}
                   onChange={e => setClosingNotes(e.target.value)}
-                  placeholder="Any shift notes, balance explanations, or remarks..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:outline-none focus:border-emerald-600 focus:bg-white transition resize-none"
+                  placeholder="Any shift notes, cash shortages, or hand-over instructions..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:outline-none focus:border-emerald-600 focus:bg-white transition resize-none disabled:opacity-75 disabled:cursor-not-allowed"
                 />
               </div>
 
+              {/* Summary of Expected vs Counted */}
               <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/70 space-y-1 text-[11px]">
                 <div className="flex justify-between">
-                  <span className="text-slate-500">System Expected Cash:</span>
+                  <span className="text-slate-500">System Expected Total:</span>
                   <span className="font-mono font-bold text-slate-700">
-                    {currency} {expectedCashForDate.toLocaleString()}
+                    {currency} {accounting.totalExpectedGrand.toLocaleString()}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Counted Physical Cash:</span>
+                  <span className="text-slate-500">Counted Grand Total:</span>
                   <span className="font-mono font-bold text-slate-900">
-                    {currency} {totalPhysicalCash.toLocaleString()}
+                    {currency} {grandTotal.toLocaleString()}
                   </span>
                 </div>
                 <div className="flex justify-between pt-1 border-t border-slate-200">
-                  <span className="font-bold text-slate-700">Difference:</span>
+                  <span className="font-bold text-slate-700">Net Difference:</span>
                   <span
                     className={`font-mono font-bold ${
-                      cashDifference === 0
+                      totalDifference === 0
                         ? 'text-emerald-600'
-                        : cashDifference > 0
+                        : totalDifference > 0
                         ? 'text-blue-600'
                         : 'text-rose-600'
                     }`}
                   >
-                    {cashDifference > 0 ? '+' : ''}
-                    {currency} {cashDifference.toLocaleString()}
+                    {totalDifference > 0 ? '+' : ''}
+                    {currency} {totalDifference.toLocaleString()}
                   </span>
                 </div>
               </div>
 
-              {/* Live Auto-Save Confirmation Badge (Save Button Removed) */}
-              <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-50 border border-emerald-200/90 text-emerald-900">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span className="text-xs font-bold">
-                    {lastSavedTime ? `Auto-${lastSavedTime}` : 'Auto-Saved in Real Time'}
-                  </span>
+              {/* Action Buttons */}
+              {!isDayFinalized ? (
+                <button
+                  type="button"
+                  onClick={handleFinalizeClosing}
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white text-xs font-extrabold rounded-xl shadow-md shadow-emerald-500/25 transition cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <Lock className="w-4 h-4" />
+                  <span>Commit & Finalize Daily Closing ({activeDate})</span>
+                </button>
+              ) : (
+                <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-900 text-center space-y-1">
+                  <p className="text-xs font-bold flex items-center justify-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Day Closed & Recorded
+                  </p>
+                  <p className="text-[10px] text-emerald-700">
+                    Immutable record saved to system ledger. Opening balances for next day are set.
+                  </p>
                 </div>
-                <span className="text-[10px] font-extrabold text-emerald-700 bg-white border border-emerald-200 px-2 py-0.5 rounded-md">
-                  No Save Click Needed
-                </span>
-              </div>
+              )}
             </div>
           </div>
         </div>
@@ -876,15 +1118,14 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
           <div>
             <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-              <FileText className="w-4 h-4 text-emerald-600" /> Daily Closing Records History
+              <FileText className="w-4 h-4 text-emerald-600" /> Daily Closing Records History ({filteredHistory.length})
             </h3>
             <p className="text-[11px] text-slate-400">
-              Click any date below to inspect all realtime transactions, or download PDF reports
+              Audit opening balances, cash note breakdowns, digital accounts, and reconciliation differences
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            {/* Multi-Period Filter Buttons */}
             <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
               {(['all', 'daily', 'weekly', 'monthly', 'yearly'] as const).map(f => (
                 <button
@@ -905,7 +1146,6 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
               ))}
             </div>
 
-            {/* Specific Date Picker */}
             <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1">
               <span className="text-[11px] text-slate-500 font-semibold">Date:</span>
               <input
@@ -928,7 +1168,6 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
               )}
             </div>
 
-            {/* Export PDF Report Button */}
             <button
               type="button"
               onClick={async () => {
@@ -940,7 +1179,13 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
                     await generatePdfReport({
                       tab: 'dailyClosing',
                       dateFilter: {
-                        type: filterDate ? 'custom' : historyFilter === 'daily' ? 'today' : historyFilter,
+                        type: filterDate
+                          ? 'custom'
+                          : historyFilter === 'daily'
+                          ? 'today'
+                          : historyFilter === 'all'
+                          ? 'yearly'
+                          : historyFilter,
                         startDate: filterDate || undefined,
                         endDate: filterDate || undefined,
                       },
@@ -969,7 +1214,8 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
                 <tr>
                   <th className="p-3">Date & Time</th>
                   <th className="p-3">Staff</th>
-                  <th className="p-3 text-right">Physical Cash</th>
+                  <th className="p-3 text-right">Opening Cash</th>
+                  <th className="p-3 text-right">Counted Cash</th>
                   <th className="p-3 text-right">Digital Balances</th>
                   <th className="p-3 text-right">Grand Total</th>
                   <th className="p-3 text-right">Difference</th>
@@ -980,7 +1226,7 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
               <tbody className="divide-y divide-slate-100">
                 {filteredHistory.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-10 text-slate-400">
+                    <td colSpan={9} className="text-center py-10 text-slate-400">
                       No closing records found for the selected time period.
                     </td>
                   </tr>
@@ -990,13 +1236,13 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
                       key={record.id}
                       onClick={() => setSelectedHistoryRecord(record)}
                       className="hover:bg-emerald-50/60 cursor-pointer transition group"
-                      title="Click to view full real-time details & entries"
+                      title="Click to view full opening and reconciliation details"
                     >
                       <td className="p-3">
                         <div className="font-bold text-slate-900 font-mono group-hover:text-emerald-700 flex items-center gap-1.5">
                           <span>{record.date}</span>
                           <span className="opacity-0 group-hover:opacity-100 text-[10px] text-emerald-600 bg-emerald-100/70 px-1.5 py-0.2 rounded font-sans transition">
-                            View Details →
+                            Inspect →
                           </span>
                         </div>
                         <div className="text-[10px] text-slate-400 font-mono">
@@ -1006,6 +1252,10 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
 
                       <td className="p-3 text-slate-700 font-medium">
                         {record.closedBy || 'Cashier'}
+                      </td>
+
+                      <td className="p-3 text-right font-mono text-slate-500">
+                        {currency} {(record.openingCash || 0).toLocaleString()}
                       </td>
 
                       <td className="p-3 text-right font-mono font-bold text-emerald-600 tabular-nums">
@@ -1078,6 +1328,113 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
         </div>
       </div>
 
+      {/* History Inspection Modal */}
+      {selectedHistoryRecord && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-w-full overflow-x-hidden shadow-2xl border border-slate-100 p-3.5 sm:p-5 space-y-4 max-h-[90vh] overflow-y-auto my-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="min-w-0">
+                <h3 className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-2 truncate">
+                  <Calculator className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="truncate">Closing Statement: {selectedHistoryRecord.date} ({selectedHistoryRecord.time})</span>
+                </h3>
+                <p className="text-[10px] sm:text-[11px] text-slate-500 truncate">
+                  Closed by {selectedHistoryRecord.closedBy || 'Cashier'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedHistoryRecord(null)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 shrink-0 ml-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 text-xs">
+              <div className="p-2.5 sm:p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-[10px] uppercase font-bold text-slate-400">Opening Cash</span>
+                <p className="text-sm sm:text-base font-extrabold font-mono text-slate-800 mt-0.5 truncate">
+                  {currency} {(selectedHistoryRecord.openingCash || 0).toLocaleString()}
+                </p>
+              </div>
+              <div className="p-2.5 sm:p-3 bg-emerald-50 rounded-xl border border-emerald-200">
+                <span className="text-[10px] uppercase font-bold text-emerald-700">Counted Cash</span>
+                <p className="text-sm sm:text-base font-extrabold font-mono text-emerald-700 mt-0.5 truncate">
+                  {currency} {selectedHistoryRecord.totalCash.toLocaleString()}
+                </p>
+              </div>
+              <div className="col-span-2 sm:col-span-1 p-2.5 sm:p-3 bg-blue-50 rounded-xl border border-blue-200">
+                <span className="text-[10px] uppercase font-bold text-blue-700">Counted Digital</span>
+                <p className="text-sm sm:text-base font-extrabold font-mono text-blue-700 mt-0.5 truncate">
+                  {currency} {selectedHistoryRecord.totalOnline.toLocaleString()}
+                </p>
+              </div>
+            </div>
+
+            {/* Notes Breakdown */}
+            <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-200 space-y-2 text-xs">
+              <h4 className="font-bold text-slate-700 text-xs">Physical Notes Breakdown:</h4>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono">
+                {PAK_DENOMINATIONS.map(denom => {
+                  const count = selectedHistoryRecord.denominations[denom.toString()] || 0;
+                  if (count === 0) return null;
+                  return (
+                    <div key={denom} className="p-1.5 bg-white rounded-lg border border-slate-200">
+                      Rs. {denom} × {count} = <strong>{currency} {(denom * count).toLocaleString()}</strong>
+                    </div>
+                  );
+                })}
+                {selectedHistoryRecord.coins > 0 && (
+                  <div className="p-1.5 bg-white rounded-lg border border-slate-200">
+                    Coins: <strong>{currency} {selectedHistoryRecord.coins.toLocaleString()}</strong>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Digital Accounts Breakdown */}
+            {selectedHistoryRecord.onlineBalances && selectedHistoryRecord.onlineBalances.length > 0 && (
+              <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-200 space-y-2 text-xs">
+                <h4 className="font-bold text-slate-700 text-xs">Digital Accounts Balances:</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+                  {selectedHistoryRecord.onlineBalances.map(acc => (
+                    <div key={acc.accountId} className="p-2 bg-white rounded-lg border border-slate-200">
+                      <span className="text-slate-500 font-semibold block">{acc.accountName}</span>
+                      <strong className="font-mono text-blue-600 text-xs">{currency} {acc.balance.toLocaleString()}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {selectedHistoryRecord.notes && (
+              <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900">
+                <span className="font-bold block mb-0.5">Closing Notes:</span>
+                <p>{selectedHistoryRecord.notes}</p>
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setSelectedHistoryRecord(null)}
+                className="w-full sm:w-auto order-2 sm:order-1 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer text-center"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePrintRecord(selectedHistoryRecord)}
+                className="w-full sm:w-auto order-1 sm:order-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-normal"
+              >
+                <Printer className="w-3.5 h-3.5 shrink-0" /> <span>Print Statement</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Hidden Printable Thermal/PDF Receipt Slip */}
       {selectedClosingForPrint && (
         <div id="printable-receipt-area" className="hidden font-mono text-xs">
@@ -1093,147 +1450,170 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
             <span>Time: {selectedClosingForPrint.time}</span>
           </div>
           <div className="text-[11px] mb-2">
-            Staff: {selectedClosingForPrint.closedBy || 'Cashier'}
+            <span>Staff: {selectedClosingForPrint.closedBy || 'Cashier'}</span>
           </div>
 
-          <div className="border-t border-dashed border-black pt-1 pb-1">
-            <p className="font-bold text-[11px] mb-1">CASH NOTES COUNT:</p>
-            {PAK_DENOMINATIONS.map(d => {
-              const c = selectedClosingForPrint.denominations[d.toString()] || 0;
-              if (c > 0) {
-                return (
-                  <div key={d} className="flex justify-between text-[10px]">
-                    <span>Rs. {d} x {c}</span>
-                    <span>Rs. {(d * c).toLocaleString()}</span>
-                  </div>
-                );
-              }
-              return null;
+          <div className="border-t border-b border-dashed border-black py-1.5 my-1.5">
+            <p className="font-bold text-[10px] uppercase mb-1">Opening Balances:</p>
+            <div className="flex justify-between text-[11px]">
+              <span>Opening Cash:</span>
+              <span>{currency} {(selectedClosingForPrint.openingCash || 0).toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between text-[11px]">
+              <span>Opening Digital:</span>
+              <span>{currency} {(selectedClosingForPrint.openingTotalOnline || 0).toLocaleString()}</span>
+            </div>
+          </div>
+
+          <div className="border-b border-dashed border-black py-1.5 mb-1.5">
+            <p className="font-bold text-[10px] uppercase mb-1">Physical Cash Notes:</p>
+            {PAK_DENOMINATIONS.map(denom => {
+              const count = selectedClosingForPrint.denominations[denom.toString()] || 0;
+              if (count === 0) return null;
+              return (
+                <div key={denom} className="flex justify-between text-[11px]">
+                  <span>Rs. {denom} x {count}</span>
+                  <span>{currency} {(denom * count).toLocaleString()}</span>
+                </div>
+              );
             })}
             {selectedClosingForPrint.coins > 0 && (
-              <div className="flex justify-between text-[10px]">
-                <span>Coins/Change</span>
-                <span>Rs. {selectedClosingForPrint.coins.toLocaleString()}</span>
+              <div className="flex justify-between text-[11px]">
+                <span>Loose Coins / Change</span>
+                <span>{currency} {selectedClosingForPrint.coins.toLocaleString()}</span>
               </div>
             )}
-            <div className="flex justify-between font-bold text-[11px] pt-1 border-t border-dotted border-black">
-              <span>Total Cash:</span>
-              <span>Rs. {selectedClosingForPrint.totalCash.toLocaleString()}</span>
+            <div className="flex justify-between font-bold text-xs pt-1 border-t border-dotted border-black mt-1">
+              <span>Total Physical Cash:</span>
+              <span>{currency} {selectedClosingForPrint.totalCash.toLocaleString()}</span>
             </div>
           </div>
 
           {selectedClosingForPrint.onlineBalances && selectedClosingForPrint.onlineBalances.length > 0 && (
-            <div className="border-t border-dashed border-black pt-1 pb-1">
-              <p className="font-bold text-[11px] mb-1">DIGITAL ACCOUNTS:</p>
+            <div className="border-b border-dashed border-black py-1.5 mb-1.5">
+              <p className="font-bold text-[10px] uppercase mb-1">Digital Accounts:</p>
               {selectedClosingForPrint.onlineBalances.map(acc => (
-                <div key={acc.accountId} className="flex justify-between text-[10px]">
+                <div key={acc.accountId} className="flex justify-between text-[11px]">
                   <span>{acc.accountName}</span>
-                  <span>Rs. {acc.balance.toLocaleString()}</span>
+                  <span>{currency} {acc.balance.toLocaleString()}</span>
                 </div>
               ))}
-              <div className="flex justify-between font-bold text-[11px] pt-1 border-t border-dotted border-black">
+              <div className="flex justify-between font-bold text-xs pt-1 border-t border-dotted border-black mt-1">
                 <span>Total Digital:</span>
-                <span>Rs. {selectedClosingForPrint.totalOnline.toLocaleString()}</span>
+                <span>{currency} {selectedClosingForPrint.totalOnline.toLocaleString()}</span>
               </div>
             </div>
           )}
 
-          <div className="border-t-2 border-black pt-1 pb-1 my-1">
-            <div className="flex justify-between font-black text-xs">
-              <span>GRAND TOTAL:</span>
-              <span>Rs. {selectedClosingForPrint.grandTotal.toLocaleString()}</span>
+          <div className="py-1.5">
+            <div className="flex justify-between font-extrabold text-sm">
+              <span>GRAND CLOSING TOTAL:</span>
+              <span>{currency} {selectedClosingForPrint.grandTotal.toLocaleString()}</span>
             </div>
+            {selectedClosingForPrint.difference !== undefined && (
+              <div className="flex justify-between text-xs pt-1">
+                <span>Difference from Expected:</span>
+                <span>
+                  {selectedClosingForPrint.difference >= 0 ? '+' : ''}
+                  {currency} {selectedClosingForPrint.difference.toLocaleString()}
+                </span>
+              </div>
+            )}
           </div>
 
-          <div className="text-center pt-3 border-t border-dashed border-black text-[9px] mt-2">
-            <p className="font-bold">Created by HAMMAD RAZA DEVELOPMENT</p>
+          {selectedClosingForPrint.notes && (
+            <div className="border-t border-dashed border-black pt-1.5 mt-1 text-[10px]">
+              <span>Notes: {selectedClosingForPrint.notes}</span>
+            </div>
+          )}
+
+          <div className="text-center border-t border-dashed border-black pt-2 mt-2 text-[9px]">
+            <p>Generated by POS Pro System</p>
           </div>
         </div>
       )}
 
       {/* Add Online Account Modal */}
       {isAddAccountModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl space-y-4 border border-slate-100 animate-in fade-in">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-              <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-blue-600" /> Add Digital Account
-              </h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-100">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-blue-600" />
+                <h3 className="font-bold text-slate-900 text-sm">Add New Digital Account</h3>
+              </div>
               <button
                 type="button"
                 onClick={() => setIsAddAccountModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600"
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100"
               >
-                ×
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             <form onSubmit={handleCreateOnlineAccount} className="space-y-3 text-xs">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Account / Bank Name *
-                </label>
+                <label className="block font-semibold text-slate-700 mb-1">Account / Bank Name *</label>
                 <input
                   type="text"
                   required
                   value={newAccountName}
                   onChange={e => setNewAccountName(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:outline-none focus:border-blue-600 focus:bg-white"
+                  placeholder="e.g. Meezan Bank Current, Shop JazzCash"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:outline-none focus:border-blue-600"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Account Type
-                </label>
+                <label className="block font-semibold text-slate-700 mb-1">Channel / Type</label>
                 <select
                   value={newBankType}
                   onChange={e => setNewBankType(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-semibold focus:outline-none focus:border-blue-600"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:outline-none focus:border-blue-600"
                 >
-                  <option value="Wallet">Mobile Wallet (Easypaisa / JazzCash / Nayapay / Sadapay)</option>
-                  <option value="Bank">Bank Account (Meezan / HBL / UBL / etc.)</option>
-                  <option value="Cash Drawer">Secondary Cash Drawer</option>
+                  <option value="Bank">Bank Account</option>
+                  <option value="JazzCash">JazzCash</option>
+                  <option value="Easypaisa">Easypaisa</option>
+                  <option value="Card">Card Machine</option>
+                  <option value="Wallet">Digital Wallet</option>
                 </select>
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Account / Mobile Number
-                </label>
+                <label className="block font-semibold text-slate-700 mb-1">Account / IBAN Number (Optional)</label>
                 <input
                   type="text"
                   value={newAccountNumber}
                   onChange={e => setNewAccountNumber(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono focus:outline-none focus:border-blue-600 focus:bg-white"
+                  placeholder="0300-1234567 or IBAN"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono focus:outline-none focus:border-blue-600"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Account Title
-                </label>
+                <label className="block font-semibold text-slate-700 mb-1">Account Title (Optional)</label>
                 <input
                   type="text"
                   value={newAccountTitle}
                   onChange={e => setNewAccountTitle(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:outline-none focus:border-blue-600 focus:bg-white"
+                  placeholder="Account Holder Name"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:outline-none focus:border-blue-600"
                 />
               </div>
 
-              <div className="pt-2 flex justify-end gap-2">
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsAddAccountModalOpen(false)}
-                  className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium text-xs rounded-xl"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-md"
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md shadow-blue-500/20"
                 >
-                  Add Account
+                  Save Account
                 </button>
               </div>
             </form>
@@ -1241,305 +1621,37 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
         </div>
       )}
 
-      {/* Real-Time History Record Detail Modal */}
-      {selectedHistoryRecord && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-4xl w-full p-5 sm:p-6 shadow-2xl space-y-4 border border-slate-100 my-auto animate-in fade-in zoom-in-95 max-h-[92vh] flex flex-col">
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
-                  <Calculator className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
-                    <span>Daily Closing Record & Realtime Audit</span>
-                    <span className="text-xs font-mono font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-lg">
-                      {selectedHistoryRecord.date} • {selectedHistoryRecord.time || 'Shift End'}
-                    </span>
-                  </h3>
-                  <p className="text-[11px] text-slate-400">
-                    Recorded by: <span className="font-semibold text-slate-600">{selectedHistoryRecord.closedBy || 'Cashier'}</span>
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handlePrintRecord(selectedHistoryRecord)}
-                  className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition cursor-pointer"
-                  title="Print Slip"
-                >
-                  <Printer className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleShareWhatsApp(selectedHistoryRecord)}
-                  className="p-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-600 transition cursor-pointer"
-                  title="Share WhatsApp"
-                >
-                  <Share2 className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedHistoryRecord(null)}
-                  className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Scrollable Content */}
-            <div className="overflow-y-auto space-y-4 pr-1 text-xs">
-              {/* Grand Summary Strip */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="bg-emerald-50/70 border border-emerald-100 rounded-xl p-3">
-                  <span className="text-[10px] font-bold text-emerald-800 uppercase block">Counted Cash</span>
-                  <p className="text-base font-extrabold font-mono text-emerald-700 mt-0.5">
-                    {currency} {selectedHistoryRecord.totalCash.toLocaleString()}
-                  </p>
-                </div>
-                <div className="bg-blue-50/70 border border-blue-100 rounded-xl p-3">
-                  <span className="text-[10px] font-bold text-blue-800 uppercase block">Digital Balances</span>
-                  <p className="text-base font-extrabold font-mono text-blue-700 mt-0.5">
-                    {currency} {selectedHistoryRecord.totalOnline.toLocaleString()}
-                  </p>
-                </div>
-                <div className="bg-slate-900 text-white rounded-xl p-3">
-                  <span className="text-[10px] font-bold text-slate-300 uppercase block">Grand Total</span>
-                  <p className="text-base font-extrabold font-mono text-white mt-0.5">
-                    {currency} {selectedHistoryRecord.grandTotal.toLocaleString()}
-                  </p>
-                </div>
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase block">Reconciliation</span>
-                  <p className="text-base font-extrabold font-mono mt-0.5">
-                    {selectedHistoryRecord.difference === undefined || selectedHistoryRecord.difference === 0 ? (
-                      <span className="text-emerald-600">Exact Match</span>
-                    ) : selectedHistoryRecord.difference > 0 ? (
-                      <span className="text-blue-600">+{currency} {selectedHistoryRecord.difference.toLocaleString()} Surplus</span>
-                    ) : (
-                      <span className="text-rose-600">-{currency} {Math.abs(selectedHistoryRecord.difference).toLocaleString()} Shortage</span>
-                    )}
-                  </p>
-                </div>
-              </div>
-
-              {selectedHistoryRecord.notes && (
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900">
-                  <span className="font-bold block text-[11px] mb-0.5">Closing Note:</span>
-                  <p className="text-xs">{selectedHistoryRecord.notes}</p>
-                </div>
-              )}
-
-              {/* 2 Columns: Denominations breakdown + Digital accounts */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Denominations Table */}
-                <div className="border border-slate-200/80 rounded-xl overflow-hidden bg-white">
-                  <div className="bg-slate-50 p-2.5 font-bold text-slate-800 border-b border-slate-200 text-xs flex justify-between">
-                    <span>Currency Notes Breakdown</span>
-                    <span className="font-mono text-emerald-700">{currency} {selectedHistoryRecord.totalCash.toLocaleString()}</span>
-                  </div>
-                  <div className="divide-y divide-slate-100 max-h-48 overflow-y-auto">
-                    {PAK_DENOMINATIONS.map(d => {
-                      const c = selectedHistoryRecord.denominations[d.toString()] || 0;
-                      if (c === 0) return null;
-                      return (
-                        <div key={d} className="flex justify-between items-center p-2 text-xs">
-                          <span className="font-semibold text-slate-700">Rs. {d.toLocaleString()}</span>
-                          <span className="font-mono text-slate-500">× {c} notes</span>
-                          <span className="font-mono font-bold text-slate-900">{currency} {(d * c).toLocaleString()}</span>
-                        </div>
-                      );
-                    })}
-                    {selectedHistoryRecord.coins > 0 && (
-                      <div className="flex justify-between items-center p-2 text-xs bg-slate-50/50">
-                        <span className="font-semibold text-slate-700">Loose Coins / Change</span>
-                        <span className="font-mono text-slate-400">-</span>
-                        <span className="font-mono font-bold text-slate-900">{currency} {selectedHistoryRecord.coins.toLocaleString()}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Digital Accounts Table */}
-                <div className="border border-slate-200/80 rounded-xl overflow-hidden bg-white">
-                  <div className="bg-slate-50 p-2.5 font-bold text-slate-800 border-b border-slate-200 text-xs flex justify-between">
-                    <span>Digital & Online Accounts</span>
-                    <span className="font-mono text-blue-700">{currency} {selectedHistoryRecord.totalOnline.toLocaleString()}</span>
-                  </div>
-                  <div className="divide-y divide-slate-100 max-h-48 overflow-y-auto">
-                    {(selectedHistoryRecord.onlineBalances || []).length === 0 ? (
-                      <div className="p-4 text-center text-slate-400 text-xs">No digital accounts recorded for this date</div>
-                    ) : (
-                      selectedHistoryRecord.onlineBalances.map(acc => (
-                        <div key={acc.accountId} className="flex justify-between items-center p-2 text-xs">
-                          <span className="font-semibold text-slate-700">{acc.accountName}</span>
-                          <span className="font-mono font-bold text-slate-900">{currency} {acc.balance.toLocaleString()}</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Realtime Transactions Logged on this Date */}
-              <div className="border border-slate-200/80 rounded-2xl p-4 bg-slate-50/60 space-y-3">
-                <h4 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider flex items-center justify-between">
-                  <span>Day's Realtime Transactions Audit ({selectedHistoryRecord.date})</span>
-                  <span className="text-[10px] font-normal text-slate-500">Live matched entries</span>
-                </h4>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 text-xs">
-                  {/* Sales */}
-                  <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
-                      <ShoppingBag className="w-3.5 h-3.5 text-emerald-600" /> Sales ({selectedHistorySales.length})
-                    </span>
-                    <p className="font-mono font-black text-emerald-600 text-sm mt-1">
-                      {currency} {selectedHistorySales.reduce((a, s) => a + (s.amountPaid !== undefined ? s.amountPaid : s.grandTotal), 0).toLocaleString()}
-                    </p>
-                    <div className="mt-2 space-y-1 max-h-28 overflow-y-auto pr-1">
-                      {selectedHistorySales.slice(0, 5).map(s => (
-                        <div key={s.invNo} className="text-[10px] flex justify-between text-slate-600">
-                          <span className="truncate max-w-[100px]">{s.custName || 'Walk-in'}</span>
-                          <span className="font-mono font-bold">{currency} {s.grandTotal.toLocaleString()}</span>
-                        </div>
-                      ))}
-                      {selectedHistorySales.length > 5 && (
-                        <p className="text-[9px] text-slate-400">+{selectedHistorySales.length - 5} more sales</p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Supplier Purchases */}
-                  <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
-                      <Truck className="w-3.5 h-3.5 text-amber-600" /> Purchases ({selectedHistoryPurchases.length})
-                    </span>
-                    <p className="font-mono font-black text-amber-600 text-sm mt-1">
-                      {currency} {selectedHistoryPurchases.reduce((a, p) => a + (p.paidAmount || 0), 0).toLocaleString()}
-                    </p>
-                    <div className="mt-2 space-y-1 max-h-28 overflow-y-auto pr-1">
-                      {selectedHistoryPurchases.slice(0, 5).map(p => (
-                        <div key={p.id} className="text-[10px] flex justify-between text-slate-600">
-                          <span className="truncate max-w-[100px]">{p.partyName}</span>
-                          <span className="font-mono font-bold">{currency} {(p.paidAmount || 0).toLocaleString()}</span>
-                        </div>
-                      ))}
-                      {selectedHistoryPurchases.length > 5 && (
-                        <p className="text-[9px] text-slate-400">+{selectedHistoryPurchases.length - 5} more bills</p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Expenses */}
-                  <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
-                      <Receipt className="w-3.5 h-3.5 text-rose-600" /> Expenses ({selectedHistoryExpenses.length})
-                    </span>
-                    <p className="font-mono font-black text-rose-600 text-sm mt-1">
-                      {currency} {selectedHistoryExpenses.reduce((a, e) => a + (e.amount || 0), 0).toLocaleString()}
-                    </p>
-                    <div className="mt-2 space-y-1 max-h-28 overflow-y-auto pr-1">
-                      {selectedHistoryExpenses.slice(0, 5).map(e => (
-                        <div key={e.id} className="text-[10px] flex justify-between text-slate-600">
-                          <span className="truncate max-w-[100px]">{e.description}</span>
-                          <span className="font-mono font-bold">{currency} {e.amount.toLocaleString()}</span>
-                        </div>
-                      ))}
-                      {selectedHistoryExpenses.length > 5 && (
-                        <p className="text-[9px] text-slate-400">+{selectedHistoryExpenses.length - 5} more expenses</p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Khata Recoveries */}
-                  <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
-                      <BookOpen className="w-3.5 h-3.5 text-purple-600" /> Khata Collected ({selectedHistoryKhataRecoveries.length})
-                    </span>
-                    <p className="font-mono font-black text-purple-600 text-sm mt-1">
-                      {currency} {selectedHistoryKhataRecoveries.reduce((a, k) => a + k.amount, 0).toLocaleString()}
-                    </p>
-                    <div className="mt-2 space-y-1 max-h-28 overflow-y-auto pr-1">
-                      {selectedHistoryKhataRecoveries.slice(0, 5).map((k, idx) => (
-                        <div key={idx} className="text-[10px] flex justify-between text-slate-600">
-                          <span className="truncate max-w-[100px]">{k.customerName}</span>
-                          <span className="font-mono font-bold">{currency} {k.amount.toLocaleString()}</span>
-                        </div>
-                      ))}
-                      {selectedHistoryKhataRecoveries.length > 5 && (
-                        <p className="text-[9px] text-slate-400">+{selectedHistoryKhataRecoveries.length - 5} more recoveries</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Actions */}
-            <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-              <span className="text-[11px] text-slate-400">
-                End-of-day roznamcha audit
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handlePrintRecord(selectedHistoryRecord)}
-                  className="px-3 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
-                >
-                  <Printer className="w-3.5 h-3.5" /> Print Thermal Slip
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleShareWhatsApp(selectedHistoryRecord)}
-                  className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-xs"
-                >
-                  <Share2 className="w-3.5 h-3.5" /> WhatsApp Summary
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedHistoryRecord(null)}
-                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Account Confirmation */}
+      {/* Delete Account Modal */}
       <ConfirmModal
         isOpen={!!accountToDelete}
         title="Delete Digital Account"
-        message={`Are you sure you want to remove "${accountToDelete?.name}" from your daily closing accounts?`}
-        confirmText="Delete Account"
+        message={`Are you sure you want to remove account "${accountToDelete?.name}"? Existing saved closing records will remain safe.`}
+        confirmText="Yes, Delete"
+        cancelText="Cancel"
+        isDestructive={true}
         onConfirm={() => {
           if (accountToDelete) {
             onDeleteOnlineAccount(accountToDelete.id);
+            showToast(`Account "${accountToDelete.name}" removed`, 'info');
             setAccountToDelete(null);
-            showToast('Account removed', 'info');
           }
         }}
         onClose={() => setAccountToDelete(null)}
       />
 
-      {/* Delete Closing Record Confirmation */}
+      {/* Delete Closing Record Modal */}
       <ConfirmModal
         isOpen={!!closingToDelete}
         title="Delete Closing Record"
-        message={`Are you sure you want to delete the daily closing record of date ${closingToDelete?.date}?`}
-        confirmText="Delete Record"
+        message={`Are you sure you want to delete the daily closing record for ${closingToDelete?.date}?`}
+        confirmText="Yes, Delete Record"
+        cancelText="Cancel"
+        isDestructive={true}
         onConfirm={() => {
           if (closingToDelete) {
             onDeleteClosing(closingToDelete.id);
+            showToast(`Closing record for ${closingToDelete.date} deleted`, 'info');
             setClosingToDelete(null);
-            showToast('Closing record deleted', 'info');
           }
         }}
         onClose={() => setClosingToDelete(null)}
@@ -1547,3 +1659,5 @@ export const DailyClosingTab: React.FC<DailyClosingTabProps> = ({
     </div>
   );
 };
+
+export const DailyClosingTab = React.memo(DailyClosingTabComponent);

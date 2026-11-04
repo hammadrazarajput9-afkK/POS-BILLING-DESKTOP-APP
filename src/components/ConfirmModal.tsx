@@ -52,11 +52,11 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
           </button>
         </div>
 
-        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-2 border-t border-slate-100">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs transition cursor-pointer"
+            className="w-full sm:w-auto px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs transition cursor-pointer text-center"
           >
             {cancelText}
           </button>
@@ -66,7 +66,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
               onConfirm();
               onClose();
             }}
-            className={`px-4 py-2 rounded-xl font-bold text-xs transition shadow-sm cursor-pointer ${
+            className={`w-full sm:w-auto px-4 py-2 rounded-xl font-bold text-xs transition shadow-sm cursor-pointer text-center ${
               isDestructive
                 ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-500/20'
                 : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20'

@@ -1,21 +1,34 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   AppData,
-  InventoryItem,
-  KhataCustomer,
-  SaleRecord,
   ShopSettings,
   ActivityLog,
   ExpenseItem,
   DailyClosingRecord,
   OnlineAccount,
-  SupplierPurchase
+  SupplierPurchase,
+  InventoryItem,
+  UserAccount,
 } from './types';
-import { loadStoredData, saveStoredData, defaultExpenseCategories, initializeIndexedDB } from './utils/storage';
+import { hasPermission } from './utils/permissions';
+import {
+  loadStoredData,
+  saveStoredData,
+  defaultExpenseCategories,
+  migrateAndInitializeData,
+  saveExpenseItemToFirestore,
+  deleteExpenseItemFromFirestore,
+  saveRootConfigToFirestore,
+  saveActivityLogToFirestore,
+  clearAllStoredData,
+} from './utils/storage';
+import { recordImeisReversed, recordImeisAvailable } from './utils/imeiManager';
+import { generateEntityId } from './utils/id';
 import { ToastProvider, useToast } from './components/Toast';
 import { FormDraftProvider } from './context/FormDraftContext';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
+import { AuthScreen } from './components/AuthScreen';
 import { DashboardTab } from './components/DashboardTab';
 import { PosTab } from './components/PosTab';
 import { InventoryTab } from './components/InventoryTab';
@@ -26,6 +39,7 @@ import { ExpensesTab } from './components/ExpensesTab';
 import { ReportsTab } from './components/ReportsTab';
 import { ActivityCenterTab } from './components/ActivityCenterTab';
 import { ReceiptModal } from './components/ReceiptModal';
+import { SalesReturnModal } from './components/SalesReturnModal';
 import { StockModal } from './components/StockModal';
 import { AddKhataModal, SettleKhataModal } from './components/KhataModal';
 import { ExpenseModal } from './components/ExpenseModal';
@@ -34,344 +48,170 @@ import { SettingsModal } from './components/SettingsModal';
 import { DailyClosingTab } from './components/DailyClosingTab';
 import { TabSettingsModal } from './components/TabSettingsModal';
 import { PdfExportModal } from './components/PdfExportModal';
+import { BottomNavigation } from './components/BottomNavigation';
+import { PWAUpdateBanner } from './components/PWAUpdateBanner';
+
+// Modular Custom Hooks
+import { useSales } from './hooks/useSales';
+import { useInventory } from './hooks/useInventory';
+import { useKhata } from './hooks/useKhata';
 
 function AppContent() {
+  const { showToast } = useToast();
   const [data, setData] = useState<AppData>(() => loadStoredData());
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(true);
 
   // PDF Export Modal state
   const [pdfModalOpen, setPdfModalOpen] = useState(false);
-  const [pdfModalTab, setPdfModalTab] = useState<'sales' | 'inventory' | 'khata' | 'expenses' | 'activity' | 'dailyClosing'>('sales');
-
-  const handleOpenPdfReport = (tab: 'sales' | 'inventory' | 'khata' | 'expenses' | 'activity' | 'dailyClosing') => {
-    setPdfModalTab(tab);
-    setPdfModalOpen(true);
-  };
-
-  // Reconcile high-capacity IndexedDB data on mount
-  useEffect(() => {
-    initializeIndexedDB(updatedData => {
-      setData(updatedData);
-    });
-  }, []);
-
-  // Modals state
-  const [stockModalOpen, setStockModalOpen] = useState(false);
-  const [editStockItem, setEditStockItem] = useState<InventoryItem | null>(null);
-
-  const [addKhataModalOpen, setAddKhataModalOpen] = useState(false);
-  const [settleKhataModalOpen, setSettleKhataModalOpen] = useState(false);
-  const [settleCustomer, setSettleCustomer] = useState<KhataCustomer | null>(null);
-  const [selectedKhataCustomerId, setSelectedKhataCustomerId] = useState<string | null>(null);
+  const [pdfModalTab, setPdfModalTab] = useState<
+    'sales' | 'inventory' | 'khata' | 'expenses' | 'activity' | 'dailyClosing'
+  >('sales');
 
   const [expenseModalOpen, setExpenseModalOpen] = useState(false);
   const [expenseCategoryModalOpen, setExpenseCategoryModalOpen] = useState(false);
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [tabSettingsModalOpen, setTabSettingsModalOpen] = useState(false);
 
-  const [receiptModalOpen, setReceiptModalOpen] = useState(false);
-  const [activeReceiptSale, setActiveReceiptSale] = useState<SaleRecord | null>(null);
+  // Centralized Activity Logger
+  const logActivity = useCallback(
+    (
+      category: ActivityLog['category'],
+      title: string,
+      details: string,
+      type?: ActivityLog['type'],
+      relatedRecordId?: string,
+      beforeValue?: string,
+      afterValue?: string
+    ) => {
+      const role = data.currentRole || 'admin';
+      const newActivity: ActivityLog = {
+        id: generateEntityId('ACT'),
+        timestamp: new Date().toISOString(),
+        category,
+        title,
+        details,
+        type,
+        user: role === 'salesman' ? 'Salesman Terminal' : 'Administrator',
+        userRole: role,
+        relatedRecordId,
+        beforeValue,
+        afterValue,
+      };
 
-  const { showToast } = useToast();
+      setData(prev => ({
+        ...prev,
+        activities: [newActivity, ...(prev.activities || [])].slice(0, 500),
+      }));
 
-  // Apply theme to document root
+      saveActivityLogToFirestore(newActivity).catch(err => {
+        console.warn('Activity log Firestore sync warning:', err);
+      });
+    },
+    [data.currentRole]
+  );
+
+  // Modular Business Logic Hooks
+  const {
+    handleCompleteSale,
+    handleDeleteSale,
+    handleCancelSale,
+    handleUpdateSale,
+    handleOpenSalesReturn,
+    handleSaveSalesReturn,
+    receiptModalOpen,
+    setReceiptModalOpen,
+    activeReceiptSale,
+    setActiveReceiptSale,
+    saleToEdit,
+    setSaleToEdit,
+    salesReturnModalOpen,
+    setSalesReturnModalOpen,
+    salesReturnInitialSale,
+    setSalesReturnInitialSale,
+  } = useSales({ data, setData, logActivity, showToast });
+
+  const {
+    handleSaveStock,
+    handleDeleteInventory,
+    handleRestoreInventory,
+    handleStockAdjustment,
+    handleAddCategory,
+    handleDeleteCategory,
+    handleAddProductFromPurchases,
+    stockModalOpen,
+    setStockModalOpen,
+    editStockItem,
+    setEditStockItem,
+  } = useInventory({ data, setData, logActivity, showToast });
+
+  const {
+    handleSaveKhataCustomer,
+    handleSettleKhataBalance,
+    handleUpdateKhataBalance,
+    handleDeleteKhataCustomer,
+    addKhataModalOpen,
+    setAddKhataModalOpen,
+    settleKhataModalOpen,
+    setSettleKhataModalOpen,
+    settleCustomer,
+    setSettleCustomer,
+    selectedKhataCustomerId,
+    setSelectedKhataCustomerId,
+  } = useKhata({ data, setData, logActivity, showToast });
+
+  // Safe Schema Migration and Firebase Synchronization on Mount (No Risky Data Wipe!)
+  useEffect(() => {
+    migrateAndInitializeData(updatedData => {
+      setData(updatedData);
+    });
+  }, []);
+
+  // Safeguard: Ensure salesman role is never on admin-only tabs
+  useEffect(() => {
+    if (data.currentRole === 'salesman') {
+      const restrictedTabs = ['dashboard', 'reports', 'activity', 'purchases'];
+      if (restrictedTabs.includes(activeTab)) {
+        setActiveTab('pos');
+      }
+    }
+  }, [data.currentRole, activeTab]);
+
+  // Apply visual theme to document root
   useEffect(() => {
     const activeTheme = data.settings?.theme || 'blue-white';
     document.documentElement.setAttribute('data-theme', activeTheme);
   }, [data.settings?.theme]);
 
-  // Sync to local storage
+  // Sync to local storage mirror on state updates
   useEffect(() => {
     saveStoredData(data);
   }, [data]);
 
-  // Centralized Activity Logger
-  const logActivity = (
-    category: ActivityLog['category'],
-    title: string,
-    details: string
+  const handleOpenPdfReport = (
+    tab: 'sales' | 'inventory' | 'khata' | 'expenses' | 'activity' | 'dailyClosing'
   ) => {
-    const newActivity: ActivityLog = {
-      id: 'ACT-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
-      timestamp: new Date().toISOString(),
-      category,
-      title,
-      details,
-    };
-
-    setData(prev => ({
-      ...prev,
-      activities: [newActivity, ...(prev.activities || [])].slice(0, 500),
-    }));
+    setPdfModalTab(tab);
+    setPdfModalOpen(true);
   };
 
-  // Inventory handlers
-  const handleSaveStock = (
-    itemData: Omit<InventoryItem, 'id' | 'createdAt'>,
-    existingId?: string
-  ) => {
-    if (existingId) {
-      setData(prev => {
-        const updated = prev.inventory.map(item =>
-          item.id === existingId ? { ...item, ...itemData } : item
-        );
-        return {
-          ...prev,
-          inventory: updated,
-        };
-      });
-
-      logActivity(
-        'Inventory',
-        `Updated Product: ${itemData.name}`,
-        `Category: ${itemData.category}, Qty: ${itemData.qty}, Sale: ${data.settings.currency} ${itemData.salePrice}`
-      );
-    } else {
-      const newItem: InventoryItem = {
-        ...itemData,
-        id: 'STK-' + Date.now(),
-        createdAt: new Date().toISOString(),
-      };
-
-      setData(prev => ({
-        ...prev,
-        inventory: [newItem, ...prev.inventory],
-        purchasesLedger: [
-          {
-            id: 'PL-' + Date.now(),
-            date: new Date().toISOString(),
-            itemTitle: newItem.name,
-            qty: newItem.qty,
-            costPrice: newItem.costPrice,
-            total: newItem.costPrice * newItem.qty,
-          },
-          ...prev.purchasesLedger,
-        ],
-      }));
-
-      logActivity(
-        'Inventory',
-        `Added New Product: ${newItem.name}`,
-        `Stock: ${newItem.qty} units @ Cost ${data.settings.currency} ${newItem.costPrice}, Sale ${data.settings.currency} ${newItem.salePrice}`
-      );
-    }
-  };
-
-  const handleDeleteInventory = (id: string) => {
-    const targetItem = data.inventory.find(i => i.id === id);
-    setData(prev => ({
-      ...prev,
-      inventory: prev.inventory.filter(i => i.id !== id),
-    }));
-
-    if (targetItem) {
-      logActivity(
-        'Inventory',
-        `Deleted Product: ${targetItem.name}`,
-        `Category: ${targetItem.category}, Last Qty: ${targetItem.qty}`
-      );
-    }
-  };
-
-  // Inventory Category handlers
-  const handleAddCategory = (categoryName: string) => {
-    const trimmed = categoryName.trim();
-    if (!trimmed) return;
-    setData(prev => {
-      const currentCats = prev.categories || ['Android Mobile', 'Keypad Mobile'];
-      if (currentCats.some(c => c.toLowerCase() === trimmed.toLowerCase())) return prev;
-      return {
-        ...prev,
-        categories: [...currentCats, trimmed],
-      };
-    });
-
-    logActivity('Category', `Created Category: ${trimmed}`, 'New product category registered');
-  };
-
-  const handleDeleteCategory = (categoryName: string): boolean => {
-    const trimmed = categoryName.trim();
-    const hasProducts = data.inventory.some(
-      item => item.category.toLowerCase() === trimmed.toLowerCase()
-    );
-
-    if (hasProducts) {
-      showToast(
-        `Cannot delete "${trimmed}": Category has active products in inventory!`,
-        'error'
-      );
-      return false;
-    }
-
-    setData(prev => ({
-      ...prev,
-      categories: (prev.categories || []).filter(
-        c => c.toLowerCase() !== trimmed.toLowerCase()
-      ),
-    }));
-
-    logActivity(
-      'Category',
-      `Deleted Category: ${trimmed}`,
-      'Category deleted safely'
-    );
-    showToast(`Category "${trimmed}" removed successfully`, 'success');
-    return true;
-  };
-
-  // Expense Category Handlers (Manage Categories feature for Expenses)
-  const handleAddExpenseCategory = (categoryName: string) => {
-    const trimmed = categoryName.trim();
-    if (!trimmed) return;
-    setData(prev => {
-      const currentCats = prev.expenseCategories || defaultExpenseCategories;
-      if (currentCats.some(c => c.toLowerCase() === trimmed.toLowerCase())) return prev;
-      return {
-        ...prev,
-        expenseCategories: [...currentCats, trimmed],
-      };
-    });
-
-    logActivity('Expense', `Created Expense Category: ${trimmed}`, 'New expense category registered');
-  };
-
-  const handleDeleteExpenseCategory = (categoryName: string): boolean => {
-    const trimmed = categoryName.trim();
-    const hasExpenses = data.expenses.some(
-      e => e.category.toLowerCase() === trimmed.toLowerCase()
-    );
-
-    if (hasExpenses) {
-      showToast(
-        `Cannot delete "${trimmed}": Category has active expenses!`,
-        'error'
-      );
-      return false;
-    }
-
-    setData(prev => ({
-      ...prev,
-      expenseCategories: (prev.expenseCategories || defaultExpenseCategories).filter(
-        c => c.toLowerCase() !== trimmed.toLowerCase()
-      ),
-    }));
-
-    logActivity(
-      'Expense',
-      `Deleted Expense Category: ${trimmed}`,
-      'Expense category deleted safely'
-    );
-    showToast(`Category "${trimmed}" removed successfully`, 'success');
-    return true;
-  };
-
-  // Khata handlers
-  const handleAddKhataCustomer = (customerData: {
-    name: string;
-    phone: string;
-    phone2?: string;
-    address?: string;
-    image?: string;
-  }) => {
-    const newCustomer: KhataCustomer = {
-      id: 'KHT-' + Date.now(),
-      name: customerData.name,
-      phone: customerData.phone,
-      phone2: customerData.phone2,
-      address: customerData.address,
-      image: customerData.image,
-      balance: 0,
-      lastUpdated: new Date().toISOString(),
-      history: [],
-    };
-
-    setData(prev => ({
-      ...prev,
-      khata: [newCustomer, ...prev.khata],
-    }));
-
-    logActivity(
-      'Khata',
-      `Created Customer Account: ${newCustomer.name}`,
-      `Phone: ${newCustomer.phone}${newCustomer.phone2 ? ` / ${newCustomer.phone2}` : ''}`
-    );
-
-    showToast(`Customer account opened for "${newCustomer.name}"`, 'success');
-    setActiveTab('khata');
-    setSelectedKhataCustomerId(newCustomer.id);
-  };
-
-  const handleUpdateKhataBalance = (
-    customerId: string,
-    type: 'credit' | 'payment',
-    amount: number,
-    note?: string
-  ) => {
-    const targetCust = data.khata.find(c => c.id === customerId);
-
-    setData(prev => ({
-      ...prev,
-      khata: prev.khata.map(c => {
-        if (c.id === customerId) {
-          const newBalance =
-            type === 'payment' ? Math.max(0, c.balance - amount) : c.balance + amount;
-          const newTx = {
-            id: 'TX-' + Date.now(),
-            date: new Date().toISOString(),
-            type,
-            amount,
-            note,
-          };
-          return {
-            ...c,
-            balance: newBalance,
-            lastUpdated: new Date().toISOString(),
-            history: [newTx, ...c.history],
-          };
-        }
-        return c;
-      }),
-    }));
-
-    if (targetCust) {
-      logActivity(
-        'Khata',
-        type === 'credit'
-          ? `Credit Given: ${data.settings.currency} ${amount.toLocaleString()}`
-          : `Payment Received: ${data.settings.currency} ${amount.toLocaleString()}`,
-        `Customer: ${targetCust.name} (${targetCust.phone})${note ? ` | Note: ${note}` : ''}`
-      );
-    }
-  };
-
-  const handleDeleteKhataCustomer = (id: string) => {
-    const targetCust = data.khata.find(c => c.id === id);
-    setData(prev => ({
-      ...prev,
-      khata: prev.khata.filter(c => c.id !== id),
-    }));
-
-    if (targetCust) {
-      logActivity(
-        'Khata',
-        `Deleted Customer Account: ${targetCust.name}`,
-        `Removed balance: ${data.settings.currency} ${targetCust.balance}`
-      );
-    }
-  };
-
-  // Expenses handlers
+  // Expenses Handlers
   const handleSaveExpense = (expenseData: {
     description: string;
-    category: any;
+    category: string;
     amount: number;
     date: string;
     image?: string;
     paymentMethod?: string;
+    accountId?: string;
   }) => {
+    if (!hasPermission(data.currentRole || 'admin', 'canManageExpenses')) {
+      showToast('Permission Denied: Expense creation is restricted to Administrators', 'error');
+      return;
+    }
+
     const newExp: ExpenseItem = {
-      id: 'EXP-' + Date.now(),
+      id: generateEntityId('EXP'),
       ...expenseData,
     };
 
@@ -380,31 +220,91 @@ function AppContent() {
       expenses: [newExp, ...prev.expenses],
     }));
 
+    saveExpenseItemToFirestore(newExp).catch(err => {
+      console.warn('Firestore expense save warning:', err);
+    });
+
     logActivity(
       'Expense',
       `Recorded Expense: ${expenseData.description}`,
-      `${data.settings.currency} ${expenseData.amount.toLocaleString()} [${expenseData.category}]${expenseData.paymentMethod ? ` via ${expenseData.paymentMethod}` : ''}`
+      `${data.settings.currency} ${expenseData.amount.toLocaleString()} [${expenseData.category}]${expenseData.paymentMethod ? ` via ${expenseData.paymentMethod}` : ''}`,
+      'create',
+      newExp.id
     );
+
+    showToast('Expense recorded successfully', 'success');
   };
 
   const handleDeleteExpense = (id: string) => {
+    if (!hasPermission(data.currentRole || 'admin', 'canDeleteExpenses')) {
+      showToast('Permission Denied: Deleting expenses is restricted to Administrators', 'error');
+      return;
+    }
+
     const targetExp = data.expenses.find(e => e.id === id);
     setData(prev => ({
       ...prev,
       expenses: prev.expenses.filter(e => e.id !== id),
     }));
 
+    deleteExpenseItemFromFirestore(id).catch(err => {
+      console.warn('Firestore expense delete warning:', err);
+    });
+
     if (targetExp) {
       logActivity(
         'Expense',
         `Deleted Expense: ${targetExp.description}`,
-        `Amount: ${data.settings.currency} ${targetExp.amount}`
+        `Amount: ${data.settings.currency} ${targetExp.amount}`,
+        'delete',
+        id
       );
     }
+
+    showToast('Expense deleted', 'info');
   };
 
-  // Daily Closing & Digital Accounts Handlers
+  const handleAddExpenseCategory = (category: string) => {
+    const trimmed = category.trim();
+    if (!trimmed) return;
+    const currentCats = data.expenseCategories || defaultExpenseCategories;
+    if (currentCats.some(c => c.toLowerCase() === trimmed.toLowerCase())) {
+      showToast('Category already exists', 'warning');
+      return;
+    }
+    const updated = [...currentCats, trimmed];
+    setData(prev => ({ ...prev, expenseCategories: updated }));
+    saveRootConfigToFirestore({ expenseCategories: updated }).catch(err => {
+      console.warn('Firestore expense categories sync warning:', err);
+    });
+    showToast(`Category "${trimmed}" added`, 'success');
+  };
+
+  const handleDeleteExpenseCategory = (category: string): boolean => {
+    const inUse = data.expenses.some(e => e.category === category);
+    if (inUse) {
+      showToast(`Cannot delete category "${category}" because it is in use by expenses`, 'error');
+      return false;
+    }
+    const currentCats = data.expenseCategories || defaultExpenseCategories;
+    const updated = currentCats.filter(c => c !== category);
+    setData(prev => ({ ...prev, expenseCategories: updated }));
+    saveRootConfigToFirestore({ expenseCategories: updated }).catch(err => {
+      console.warn('Firestore expense categories sync warning:', err);
+    });
+    showToast(`Category "${category}" deleted`, 'info');
+    return true;
+  };
+
+  // Daily Closing Handlers
   const handleSaveDailyClosing = (record: Omit<DailyClosingRecord, 'id'>) => {
+    if (!hasPermission(data.currentRole || 'admin', 'canManageDailyClosing')) {
+      showToast('Permission Denied: Daily closing modification is restricted to Administrators', 'error');
+      return;
+    }
+
+    const newRecordId = generateEntityId('DCL');
+
     setData(prev => {
       const existingIndex = (prev.dailyClosings || []).findIndex(r => r.date === record.date);
       if (existingIndex >= 0) {
@@ -419,7 +319,7 @@ function AppContent() {
         };
       } else {
         const newRecord: DailyClosingRecord = {
-          id: 'DCL-' + Date.now(),
+          id: newRecordId,
           ...record,
         };
         return {
@@ -428,18 +328,34 @@ function AppContent() {
         };
       }
     });
+
+    logActivity(
+      'Closing',
+      `Performed Daily Closing: ${record.date}`,
+      `Cash: ${data.settings.currency} ${record.totalCash.toLocaleString()} | Total: ${data.settings.currency} ${record.grandTotal.toLocaleString()}`,
+      'create'
+    );
+
+    showToast('Daily closing saved successfully', 'success');
   };
 
   const handleDeleteDailyClosing = (id: string) => {
+    if (!hasPermission(data.currentRole || 'admin', 'canDeleteDailyClosing')) {
+      showToast('Permission Denied: Deleting historical daily closings is restricted to Administrators', 'error');
+      return;
+    }
+
     setData(prev => ({
       ...prev,
       dailyClosings: (prev.dailyClosings || []).filter(r => r.id !== id),
     }));
+
+    showToast('Daily closing record deleted', 'info');
   };
 
   const handleAddOnlineAccount = (acc: Omit<OnlineAccount, 'id'>) => {
     const newAccount: OnlineAccount = {
-      id: 'OA-' + Date.now(),
+      id: generateEntityId('OA'),
       ...acc,
     };
 
@@ -451,8 +367,12 @@ function AppContent() {
     logActivity(
       'Settings',
       `Added Online Account: ${acc.name}`,
-      `Type: ${acc.bankType || 'Wallet'}${acc.accountNumber ? ` (${acc.accountNumber})` : ''}`
+      `Type: ${acc.bankType || 'Wallet'}${acc.accountNumber ? ` (${acc.accountNumber})` : ''}`,
+      'create',
+      newAccount.id
     );
+
+    showToast(`Online account "${acc.name}" added`, 'success');
   };
 
   const handleDeleteOnlineAccount = (id: string) => {
@@ -463,120 +383,18 @@ function AppContent() {
     }));
 
     if (acc) {
-      logActivity('Settings', `Deleted Online Account: ${acc.name}`, 'Account removed from daily closing');
+      logActivity('Settings', `Deleted Online Account: ${acc.name}`, 'Account removed from daily closing', 'delete', id);
     }
+
+    showToast('Online account removed', 'info');
   };
 
-  const handleSaveTabPreferences = (tabId: string, prefs: Record<string, any>) => {
-    setData(prev => ({
-      ...prev,
-      tabPreferences: {
-        ...(prev.tabPreferences || {}),
-        [tabId]: prefs,
-      },
-    }));
-  };
-
-  // Sale Checkout Handler with Cash vs Credit Support
-  const handleCompleteSale = (sale: SaleRecord) => {
-    // 1. Deduct stock from inventory
-    // 2. If credit sale with due balance, update customer Khata ledger automatically!
-    setData(prev => {
-      const updatedInventory = prev.inventory.map(invItem => {
-        const soldItem = sale.items.find(s => s.id === invItem.id);
-        if (soldItem) {
-          return {
-            ...invItem,
-            qty: Math.max(0, invItem.qty - soldItem.qty),
-          };
-        }
-        return invItem;
-      });
-
-      let updatedKhata = prev.khata;
-      if (sale.invoiceType === 'credit' && sale.amountDue && sale.amountDue > 0) {
-        let matched = false;
-        updatedKhata = prev.khata.map(c => {
-          const isTarget = sale.khataCustomerId
-            ? c.id === sale.khataCustomerId
-            : c.name.toLowerCase() === (sale.custName || '').toLowerCase();
-
-          if (isTarget) {
-            matched = true;
-            return {
-              ...c,
-              balance: c.balance + sale.amountDue!,
-              lastUpdated: new Date().toISOString(),
-              history: [
-                {
-                  id: 'TX-' + Date.now(),
-                  date: new Date().toISOString(),
-                  type: 'credit' as const,
-                  amount: sale.amountDue!,
-                  note: `Invoice #${sale.invNo} (${sale.items.length} items)`,
-                },
-                ...c.history,
-              ],
-            };
-          }
-          return c;
-        });
-
-        // If no matching customer was found in Khata, create one automatically
-        if (!matched && sale.custName && sale.custName !== 'Walk-in Customer') {
-          const newCust: KhataCustomer = {
-            id: 'KHT-' + Date.now(),
-            name: sale.custName,
-            phone: sale.custPhone || 'N/A',
-            balance: sale.amountDue!,
-            lastUpdated: new Date().toISOString(),
-            history: [
-              {
-                id: 'TX-' + Date.now(),
-                date: new Date().toISOString(),
-                type: 'credit',
-                amount: sale.amountDue!,
-                note: `Invoice #${sale.invNo}`,
-              },
-            ],
-          };
-          updatedKhata = [newCust, ...updatedKhata];
-        }
-      }
-
-      return {
-        ...prev,
-        inventory: updatedInventory,
-        khata: updatedKhata,
-        sales: [sale, ...prev.sales],
-      };
-    });
-
-    logActivity(
-      'Sale',
-      `${sale.invoiceType === 'credit' ? 'Credit' : 'Cash'} Invoice #${sale.invNo} Completed`,
-      `Total: ${data.settings.currency} ${sale.grandTotal.toLocaleString()} | Items: ${sale.items.length} | Customer: ${sale.custName || 'Walk-in'}${sale.amountDue ? ` | Due: ${data.settings.currency} ${sale.amountDue.toLocaleString()}` : ''}`
-    );
-
-    setActiveReceiptSale(sale);
-    setReceiptModalOpen(true);
-    showToast(`Sale #${sale.invNo} completed!`, 'success');
-  };
-
-  // Activity Center Handlers
-  const handleClearActivities = () => {
-    setData(prev => ({
-      ...prev,
-      activities: [],
-    }));
-  };
-
-  // Supplier Purchases Handlers
+  // Purchases Handlers
   const handleSavePurchase = (
     purchaseData: Omit<SupplierPurchase, 'id'>,
     autoAddToInventory: boolean
   ) => {
-    const newPurchaseId = 'PUR-' + Date.now();
+    const newPurchaseId = generateEntityId('PUR');
     const newPurchase: SupplierPurchase = {
       ...purchaseData,
       id: newPurchaseId,
@@ -584,6 +402,7 @@ function AppContent() {
 
     setData(prev => {
       let updatedInventory = [...prev.inventory];
+      const itemsToRegisterImeis: { id: string; name: string; category?: string; imei?: string; imeis?: string[] }[] = [];
 
       if (autoAddToInventory) {
         newPurchase.items.forEach(purchaseItem => {
@@ -603,31 +422,51 @@ function AppContent() {
               ...existing,
               qty: existing.qty + purchaseItem.qty,
               costPrice: purchaseItem.costPrice > 0 ? purchaseItem.costPrice : existing.costPrice,
-              salePrice: purchaseItem.salePrice && purchaseItem.salePrice > 0 ? purchaseItem.salePrice : existing.salePrice,
+              salePrice:
+                purchaseItem.salePrice && purchaseItem.salePrice > 0
+                  ? purchaseItem.salePrice
+                  : existing.salePrice,
               barcode: purchaseItem.barcode || existing.barcode,
               imei: combinedImeis[0] || existing.imei,
               imeis: combinedImeis.length > 0 ? combinedImeis : undefined,
+              status: existing.status || 'ACTIVE',
             };
+
+            itemsToRegisterImeis.push({
+              id: existing.id,
+              name: existing.name,
+              category: existing.category,
+              imeis: newImeis,
+            });
           } else {
+            const newItemId = generateEntityId('STK');
             const newItem: InventoryItem = {
-              id: 'STK-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+              id: newItemId,
               name: purchaseItem.name,
-              category: purchaseItem.category || (prev.categories?.[0] || 'Android Mobile'),
+              category: purchaseItem.category || prev.categories?.[0] || 'Android Mobile',
               costPrice: purchaseItem.costPrice,
               salePrice: purchaseItem.salePrice || Math.round(purchaseItem.costPrice * 1.15),
               qty: purchaseItem.qty,
               barcode: purchaseItem.barcode,
               imei: purchaseItem.imei,
               imeis: purchaseItem.imeis,
+              status: 'ACTIVE',
               createdAt: new Date().toISOString(),
             };
             updatedInventory = [newItem, ...updatedInventory];
+
+            itemsToRegisterImeis.push({
+              id: newItem.id,
+              name: newItem.name,
+              category: newItem.category,
+              imeis: purchaseItem.imeis || (purchaseItem.imei ? [purchaseItem.imei] : []),
+            });
           }
         });
       }
 
       const newLedgerEntries = newPurchase.items.map(item => ({
-        id: 'PL-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+        id: generateEntityId('PL'),
         date: newPurchase.date,
         itemTitle: `${item.name} (${newPurchase.partyName})`,
         qty: item.qty,
@@ -635,52 +474,178 @@ function AppContent() {
         total: item.costPrice * item.qty,
       }));
 
+      // Register new IMEIs in permanent tracking record
+      const updatedImeiRecords = recordImeisAvailable({
+        items: itemsToRegisterImeis,
+        existingImeiRecords: prev.imeiRecords || [],
+        purchaseBillNo: newPurchase.billNo,
+        purchaseParty: newPurchase.partyName,
+      });
+
       return {
         ...prev,
         inventory: updatedInventory,
         supplierPurchases: [newPurchase, ...(prev.supplierPurchases || [])],
         purchasesLedger: [...newLedgerEntries, ...(prev.purchasesLedger || [])],
+        imeiRecords: updatedImeiRecords,
       };
     });
 
     logActivity(
       'Purchase',
       `Stock Inward: ${newPurchase.partyName} (Bill #${newPurchase.billNo})`,
-      `Total: ${data.settings.currency} ${newPurchase.totalAmount.toLocaleString()} | Paid: ${data.settings.currency} ${newPurchase.paidAmount.toLocaleString()} | Items: ${newPurchase.items.length}`
+      `Total: ${data.settings.currency} ${newPurchase.totalAmount.toLocaleString()} | Paid: ${data.settings.currency} ${newPurchase.paidAmount.toLocaleString()} | Items: ${newPurchase.items.length}`,
+      'create',
+      newPurchase.id
     );
+
+    showToast(`Purchase bill #${newPurchase.billNo} registered!`, 'success');
   };
 
-  const handleDeletePurchase = (id: string) => {
-    const target = (data.supplierPurchases || []).find(p => p.id === id);
-    setData(prev => ({
-      ...prev,
-      supplierPurchases: (prev.supplierPurchases || []).filter(p => p.id !== id),
-    }));
+  const handleDeletePurchase = () => {
+    showToast('Deleting completed purchase bills is strictly forbidden. Use Reverse / Cancel Purchase instead.', 'error');
+  };
 
-    if (target) {
-      logActivity(
-        'Purchase',
-        `Deleted Purchase Bill #${target.billNo}`,
-        `Supplier: ${target.partyName} | Amount: ${data.settings.currency} ${target.totalAmount.toLocaleString()}`
-      );
+  const handleReversePurchase = ({
+    purchaseId,
+    reason,
+    notes,
+    reversedBy = 'Admin',
+  }: {
+    purchaseId: string;
+    reason: string;
+    notes?: string;
+    reversedBy?: string;
+  }) => {
+    if (!hasPermission(data.currentRole || 'admin', 'canReversePurchase')) {
+      showToast('Permission Denied: Reversing purchase bills is restricted to Administrators', 'error');
+      return;
     }
+
+    const purchase = (data.supplierPurchases || []).find(p => p.id === purchaseId);
+    if (!purchase) return;
+
+    if (purchase.status === 'REVERSED') {
+      showToast('This purchase bill is already reversed', 'warning');
+      return;
+    }
+
+    setData(prev => {
+      // 1. Reverse stock in inventory
+      const updatedInventory = [...prev.inventory];
+      const allPurchaseImeis: string[] = [];
+
+      purchase.items.forEach(purchaseItem => {
+        const itemImeis = purchaseItem.imeis || (purchaseItem.imei ? [purchaseItem.imei] : []);
+        allPurchaseImeis.push(...itemImeis);
+
+        const matchIndex = updatedInventory.findIndex(
+          inv =>
+            inv.name.trim().toLowerCase() === purchaseItem.name.trim().toLowerCase() ||
+            (purchaseItem.barcode && inv.barcode === purchaseItem.barcode)
+        );
+
+        if (matchIndex >= 0) {
+          const existing = updatedInventory[matchIndex];
+          const existingImeis =
+            existing.imeis || (existing.imei ? existing.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
+          const remainingImeis = existingImeis.filter(
+            im => !itemImeis.some(pIm => pIm.toLowerCase().trim() === im.toLowerCase().trim())
+          );
+
+          updatedInventory[matchIndex] = {
+            ...existing,
+            qty: Math.max(0, existing.qty - purchaseItem.qty),
+            imei: remainingImeis.length > 0 ? remainingImeis.join(', ') : undefined,
+            imeis: remainingImeis.length > 0 ? remainingImeis : undefined,
+          };
+        }
+      });
+
+      // 2. Reverse IMEI stock in imeiRecords
+      const updatedImeiRecords = recordImeisReversed({
+        purchaseBillNo: purchase.billNo,
+        reversedImeis: allPurchaseImeis,
+        existingImeiRecords: prev.imeiRecords || [],
+      });
+
+      // 3. Mark purchasesLedger entry as reversed
+      const updatedLedger = (prev.purchasesLedger || []).map(entry => {
+        if (entry.itemTitle.includes(purchase.partyName) || entry.id.includes(purchase.id)) {
+          return { ...entry, isReversed: true };
+        }
+        return entry;
+      });
+
+      // 4. Mark purchase as REVERSED
+      const updatedPurchases = (prev.supplierPurchases || []).map(p => {
+        if (p.id === purchaseId) {
+          return {
+            ...p,
+            status: 'REVERSED' as const,
+            reversedAt: new Date().toISOString(),
+            reversedBy,
+            reversalReason: reason,
+            reversalNotes: notes,
+          };
+        }
+        return p;
+      });
+
+      return {
+        ...prev,
+        inventory: updatedInventory,
+        imeiRecords: updatedImeiRecords,
+        purchasesLedger: updatedLedger,
+        supplierPurchases: updatedPurchases,
+      };
+    });
+
+    logActivity(
+      'Purchase',
+      `Cancelled / Reversed Purchase: Bill #${purchase.billNo}`,
+      `Supplier: ${purchase.partyName} | Reason: ${reason} | Stock reversed (${purchase.items.length} items) | Financial reversal: ${data.settings.currency} ${purchase.paidAmount.toLocaleString()} | Reversed by ${reversedBy}`,
+      'reversal',
+      purchase.billNo
+    );
+
+    showToast(`Purchase #${purchase.billNo} has been safely reversed. Stock restored!`, 'success');
   };
 
-  // Shop Settings Handler
+  // Settings & Theme
   const handleSaveSettings = (newSettings: ShopSettings) => {
+    if (!hasPermission(data.currentRole || 'admin', 'canChangeSettings')) {
+      showToast('Permission Denied: Modifying shop settings is restricted to Administrators', 'error');
+      return;
+    }
+
     setData(prev => ({
       ...prev,
       settings: newSettings,
     }));
-    logActivity('Settings', 'Updated Shop Settings', `Shop: ${newSettings.shopName}`);
+
+    saveRootConfigToFirestore({ settings: newSettings }).catch(err => {
+      console.warn('Firestore settings update warning:', err);
+    });
+
+    logActivity('Settings', 'Updated Shop Settings', `Shop: ${newSettings.shopName}`, 'update');
+    showToast('Shop settings saved successfully', 'success');
   };
 
-  const handleReplaceData = (newData: AppData) => {
-    setData(newData);
-    logActivity('Settings', 'Restored System Backup', 'Database replaced from JSON file');
+  const handleToggleTheme = () => {
+    setData(prev => {
+      const currentTheme = prev.settings?.theme || 'blue-white';
+      const newTheme = currentTheme === 'dark' ? 'blue-white' : 'dark';
+      return {
+        ...prev,
+        settings: {
+          ...prev.settings,
+          theme: newTheme,
+        },
+      };
+    });
   };
 
-  // Modal Opener Dispatcher
   const handleOpenModal = (modal: 'stock' | 'khata' | 'expense') => {
     if (modal === 'stock') {
       setEditStockItem(null);
@@ -692,8 +657,53 @@ function AppContent() {
     }
   };
 
+  const handleLogout = () => {
+    setData(prev => ({
+      ...prev,
+      currentUser: undefined,
+      currentRole: 'admin',
+    }));
+    logActivity('Security', 'Signed Out of Terminal', 'User logged out securely', 'update');
+    showToast('Signed out successfully', 'info');
+  };
+
+  const cartItemCount = useMemo(() => {
+    return data.inventory.filter(i => i.qty > 0 && i.status !== 'ARCHIVED').length;
+  }, [data.inventory]);
+
+  if (!data.currentUser) {
+    return (
+      <>
+        <PWAUpdateBanner />
+        <AuthScreen
+          existingUsers={data.users || []}
+          onAuthSuccess={user => {
+            if (user.role === 'salesman') {
+              setActiveTab('pos');
+            }
+            setData(prev => {
+              const users = prev.users || [];
+              const userExists = users.some(u => u.id === user.id);
+              const updatedUsers = userExists ? users.map(u => (u.id === user.id ? user : u)) : [...users, user];
+              return {
+                ...prev,
+                users: updatedUsers,
+                currentUser: user,
+                currentRole: user.role,
+              };
+            });
+          }}
+          settings={data.settings}
+        />
+      </>
+    );
+  }
+
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-800">
+    <div className="flex h-[100dvh] overflow-hidden bg-slate-50 text-slate-800">
+      {/* PWA Offline & Automatic Update Notification */}
+      <PWAUpdateBanner />
+
       {/* Sidebar Navigation */}
       <Sidebar
         activeTab={activeTab}
@@ -703,6 +713,7 @@ function AppContent() {
         onOpenSettings={() => setSettingsModalOpen(true)}
         settings={data.settings}
         activityCount={(data.activities || []).length}
+        currentRole={data.currentRole || 'admin'}
       />
 
       {/* Main Viewport Container */}
@@ -716,41 +727,61 @@ function AppContent() {
           onOpenModal={handleOpenModal}
           onOpenSettings={() => setSettingsModalOpen(true)}
           onOpenTabSettings={() => setTabSettingsModalOpen(true)}
+          onToggleTheme={handleToggleTheme}
           settings={data.settings}
+          currentRole={data.currentRole || 'admin'}
+          currentUser={data.currentUser}
+          onLogout={handleLogout}
         />
 
-        {/* Scrollable Tab Content - Persistent Mounting with CSS visibility */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+        {/* Scrollable Tab Content - Optimized with Conditional Rendering (Unmounts Inactive Tabs) */}
+        <main className="flex-1 overflow-y-auto p-3.5 sm:p-6 pb-24 lg:pb-6">
           <div className="max-w-7xl mx-auto">
-            <div className={activeTab === 'dashboard' ? 'block' : 'hidden'}>
+            {activeTab === 'dashboard' && (data.currentRole || 'admin') === 'admin' && (
               <DashboardTab
                 data={data}
                 onSwitchTab={setActiveTab}
                 onOpenModal={handleOpenModal}
                 onOpenSettings={() => setTabSettingsModalOpen(true)}
               />
-            </div>
+            )}
 
-            <div className={activeTab === 'pos' ? 'block' : 'hidden'}>
+            {activeTab === 'pos' && (
               <PosTab
                 inventory={data.inventory}
+                sales={data.sales || []}
                 currency={data.settings.currency}
                 categories={data.categories || ['Android Mobile', 'Keypad Mobile']}
                 khataCustomers={data.khata || []}
+                onlineAccounts={data.onlineAccounts || []}
+                settings={data.settings}
                 onCompleteSale={handleCompleteSale}
                 onOpenAddStock={() => {
                   setEditStockItem(null);
                   setStockModalOpen(true);
                 }}
                 onOpenPdfReport={() => handleOpenPdfReport('sales')}
+                onOpenSalesReturn={handleOpenSalesReturn}
+                onViewReceipt={sale => {
+                  setActiveReceiptSale(sale);
+                  setReceiptModalOpen(true);
+                }}
+                onCancelSale={handleCancelSale}
+                onDeleteSale={handleDeleteSale}
+                onUpdateSale={handleUpdateSale}
+                saleToEdit={saleToEdit}
+                onClearSaleToEdit={() => setSaleToEdit(null)}
               />
-            </div>
+            )}
 
-            <div className={activeTab === 'inventory' ? 'block' : 'hidden'}>
+            {activeTab === 'inventory' && (
               <InventoryTab
                 inventory={data.inventory}
                 currency={data.settings.currency}
                 categories={data.categories || ['Android Mobile', 'Keypad Mobile']}
+                stockAdjustments={data.stockAdjustments || []}
+                sales={data.sales || []}
+                isAdmin={(data.currentRole || 'admin') === 'admin'}
                 onOpenAddModal={() => {
                   setEditStockItem(null);
                   setStockModalOpen(true);
@@ -760,31 +791,35 @@ function AppContent() {
                   setStockModalOpen(true);
                 }}
                 onDeleteItem={handleDeleteInventory}
+                onRestoreItem={handleRestoreInventory}
                 onAddCategory={handleAddCategory}
                 onDeleteCategory={handleDeleteCategory}
                 onOpenPdfReport={() => handleOpenPdfReport('inventory')}
               />
-            </div>
+            )}
 
-            <div className={activeTab === 'purchases' ? 'block' : 'hidden'}>
+            {activeTab === 'purchases' && (
               <PurchasesTab
                 purchases={data.supplierPurchases || []}
                 currency={data.settings.currency}
                 categories={data.categories || ['Android Mobile', 'Keypad Mobile']}
                 inventory={data.inventory}
+                imeiRecords={data.imeiRecords || []}
+                sales={data.sales || []}
+                onlineAccounts={data.onlineAccounts || []}
                 onSavePurchase={handleSavePurchase}
                 onDeletePurchase={handleDeletePurchase}
+                onReversePurchase={handleReversePurchase}
+                onAddInventoryProduct={handleAddProductFromPurchases}
+                onAddCategory={handleAddCategory}
               />
-            </div>
+            )}
 
-            <div className={activeTab === 'barcode' ? 'block' : 'hidden'}>
-              <BarcodeGenerator
-                inventory={data.inventory}
-                settings={data.settings}
-              />
-            </div>
+            {activeTab === 'barcode' && (
+              <BarcodeGenerator inventory={data.inventory} settings={data.settings} />
+            )}
 
-            <div className={activeTab === 'khata' ? 'block' : 'hidden'}>
+            {activeTab === 'khata' && (
               <KhataTab
                 khata={data.khata}
                 settings={data.settings}
@@ -799,9 +834,9 @@ function AppContent() {
                 onClearSelectedCustomer={() => setSelectedKhataCustomerId(null)}
                 onOpenPdfReport={() => handleOpenPdfReport('khata')}
               />
-            </div>
+            )}
 
-            <div className={activeTab === 'expenses' ? 'block' : 'hidden'}>
+            {activeTab === 'expenses' && (
               <ExpensesTab
                 expenses={data.expenses}
                 currency={data.settings.currency}
@@ -812,9 +847,9 @@ function AppContent() {
                 onOpenSettings={() => setTabSettingsModalOpen(true)}
                 onOpenPdfReport={() => handleOpenPdfReport('expenses')}
               />
-            </div>
+            )}
 
-            <div className={activeTab === 'dailyClosing' ? 'block' : 'hidden'}>
+            {activeTab === 'dailyClosing' && (
               <DailyClosingTab
                 data={data}
                 onSaveClosing={handleSaveDailyClosing}
@@ -824,94 +859,94 @@ function AppContent() {
                 onOpenSettings={() => setTabSettingsModalOpen(true)}
                 onOpenPdfReport={() => handleOpenPdfReport('dailyClosing')}
               />
-            </div>
+            )}
 
-            <div className={activeTab === 'reports' ? 'block' : 'hidden'}>
+            {activeTab === 'reports' && (data.currentRole || 'admin') === 'admin' && (
               <ReportsTab
                 data={data}
                 onViewReceipt={sale => {
                   setActiveReceiptSale(sale);
                   setReceiptModalOpen(true);
                 }}
+                onOpenSalesReturn={handleOpenSalesReturn}
+                onEditSale={sale => {
+                  setSaleToEdit(sale);
+                  setActiveTab('pos');
+                }}
+                onDeleteSale={handleDeleteSale}
               />
-            </div>
+            )}
 
-            <div className={activeTab === 'activity' ? 'block' : 'hidden'}>
+            {activeTab === 'activity' && (data.currentRole || 'admin') === 'admin' && (
               <ActivityCenterTab
                 activities={data.activities || []}
-                onClearActivities={handleClearActivities}
+                onClearActivities={() => {
+                  setData(prev => ({ ...prev, activities: [] }));
+                  showToast('Activities log cleared', 'info');
+                }}
                 onOpenPdfReport={() => handleOpenPdfReport('activity')}
               />
-            </div>
+            )}
           </div>
         </main>
+
+        {/* Mobile Sticky Bottom Dock / Navigation Bar (lg:hidden) */}
+        <BottomNavigation
+          activeTab={activeTab}
+          onSelectTab={setActiveTab}
+          onOpenMenu={() => setIsMenuOpen(true)}
+          currentRole={data.currentRole || 'admin'}
+          cartItemCount={cartItemCount}
+        />
       </div>
 
-      {/* MODALS */}
-      {/* 0. Universal PDF Export Modal */}
-      <PdfExportModal
-        isOpen={pdfModalOpen}
-        onClose={() => setPdfModalOpen(false)}
-        tab={pdfModalTab}
-        data={data}
-      />
-
-      {/* 1. Receipt Modal */}
-      <ReceiptModal
-        sale={activeReceiptSale}
-        settings={data.settings}
-        isOpen={receiptModalOpen}
-        onClose={() => setReceiptModalOpen(false)}
-      />
-
-      {/* 2. Stock Add/Edit Modal */}
+      {/* Global Application Modals */}
       <StockModal
         isOpen={stockModalOpen}
-        onClose={() => {
-          setStockModalOpen(false);
-          setEditStockItem(null);
-        }}
+        onClose={() => setStockModalOpen(false)}
         onSave={handleSaveStock}
         editItem={editStockItem}
         currency={data.settings.currency}
-        categories={data.categories || ['Android Mobile', 'Keypad Mobile']}
+        categories={data.categories}
+        inventory={data.inventory}
+        imeiRecords={data.imeiRecords || []}
+        sales={data.sales || []}
+        salesReturns={data.salesReturns || []}
         onAddCategory={handleAddCategory}
+        onStockAdjustment={handleStockAdjustment}
       />
 
-      {/* 3. Khata Customer Add Modal */}
       <AddKhataModal
         isOpen={addKhataModalOpen}
         onClose={() => setAddKhataModalOpen(false)}
-        onSave={handleAddKhataCustomer}
+        onSave={handleSaveKhataCustomer}
         currency={data.settings.currency}
       />
 
-      {/* 4. Khata Customer Settle Modal */}
       <SettleKhataModal
         isOpen={settleKhataModalOpen}
-        customer={settleCustomer}
         onClose={() => {
           setSettleKhataModalOpen(false);
           setSettleCustomer(null);
         }}
-        onSave={handleUpdateKhataBalance}
+        customer={settleCustomer}
         currency={data.settings.currency}
+        onSave={handleUpdateKhataBalance}
       />
 
-      {/* 5. Expense Add Modal */}
       <ExpenseModal
         isOpen={expenseModalOpen}
         onClose={() => setExpenseModalOpen(false)}
         onSave={handleSaveExpense}
         currency={data.settings.currency}
         categories={data.expenseCategories || defaultExpenseCategories}
+        onlineAccounts={data.onlineAccounts || []}
         onOpenManageCategories={() => {
           setExpenseModalOpen(false);
           setExpenseCategoryModalOpen(true);
         }}
       />
 
-      {/* 6. Expense Category Management Modal */}
       <ExpenseCategoryModal
         isOpen={expenseCategoryModalOpen}
         onClose={() => setExpenseCategoryModalOpen(false)}
@@ -921,23 +956,82 @@ function AppContent() {
         onDeleteCategory={handleDeleteExpenseCategory}
       />
 
-      {/* 7. Settings & Data Modal (with Theme Customization) */}
       <SettingsModal
         isOpen={settingsModalOpen}
         onClose={() => setSettingsModalOpen(false)}
         settings={data.settings}
         onSaveSettings={handleSaveSettings}
         fullData={data}
-        onReplaceData={handleReplaceData}
+        onReplaceData={(newData: AppData) => {
+          setData(newData);
+          saveStoredData(newData);
+          showToast('Backup restored successfully', 'success');
+        }}
+        onUpdateUsers={(users: UserAccount[]) => {
+          setData(prev => ({ ...prev, users }));
+          saveRootConfigToFirestore({ users }).catch(err => {
+            console.warn('Firestore users sync warning:', err);
+          });
+        }}
       />
 
-      {/* 8. Tab Customization Settings Modal */}
       <TabSettingsModal
         isOpen={tabSettingsModalOpen}
         onClose={() => setTabSettingsModalOpen(false)}
         activeTab={activeTab}
         preferences={data.tabPreferences || {}}
-        onSavePreferences={handleSaveTabPreferences}
+        onSavePreferences={(tabId: string, prefs: Record<string, unknown>) => {
+          setData(prev => ({
+            ...prev,
+            tabPreferences: {
+              ...(prev.tabPreferences || {}),
+              [tabId]: prefs,
+            },
+          }));
+          saveRootConfigToFirestore({
+            tabPreferences: {
+              ...(data.tabPreferences || {}),
+              [tabId]: prefs,
+            },
+          }).catch(err => {
+            console.warn('Firestore tab preferences sync warning:', err);
+          });
+          showToast('Tab settings saved', 'success');
+        }}
+      />
+
+      <ReceiptModal
+        isOpen={receiptModalOpen}
+        onClose={() => setReceiptModalOpen(false)}
+        sale={activeReceiptSale}
+        settings={data.settings}
+        onOpenSalesReturn={sale => {
+          setReceiptModalOpen(false);
+          handleOpenSalesReturn(sale);
+        }}
+        onDeleteSale={handleDeleteSale}
+      />
+
+      <SalesReturnModal
+        isOpen={salesReturnModalOpen}
+        onClose={() => {
+          setSalesReturnModalOpen(false);
+          setSalesReturnInitialSale(null);
+        }}
+        sales={data.sales || []}
+        inventory={data.inventory}
+        currency={data.settings.currency}
+        salesReturns={data.salesReturns || []}
+        initialSale={salesReturnInitialSale}
+        onlineAccounts={data.onlineAccounts || []}
+        onProcessReturn={handleSaveSalesReturn}
+      />
+
+      <PdfExportModal
+        isOpen={pdfModalOpen}
+        onClose={() => setPdfModalOpen(false)}
+        data={data}
+        tab={pdfModalTab}
       />
     </div>
   );
