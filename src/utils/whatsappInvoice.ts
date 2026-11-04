@@ -38,23 +38,33 @@ export function generateWhatsAppInvoiceText(sale: SaleRecord, settings: ShopSett
   const amountPaid = sale.amountPaid !== undefined ? sale.amountPaid : grandTotal;
   const amountDue = sale.amountDue !== undefined ? sale.amountDue : Math.max(0, grandTotal - amountPaid);
   const isPaid = amountDue <= 0;
+  const isWholesale = sale.saleMode === 'wholesale';
 
   const statusEmoji = isPaid ? '✅ PAID' : amountPaid > 0 ? '⚠️ PARTIAL' : '🔴 UNPAID KHATA';
+  const headerTitle = isWholesale ? `🏬 *WHOLESALE B2B INVOICE*` : `🧾 *${(settings.shopName || 'MOBILE SHOP').toUpperCase()}*`;
 
   const lines = [
-    `🧾 *${(settings.shopName || 'MOBILE SHOP').toUpperCase()}*`,
+    headerTitle,
+    isWholesale ? `🏪 *Supplier:* ${settings.shopName || 'FMZ Friends Mobile Zone'}` : '',
     settings.tagline ? `_${settings.tagline}_` : '',
     settings.address ? `📍 ${settings.address}` : '',
     settings.phone ? `📞 ${settings.phone}` : '',
     `━━━━━━━━━━━━━━━━━━━━`,
     `📄 *Invoice #:* ${sale.invNo}`,
     `📅 *Date:* ${new Date(sale.date).toLocaleDateString()} ${new Date(sale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
-    `👤 *Customer:* ${sale.custName || 'Valued Customer'}${sale.custPhone ? ` (${sale.custPhone})` : ''}`,
+    `👤 *Customer / Retailer:* ${sale.custName || 'Valued Buyer'}`,
+    sale.retailerShopName ? `🏢 *Shop Name:* ${sale.retailerShopName}` : '',
+    sale.retailerCity ? `🌆 *City:* ${sale.retailerCity}` : '',
+    sale.retailerNtn ? `🆔 *NTN/GST:* ${sale.retailerNtn}` : '',
+    sale.custPhone ? `📞 *Phone:* ${sale.custPhone}` : '',
     `💳 *Status:* ${statusEmoji}`,
     `━━━━━━━━━━━━━━━━━━━━`,
-    `📦 *ITEMS PURCHASED:*`,
+    `📦 *${isWholesale ? 'WHOLESALE BULK ITEMS:' : 'ITEMS PURCHASED:'}*`,
     ...sale.items.map((item, idx) => {
       let itemLine = `${idx + 1}. *${item.name}*\n   Qty: ${item.qty} × ${cur} ${item.salePrice.toLocaleString()} = *${cur} ${(item.salePrice * item.qty).toLocaleString()}*`;
+      if (item.boxCount && item.boxCount > 0) {
+        itemLine += ` (📦 ${item.boxCount} Cartons/Boxes)`;
+      }
       if (item.imei) {
         itemLine += `\n   📱 IMEI: \`${item.imei}\``;
       }
@@ -62,13 +72,14 @@ export function generateWhatsAppInvoiceText(sale: SaleRecord, settings: ShopSett
     }),
     `━━━━━━━━━━━━━━━━━━━━`,
     `💰 *Subtotal:* ${cur} ${sale.subtotal.toLocaleString()}`,
-    sale.discount > 0 ? `🎁 *Discount:* -${cur} ${sale.discount.toLocaleString()}` : '',
+    sale.wholesaleSavings && sale.wholesaleSavings > 0 ? `🎉 *Wholesale B2B Savings:* *${cur} ${sale.wholesaleSavings.toLocaleString()}*` : '',
+    sale.discount > 0 ? `🎁 *Discount / Tier:* -${cur} ${sale.discount.toLocaleString()}` : '',
     `⭐ *GRAND TOTAL:* *${cur} ${grandTotal.toLocaleString()}*`,
     `💵 *Paid Amount:* ${cur} ${amountPaid.toLocaleString()} (${sale.paymentMethod || 'Cash'})`,
     amountDue > 0 ? `⚠️ *Remaining Balance:* *${cur} ${amountDue.toLocaleString()}*` : '',
     `━━━━━━━━━━━━━━━━━━━━`,
-    settings.returnPolicy || settings.receiptFooter || '🙏 Thank you for your business!',
-    `_Note: Please retain this digital invoice for warranty claims._`,
+    settings.returnPolicy || settings.receiptFooter || '🙏 Thank you for your B2B partnership!',
+    `_Note: B2B Wholesale terms apply. Please retain for warranty claims._`,
   ].filter(Boolean);
 
   return lines.join('\n');

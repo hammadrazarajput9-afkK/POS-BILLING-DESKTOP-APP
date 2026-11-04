@@ -11,6 +11,8 @@ export interface InventoryItem {
   barcode?: string;
   costPrice: number;
   salePrice: number;
+  wholesalePrice?: number;
+  boxSize?: number; // Carton/Box quantity (default 10 or 20)
   qty: number;
   createdAt: string;
   status?: ItemStatus;
@@ -66,6 +68,7 @@ export interface MobileVariant {
   color?: string;
   costPrice: number | '';
   salePrice: number | '';
+  wholesalePrice?: number | '';
   qty: number | '';
   imeis: string[];
 }
@@ -87,6 +90,10 @@ export interface KhataCustomer {
   phone2?: string;
   address?: string;
   image?: string;
+  customerType?: 'retail' | 'retailer' | 'wholesaler';
+  shopName?: string;
+  city?: string;
+  ntnNumber?: string;
   balance: number;
   lastUpdated: string;
   history: KhataTransaction[];
@@ -186,6 +193,9 @@ export interface SaleItem {
   imei?: string;
   imeis?: string[];
   salePrice: number;
+  wholesalePrice?: number;
+  isWholesale?: boolean;
+  boxCount?: number;
   costPrice: number;
   qty: number;
   returnedQty?: number;
@@ -197,6 +207,11 @@ export interface SaleRecord {
   custName: string;
   custPhone?: string;
   invoiceType?: InvoiceType;
+  saleMode?: 'retail' | 'wholesale';
+  retailerShopName?: string;
+  retailerCity?: string;
+  retailerNtn?: string;
+  wholesaleSavings?: number;
   amountPaid?: number;
   amountDue?: number;
   khataCustomerId?: string;

@@ -13,6 +13,10 @@ interface AddKhataModalProps {
     phone2?: string;
     address?: string;
     image?: string;
+    customerType?: 'retail' | 'retailer' | 'wholesaler';
+    shopName?: string;
+    city?: string;
+    ntnNumber?: string;
   }) => void;
   currency: string;
 }
@@ -23,6 +27,10 @@ interface KhataDraftState {
   phone2: string;
   address: string;
   image: string;
+  customerType: 'retail' | 'retailer';
+  shopName: string;
+  city: string;
+  ntnNumber: string;
 }
 
 const initialKhataDraft: KhataDraftState = {
@@ -31,6 +39,10 @@ const initialKhataDraft: KhataDraftState = {
   phone2: '',
   address: '',
   image: '',
+  customerType: 'retail',
+  shopName: '',
+  city: '',
+  ntnNumber: '',
 };
 
 export const AddKhataModal: React.FC<AddKhataModalProps> = ({
@@ -52,12 +64,20 @@ export const AddKhataModal: React.FC<AddKhataModalProps> = ({
   const phone2 = formData.phone2;
   const address = formData.address;
   const image = formData.image;
+  const customerType = formData.customerType || 'retail';
+  const shopName = formData.shopName || '';
+  const city = formData.city || '';
+  const ntnNumber = formData.ntnNumber || '';
 
   const setName = (val: string) => setFormData(p => ({ ...p, name: val }));
   const setPhone = (val: string) => setFormData(p => ({ ...p, phone: val }));
   const setPhone2 = (val: string) => setFormData(p => ({ ...p, phone2: val }));
   const setAddress = (val: string) => setFormData(p => ({ ...p, address: val }));
   const setImage = (val: string) => setFormData(p => ({ ...p, image: val }));
+  const setCustomerType = (val: 'retail' | 'retailer') => setFormData(p => ({ ...p, customerType: val }));
+  const setShopName = (val: string) => setFormData(p => ({ ...p, shopName: val }));
+  const setCity = (val: string) => setFormData(p => ({ ...p, city: val }));
+  const setNtnNumber = (val: string) => setFormData(p => ({ ...p, ntnNumber: val }));
 
   if (!isOpen) return null;
 
@@ -93,6 +113,10 @@ export const AddKhataModal: React.FC<AddKhataModalProps> = ({
       phone2: phone2.trim() || undefined,
       address: address.trim() || undefined,
       image: image || undefined,
+      customerType,
+      shopName: customerType === 'retailer' ? shopName.trim() || undefined : undefined,
+      city: customerType === 'retailer' ? city.trim() || undefined : undefined,
+      ntnNumber: customerType === 'retailer' ? ntnNumber.trim() || undefined : undefined,
     });
 
     resetDraft();
@@ -164,20 +188,92 @@ export const AddKhataModal: React.FC<AddKhataModalProps> = ({
             </div>
           </div>
 
+          {/* Customer Type Selector: Retail vs Retailer/Wholesaler */}
+          <div className="space-y-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+            <label className="block font-bold text-slate-700 text-[11px] uppercase tracking-wider">
+              Account Type
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setCustomerType('retail')}
+                className={`py-2 px-3 rounded-lg text-xs font-bold transition cursor-pointer min-h-[38px] ${
+                  customerType === 'retail'
+                    ? 'bg-blue-600 text-white shadow-2xs'
+                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                Retail Customer
+              </button>
+              <button
+                type="button"
+                onClick={() => setCustomerType('retailer')}
+                className={`py-2 px-3 rounded-lg text-xs font-bold transition cursor-pointer min-h-[38px] ${
+                  customerType === 'retailer'
+                    ? 'bg-purple-600 text-white shadow-2xs'
+                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                Retailer / Wholesaler
+              </button>
+            </div>
+          </div>
+
           {/* Customer Name */}
           <div>
             <label className="block font-semibold text-slate-700 mb-1">
-              Customer / Business Name <span className="text-rose-500 font-bold">*</span>
+              {customerType === 'retailer' ? 'Retailer / Contact Person Name' : 'Customer / Business Name'} <span className="text-rose-500 font-bold">*</span>
             </label>
             <input
               type="text"
               required
               value={name}
               onChange={e => setName(e.target.value)}
-              placeholder="Customer Name"
+              placeholder={customerType === 'retailer' ? "e.g. Shopkeeper Name" : "Customer Name"}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-medium focus:outline-none focus:border-purple-600 focus:bg-white transition min-h-[44px]"
             />
           </div>
+
+          {/* Retailer / Shop Extra Fields */}
+          {customerType === 'retailer' && (
+            <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl space-y-2.5 animate-in fade-in">
+              <span className="text-[11px] font-black uppercase text-purple-900 tracking-wider">
+                Retailer Shop Details
+              </span>
+              <div>
+                <label className="block font-bold text-purple-950 mb-1">Shop / Firm Name</label>
+                <input
+                  type="text"
+                  value={shopName}
+                  onChange={e => setShopName(e.target.value)}
+                  placeholder="e.g. Mobile Planet & Accessories"
+                  className="w-full bg-white border border-purple-200 rounded-lg px-3 py-2 text-xs font-medium focus:outline-none focus:border-purple-600 min-h-[40px]"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-bold text-purple-950 mb-1">City</label>
+                  <input
+                    type="text"
+                    value={city}
+                    onChange={e => setCity(e.target.value)}
+                    placeholder="e.g. Lahore"
+                    className="w-full bg-white border border-purple-200 rounded-lg px-3 py-2 text-xs font-medium focus:outline-none focus:border-purple-600 min-h-[40px]"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-purple-950 mb-1">NTN / GST No</label>
+                  <input
+                    type="text"
+                    value={ntnNumber}
+                    onChange={e => setNtnNumber(e.target.value)}
+                    placeholder="Optional"
+                    className="w-full bg-white border border-purple-200 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:border-purple-600 min-h-[40px]"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* 2 Phone Numbers: 1 Compulsory, 1 Optional */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">

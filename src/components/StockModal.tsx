@@ -141,6 +141,8 @@ export const StockModal: React.FC<StockModalProps> = ({
   const [barcode, setBarcode] = useState('');
   const [costPrice, setCostPrice] = useState<number | ''>('');
   const [salePrice, setSalePrice] = useState<number | ''>('');
+  const [wholesalePrice, setWholesalePrice] = useState<number | ''>('');
+  const [boxSize, setBoxSize] = useState<number | ''>(10);
   const [qty, setQty] = useState<number | ''>(1);
   const [imeis, setImeis] = useState<string[]>(['']);
 
@@ -177,6 +179,8 @@ export const StockModal: React.FC<StockModalProps> = ({
         setBarcode(editItem.barcode || '');
         setCostPrice(editItem.costPrice);
         setSalePrice(editItem.salePrice);
+        setWholesalePrice(editItem.wholesalePrice !== undefined ? editItem.wholesalePrice : '');
+        setBoxSize(editItem.boxSize !== undefined ? editItem.boxSize : 10);
         setQty(editItem.qty);
 
         if (editItem.imeis && editItem.imeis.length > 0) {
@@ -197,6 +201,8 @@ export const StockModal: React.FC<StockModalProps> = ({
         setBarcode(draftData.barcode || '');
         setCostPrice(draftData.costPrice !== undefined ? draftData.costPrice : '');
         setSalePrice(draftData.salePrice !== undefined ? draftData.salePrice : '');
+        setWholesalePrice('');
+        setBoxSize(10);
         setQty(draftData.qty !== undefined ? draftData.qty : 1);
         setImeis(draftData.imeis && draftData.imeis.length > 0 ? [...draftData.imeis] : ['']);
 
@@ -815,6 +821,8 @@ export const StockModal: React.FC<StockModalProps> = ({
           barcode: !isMobile ? barcode.trim() || undefined : undefined,
           costPrice: cost,
           salePrice: sale,
+          wholesalePrice: wholesalePrice !== '' ? Number(wholesalePrice) : Math.round(sale * 0.9),
+          boxSize: boxSize !== '' ? Number(boxSize) : 10,
           qty: quantity,
           status: editItem?.status || 'ACTIVE',
         },
@@ -1416,6 +1424,41 @@ export const StockModal: React.FC<StockModalProps> = ({
                     value={salePrice}
                     onChange={e => setSalePrice(e.target.value === '' ? '' : Number(e.target.value))}
                     placeholder="0"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-bold text-slate-700">
+                      Wholesale Price ({currency})
+                    </label>
+                    {salePrice !== '' && (
+                      <button
+                        type="button"
+                        onClick={() => setWholesalePrice(Math.round(Number(salePrice) * 0.9))}
+                        className="text-[10px] text-purple-600 hover:underline font-extrabold cursor-pointer"
+                      >
+                        Auto (10% Off)
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    value={wholesalePrice}
+                    onChange={e => setWholesalePrice(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder={salePrice !== '' ? `${Math.round(Number(salePrice) * 0.9)}` : '0'}
+                    className="w-full bg-purple-50/50 border border-purple-200 rounded-xl px-3 py-2 text-xs font-mono font-semibold text-purple-900 focus:outline-none focus:border-purple-600 focus:bg-white transition"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Carton / Box Units</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={boxSize}
+                    onChange={e => setBoxSize(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="10"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition"
                   />
                 </div>

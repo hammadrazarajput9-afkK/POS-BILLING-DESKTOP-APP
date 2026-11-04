@@ -28,7 +28,8 @@ import {
   Check,
   ArrowRight,
   ChevronUp,
-  Camera
+  Camera,
+  Sparkles
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
@@ -60,9 +61,13 @@ interface PosTabProps {
 interface PosDraftState {
   cart: CartItem[];
   invoiceType: InvoiceType;
+  saleMode: 'retail' | 'wholesale';
   selectedKhataId: string;
   custName: string;
   custPhone: string;
+  retailerShopName: string;
+  retailerCity: string;
+  retailerNtn: string;
   discount: number | '';
   paymentMethod: PaymentMethod;
   accountId: string;
@@ -72,9 +77,13 @@ interface PosDraftState {
 const initialPosDraft: PosDraftState = {
   cart: [],
   invoiceType: 'cash',
+  saleMode: 'retail',
   selectedKhataId: '',
   custName: '',
   custPhone: '',
+  retailerShopName: '',
+  retailerCity: '',
+  retailerNtn: '',
   discount: 0,
   paymentMethod: 'Cash',
   accountId: '',
@@ -278,9 +287,13 @@ const PosTabComponent: React.FC<PosTabProps> = ({
     setDraft({
       cart: parsedCart,
       invoiceType: sale.invoiceType || 'cash',
+      saleMode: sale.saleMode || 'retail',
       selectedKhataId: sale.khataCustomerId || '',
       custName: sale.custName,
       custPhone: sale.custPhone || '',
+      retailerShopName: sale.retailerShopName || '',
+      retailerCity: sale.retailerCity || '',
+      retailerNtn: sale.retailerNtn || '',
       discount: sale.discount,
       paymentMethod: sale.paymentMethod || 'Cash',
       accountId: sale.accountId || '',
@@ -406,13 +419,27 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
   const cart = draft.cart || [];
   const invoiceType = draft.invoiceType || 'cash';
+  const saleMode = draft.saleMode || 'retail';
   const selectedKhataId = draft.selectedKhataId || '';
   const custName = draft.custName || '';
   const custPhone = draft.custPhone || '';
+  const retailerShopName = draft.retailerShopName || '';
+  const retailerCity = draft.retailerCity || '';
+  const retailerNtn = draft.retailerNtn || '';
   const discount = draft.discount !== undefined ? draft.discount : 0;
   const paymentMethod = draft.paymentMethod || 'Cash';
   const accountId = draft.accountId || '';
   const amountPaid = draft.amountPaid !== undefined ? draft.amountPaid : '';
+
+  // Helper to get active price per unit based on Mode
+  const getItemUnitPrice = (item: { salePrice: number; wholesalePrice?: number }, mode = saleMode) => {
+    if (mode === 'wholesale') {
+      return item.wholesalePrice && item.wholesalePrice > 0
+        ? item.wholesalePrice
+        : Math.round(item.salePrice * 0.9);
+    }
+    return item.salePrice;
+  };
 
   // Matching online accounts for payment method
   const matchingAccounts = useMemo(() => {
@@ -443,8 +470,22 @@ const PosTabComponent: React.FC<PosTabProps> = ({
     setDraft(prev => ({ ...prev, invoiceType: type }));
   };
 
+  const setSaleMode = (mode: 'retail' | 'wholesale') => {
+    setDraft(prev => ({ ...prev, saleMode: mode }));
+    showToast(`Switched to ${mode.toUpperCase()} Mode!`, mode === 'wholesale' ? 'info' : 'success');
+  };
+
   const setSelectedKhataId = (id: string) => {
-    setDraft(prev => ({ ...prev, selectedKhataId: id }));
+    const cust = khataCustomers.find(k => k.id === id);
+    setDraft(prev => ({
+      ...prev,
+      selectedKhataId: id,
+      custName: cust ? cust.name : prev.custName,
+      custPhone: cust ? cust.phone : prev.custPhone,
+      retailerShopName: cust?.shopName || prev.retailerShopName,
+      retailerCity: cust?.city || prev.retailerCity,
+      retailerNtn: cust?.ntnNumber || prev.retailerNtn,
+    }));
   };
 
   const setCustName = (name: string) => {
@@ -453,6 +494,18 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
   const setCustPhone = (phone: string) => {
     setDraft(prev => ({ ...prev, custPhone: phone }));
+  };
+
+  const setRetailerShopName = (shop: string) => {
+    setDraft(prev => ({ ...prev, retailerShopName: shop }));
+  };
+
+  const setRetailerCity = (city: string) => {
+    setDraft(prev => ({ ...prev, retailerCity: city }));
+  };
+
+  const setRetailerNtn = (ntn: string) => {
+    setDraft(prev => ({ ...prev, retailerNtn: ntn }));
   };
 
   const setDiscount = (disc: number | '') => {
@@ -616,15 +669,43 @@ const PosTabComponent: React.FC<PosTabProps> = ({
     showToast('Billing cart cleared', 'info');
   };
 
-  const subtotal = useMemo(() => {
-    return cart.reduce((acc, item) => acc + item.salePrice * item.cartQty, 0);
-  }, [cart]);
-
   const totalCartItems = useMemo(() => {
     return cart.reduce((acc, item) => acc + item.cartQty, 0);
   }, [cart]);
 
-  const discountVal = Number(discount) || 0;
+  // Subtotal based on active pricing mode (Retail vs Wholesale)
+  const subtotal = useMemo(() => {
+    return cart.reduce((acc, item) => {
+      const unitPrice = getItemUnitPrice(item);
+      return acc + unitPrice * item.cartQty;
+    }, 0);
+  }, [cart, saleMode]);
+
+  // Retail Price reference subtotal (what it would cost in Retail)
+  const retailSubtotal = useMemo(() => {
+    return cart.reduce((acc, item) => acc + item.salePrice * item.cartQty, 0);
+  }, [cart]);
+
+  // Total Wholesale Savings compared to Retail price
+  const wholesaleSavings = useMemo(() => {
+    if (saleMode !== 'wholesale') return 0;
+    return Math.max(0, retailSubtotal - subtotal);
+  }, [retailSubtotal, subtotal, saleMode]);
+
+  // Automatic Bulk Tier Discount (for Wholesale orders with 50+ or 100+ items)
+  const bulkTierDiscountPercent = useMemo(() => {
+    if (saleMode !== 'wholesale') return 0;
+    if (totalCartItems >= 100) return 5; // 5% extra discount for 100+ units
+    if (totalCartItems >= 50) return 2;  // 2% extra discount for 50+ units
+    return 0;
+  }, [saleMode, totalCartItems]);
+
+  const bulkDiscountAmount = useMemo(() => {
+    if (bulkTierDiscountPercent <= 0) return 0;
+    return Math.round((subtotal * bulkTierDiscountPercent) / 100);
+  }, [subtotal, bulkTierDiscountPercent]);
+
+  const discountVal = (Number(discount) || 0) + bulkDiscountAmount;
   const grandTotal = Math.max(0, subtotal - discountVal);
 
   // If credit invoice, calculate paid vs due
@@ -744,21 +825,59 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       </div>
 
       {/* Customer Info */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <input
-          type="text"
-          value={custName}
-          onChange={e => setCustName(e.target.value)}
-          placeholder="Customer Name"
-          className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[44px]"
-        />
-        <input
-          type="text"
-          value={custPhone}
-          onChange={e => setCustPhone(e.target.value)}
-          placeholder="Phone Number"
-          className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[44px]"
-        />
+      <div className="space-y-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <input
+            type="text"
+            value={custName}
+            onChange={e => setCustName(e.target.value)}
+            placeholder={saleMode === 'wholesale' ? "Retailer / Contact Person Name *" : "Customer Name"}
+            className={`border rounded-xl px-3 py-2.5 text-xs font-medium focus:outline-none focus:bg-white transition min-h-[44px] ${
+              saleMode === 'wholesale' ? 'bg-purple-50/50 border-purple-200 focus:border-purple-600' : 'bg-slate-50 border-slate-200 focus:border-blue-600'
+            }`}
+          />
+          <input
+            type="text"
+            value={custPhone}
+            onChange={e => setCustPhone(e.target.value)}
+            placeholder="Phone Number"
+            className={`border rounded-xl px-3 py-2.5 text-xs font-medium focus:outline-none focus:bg-white transition min-h-[44px] ${
+              saleMode === 'wholesale' ? 'bg-purple-50/50 border-purple-200 focus:border-purple-600' : 'bg-slate-50 border-slate-200 focus:border-blue-600'
+            }`}
+          />
+        </div>
+
+        {/* Wholesale Retailer Shop Details */}
+        {saleMode === 'wholesale' && (
+          <div className="bg-purple-50 border border-purple-200 rounded-xl p-2.5 space-y-2 animate-in fade-in">
+            <span className="text-[10px] font-black uppercase text-purple-900 tracking-wider flex items-center gap-1">
+              <Package className="w-3.5 h-3.5 text-purple-700" /> Retailer / Shop Details
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <input
+                type="text"
+                value={retailerShopName}
+                onChange={e => setRetailerShopName(e.target.value)}
+                placeholder="Shop / Business Name"
+                className="bg-white border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[38px]"
+              />
+              <input
+                type="text"
+                value={retailerCity}
+                onChange={e => setRetailerCity(e.target.value)}
+                placeholder="City (e.g. Lahore, Karachi)"
+                className="bg-white border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[38px]"
+              />
+              <input
+                type="text"
+                value={retailerNtn}
+                onChange={e => setRetailerNtn(e.target.value)}
+                placeholder="NTN / GST No (Optional)"
+                className="bg-white border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs font-mono font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[38px]"
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Cart Itemized Table */}
@@ -852,7 +971,12 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                         </div>
                       </td>
                       <td className="p-2.5 text-right font-mono tabular-nums font-bold text-slate-900">
-                        {currency} {(item.salePrice * item.cartQty).toLocaleString()}
+                        {currency} {(getItemUnitPrice(item) * item.cartQty).toLocaleString()}
+                        {saleMode === 'wholesale' && (
+                          <div className="text-[9px] text-purple-700 font-sans">
+                            {currency} {getItemUnitPrice(item).toLocaleString()} / unit
+                          </div>
+                        )}
                       </td>
                       <td className="p-2.5 text-center">
                         <button
@@ -876,13 +1000,36 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       <div className="space-y-3 pt-2 border-t border-slate-100 text-xs">
         <div className="space-y-1.5 text-slate-600">
           <div className="flex justify-between">
-            <span>Subtotal:</span>
+            <span>Subtotal ({saleMode === 'wholesale' ? 'B2B Wholesale' : 'Retail'}):</span>
             <span className="font-mono tabular-nums font-bold text-slate-800">
               {currency} {subtotal.toLocaleString()}
             </span>
           </div>
+
+          {/* Wholesale B2B Savings Banner */}
+          {saleMode === 'wholesale' && wholesaleSavings > 0 && (
+            <div className="flex justify-between items-center bg-purple-50 border border-purple-200 text-purple-900 px-2.5 py-1.5 rounded-xl font-extrabold text-[11px]">
+              <span className="flex items-center gap-1">
+                <Sparkles className="w-3.5 h-3.5 text-purple-600" /> B2B Wholesale Savings:
+              </span>
+              <span className="font-mono tabular-nums">
+                {currency} {wholesaleSavings.toLocaleString()}
+              </span>
+            </div>
+          )}
+
+          {/* Automatic Bulk Tier Discount Banner */}
+          {saleMode === 'wholesale' && bulkTierDiscountPercent > 0 && (
+            <div className="flex justify-between items-center bg-emerald-50 border border-emerald-200 text-emerald-800 px-2.5 py-1.5 rounded-xl font-extrabold text-[11px]">
+              <span>🎉 Bulk Tier Discount ({bulkTierDiscountPercent}% Off):</span>
+              <span className="font-mono tabular-nums text-emerald-700">
+                -{currency} {bulkDiscountAmount.toLocaleString()}
+              </span>
+            </div>
+          )}
+
           <div className="flex justify-between items-center">
-            <span>Discount ({currency}):</span>
+            <span>Additional Discount ({currency}):</span>
             <input
               type="number"
               min="0"
@@ -895,7 +1042,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
           <div className="flex justify-between text-base font-extrabold text-slate-900 pt-1.5 border-t border-slate-100">
             <span>Grand Total:</span>
-            <span className="text-blue-600 font-mono tabular-nums text-lg">
+            <span className={`font-mono tabular-nums text-lg ${saleMode === 'wholesale' ? 'text-purple-700' : 'text-blue-600'}`}>
               {currency} {grandTotal.toLocaleString()}
             </span>
           </div>
@@ -1019,8 +1166,13 @@ const PosTabComponent: React.FC<PosTabProps> = ({
     const saleRecord: SaleRecord = {
       invNo,
       invoiceType,
-      custName: custName.trim() || 'Walk-in Customer',
+      saleMode,
+      custName: custName.trim() || (saleMode === 'wholesale' ? 'Wholesale Retailer' : 'Walk-in Customer'),
       custPhone: custPhone.trim() || undefined,
+      retailerShopName: saleMode === 'wholesale' ? retailerShopName.trim() || undefined : undefined,
+      retailerCity: saleMode === 'wholesale' ? retailerCity.trim() || undefined : undefined,
+      retailerNtn: saleMode === 'wholesale' ? retailerNtn.trim() || undefined : undefined,
+      wholesaleSavings: wholesaleSavings > 0 ? wholesaleSavings : undefined,
       khataCustomerId: invoiceType === 'credit' ? selectedKhataId || undefined : undefined,
       amountPaid: actualPaid,
       amountDue: actualDue,
@@ -1029,13 +1181,18 @@ const PosTabComponent: React.FC<PosTabProps> = ({
           ? i.selectedImeis.filter(Boolean)
           : (i.imei ? i.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
 
+        const activeUnitPrice = getItemUnitPrice(i);
+
         return {
           id: i.id,
           name: i.name,
           category: i.category,
           imei: itemImeis.length > 0 ? itemImeis.join(', ') : undefined,
           imeis: itemImeis.length > 0 ? itemImeis : undefined,
-          salePrice: i.salePrice,
+          salePrice: activeUnitPrice,
+          wholesalePrice: i.wholesalePrice,
+          isWholesale: saleMode === 'wholesale',
+          boxCount: i.boxSize ? Math.floor(i.cartQty / i.boxSize) : undefined,
           costPrice: i.costPrice,
           qty: i.cartQty,
           barcode: i.barcode,
@@ -1130,6 +1287,68 @@ const PosTabComponent: React.FC<PosTabProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Column: Catalog & Search (7 Cols) */}
           <div className="lg:col-span-7 space-y-4">
+            {/* Mode Switcher Banner: Retail vs Wholesale Mode */}
+            <div className={`border rounded-2xl p-2.5 sm:p-3.5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition ${
+              saleMode === 'wholesale'
+                ? 'bg-gradient-to-r from-purple-900 via-indigo-900 to-purple-800 text-white border-purple-700/80 shadow-purple-900/20'
+                : 'bg-white border-slate-200/90 text-slate-900'
+            }`}>
+              <div className="flex items-center gap-2.5">
+                <div className={`p-2.5 rounded-xl shrink-0 ${
+                  saleMode === 'wholesale' ? 'bg-white/15 text-amber-300 backdrop-blur-md' : 'bg-emerald-100 text-emerald-700'
+                }`}>
+                  {saleMode === 'wholesale' ? <Package className="w-5 h-5 animate-pulse" /> : <ShoppingCart className="w-5 h-5" />}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-extrabold text-xs sm:text-sm leading-tight">
+                      {saleMode === 'wholesale' ? 'B2B Wholesale Sales Mode' : 'Retail Sales Mode'}
+                    </h4>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                      saleMode === 'wholesale' ? 'bg-amber-400 text-slate-900' : 'bg-emerald-100 text-emerald-800'
+                    }`}>
+                      {saleMode === 'wholesale' ? 'Wholesale Active' : 'Retail'}
+                    </span>
+                  </div>
+                  <p className={`text-[11px] mt-0.5 ${saleMode === 'wholesale' ? 'text-purple-100' : 'text-slate-500'}`}>
+                    {saleMode === 'wholesale'
+                      ? 'Wholesale prices, bulk cartons & retailer invoice terms active'
+                      : 'Standard consumer prices & walk-in customer billing'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Mode Toggle Switcher Buttons */}
+              <div className={`flex items-center p-1 rounded-xl border shrink-0 ${
+                saleMode === 'wholesale' ? 'bg-purple-950/60 border-purple-600/50' : 'bg-slate-100 border-slate-200'
+              }`}>
+                <button
+                  type="button"
+                  onClick={() => setSaleMode('retail')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 min-h-[38px] ${
+                    saleMode === 'retail'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <ShoppingCart className="w-3.5 h-3.5" />
+                  <span>Retail</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSaleMode('wholesale')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 min-h-[38px] ${
+                    saleMode === 'wholesale'
+                      ? 'bg-purple-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Package className="w-3.5 h-3.5" />
+                  <span>Wholesale</span>
+                </button>
+              </div>
+            </div>
+
             {/* Search & Category Filter Bar */}
             <div className="bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-4 space-y-3 shadow-xs">
               <div className="relative flex items-center">
@@ -1280,16 +1499,56 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                       </div>
 
                       <div className="flex items-center justify-between mt-2.5 sm:mt-3.5 pt-2 sm:pt-2.5 border-t border-slate-100">
-                        <span className="font-extrabold text-blue-600 text-xs sm:text-sm font-mono tabular-nums">
-                          {currency} {item.salePrice.toLocaleString()}
-                        </span>
-                        <button
-                          type="button"
-                          disabled={remainingStock <= 0}
-                          className="px-2 sm:px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 font-bold rounded-lg text-[10px] sm:text-[11px] flex items-center gap-0.5 sm:gap-1 transition cursor-pointer min-h-[32px]"
-                        >
-                          <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> Add
-                        </button>
+                        <div>
+                          {saleMode === 'wholesale' ? (
+                            <div>
+                              <div className="font-extrabold text-purple-700 text-xs sm:text-sm font-mono tabular-nums flex items-center gap-1">
+                                <span>{currency} {getItemUnitPrice(item).toLocaleString()}</span>
+                                <span className="text-[9px] bg-purple-100 text-purple-800 px-1 py-0.2 rounded font-black uppercase">W/S</span>
+                              </div>
+                              <span className="text-[10px] text-slate-400 line-through font-mono">
+                                {currency} {item.salePrice.toLocaleString()}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="font-extrabold text-blue-600 text-xs sm:text-sm font-mono tabular-nums">
+                              {currency} {item.salePrice.toLocaleString()}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                          {saleMode === 'wholesale' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const boxUnits = item.boxSize || 10;
+                                for (let i = 0; i < boxUnits; i++) {
+                                  addToCart(item);
+                                }
+                              }}
+                              disabled={remainingStock <= 0}
+                              className="px-2 py-1 bg-purple-100 hover:bg-purple-200 text-purple-800 font-extrabold rounded-lg text-[10px] flex items-center gap-1 transition cursor-pointer min-h-[32px] border border-purple-200"
+                              title={`Add 1 Box / Carton (${item.boxSize || 10} units)`}
+                            >
+                              <Package className="w-3 h-3 text-purple-700" />
+                              <span>+{item.boxSize || 10} Box</span>
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => addToCart(item)}
+                            disabled={remainingStock <= 0}
+                            className={`px-2 sm:px-2.5 py-1 font-bold rounded-lg text-[10px] sm:text-[11px] flex items-center gap-0.5 sm:gap-1 transition cursor-pointer min-h-[32px] ${
+                              saleMode === 'wholesale'
+                                ? 'bg-purple-600 text-white hover:bg-purple-700'
+                                : 'bg-blue-50 hover:bg-blue-100 text-blue-600'
+                            }`}
+                          >
+                            <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> Add
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );

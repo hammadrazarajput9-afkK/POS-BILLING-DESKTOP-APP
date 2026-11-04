@@ -181,16 +181,29 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
 
         {/* Invoice Info */}
         <div className="py-2 border-b border-dashed border-black text-[11px] space-y-0.5">
+          {sale.saleMode === 'wholesale' && (
+            <div className="text-center font-black text-xs uppercase border border-black p-1 bg-gray-100 mb-1">
+              *** WHOLESALE B2B BILL ***
+            </div>
+          )}
           <div className="flex justify-between font-bold">
             <span>INV #{sale.invNo}</span>
             <span>{new Date(sale.date).toLocaleDateString()} {new Date(sale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
           </div>
-          <div>Customer: <span className="font-bold">{sale.custName || 'Walk-in'}</span></div>
+          <div>Customer / Retailer: <span className="font-bold">{sale.custName || 'Walk-in'}</span></div>
+          {sale.retailerShopName && <div>Shop: <span className="font-bold">{sale.retailerShopName}</span></div>}
+          {sale.retailerCity && <div>City: {sale.retailerCity}</div>}
+          {sale.retailerNtn && <div>NTN/GST: {sale.retailerNtn}</div>}
           {sale.custPhone && <div>Phone: {sale.custPhone}</div>}
-          <div className="pt-1">
+          <div className="pt-1 flex items-center justify-between">
             <span className="font-black border border-black px-1.5 py-0.5 uppercase text-[10px]">
               [{paymentStatusText}]
             </span>
+            {sale.saleMode === 'wholesale' && (
+              <span className="font-bold text-[10px] uppercase">
+                Mode: WHOLESALE
+              </span>
+            )}
           </div>
         </div>
 
@@ -210,6 +223,9 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 <tr key={idx} className="border-b border-dotted border-gray-300">
                   <td className="py-1">
                     <div className="font-bold">{item.name}</div>
+                    {item.boxCount && item.boxCount > 0 ? (
+                      <div className="text-[9px] font-bold">Box/Cartons: {item.boxCount}</div>
+                    ) : null}
                     {item.imei && <div className="text-[9px]">IMEI: {item.imei}</div>}
                   </td>
                   <td className="py-1 text-center font-bold">{item.qty}</td>
@@ -367,14 +383,29 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
 
             {/* Invoice Metadata */}
             <div className="space-y-1 text-[11px] text-slate-600 border-b border-dashed border-slate-300 pb-2.5">
+              {sale.saleMode === 'wholesale' && (
+                <div className="bg-purple-100 border border-purple-300 text-purple-900 rounded-lg p-1.5 text-center font-extrabold text-[11px] mb-2 flex items-center justify-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-purple-600 animate-pulse"></span>
+                  <span>WHOLESALE B2B BILL</span>
+                </div>
+              )}
               <div className="flex justify-between font-bold text-slate-900">
                 <span>Invoice: #{sale.invNo}</span>
                 <span>{new Date(sale.date).toLocaleDateString()}</span>
               </div>
               <div className="flex justify-between">
-                <span>Customer: <strong className="text-slate-800">{sale.custName || 'Walk-in'}</strong></span>
+                <span>Retailer / Buyer: <strong className="text-slate-800">{sale.custName || 'Walk-in'}</strong></span>
                 <span>{new Date(sale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
               </div>
+              {sale.retailerShopName && (
+                <div>Shop Name: <span className="font-extrabold text-slate-800">{sale.retailerShopName}</span></div>
+              )}
+              {sale.retailerCity && (
+                <div>City: <span className="font-semibold text-slate-800">{sale.retailerCity}</span></div>
+              )}
+              {sale.retailerNtn && (
+                <div>NTN/GST: <span className="font-mono text-slate-800">{sale.retailerNtn}</span></div>
+              )}
               {sale.custPhone && (
                 <div>Phone: <span className="font-semibold text-slate-800">{sale.custPhone}</span></div>
               )}
@@ -396,6 +427,11 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                     <tr key={idx} className="align-top">
                       <td className="py-1.5">
                         <div className="font-bold text-slate-900">{item.name}</div>
+                        {item.boxCount && item.boxCount > 0 ? (
+                          <div className="text-[10px] text-purple-700 font-bold">
+                            📦 {item.boxCount} Cartons / Boxes
+                          </div>
+                        ) : null}
                         {item.imei && (
                           <div className="text-[10px] text-blue-700 font-bold flex items-center gap-1 mt-0.5">
                             <Smartphone className="w-3 h-3 text-blue-500 inline" />
@@ -423,9 +459,16 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 <span>{settings.currency} {sale.subtotal.toLocaleString()}</span>
               </div>
 
+              {sale.wholesaleSavings && sale.wholesaleSavings > 0 ? (
+                <div className="flex justify-between text-purple-700 font-extrabold bg-purple-50 p-1.5 rounded-lg border border-purple-200">
+                  <span>Wholesale B2B Savings:</span>
+                  <span>{settings.currency} {sale.wholesaleSavings.toLocaleString()}</span>
+                </div>
+              ) : null}
+
               {sale.discount > 0 && (
                 <div className="flex justify-between text-emerald-600 font-semibold">
-                  <span>Discount:</span>
+                  <span>Discount / Tier:</span>
                   <span>-{settings.currency} {sale.discount.toLocaleString()}</span>
                 </div>
               )}
