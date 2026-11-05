@@ -1398,10 +1398,11 @@ export const StockModal: React.FC<StockModalProps> = ({
             /* ========================================================= */
             <div className="space-y-4">
               {/* Pricing & Quantity Row */}
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {/* 1. Cost Price */}
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
-                    Cost Price ({currency})
+                    1. Cost Price ({currency}) *
                   </label>
                   <input
                     type="number"
@@ -1409,13 +1410,30 @@ export const StockModal: React.FC<StockModalProps> = ({
                     min="0"
                     value={costPrice}
                     onChange={e => setCostPrice(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder="0"
+                    placeholder="Khareed Rate"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition"
                   />
                 </div>
+
+                {/* 2. Wholesale Price */}
+                <div>
+                  <label className="block font-bold text-purple-900 mb-1">
+                    2. Wholesale Price ({currency})
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={wholesalePrice}
+                    onChange={e => setWholesalePrice(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="Wholesale Rate"
+                    className="w-full bg-purple-50/60 border border-purple-200 rounded-xl px-3 py-2 text-xs font-mono font-semibold text-purple-950 focus:outline-none focus:border-purple-600 focus:bg-white transition"
+                  />
+                </div>
+
+                {/* 3. Sale Price */}
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
-                    Sale Price ({currency})
+                    3. Sale Price ({currency}) *
                   </label>
                   <input
                     type="number"
@@ -1423,34 +1441,12 @@ export const StockModal: React.FC<StockModalProps> = ({
                     min="0"
                     value={salePrice}
                     onChange={e => setSalePrice(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder="0"
+                    placeholder="Retail Sale Rate"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition"
                   />
                 </div>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block font-bold text-slate-700">
-                      Wholesale Price ({currency})
-                    </label>
-                    {salePrice !== '' && (
-                      <button
-                        type="button"
-                        onClick={() => setWholesalePrice(Math.round(Number(salePrice) * 0.9))}
-                        className="text-[10px] text-purple-600 hover:underline font-extrabold cursor-pointer"
-                      >
-                        Auto (10% Off)
-                      </button>
-                    )}
-                  </div>
-                  <input
-                    type="number"
-                    min="0"
-                    value={wholesalePrice}
-                    onChange={e => setWholesalePrice(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder={salePrice !== '' ? `${Math.round(Number(salePrice) * 0.9)}` : '0'}
-                    className="w-full bg-purple-50/50 border border-purple-200 rounded-xl px-3 py-2 text-xs font-mono font-semibold text-purple-900 focus:outline-none focus:border-purple-600 focus:bg-white transition"
-                  />
-                </div>
+
+                {/* 4. Carton / Box Units */}
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Carton / Box Units</label>
                   <input
@@ -1462,6 +1458,8 @@ export const StockModal: React.FC<StockModalProps> = ({
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition"
                   />
                 </div>
+
+                {/* 5. Quantity */}
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Quantity</label>
                   <input

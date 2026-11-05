@@ -431,12 +431,12 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   const accountId = draft.accountId || '';
   const amountPaid = draft.amountPaid !== undefined ? draft.amountPaid : '';
 
-  // Helper to get active price per unit based on Mode
+  // Helper to get active price per unit based on Mode (Retail vs Custom Wholesale Price)
   const getItemUnitPrice = (item: { salePrice: number; wholesalePrice?: number }, mode = saleMode) => {
     if (mode === 'wholesale') {
       return item.wholesalePrice && item.wholesalePrice > 0
         ? item.wholesalePrice
-        : Math.round(item.salePrice * 0.9);
+        : item.salePrice;
     }
     return item.salePrice;
   };
@@ -692,20 +692,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
     return Math.max(0, retailSubtotal - subtotal);
   }, [retailSubtotal, subtotal, saleMode]);
 
-  // Automatic Bulk Tier Discount (for Wholesale orders with 50+ or 100+ items)
-  const bulkTierDiscountPercent = useMemo(() => {
-    if (saleMode !== 'wholesale') return 0;
-    if (totalCartItems >= 100) return 5; // 5% extra discount for 100+ units
-    if (totalCartItems >= 50) return 2;  // 2% extra discount for 50+ units
-    return 0;
-  }, [saleMode, totalCartItems]);
-
-  const bulkDiscountAmount = useMemo(() => {
-    if (bulkTierDiscountPercent <= 0) return 0;
-    return Math.round((subtotal * bulkTierDiscountPercent) / 100);
-  }, [subtotal, bulkTierDiscountPercent]);
-
-  const discountVal = (Number(discount) || 0) + bulkDiscountAmount;
+  const discountVal = Number(discount) || 0;
   const grandTotal = Math.max(0, subtotal - discountVal);
 
   // If credit invoice, calculate paid vs due
@@ -1018,18 +1005,8 @@ const PosTabComponent: React.FC<PosTabProps> = ({
             </div>
           )}
 
-          {/* Automatic Bulk Tier Discount Banner */}
-          {saleMode === 'wholesale' && bulkTierDiscountPercent > 0 && (
-            <div className="flex justify-between items-center bg-emerald-50 border border-emerald-200 text-emerald-800 px-2.5 py-1.5 rounded-xl font-extrabold text-[11px]">
-              <span>🎉 Bulk Tier Discount ({bulkTierDiscountPercent}% Off):</span>
-              <span className="font-mono tabular-nums text-emerald-700">
-                -{currency} {bulkDiscountAmount.toLocaleString()}
-              </span>
-            </div>
-          )}
-
           <div className="flex justify-between items-center">
-            <span>Additional Discount ({currency}):</span>
+            <span>Discount ({currency}):</span>
             <input
               type="number"
               min="0"
@@ -1386,8 +1363,8 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-1.5 text-xs">
-                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 flex-nowrap shrink-0 max-w-[calc(100vw-60px)] sm:max-w-none">
+              <div className="flex items-center justify-between gap-2 text-xs w-full max-w-full overflow-hidden">
+                <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1 flex-nowrap touch-pan-x">
                   {['ALL', ...categories].map(cat => (
                     <button
                       key={cat}

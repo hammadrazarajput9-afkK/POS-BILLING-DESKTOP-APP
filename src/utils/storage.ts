@@ -33,8 +33,9 @@ import {
 } from 'firebase/firestore';
 import { generateEntityId } from './id';
 
-export const STORAGE_KEY = 'MOBILE_POS_PRO_DATA_V6';
+export const STORAGE_KEY = 'MOBILE_POS_PRO_DATA_V7';
 export const LEGACY_STORAGE_KEYS = [
+  'MOBILE_POS_PRO_DATA_V6',
   'MOBILE_POS_PRO_DATA_V5',
   'MOBILE_POS_PRO_DATA_V4',
   'MOBILE_POS_PRO_DATA_V3',

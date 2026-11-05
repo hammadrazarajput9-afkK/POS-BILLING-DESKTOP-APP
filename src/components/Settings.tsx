@@ -1207,34 +1207,6 @@ export const Settings: React.FC<SettingsProps> = ({
                 </div>
               </div>
 
-              {/* Danger Zone: Wipe All Data / Start Fresh */}
-              <div className="p-4 bg-rose-50/70 border border-rose-200 rounded-2xl space-y-2.5">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
-                  <div>
-                    <h4 className="font-bold text-slate-900 text-xs">Clear All Records & Start Fresh</h4>
-                    <p className="text-[11px] text-slate-500">
-                      Remove all existing inventory items, sales records, expenses, purchases, khata balances, and daily closings.
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (window.confirm('Are you sure you want to remove all entries and start with a clean slate? This action cannot be undone.')) {
-                      const clean = await clearAllStoredData();
-                      onReplaceData(clean);
-                      showToast('All entries and data have been wiped clean', 'success');
-                      onClose();
-                    }
-                  }}
-                  className="py-2.5 px-4 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-md shadow-rose-600/20 flex items-center justify-center gap-1.5"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  <span>Wipe All Data (Clean Slate)</span>
-                </button>
-              </div>
             </div>
           )}
 
