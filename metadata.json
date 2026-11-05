@@ -1,0 +1,6 @@
+{
+  "name": "Mobile POS Pro - Shop & Repair Management Suite",
+  "description": "Complete point of sale, IMEI inventory tracking, repair ticketing, khata ledger, expense tracking, and financial analytics for mobile shops.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

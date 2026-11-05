@@ -1,0 +1,33 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_-]+$');
+    }
+
+    // Default deny all unmatched paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Connection health check
+    match /test/{docId} {
+      allow get: if isValidId(docId);
+      allow list: if true;
+      allow write: if isValidId(docId);
+    }
+
+    // POS Application Store Data & Sub-Collections
+    match /pos_data/{storeId} {
+      allow read, write: if isValidId(storeId);
+
+      // Sub-collections (sales, inventory, khata, expenses, activities)
+      match /{subcollection}/{docId} {
+        allow get: if isValidId(storeId) && isValidId(subcollection) && isValidId(docId);
+        allow list: if isValidId(storeId) && isValidId(subcollection);
+        allow create, update, delete: if isValidId(storeId) && isValidId(subcollection) && isValidId(docId);
+      }
+    }
+  }
+}
