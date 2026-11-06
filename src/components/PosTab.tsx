@@ -1363,8 +1363,8 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-2 text-xs w-full max-w-full overflow-hidden">
-                <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1 flex-nowrap touch-pan-x">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs w-full max-w-full">
+                <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-x-auto scrollbar-thin pb-1.5 pt-0.5 touch-pan-x max-w-full">
                   {['ALL', ...categories].map(cat => (
                     <button
                       key={cat}
@@ -1373,19 +1373,33 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                       className={`px-3 py-1.5 rounded-xl font-bold text-xs whitespace-nowrap transition shrink-0 cursor-pointer ${
                         selectedCategory === cat
                           ? 'bg-blue-600 text-white shadow-xs'
-                          : 'bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                          : 'bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-neutral-700'
                       }`}
                     >
                       {cat === 'ALL' ? 'All Items' : cat}
                     </button>
                   ))}
+                  {categories.length > 5 && (
+                    <select
+                      value={selectedCategory}
+                      onChange={e => setSelectedCategory(e.target.value)}
+                      className="px-2 py-1.5 rounded-xl bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-neutral-200 text-xs font-bold border border-slate-200 dark:border-neutral-700 shrink-0 cursor-pointer outline-none"
+                    >
+                      <option value="ALL">All ({categories.length})</option>
+                      {categories.map(c => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 {onOpenSalesReturn && (
                   <button
                     type="button"
                     onClick={() => onOpenSalesReturn(null)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ml-auto shadow-xs whitespace-nowrap min-h-[36px]"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 self-end sm:self-auto shadow-xs whitespace-nowrap min-h-[34px]"
                     title="Process Customer Sales Return & Refund"
                   >
                     <RotateCcw className="w-3.5 h-3.5 text-amber-700" />

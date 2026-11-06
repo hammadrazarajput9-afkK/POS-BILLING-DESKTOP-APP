@@ -57,6 +57,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
 }) => {
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
 
   const initialDraft: ExpenseDraftData = {
     description: '',
@@ -357,7 +358,60 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
             )}
           </div>
 
-          {/* Actions */}
+          {/* Receipt Photo / Bill Image Attachment */}
+            <div className="p-3 bg-rose-50/60 rounded-xl border border-rose-200/80 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                {formData.image ? (
+                  <div className="relative w-12 h-12 rounded-xl border border-rose-200 overflow-hidden bg-white shrink-0 shadow-2xs">
+                    <img src={formData.image} alt="Receipt" className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={handleRemoveImage}
+                      className="absolute top-0.5 right-0.5 bg-rose-600 text-white rounded-full p-0.5 hover:bg-rose-700 cursor-pointer"
+                      title="Remove Receipt"
+                    >
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="w-12 h-12 rounded-xl border border-dashed border-rose-300 bg-white flex items-center justify-center text-rose-400 shrink-0">
+                    <Receipt className="w-5 h-5 text-rose-300" />
+                  </div>
+                )}
+                <div>
+                  <span className="block font-bold text-slate-800 text-[11px]">Bill / Receipt Attachment</span>
+                  <span className="text-[10px] text-slate-400 block">Optional proof photo</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleImageChange}
+                  accept="image/*"
+                  className="hidden"
+                  id="expense-receipt-file"
+                />
+                <label
+                  htmlFor="expense-receipt-file"
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-lg text-[11px] cursor-pointer transition border border-slate-200 shadow-2xs"
+                >
+                  <Upload className="w-3 h-3 text-rose-600" />
+                  <span>Gallery</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsCameraOpen(true)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-[11px] cursor-pointer transition shadow-2xs"
+                >
+                  <Camera className="w-3 h-3 text-white" />
+                  <span>Camera</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Actions */}
           <div className="pt-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 border-t border-slate-100">
             {hasActiveDraft ? (
               <button
@@ -391,6 +445,17 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
           </div>
         </form>
       </div>
+
+      {/* Live Camera Snapshot Modal for Expense Receipt */}
+      <CameraCaptureModal
+        isOpen={isCameraOpen}
+        onClose={() => setIsCameraOpen(false)}
+        title="Capture Receipt Photo"
+        onCapture={dataUrl => {
+          setFormData(prev => ({ ...prev, image: dataUrl }));
+          showToast('Expense receipt captured with camera!', 'success');
+        }}
+      />
     </div>
   );
 };

@@ -24,7 +24,12 @@ import {
   FileSpreadsheet,
   RotateCcw,
   Edit,
-  Trash2
+  Trash2,
+  Store,
+  Building2,
+  Tag,
+  Users,
+  Check
 } from 'lucide-react';
 import { useToast } from './Toast';
 
@@ -36,7 +41,7 @@ interface ReportsTabProps {
   onDeleteSale?: (invNo: string, permanent?: boolean, reason?: string) => void;
 }
 
-type ReportType =
+export type ReportType =
   | 'sales'
   | 'expenses'
   | 'inventory'
@@ -45,7 +50,10 @@ type ReportType =
   | 'closings'
   | 'purchases'
   | 'returns'
-  | 'top_products';
+  | 'top_products'
+  | 'wholesale';
+
+export type DateFilterMode = 'all' | 'today' | 'week' | 'month' | '6month' | 'year' | 'custom';
 
 const ReportsTabComponent: React.FC<ReportsTabProps> = ({
   data,
@@ -63,22 +71,93 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
   const [deleteMode, setDeleteMode] = useState<'cancel' | 'permanent'>('cancel');
   const [cancelReason, setCancelReason] = useState('Customer request / cancelled');
 
+  // Universal Date Range Filter State
+  const [dateFilterMode, setDateFilterMode] = useState<DateFilterMode>('all');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+
+  // Date In Range Checker
+  const isDateInRange = (dateStr?: string) => {
+    if (!dateStr || dateFilterMode === 'all') return true;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return true;
+    const now = new Date();
+
+    if (dateFilterMode === 'today') {
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+      const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      return d >= todayStart && d <= todayEnd;
+    }
+    if (dateFilterMode === 'week') {
+      const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      return d >= weekStart;
+    }
+    if (dateFilterMode === 'month') {
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+      return d >= monthStart;
+    }
+    if (dateFilterMode === '6month') {
+      const sixMonthsAgo = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
+      return d >= sixMonthsAgo;
+    }
+    if (dateFilterMode === 'year') {
+      const yearStart = new Date(now.getFullYear(), 0, 1, 0, 0, 0);
+      return d >= yearStart;
+    }
+    if (dateFilterMode === 'custom') {
+      if (!customStartDate && !customEndDate) return true;
+      if (customStartDate) {
+        const start = new Date(customStartDate);
+        start.setHours(0, 0, 0, 0);
+        if (d < start) return false;
+      }
+      if (customEndDate) {
+        const end = new Date(customEndDate);
+        end.setHours(23, 59, 59, 999);
+        if (d > end) return false;
+      }
+      return true;
+    }
+    return true;
+  };
+
+  // Filtered Core Collections
+  const filteredSales = useMemo(() => {
+    return data.sales.filter(s => isDateInRange(s.date));
+  }, [data.sales, dateFilterMode, customStartDate, customEndDate]);
+
+  const filteredExpenses = useMemo(() => {
+    return data.expenses.filter(e => isDateInRange(e.date));
+  }, [data.expenses, dateFilterMode, customStartDate, customEndDate]);
+
+  const filteredReturns = useMemo(() => {
+    return (data.salesReturns || []).filter(r => isDateInRange(r.returnDate));
+  }, [data.salesReturns, dateFilterMode, customStartDate, customEndDate]);
+
+  const filteredPurchases = useMemo(() => {
+    return (data.purchasesLedger || []).filter(p => isDateInRange(p.date));
+  }, [data.purchasesLedger, dateFilterMode, customStartDate, customEndDate]);
+
+  const filteredClosings = useMemo(() => {
+    return (data.dailyClosings || []).filter(c => isDateInRange(c.date || c.createdAt));
+  }, [data.dailyClosings, dateFilterMode, customStartDate, customEndDate]);
+
   // 1. Sales & Returns Calculations
   const totalSalesRevenue = useMemo(() => {
-    return data.sales.reduce((acc, s) => acc + s.grandTotal, 0);
-  }, [data.sales]);
+    return filteredSales.reduce((acc, s) => acc + s.grandTotal, 0);
+  }, [filteredSales]);
 
   const totalCOGS = useMemo(() => {
-    return data.sales.reduce((acc, s) => acc + s.totalCost, 0);
-  }, [data.sales]);
+    return filteredSales.reduce((acc, s) => acc + s.totalCost, 0);
+  }, [filteredSales]);
 
   const totalRefundsAmount = useMemo(() => {
-    return (data.salesReturns || []).reduce((acc, r) => acc + (r.totalRefundAmount || 0), 0);
-  }, [data.salesReturns]);
+    return filteredReturns.reduce((acc, r) => acc + (r.totalRefundAmount || 0), 0);
+  }, [filteredReturns]);
 
   const totalCostReversed = useMemo(() => {
-    return (data.salesReturns || []).reduce((acc, r) => acc + (r.totalCostReversed || 0), 0);
-  }, [data.salesReturns]);
+    return filteredReturns.reduce((acc, r) => acc + (r.totalCostReversed || 0), 0);
+  }, [filteredReturns]);
 
   const netSalesRevenue = Math.max(0, totalSalesRevenue - totalRefundsAmount);
   const netCOGS = Math.max(0, totalCOGS - totalCostReversed);
@@ -86,8 +165,8 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
 
   // 2. Expense Calculations
   const totalExpenses = useMemo(() => {
-    return data.expenses.reduce((acc, e) => acc + e.amount, 0);
-  }, [data.expenses]);
+    return filteredExpenses.reduce((acc, e) => acc + e.amount, 0);
+  }, [filteredExpenses]);
 
   const netProfit = grossProfit - totalExpenses;
   const netMarginPercent = totalSalesRevenue > 0 ? Math.round((netProfit / totalSalesRevenue) * 100) : 0;
@@ -115,17 +194,17 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
 
   // 5. Purchases Total
   const totalPurchasesAmount = useMemo(() => {
-    return data.purchasesLedger.reduce((acc, p) => acc + p.total, 0);
-  }, [data.purchasesLedger]);
+    return filteredPurchases.reduce((acc, p) => acc + p.total, 0);
+  }, [filteredPurchases]);
 
   // 6. Closings Total
-  const closingsHistory = data.dailyClosings || [];
+  const closingsHistory = filteredClosings;
   const latestClosing = closingsHistory.length > 0 ? closingsHistory[0] : null;
 
   // 7. Top Selling Products
   const topSellingList = useMemo(() => {
     const map: Record<string, { id: string; name: string; category: string; unitsSold: number; totalRevenue: number }> = {};
-    data.sales.forEach(sale => {
+    filteredSales.forEach(sale => {
       sale.items.forEach(item => {
         if (!map[item.id]) {
           map[item.id] = {
@@ -142,7 +221,74 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
     });
 
     return Object.values(map).sort((a, b) => b.unitsSold - a.unitsSold);
-  }, [data.sales]);
+  }, [filteredSales]);
+
+  // 8. Wholesale Specific Calculations
+  const wholesaleSales = useMemo(() => {
+    return filteredSales.filter(
+      s => s.saleMode === 'wholesale' || s.items.some(i => i.isWholesale || (i.wholesalePrice && i.wholesalePrice > 0))
+    );
+  }, [filteredSales]);
+
+  const totalWholesaleRevenue = useMemo(() => {
+    return wholesaleSales.reduce((acc, s) => acc + s.grandTotal, 0);
+  }, [wholesaleSales]);
+
+  const totalWholesaleCost = useMemo(() => {
+    return wholesaleSales.reduce((acc, s) => acc + s.totalCost, 0);
+  }, [wholesaleSales]);
+
+  const totalWholesaleProfit = totalWholesaleRevenue - totalWholesaleCost;
+
+  const totalWholesaleDiscountsGiven = useMemo(() => {
+    return wholesaleSales.reduce((acc, s) => acc + (s.wholesaleSavings || 0) + (s.discount || 0), 0);
+  }, [wholesaleSales]);
+
+  const totalWholesaleUnits = useMemo(() => {
+    return wholesaleSales.reduce((acc, s) => acc + s.items.reduce((sum, item) => sum + item.qty, 0), 0);
+  }, [wholesaleSales]);
+
+  // Breakdown per Retailer
+  const retailerStats = useMemo(() => {
+    const map: Record<
+      string,
+      {
+        name: string;
+        shopName: string;
+        city: string;
+        phone: string;
+        invoicesCount: number;
+        totalPurchased: number;
+        totalCost: number;
+        totalProfit: number;
+        totalDiscounts: number;
+      }
+    > = {};
+
+    wholesaleSales.forEach(sale => {
+      const key = (sale.custName || sale.retailerShopName || 'Walk-in Retailer').toLowerCase().trim();
+      if (!map[key]) {
+        map[key] = {
+          name: sale.custName || 'Retailer',
+          shopName: sale.retailerShopName || '-',
+          city: sale.retailerCity || '-',
+          phone: sale.custPhone || '-',
+          invoicesCount: 0,
+          totalPurchased: 0,
+          totalCost: 0,
+          totalProfit: 0,
+          totalDiscounts: 0,
+        };
+      }
+      map[key].invoicesCount += 1;
+      map[key].totalPurchased += sale.grandTotal;
+      map[key].totalCost += sale.totalCost;
+      map[key].totalProfit += sale.netProfit;
+      map[key].totalDiscounts += (sale.wholesaleSavings || 0) + (sale.discount || 0);
+    });
+
+    return Object.values(map).sort((a, b) => b.totalPurchased - a.totalPurchased);
+  }, [wholesaleSales]);
 
   // Handle PDF Print of Active Report
   const handlePrintCurrentReport = () => {
@@ -154,20 +300,50 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
     const lines: string[] = [];
     const dateStr = new Date().toLocaleDateString();
 
+    const filterText =
+      dateFilterMode === 'today'
+        ? 'Aaj (Today)'
+        : dateFilterMode === 'week'
+        ? 'Is Hafte (This Week)'
+        : dateFilterMode === 'month'
+        ? 'Is Mahine (This Month)'
+        : dateFilterMode === '6month'
+        ? '6 Mahine (Last 6 Months)'
+        : dateFilterMode === 'year'
+        ? 'Is Saal (This Year)'
+        : dateFilterMode === 'custom'
+        ? `Custom (${customStartDate || 'Start'} to ${customEndDate || 'End'})`
+        : 'All Time (Pura Record)';
+
     lines.push(`📊 *${shopName.toUpperCase()} - BUSINESS REPORT*`);
     lines.push(`📅 *Date:* ${dateStr}`);
+    lines.push(`⏳ *Filter:* ${filterText}`);
     lines.push(`----------------------------------------`);
 
-    if (type === 'sales') {
+    if (type === 'wholesale') {
+      lines.push(`🏢 *WHOLESALE & RETAILER B2B REPORT*`);
+      lines.push(`• Wholesale Invoices: ${wholesaleSales.length}`);
+      lines.push(`• Wholesale Revenue: ${currency} ${totalWholesaleRevenue.toLocaleString()}`);
+      lines.push(`• Wholesale Cost (COGS): ${currency} ${totalWholesaleCost.toLocaleString()}`);
+      lines.push(`• Wholesale Net Profit/Loss: ${currency} ${totalWholesaleProfit.toLocaleString()}`);
+      lines.push(`• Total Discounts/Savings Given: ${currency} ${totalWholesaleDiscountsGiven.toLocaleString()}`);
+      lines.push(`• Units Sold: ${totalWholesaleUnits}`);
+      if (retailerStats.length > 0) {
+        lines.push(`\n*TOP RETAILERS BREAKDOWN:*`);
+        retailerStats.slice(0, 5).forEach((r, idx) => {
+          lines.push(`${idx + 1}. ${r.name} (${r.shopName !== '-' ? r.shopName : r.city}) - Total: ${currency} ${r.totalPurchased.toLocaleString()} | Profit: ${currency} ${r.totalProfit.toLocaleString()} | Discount: ${currency} ${r.totalDiscounts.toLocaleString()}`);
+        });
+      }
+    } else if (type === 'sales') {
       lines.push(`🛒 *SALES & REVENUE REPORT*`);
-      lines.push(`• Total Invoices: ${data.sales.length}`);
+      lines.push(`• Total Invoices: ${filteredSales.length}`);
       lines.push(`• Gross Revenue: ${currency} ${totalSalesRevenue.toLocaleString()}`);
       lines.push(`• Cost of Goods: ${currency} ${totalCOGS.toLocaleString()}`);
       lines.push(`• Net Profit: ${currency} ${netProfit.toLocaleString()} (${netMarginPercent}%)`);
     } else if (type === 'expenses') {
       lines.push(`🧾 *DAILY EXPENSES REPORT*`);
       lines.push(`• Total Expenses: ${currency} ${totalExpenses.toLocaleString()}`);
-      lines.push(`• Total Entries: ${data.expenses.length}`);
+      lines.push(`• Total Entries: ${filteredExpenses.length}`);
     } else if (type === 'inventory') {
       lines.push(`📦 *INVENTORY & STOCK VALUATION REPORT*`);
       lines.push(`• Total Products: ${data.inventory.length}`);
@@ -196,7 +372,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
     } else if (type === 'purchases') {
       lines.push(`📥 *PURCHASES / STOCK ACQUISITION REPORT*`);
       lines.push(`• Total Purchase Cost: ${currency} ${totalPurchasesAmount.toLocaleString()}`);
-      lines.push(`• Purchase Records: ${data.purchasesLedger.length}`);
+      lines.push(`• Purchase Records: ${filteredPurchases.length}`);
     } else if (type === 'top_products') {
       lines.push(`🏆 *TOP SELLING PRODUCTS REPORT*`);
       topSellingList.slice(0, 5).forEach((p, idx) => {
@@ -214,41 +390,150 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
   return (
     <div className="space-y-6">
       {/* Top Header */}
-      <div className="border-b border-slate-200 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="border-b border-slate-200 dark:border-neutral-800 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+          <h2 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
             <PieChart className="w-5 h-5 text-blue-600" /> Comprehensive Business Reports
           </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Click any report category to view detailed audit, download PDF, or send to WhatsApp
+          <p className="text-xs text-slate-500 dark:text-neutral-400 mt-0.5">
+            Detailed reports, wholesale profit/loss audit, date filters, PDF download, & WhatsApp sharing
           </p>
         </div>
 
         <div className="text-right">
-          <span className="text-[11px] font-bold px-3 py-1 bg-blue-50 text-blue-700 rounded-full border border-blue-200">
+          <span className="text-[11px] font-bold px-3 py-1 bg-blue-50 dark:bg-neutral-800 text-blue-700 dark:text-blue-400 rounded-full border border-blue-200 dark:border-neutral-700">
             Created by HAMMAD RAZA DEVELOPMENT
           </span>
         </div>
       </div>
 
-      {/* Top 4 Quick Summary KPI Cards */}
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-2 lg:grid-cols-4 sm:gap-4">
+      {/* UNIVERSAL DATE RANGE FILTER TOOLBAR */}
+      <div className="bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-2xl p-3.5 shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-neutral-800 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+              <Calendar className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="font-extrabold text-xs text-slate-900 dark:text-white uppercase tracking-wide">
+                Tareekh Filter (Date Range Filter)
+              </span>
+              <p className="text-[10px] text-slate-500 dark:text-neutral-400">
+                Tamam reports aur calculations chunay huay time period ke mutabiq chalain gi
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold px-2.5 py-1 bg-blue-50 dark:bg-neutral-800 text-blue-700 dark:text-blue-300 rounded-lg border border-blue-200 dark:border-neutral-700">
+              Active: {dateFilterMode === 'today' && 'Aaj (Today)'}
+              {dateFilterMode === 'week' && 'Is Hafte (This Week)'}
+              {dateFilterMode === 'month' && 'Is Mahine (This Month)'}
+              {dateFilterMode === '6month' && '6 Mahine (Last 6 Months)'}
+              {dateFilterMode === 'year' && 'Is Saal (This Year)'}
+              {dateFilterMode === 'custom' && 'Specific Date Range'}
+              {dateFilterMode === 'all' && 'Pura Record (All Time)'}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5 text-xs pt-1">
+          {[
+            { id: 'today', label: 'Aaj (Today)' },
+            { id: 'week', label: 'Is Hafte (Week)' },
+            { id: 'month', label: 'Is Mahine (Month)' },
+            { id: '6month', label: '6 Mahine (6 Months)' },
+            { id: 'year', label: 'Is Saal (Year)' },
+            { id: 'custom', label: 'Specific Date to Date (Custom)' },
+            { id: 'all', label: 'Pura Record (All Time)' },
+          ].map(opt => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => setDateFilterMode(opt.id as DateFilterMode)}
+              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer ${
+                dateFilterMode === opt.id
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-neutral-300 hover:bg-slate-200 dark:hover:bg-neutral-700'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {dateFilterMode === 'custom' && (
+          <div className="pt-2.5 border-t border-slate-100 dark:border-neutral-800 flex flex-wrap items-center gap-3 text-xs animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-slate-600 dark:text-neutral-400">From (Kahan se):</span>
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={e => setCustomStartDate(e.target.value)}
+                className="bg-slate-50 dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 text-slate-900 dark:text-white rounded-lg px-2.5 py-1 text-xs font-semibold outline-none focus:border-blue-600 cursor-pointer"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-slate-600 dark:text-neutral-400">To (Kahan tak):</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={e => setCustomEndDate(e.target.value)}
+                className="bg-slate-50 dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 text-slate-900 dark:text-white rounded-lg px-2.5 py-1 text-xs font-semibold outline-none focus:border-blue-600 cursor-pointer"
+              />
+            </div>
+            {(customStartDate || customEndDate) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomStartDate('');
+                  setCustomEndDate('');
+                }}
+                className="text-[11px] text-rose-600 hover:underline font-bold cursor-pointer"
+              >
+                Clear Dates
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Top 5 Quick Summary KPI Cards */}
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5 sm:gap-4">
+        {/* Sales Revenue */}
         <div
           onClick={() => setActiveReportModal('sales')}
-          className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4.5 shadow-xs cursor-pointer hover:border-blue-500 hover:shadow-md transition flex flex-col justify-between"
+          className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs cursor-pointer hover:border-blue-500 hover:shadow-md transition flex flex-col justify-between"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 line-clamp-1">
               Sales Revenue
             </span>
             <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 shrink-0" />
           </div>
-          <h3 className="text-sm sm:text-xl font-extrabold text-slate-900 font-mono tabular-nums mt-0.5 sm:mt-1 truncate">
+          <h3 className="text-sm sm:text-xl font-extrabold text-slate-900 dark:text-white font-mono tabular-nums mt-0.5 sm:mt-1 truncate">
             {currency} {totalSalesRevenue.toLocaleString()}
           </h3>
-          <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">{data.sales.length} Invoices</p>
+          <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">{filteredSales.length} Invoices</p>
         </div>
 
+        {/* Wholesale B2B Sales */}
+        <div
+          onClick={() => setActiveReportModal('wholesale')}
+          className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs cursor-pointer hover:border-purple-500 hover:shadow-md transition flex flex-col justify-between"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400 line-clamp-1">
+              Wholesale B2B
+            </span>
+            <Store className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-600 shrink-0" />
+          </div>
+          <h3 className="text-sm sm:text-xl font-extrabold text-purple-700 dark:text-purple-400 font-mono tabular-nums mt-0.5 sm:mt-1 truncate">
+            {currency} {totalWholesaleRevenue.toLocaleString()}
+          </h3>
+          <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">{wholesaleSales.length} Invoices</p>
+        </div>
+
+        {/* Net Profit */}
         <div
           onClick={() => {
             if (data.currentRole === 'salesman') {
@@ -257,10 +542,10 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
             }
             setActiveReportModal('pnl');
           }}
-          className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4.5 shadow-xs cursor-pointer hover:border-emerald-500 hover:shadow-md transition flex flex-col justify-between"
+          className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs cursor-pointer hover:border-emerald-500 hover:shadow-md transition flex flex-col justify-between"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 line-clamp-1">
               Net Profit
             </span>
             <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 shrink-0" />
@@ -271,7 +556,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
             <>
               <h3
                 className={`text-sm sm:text-xl font-extrabold font-mono tabular-nums mt-0.5 sm:mt-1 truncate ${
-                  netProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                  netProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600'
                 }`}
               >
                 {currency} {netProfit.toLocaleString()}
@@ -281,46 +566,77 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
           )}
         </div>
 
+        {/* Expenses */}
         <div
           onClick={() => setActiveReportModal('expenses')}
-          className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4.5 shadow-xs cursor-pointer hover:border-rose-500 hover:shadow-md transition flex flex-col justify-between"
+          className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs cursor-pointer hover:border-rose-500 hover:shadow-md transition flex flex-col justify-between"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 line-clamp-1">
               Total Expenses
             </span>
             <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-600 shrink-0" />
           </div>
-          <h3 className="text-sm sm:text-xl font-extrabold text-rose-600 font-mono tabular-nums mt-0.5 sm:mt-1 truncate">
+          <h3 className="text-sm sm:text-xl font-extrabold text-rose-600 dark:text-rose-400 font-mono tabular-nums mt-0.5 sm:mt-1 truncate">
             {currency} {totalExpenses.toLocaleString()}
           </h3>
-          <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">{data.expenses.length} Records</p>
+          <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">{filteredExpenses.length} Records</p>
         </div>
 
+        {/* Stock Valuation */}
         <div
           onClick={() => setActiveReportModal('inventory')}
-          className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4.5 shadow-xs cursor-pointer hover:border-indigo-500 hover:shadow-md transition flex flex-col justify-between"
+          className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs cursor-pointer hover:border-indigo-500 hover:shadow-md transition flex flex-col justify-between col-span-2 sm:col-span-1"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 line-clamp-1">
               Stock Value
             </span>
             <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600 shrink-0" />
           </div>
-          <h3 className="text-sm sm:text-xl font-extrabold text-slate-900 font-mono tabular-nums mt-0.5 sm:mt-1 truncate">
+          <h3 className="text-sm sm:text-xl font-extrabold text-slate-900 dark:text-white font-mono tabular-nums mt-0.5 sm:mt-1 truncate">
             {currency} {stockValuationCost.toLocaleString()}
           </h3>
           <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">{totalStockUnits} Units in stock</p>
         </div>
       </div>
 
-      {/* ALL 8 REPORT CARDS SUITE */}
+      {/* ALL DETAIL REPORT CARDS SUITE */}
       <div>
-        <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-3">
+        <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-3">
           Available Detail Reports
         </h3>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* WHOLESALE & RETAILER B2B REPORT CARD (NEW) */}
+          <div
+            onClick={() => setActiveReportModal('wholesale')}
+            className="bg-white dark:bg-neutral-900 border-2 border-purple-300 dark:border-purple-800 rounded-2xl p-4 shadow-xs hover:border-purple-500 hover:shadow-md transition cursor-pointer flex flex-col justify-between relative overflow-hidden"
+          >
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="w-9 h-9 rounded-xl bg-purple-50 dark:bg-purple-950 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold">
+                  <Store className="w-5 h-5" />
+                </div>
+                <span className="text-[10px] font-extrabold px-2 py-0.5 bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 rounded-full">
+                  B2B Wholesale
+                </span>
+              </div>
+              <div>
+                <h4 className="font-extrabold text-slate-900 dark:text-white text-sm">
+                  Wholesale & Retailer B2B Report
+                </h4>
+                <p className="text-[11px] text-slate-500 dark:text-neutral-400 mt-0.5">
+                  Retailer sales, wholesale cost, net profit/loss, and discounts given
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 pt-3 border-t border-purple-100 dark:border-neutral-800 flex items-center justify-between text-xs font-bold text-purple-600 dark:text-purple-400">
+              <span>{wholesaleSales.length} Wholesale Invoices</span>
+              <ArrowUpRight className="w-4 h-4" />
+            </div>
+          </div>
+
           {/* 1. Sales Report Card */}
           <div
             onClick={() => setActiveReportModal('sales')}
@@ -678,7 +994,8 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                     <PieChart className="w-4 h-4 sm:w-5 sm:h-5" />
                   </div>
                   <div className="min-w-0">
-                    <h3 className="font-extrabold text-slate-900 text-xs sm:text-sm uppercase tracking-wide truncate">
+                    <h3 className="font-extrabold text-slate-900 dark:text-white text-xs sm:text-sm uppercase tracking-wide truncate">
+                      {activeReportModal === 'wholesale' && 'Wholesale & Retailer B2B Report'}
                       {activeReportModal === 'sales' && 'Sales & Revenue Report'}
                       {activeReportModal === 'expenses' && 'Daily Expenses Report'}
                       {activeReportModal === 'inventory' && 'Inventory & Stock Valuation Report'}
@@ -687,6 +1004,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                       {activeReportModal === 'closings' && 'Daily Closing & Cash Flow Report'}
                       {activeReportModal === 'purchases' && 'Purchases & Stock Inward Ledger'}
                       {activeReportModal === 'top_products' && 'Top Selling Products Report'}
+                      {activeReportModal === 'returns' && 'Sales Returns & Refunds Report'}
                     </h3>
                     <p className="text-[10px] sm:text-[11px] text-slate-400 truncate">
                       Detailed audit report • {shopName}
@@ -697,7 +1015,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                 <button
                   type="button"
                   onClick={() => setActiveReportModal(null)}
-                  className="sm:hidden text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer shrink-0 ml-1"
+                  className="sm:hidden text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-neutral-800 transition cursor-pointer shrink-0 ml-1"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -707,7 +1025,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                 <button
                   type="button"
                   onClick={() => handleShareWhatsAppReport(activeReportModal)}
-                  className="w-full sm:w-auto px-3 py-2 sm:py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs whitespace-normal rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer"
+                  className="w-full sm:w-auto px-3 py-2 sm:py-1.5 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 font-bold text-xs whitespace-normal rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer"
                 >
                   <Share2 className="w-3.5 h-3.5 shrink-0" /> <span>Send to WhatsApp</span>
                 </button>
@@ -723,48 +1041,280 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                 <button
                   type="button"
                   onClick={() => setActiveReportModal(null)}
-                  className="hidden sm:flex text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer items-center justify-center"
+                  className="hidden sm:flex text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-neutral-800 transition cursor-pointer items-center justify-center"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
 
+            {/* In-Modal Quick Date Range Filter */}
+            <div className="bg-slate-50 dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-xl p-2.5 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 font-bold text-xs text-slate-700 dark:text-neutral-300">
+                  <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Timeframe Filter:</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1 text-[11px]">
+                  {[
+                    { id: 'today', label: 'Aaj (Today)' },
+                    { id: 'week', label: 'Is Hafte (Week)' },
+                    { id: 'month', label: 'Is Mahine (Month)' },
+                    { id: '6month', label: '6 Mahine (6 Mo)' },
+                    { id: 'year', label: 'Is Saal (Year)' },
+                    { id: 'custom', label: 'Custom Tareekh' },
+                    { id: 'all', label: 'Pura Record (All)' },
+                  ].map(opt => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setDateFilterMode(opt.id as DateFilterMode)}
+                      className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+                        dateFilterMode === opt.id
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'bg-white dark:bg-neutral-800 text-slate-600 dark:text-neutral-300 border border-slate-200 dark:border-neutral-700 hover:bg-slate-100 dark:hover:bg-neutral-700'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {dateFilterMode === 'custom' && (
+                <div className="pt-2 border-t border-slate-200 dark:border-neutral-800 flex flex-wrap items-center gap-2 text-xs">
+                  <span className="font-semibold text-slate-500 dark:text-neutral-400">From:</span>
+                  <input
+                    type="date"
+                    value={customStartDate}
+                    onChange={e => setCustomStartDate(e.target.value)}
+                    className="bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 text-slate-900 dark:text-white px-2 py-0.5 rounded-lg text-xs"
+                  />
+                  <span className="font-semibold text-slate-500 dark:text-neutral-400">To:</span>
+                  <input
+                    type="date"
+                    value={customEndDate}
+                    onChange={e => setCustomEndDate(e.target.value)}
+                    className="bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 text-slate-900 dark:text-white px-2 py-0.5 rounded-lg text-xs"
+                  />
+                </div>
+              )}
+            </div>
+
             {/* Scrollable Report Content Area */}
             <div className="flex-1 overflow-y-auto pr-1 space-y-4 text-xs">
               {/* Report Header Information */}
-              <div className="bg-slate-50 p-3 sm:p-3.5 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="bg-slate-50 dark:bg-neutral-900 p-3 sm:p-3.5 rounded-2xl border border-slate-200/80 dark:border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
-                  <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm">{shopName}</h4>
-                  <p className="text-[10px] sm:text-[11px] text-slate-500">{data.settings.address} • Ph: {data.settings.phone}</p>
+                  <h4 className="font-extrabold text-slate-900 dark:text-white text-xs sm:text-sm">{shopName}</h4>
+                  <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-neutral-400">{data.settings.address} • Ph: {data.settings.phone}</p>
                 </div>
                 <div className="text-left sm:text-right">
-                  <p className="text-[10px] sm:text-[11px] font-bold text-slate-700">Date Generated:</p>
-                  <p className="text-[10px] sm:text-[11px] text-slate-500 font-mono">{new Date().toLocaleString()}</p>
+                  <p className="text-[10px] sm:text-[11px] font-bold text-slate-700 dark:text-neutral-300">Date Generated:</p>
+                  <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-neutral-400 font-mono">{new Date().toLocaleString()}</p>
                 </div>
               </div>
+
+              {/* REPORT: WHOLESALE & RETAILER B2B REPORT */}
+              {activeReportModal === 'wholesale' && (
+                <div className="space-y-4">
+                  {/* Top 4 Wholesale KPI metrics */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+                    <div className="p-3 bg-purple-50 dark:bg-neutral-900 rounded-xl border border-purple-200 dark:border-purple-900/60">
+                      <span className="text-[10px] font-bold text-purple-700 dark:text-purple-400 uppercase">Wholesale Sales</span>
+                      <p className="text-base sm:text-lg font-bold font-mono text-purple-900 dark:text-purple-300 mt-0.5 truncate">
+                        {currency} {totalWholesaleRevenue.toLocaleString()}
+                      </p>
+                      <p className="text-[10px] text-purple-600 dark:text-purple-400 mt-0.5">{wholesaleSales.length} Invoices • {totalWholesaleUnits} units</p>
+                    </div>
+
+                    <div className="p-3 bg-slate-100 dark:bg-neutral-900 rounded-xl border border-slate-200 dark:border-neutral-800">
+                      <span className="text-[10px] font-bold text-slate-600 dark:text-neutral-400 uppercase">Wholesale Cost (COGS)</span>
+                      <p className="text-base sm:text-lg font-bold font-mono text-slate-900 dark:text-neutral-200 mt-0.5 truncate">
+                        {currency} {totalWholesaleCost.toLocaleString()}
+                      </p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">Purchased Cost</p>
+                    </div>
+
+                    <div className="p-3 bg-emerald-50 dark:bg-neutral-900 rounded-xl border border-emerald-200 dark:border-emerald-900/60">
+                      <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase">Wholesale Net Profit/Loss</span>
+                      <p className={`text-base sm:text-lg font-bold font-mono mt-0.5 truncate ${totalWholesaleProfit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600'}`}>
+                        {totalWholesaleProfit >= 0 ? '+' : ''}{currency} {totalWholesaleProfit.toLocaleString()}
+                      </p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">Kat peet kar munafa</p>
+                    </div>
+
+                    <div className="p-3 bg-amber-50 dark:bg-neutral-900 rounded-xl border border-amber-200 dark:border-amber-900/60">
+                      <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase">Retailer Discounts Given</span>
+                      <p className="text-base sm:text-lg font-bold font-mono text-amber-900 dark:text-amber-300 mt-0.5 truncate">
+                        {currency} {totalWholesaleDiscountsGiven.toLocaleString()}
+                      </p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">Retailers ko riyayat</p>
+                    </div>
+                  </div>
+
+                  {/* Section 1: Retailers Summary (Kis ko kitna maal diya, kitna munafa hua, kitna discount diya) */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-extrabold text-slate-900 dark:text-white text-xs uppercase tracking-wide flex items-center gap-1.5">
+                        <Users className="w-3.5 h-3.5 text-purple-600" />
+                        Retailer Breakdown (Kis Retailer Ko Kitna Maal Diya)
+                      </h4>
+                      <span className="text-[11px] text-slate-500 dark:text-neutral-400 font-semibold">
+                        {retailerStats.length} Registered Retailers
+                      </span>
+                    </div>
+
+                    <div className="w-full overflow-x-auto border border-slate-200 dark:border-neutral-800 rounded-xl">
+                      <table className="w-full min-w-[620px] text-left border-collapse text-xs">
+                        <thead className="bg-slate-100 dark:bg-neutral-800 font-bold text-[10px] uppercase text-slate-600 dark:text-neutral-400">
+                          <tr>
+                            <th className="p-2.5">Retailer / Shopkeeper</th>
+                            <th className="p-2.5">Shop Name & City</th>
+                            <th className="p-2.5">Contact Phone</th>
+                            <th className="p-2.5 text-center">Invoices</th>
+                            <th className="p-2.5 text-right">Total Purchases</th>
+                            <th className="p-2.5 text-right">Net Profit</th>
+                            <th className="p-2.5 text-right">Discount / Savings</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-neutral-800">
+                          {retailerStats.length === 0 ? (
+                            <tr>
+                              <td colSpan={7} className="text-center py-6 text-slate-400">
+                                No wholesale transactions recorded for this timeframe.
+                              </td>
+                            </tr>
+                          ) : (
+                            retailerStats.map((r, idx) => (
+                              <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-neutral-850">
+                                <td className="p-2.5 font-bold text-slate-900 dark:text-white">{r.name}</td>
+                                <td className="p-2.5 text-slate-600 dark:text-neutral-300">
+                                  {r.shopName !== '-' ? r.shopName : ''} {r.city !== '-' ? `(${r.city})` : '-'}
+                                </td>
+                                <td className="p-2.5 font-mono text-[11px] text-slate-500 dark:text-neutral-400">{r.phone}</td>
+                                <td className="p-2.5 text-center font-mono font-bold">{r.invoicesCount}</td>
+                                <td className="p-2.5 text-right font-mono font-bold text-slate-900 dark:text-white">
+                                  {currency} {r.totalPurchased.toLocaleString()}
+                                </td>
+                                <td className="p-2.5 text-right font-mono font-bold text-emerald-600">
+                                  +{currency} {r.totalProfit.toLocaleString()}
+                                </td>
+                                <td className="p-2.5 text-right font-mono font-bold text-amber-600">
+                                  {currency} {r.totalDiscounts.toLocaleString()}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Section 2: Detailed Wholesale Invoices Table */}
+                  <div className="space-y-2">
+                    <h4 className="font-extrabold text-slate-900 dark:text-white text-xs uppercase tracking-wide flex items-center gap-1.5">
+                      <Receipt className="w-3.5 h-3.5 text-blue-600" />
+                      Detailed Wholesale Invoices
+                    </h4>
+
+                    <div className="w-full overflow-x-auto border border-slate-200 dark:border-neutral-800 rounded-xl">
+                      <table className="w-full min-w-[700px] text-left border-collapse text-xs">
+                        <thead className="bg-slate-100 dark:bg-neutral-800 font-bold text-[10px] uppercase text-slate-600 dark:text-neutral-400">
+                          <tr>
+                            <th className="p-2.5">Inv #</th>
+                            <th className="p-2.5">Date</th>
+                            <th className="p-2.5">Retailer</th>
+                            <th className="p-2.5">Products Sold</th>
+                            <th className="p-2.5">Payment</th>
+                            <th className="p-2.5 text-right">Discount</th>
+                            <th className="p-2.5 text-right">Total Bill</th>
+                            <th className="p-2.5 text-right">Profit</th>
+                            <th className="p-2.5 text-center">Receipt</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-neutral-800">
+                          {wholesaleSales.length === 0 ? (
+                            <tr>
+                              <td colSpan={9} className="text-center py-8 text-slate-400">
+                                No wholesale invoices recorded in this period.
+                              </td>
+                            </tr>
+                          ) : (
+                            wholesaleSales.map(s => (
+                              <tr key={s.invNo} className="hover:bg-slate-50 dark:hover:bg-neutral-850">
+                                <td className="p-2.5 font-mono font-bold text-purple-600">#{s.invNo}</td>
+                                <td className="p-2.5 text-slate-500 font-mono text-[11px]">
+                                  {new Date(s.date).toLocaleDateString()}
+                                </td>
+                                <td className="p-2.5 font-semibold text-slate-900 dark:text-white">
+                                  {s.custName}
+                                  {s.retailerShopName && (
+                                    <span className="block text-[10px] text-slate-400">{s.retailerShopName}</span>
+                                  )}
+                                </td>
+                                <td className="p-2.5 text-slate-700 dark:text-neutral-300">
+                                  {s.items.map((i, idx) => (
+                                    <span key={idx} className="block text-[11px]">
+                                      • {i.name} (x{i.qty}) @ {currency} {(i.wholesalePrice || i.salePrice).toLocaleString()}
+                                    </span>
+                                  ))}
+                                </td>
+                                <td className="p-2.5">
+                                  <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-neutral-800 text-[10px] font-semibold">
+                                    {s.paymentMethod}
+                                  </span>
+                                </td>
+                                <td className="p-2.5 text-right font-mono font-bold text-amber-600">
+                                  {currency} {((s.wholesaleSavings || 0) + (s.discount || 0)).toLocaleString()}
+                                </td>
+                                <td className="p-2.5 text-right font-mono font-bold text-slate-900 dark:text-white">
+                                  {currency} {s.grandTotal.toLocaleString()}
+                                </td>
+                                <td className="p-2.5 text-right font-mono font-bold text-emerald-600">
+                                  +{currency} {s.netProfit.toLocaleString()}
+                                </td>
+                                <td className="p-2.5 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => onViewReceipt(s)}
+                                    className="p-1 text-slate-500 hover:text-blue-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                                    title="View Wholesale Receipt"
+                                  >
+                                    <Printer className="w-3.5 h-3.5" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* REPORT 1: SALES & REVENUE */}
               {activeReportModal === 'sales' && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
-                    <div className="p-2.5 sm:p-3 bg-blue-50 rounded-xl border border-blue-200">
-                      <span className="text-[10px] font-bold text-blue-700 uppercase">Gross Revenue</span>
-                      <p className="text-base sm:text-lg font-bold font-mono text-blue-900 mt-0.5 truncate">{currency} {totalSalesRevenue.toLocaleString()}</p>
+                    <div className="p-2.5 sm:p-3 bg-blue-50 dark:bg-neutral-900 rounded-xl border border-blue-200 dark:border-blue-900/60">
+                      <span className="text-[10px] font-bold text-blue-700 dark:text-blue-400 uppercase">Gross Revenue</span>
+                      <p className="text-base sm:text-lg font-bold font-mono text-blue-900 dark:text-blue-300 mt-0.5 truncate">{currency} {totalSalesRevenue.toLocaleString()}</p>
                     </div>
-                    <div className="p-2.5 sm:p-3 bg-slate-100 rounded-xl border border-slate-200">
-                      <span className="text-[10px] font-bold text-slate-600 uppercase">Total COGS</span>
-                      <p className="text-base sm:text-lg font-bold font-mono text-slate-900 mt-0.5 truncate">{currency} {totalCOGS.toLocaleString()}</p>
+                    <div className="p-2.5 sm:p-3 bg-slate-100 dark:bg-neutral-900 rounded-xl border border-slate-200 dark:border-neutral-800">
+                      <span className="text-[10px] font-bold text-slate-600 dark:text-neutral-400 uppercase">Total COGS</span>
+                      <p className="text-base sm:text-lg font-bold font-mono text-slate-900 dark:text-neutral-200 mt-0.5 truncate">{currency} {totalCOGS.toLocaleString()}</p>
                     </div>
-                    <div className="col-span-2 sm:col-span-1 p-2.5 sm:p-3 bg-emerald-50 rounded-xl border border-emerald-200">
-                      <span className="text-[10px] font-bold text-emerald-700 uppercase">Total Profit</span>
-                      <p className="text-base sm:text-lg font-bold font-mono text-emerald-900 mt-0.5 truncate">+{currency} {netProfit.toLocaleString()}</p>
+                    <div className="col-span-2 sm:col-span-1 p-2.5 sm:p-3 bg-emerald-50 dark:bg-neutral-900 rounded-xl border border-emerald-200 dark:border-emerald-900/60">
+                      <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase">Total Profit</span>
+                      <p className="text-base sm:text-lg font-bold font-mono text-emerald-900 dark:text-emerald-300 mt-0.5 truncate">+{currency} {netProfit.toLocaleString()}</p>
                     </div>
                   </div>
 
-                  <div className="w-full overflow-x-auto border border-slate-200 rounded-xl">
+                  <div className="w-full overflow-x-auto border border-slate-200 dark:border-neutral-800 rounded-xl">
                     <table className="w-full min-w-[580px] text-left border-collapse">
-                      <thead className="bg-slate-100 font-bold text-[10px] uppercase text-slate-600">
+                      <thead className="bg-slate-100 dark:bg-neutral-800 font-bold text-[10px] uppercase text-slate-600 dark:text-neutral-400">
                         <tr>
                           <th className="p-2.5">Inv #</th>
                           <th className="p-2.5">Type</th>
@@ -775,13 +1325,13 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                           <th className="p-2.5 text-right">Profit</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100 text-xs">
-                        {data.sales.map(s => (
-                          <tr key={s.invNo} className="hover:bg-slate-50">
+                      <tbody className="divide-y divide-slate-100 dark:divide-neutral-800 text-xs">
+                        {filteredSales.map(s => (
+                          <tr key={s.invNo} className="hover:bg-slate-50 dark:hover:bg-neutral-850">
                             <td className="p-2.5 font-mono font-bold text-blue-600">#{s.invNo}</td>
                             <td className="p-2.5 font-semibold capitalize">{s.invoiceType || 'Cash'}</td>
                             <td className="p-2.5 text-slate-500 font-mono text-[11px]">{new Date(s.date).toLocaleDateString()}</td>
-                            <td className="p-2.5 font-bold text-slate-800">{s.custName}</td>
+                            <td className="p-2.5 font-bold text-slate-800 dark:text-white">{s.custName}</td>
                             <td className="p-2.5">{s.paymentMethod}</td>
                             <td className="p-2.5 text-right font-mono font-bold">{currency} {s.grandTotal.toLocaleString()}</td>
                             <td className="p-2.5 text-right font-mono font-bold text-emerald-600">+{currency} {s.netProfit.toLocaleString()}</td>
@@ -1163,6 +1713,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
             <h1 style={{ fontSize: '18px', fontWeight: 'bold', margin: '0 0 4px 0' }}>{shopName}</h1>
             <p style={{ margin: '2px 0', fontSize: '11px' }}>{data.settings.address} | Ph: {data.settings.phone}</p>
             <h2 style={{ fontSize: '14px', fontWeight: 'bold', margin: '8px 0 0 0', textTransform: 'uppercase' }}>
+              {activeReportModal === 'wholesale' && 'WHOLESALE & RETAILER B2B REPORT'}
               {activeReportModal === 'sales' && 'SALES & REVENUE REPORT'}
               {activeReportModal === 'expenses' && 'DAILY EXPENSES REPORT'}
               {activeReportModal === 'inventory' && 'INVENTORY & VALUATION REPORT'}
@@ -1171,6 +1722,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
               {activeReportModal === 'closings' && 'DAILY CLOSING REPORT'}
               {activeReportModal === 'purchases' && 'PURCHASES LEDGER REPORT'}
               {activeReportModal === 'top_products' && 'TOP SELLING PRODUCTS REPORT'}
+              {activeReportModal === 'returns' && 'SALES RETURNS & REFUNDS REPORT'}
             </h2>
             <p style={{ fontSize: '10px', color: '#666', margin: '4px 0 0 0' }}>Generated on: {new Date().toLocaleString()}</p>
           </div>
@@ -1192,15 +1744,44 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                     <tr><td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>Total Operational Expenses</td><td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>-{currency} {totalExpenses.toLocaleString()}</td></tr>
                     <tr style={{ fontWeight: 'bold', fontSize: '12px' }}><td style={{ padding: '8px', borderTop: '2px solid #000' }}>Net Profit</td><td style={{ padding: '8px', borderTop: '2px solid #000', textAlign: 'right' }}>{currency} {netProfit.toLocaleString()}</td></tr>
                   </>
+                ) : activeReportModal === 'wholesale' ? (
+                  <>
+                    <tr style={{ background: '#f8fafc', fontWeight: 'bold' }}>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>Total Wholesale Revenue</td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right' }}>{currency} {totalWholesaleRevenue.toLocaleString()}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>Wholesale Cost (COGS)</td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right' }}>-{currency} {totalWholesaleCost.toLocaleString()}</td>
+                    </tr>
+                    <tr style={{ fontWeight: 'bold' }}>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>Wholesale Net Profit</td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', color: '#16a34a' }}>{currency} {totalWholesaleProfit.toLocaleString()}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>Total Retailer Discounts Given</td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right' }}>{currency} {totalWholesaleDiscountsGiven.toLocaleString()}</td>
+                    </tr>
+                    {wholesaleSales.map(s => (
+                      <tr key={s.invNo}>
+                        <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>
+                          Invoice #{s.invNo} - {s.custName} {s.retailerShopName ? `(${s.retailerShopName})` : ''} ({new Date(s.date).toLocaleDateString()})
+                        </td>
+                        <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>
+                          {currency} {s.grandTotal.toLocaleString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </>
                 ) : activeReportModal === 'sales' ? (
-                  data.sales.map(s => (
+                  filteredSales.map(s => (
                     <tr key={s.invNo}>
                       <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>Invoice #{s.invNo} - {s.custName} ({new Date(s.date).toLocaleDateString()})</td>
                       <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>{currency} {s.grandTotal.toLocaleString()}</td>
                     </tr>
                   ))
                 ) : activeReportModal === 'expenses' ? (
-                  data.expenses.map(e => (
+                  filteredExpenses.map(e => (
                     <tr key={e.id}>
                       <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>{e.description} [{e.category}] ({new Date(e.date).toLocaleDateString()})</td>
                       <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>{currency} {e.amount.toLocaleString()}</td>

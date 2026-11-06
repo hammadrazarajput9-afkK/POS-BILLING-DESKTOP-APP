@@ -542,10 +542,10 @@ export const FinancialChart: React.FC<FinancialChartProps> = ({ data }) => {
         )}
 
         {totalPeriod === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-2xs">
-            <div className="text-center p-4 bg-white/95 rounded-xl border border-slate-200/90 shadow-sm max-w-xs">
-              <p className="text-xs font-semibold text-slate-700">No transactions recorded</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">
+          <div className="absolute inset-0 flex items-center justify-center bg-white/70 dark:bg-black/85 backdrop-blur-2xs">
+            <div className="text-center p-4 bg-white dark:bg-neutral-900 rounded-xl border border-slate-200/90 dark:border-neutral-800 shadow-none max-w-xs">
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">No transactions recorded</p>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
                 Complete a sale in the POS terminal or log an entry to populate analytics.
               </p>
             </div>

@@ -72,6 +72,7 @@ const createDefaultVariant = (id: string, ram = '4GB', storage = '64GB'): Mobile
   storage,
   color: '',
   costPrice: '',
+  wholesalePrice: '',
   salePrice: '',
   qty: 1,
   imeis: [''],
@@ -89,16 +90,22 @@ const initialStockDraft: StockDraftState = {
   variants: [createDefaultVariant('var-1', '4GB', '64GB')],
 };
 
+export const isAndroidCategory = (cat: string): boolean => {
+  if (!cat) return false;
+  const c = cat.toLowerCase().trim();
+  return c.includes('android') || c.includes('smart') || c.includes('smartphone');
+};
+
+export const isKeypadCategory = (cat: string): boolean => {
+  if (!cat) return false;
+  const c = cat.toLowerCase().trim();
+  return c.includes('keypad') || c.includes('feature') || c.includes('button');
+};
+
 export const isMobileCategory = (cat: string): boolean => {
   if (!cat) return false;
   const c = cat.toLowerCase().trim();
-  return (
-    c === 'android mobile' ||
-    c === 'keypad mobile' ||
-    c.includes('mobile') ||
-    c.includes('phone') ||
-    c.includes('smartphone')
-  );
+  return isAndroidCategory(cat) || isKeypadCategory(cat) || c.includes('mobile') || c.includes('phone');
 };
 
 export const StockModal: React.FC<StockModalProps> = ({
@@ -144,6 +151,7 @@ export const StockModal: React.FC<StockModalProps> = ({
   const [wholesalePrice, setWholesalePrice] = useState<number | ''>('');
   const [boxSize, setBoxSize] = useState<number | ''>(10);
   const [qty, setQty] = useState<number | ''>(1);
+  const [color, setColor] = useState('');
   const [imeis, setImeis] = useState<string[]>(['']);
 
   // Stock Adjustment state for edit quantity changes
@@ -174,7 +182,7 @@ export const StockModal: React.FC<StockModalProps> = ({
       if (editItem) {
         isEditingRef.current = true;
         setName(editItem.name);
-        setCategory(editItem.category || 'Android Mobile');
+        setCategory(editItem.category || (categories[0] || ''));
         setImage(editItem.image || '');
         setBarcode(editItem.barcode || '');
         setCostPrice(editItem.costPrice);
@@ -182,6 +190,7 @@ export const StockModal: React.FC<StockModalProps> = ({
         setWholesalePrice(editItem.wholesalePrice !== undefined ? editItem.wholesalePrice : '');
         setBoxSize(editItem.boxSize !== undefined ? editItem.boxSize : 10);
         setQty(editItem.qty);
+        setColor(editItem.color || '');
 
         if (editItem.imeis && editItem.imeis.length > 0) {
           setImeis([...editItem.imeis]);
@@ -196,7 +205,7 @@ export const StockModal: React.FC<StockModalProps> = ({
         isEditingRef.current = false;
         // Restore from draftData safely once
         setName(draftData.name || '');
-        setCategory(draftData.category || categories[0] || 'Android Mobile');
+        setCategory(draftData.category || categories[0] || '');
         setImage(draftData.image || '');
         setBarcode(draftData.barcode || '');
         setCostPrice(draftData.costPrice !== undefined ? draftData.costPrice : '');
@@ -204,6 +213,7 @@ export const StockModal: React.FC<StockModalProps> = ({
         setWholesalePrice('');
         setBoxSize(10);
         setQty(draftData.qty !== undefined ? draftData.qty : 1);
+        setColor('');
         setImeis(draftData.imeis && draftData.imeis.length > 0 ? [...draftData.imeis] : ['']);
 
         if (draftData.variants && draftData.variants.length > 0) {
@@ -249,6 +259,8 @@ export const StockModal: React.FC<StockModalProps> = ({
     };
   }, [name, category, image, barcode, costPrice, salePrice, qty, imeis, variants, editItem, isOpen, setDraftData]);
 
+  const isAndroid = isAndroidCategory(category);
+  const isKeypad = isKeypadCategory(category);
   const isMobile = isMobileCategory(category);
 
   // Build sets of all existing database IMEIs for real-time validation and cross-checking
@@ -360,6 +372,7 @@ export const StockModal: React.FC<StockModalProps> = ({
       storage: nextStorage,
       color: '',
       costPrice: lastVar?.costPrice !== undefined ? lastVar.costPrice : '',
+      wholesalePrice: lastVar?.wholesalePrice !== undefined ? lastVar.wholesalePrice : '',
       salePrice: lastVar?.salePrice !== undefined ? lastVar.salePrice : '',
       qty: 1,
       imeis: [''],
@@ -378,6 +391,7 @@ export const StockModal: React.FC<StockModalProps> = ({
       storage: source.storage,
       color: source.color ? `${source.color} (Copy)` : '',
       costPrice: source.costPrice,
+      wholesalePrice: source.wholesalePrice,
       salePrice: source.salePrice,
       qty: newQty,
       imeis: Array(newQty).fill(''),
@@ -645,7 +659,7 @@ export const StockModal: React.FC<StockModalProps> = ({
     }
 
     // MULTI-VARIANT FLOW FOR ANDROID MOBILE (when not editing a single existing item)
-    if (isMobile && !editItem) {
+    if (isAndroid && !editItem) {
       if (variants.length === 0) {
         showToast('Please add at least one mobile variant', 'warning');
         return;
@@ -710,6 +724,7 @@ export const StockModal: React.FC<StockModalProps> = ({
         const v = synchronizedVariants[i];
         const cost = Number(v.costPrice) || 0;
         const sale = Number(v.salePrice) || 0;
+        const wholesale = v.wholesalePrice !== '' && v.wholesalePrice !== undefined ? Number(v.wholesalePrice) : Math.round(sale * 0.9);
         const quantity = Math.max(1, Number(v.qty) || 1);
 
         if (cost < 0 || sale < 0 || quantity < 1) {
@@ -736,6 +751,7 @@ export const StockModal: React.FC<StockModalProps> = ({
           imei: cleanedImeis.length > 0 ? cleanedImeis.join(', ') : undefined,
           imeis: cleanedImeis.length > 0 ? cleanedImeis : undefined,
           costPrice: cost,
+          wholesalePrice: wholesale,
           salePrice: sale,
           qty: quantity,
           status: 'ACTIVE',
@@ -755,9 +771,10 @@ export const StockModal: React.FC<StockModalProps> = ({
       resetDraft();
       onClose();
     } else {
-      // SINGLE PRODUCT / EDIT MODE OR ACCESSORY FLOW
+      // SINGLE PRODUCT / KEYPAD PHONE / ACCESSORIES / EDIT MODE FLOW
       const cost = Number(costPrice) || 0;
       const sale = Number(salePrice) || 0;
+      const wholesale = wholesalePrice !== '' ? Number(wholesalePrice) : Math.round(sale * 0.9);
       const quantity = Number(qty) || 0;
 
       if (sale < 0 || cost < 0 || quantity < 0) {
@@ -811,19 +828,23 @@ export const StockModal: React.FC<StockModalProps> = ({
         });
       }
 
+      const formattedTitle = isKeypad && color.trim() && !name.toLowerCase().includes(color.toLowerCase())
+        ? `${name.trim()} (${color.trim()})`
+        : name.trim();
+
       onSave(
         {
-          name: name.trim(),
+          name: formattedTitle,
           category,
           image: image || undefined,
           imei: finalImeiStr,
           imeis: finalImeis,
           barcode: !isMobile ? barcode.trim() || undefined : undefined,
           costPrice: cost,
+          wholesalePrice: wholesale,
           salePrice: sale,
-          wholesalePrice: wholesalePrice !== '' ? Number(wholesalePrice) : Math.round(sale * 0.9),
-          boxSize: boxSize !== '' ? Number(boxSize) : 10,
           qty: quantity,
+          color: color.trim() || undefined,
           status: editItem?.status || 'ACTIVE',
         },
         editItem ? editItem.id : undefined,
@@ -861,20 +882,29 @@ export const StockModal: React.FC<StockModalProps> = ({
                 <h3 className="font-extrabold text-slate-900 text-xs sm:text-base leading-tight truncate">
                   {editItem
                     ? 'Edit Product'
-                    : isMobile
-                    ? 'Add Android Mobile'
+                    : isAndroid
+                    ? 'Add Android Mobile (Variants)'
+                    : isKeypad
+                    ? 'Add Keypad Phone (IMEI & Color)'
                     : 'Add New Product to Inventory'}
                 </h3>
-                {isMobile && !editItem && (
+                {isAndroid && !editItem && (
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 flex items-center gap-1 shrink-0">
                     <Sparkles className="w-3 h-3" /> Multi-Variant
                   </span>
                 )}
+                {isKeypad && !editItem && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 flex items-center gap-1 shrink-0">
+                    📱 Keypad / Feature
+                  </span>
+                )}
               </div>
               <p className="text-[10px] sm:text-[11px] text-slate-400 truncate">
-                {isMobile
-                  ? 'Define mobile variants with dynamic IMEI boxes per quantity'
-                  : 'Register retail mobile accessories, chargers, handsfree or cases'}
+                {isAndroid
+                  ? 'Define Android variants with RAM, Storage, Cost, Wholesale, Sale & IMEIs'
+                  : isKeypad
+                  ? 'Enter Keypad model, color, Cost, Wholesale, Sale rates & IMEIs per unit'
+                  : 'Register retail mobile accessories, chargers, handsfree, covers or spare parts'}
               </p>
             </div>
           </div>
@@ -1034,7 +1064,7 @@ export const StockModal: React.FC<StockModalProps> = ({
           {/* ========================================================= */}
           {/* ANDROID MOBILE MULTI-VARIANT SYSTEM                       */}
           {/* ========================================================= */}
-          {isMobile && !editItem ? (
+          {isAndroid && !editItem ? (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -1193,10 +1223,10 @@ export const StockModal: React.FC<StockModalProps> = ({
                       </div>
 
                       {/* Pricing & Quantity Row */}
-                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 bg-slate-50/80 p-3 rounded-xl border border-slate-200/70 items-center">
-                        <div className="sm:col-span-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-slate-50/80 p-3 rounded-xl border border-slate-200/70 items-center">
+                        <div>
                           <label className="block font-bold text-slate-700 mb-1 text-[11px]">
-                            Cost Price ({currency}) *
+                            1. Cost Price ({currency}) *
                           </label>
                           <input
                             type="number"
@@ -1210,13 +1240,33 @@ export const StockModal: React.FC<StockModalProps> = ({
                               )
                             }
                             placeholder="0"
-                            className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono font-bold focus:outline-none focus:border-blue-600 min-h-[44px]"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-xs font-mono font-bold focus:outline-none focus:border-blue-600 min-h-[44px]"
                           />
                         </div>
 
-                        <div className="sm:col-span-4">
+                        <div>
+                          <label className="block font-bold text-purple-900 mb-1 text-[11px]">
+                            2. Wholesale Price ({currency})
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={v.wholesalePrice !== undefined ? v.wholesalePrice : ''}
+                            onChange={e =>
+                              handleUpdateVariantField(
+                                vIdx,
+                                'wholesalePrice',
+                                e.target.value === '' ? '' : Number(e.target.value)
+                              )
+                            }
+                            placeholder="Wholesale"
+                            className="w-full bg-purple-50/70 border border-purple-200 rounded-lg px-2.5 py-2 text-xs font-mono font-bold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[44px]"
+                          />
+                        </div>
+
+                        <div>
                           <label className="block font-bold text-slate-700 mb-1 text-[11px]">
-                            Sale Price ({currency}) *
+                            3. Sale Price ({currency}) *
                           </label>
                           <input
                             type="number"
@@ -1230,11 +1280,11 @@ export const StockModal: React.FC<StockModalProps> = ({
                               )
                             }
                             placeholder="0"
-                            className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono font-bold focus:outline-none focus:border-blue-600 min-h-[44px]"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-xs font-mono font-bold focus:outline-none focus:border-blue-600 min-h-[44px]"
                           />
                         </div>
 
-                        <div className="sm:col-span-4">
+                        <div>
                           <label className="block font-bold text-slate-700 mb-1 text-[11px]">
                             Quantity (Units) *
                           </label>
@@ -1250,7 +1300,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                               )
                             }
                             placeholder="1"
-                            className="w-full bg-white border border-blue-400 rounded-lg px-3 py-2 text-xs font-mono font-extrabold text-blue-700 focus:outline-none focus:border-blue-600 min-h-[44px]"
+                            className="w-full bg-white border border-blue-400 rounded-lg px-2.5 py-2 text-xs font-mono font-extrabold text-blue-700 focus:outline-none focus:border-blue-600 min-h-[44px]"
                           />
                         </div>
                       </div>
@@ -1394,11 +1444,30 @@ export const StockModal: React.FC<StockModalProps> = ({
             </div>
           ) : (
             /* ========================================================= */
-            /* SINGLE PRODUCT MODE / ACCESSORIES / EDIT EXISTING ITEM     */
+            /* SINGLE PRODUCT MODE / KEYPAD PHONE / ACCESSORIES / EDIT   */
             /* ========================================================= */
             <div className="space-y-4">
-              {/* Pricing & Quantity Row */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {/* If Keypad Phone or editing mobile phone, show Color input */}
+              {(isKeypad || (editItem && isMobile)) && (
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <label className="block font-bold text-slate-700 mb-1 text-[11px] flex items-center gap-1">
+                    <Palette className="w-3.5 h-3.5 text-purple-600" /> Phone Color / Shade
+                  </label>
+                  <input
+                    type="text"
+                    value={color}
+                    onChange={e => setColor(e.target.value)}
+                    placeholder="e.g. Black, Dark Blue, Red"
+                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:border-blue-600"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    Keypad phones do not require RAM/ROM variants. Just enter the color and IMEIs below.
+                  </span>
+                </div>
+              )}
+
+              {/* Pricing & Quantity Row: 1. Cost Price -> 2. Wholesale Price -> 3. Sale Price -> Quantity */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {/* 1. Cost Price */}
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
@@ -1411,7 +1480,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                     value={costPrice}
                     onChange={e => setCostPrice(e.target.value === '' ? '' : Number(e.target.value))}
                     placeholder="Khareed Rate"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[44px]"
                   />
                 </div>
 
@@ -1426,7 +1495,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                     value={wholesalePrice}
                     onChange={e => setWholesalePrice(e.target.value === '' ? '' : Number(e.target.value))}
                     placeholder="Wholesale Rate"
-                    className="w-full bg-purple-50/60 border border-purple-200 rounded-xl px-3 py-2 text-xs font-mono font-semibold text-purple-950 focus:outline-none focus:border-purple-600 focus:bg-white transition"
+                    className="w-full bg-purple-50/60 border border-purple-200 rounded-xl px-3 py-2 text-xs font-mono font-semibold text-purple-950 focus:outline-none focus:border-purple-600 focus:bg-white transition min-h-[44px]"
                   />
                 </div>
 
@@ -1442,26 +1511,13 @@ export const StockModal: React.FC<StockModalProps> = ({
                     value={salePrice}
                     onChange={e => setSalePrice(e.target.value === '' ? '' : Number(e.target.value))}
                     placeholder="Retail Sale Rate"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[44px]"
                   />
                 </div>
 
-                {/* 4. Carton / Box Units */}
+                {/* 4. Quantity */}
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Carton / Box Units</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={boxSize}
-                    onChange={e => setBoxSize(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder="10"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition"
-                  />
-                </div>
-
-                {/* 5. Quantity */}
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Quantity</label>
+                  <label className="block font-bold text-slate-700 mb-1">Quantity (Units) *</label>
                   <input
                     type="number"
                     required
@@ -1472,7 +1528,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                       handleSingleQtyChange(e.target.value === '' ? '' : Number(e.target.value))
                     }
                     placeholder="1"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition"
+                    className="w-full bg-slate-50 border border-blue-400 rounded-xl px-3 py-2 text-xs font-mono font-bold text-blue-700 focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[44px]"
                   />
                 </div>
               </div>

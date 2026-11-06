@@ -17,7 +17,8 @@ import {
   Minus,
   CheckSquare,
   Square,
-  FileText
+  FileText,
+  Trash2
 } from 'lucide-react';
 import { useToast } from './Toast';
 
@@ -33,27 +34,53 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
   const { showToast } = useToast();
 
   // Mode: Single product repeated OR Multi-Product A4 Batch sheet
-  const [printMode, setPrintMode] = useState<'single' | 'batch'>('batch');
+  const [printMode, setPrintMode] = useState<'batch' | 'single'>('batch');
 
-  // Single Product Selection & Input state
-  const [selectedProductId, setSelectedProductId] = useState<string>('');
-  const [productTitle, setProductTitle] = useState('Apple iPhone 15 Pro');
-  const [barcodeValue, setBarcodeValue] = useState('890123456789');
-  const [sellingPrice, setSellingPrice] = useState<number>(145000);
-  const [customSubtitle, setCustomSubtitle] = useState('128GB • PTA Approved');
-  const [labelQuantity, setLabelQuantity] = useState<number>(8);
+  // Single Product custom input state
+  const [productTitle, setProductTitle] = useState('Samsung Galaxy A15');
+  const [barcodeValue, setBarcodeValue] = useState('890123456781');
+  const [sellingPrice, setSellingPrice] = useState<number | ''>(42000);
+  const [customSubtitle, setCustomSubtitle] = useState('Black • 6GB/128GB');
+  const [labelQuantity, setLabelQuantity] = useState<number>(12);
   const [sheetColumns, setSheetColumns] = useState<number>(3); // 2, 3, or 4 columns
   const [labelSize, setLabelSize] = useState<'standard' | 'compact' | 'jewelry'>('compact');
 
-  // Multi-Product Batch Selection State: { [productId]: labelCount }
-  const [batchSelections, setBatchSelections] = useState<Record<string, number>>(() => {
-    const init: Record<string, number> = {};
-    inventory.slice(0, 12).forEach(item => {
-      init[item.id] = 1;
-    });
-    return init;
-  });
-  const [batchSearch, setBatchSearch] = useState('');
+  // Multi-Product Custom Items State (Independent of inventory database)
+  interface CustomBatchItem {
+    id: string;
+    title: string;
+    subtitle: string;
+    price: number | '';
+    barcode: string;
+    count: number;
+  }
+
+  const [customBatchItems, setCustomBatchItems] = useState<CustomBatchItem[]>([
+    {
+      id: 'c-1',
+      title: 'Samsung Galaxy A15',
+      subtitle: 'Black • 6GB/128GB',
+      price: 42000,
+      barcode: '890123456781',
+      count: 4,
+    },
+    {
+      id: 'c-2',
+      title: '25W Fast Charger Type-C',
+      subtitle: 'White • Adapter',
+      price: 1500,
+      barcode: '890123456782',
+      count: 6,
+    },
+    {
+      id: 'c-3',
+      title: 'TWS Wireless Earbuds',
+      subtitle: 'Matte Black • PureBass',
+      price: 2800,
+      barcode: '890123456783',
+      count: 4,
+    },
+  ]);
 
   // Display toggles
   const [showShopName, setShowShopName] = useState(true);
@@ -64,32 +91,20 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
   // SVG ref for single preview
   const singleSvgRef = useRef<SVGSVGElement | null>(null);
 
-  // Filtered inventory for batch selection
-  const filteredInventoryForBatch = useMemo(() => {
-    const q = batchSearch.toLowerCase().trim();
-    if (!q) return inventory;
-    return inventory.filter(
-      i =>
-        i.name.toLowerCase().includes(q) ||
-        i.category.toLowerCase().includes(q) ||
-        (i.barcode && i.barcode.toLowerCase().includes(q)) ||
-        (i.imei && i.imei.toLowerCase().includes(q))
-    );
-  }, [inventory, batchSearch]);
-
   // Compute full list of printable label items for the A4 sheet
   const printableItemsList = useMemo(() => {
     if (printMode === 'single') {
-      return Array.from({ length: labelQuantity }).map(() => ({
+      const pr = typeof sellingPrice === 'number' ? sellingPrice : 0;
+      return Array.from({ length: Math.max(1, labelQuantity) }).map(() => ({
         id: 'single',
-        title: productTitle,
+        title: productTitle || 'Custom Product',
         subtitle: customSubtitle,
-        barcode: barcodeValue,
-        price: sellingPrice,
+        barcode: barcodeValue || '000000000000',
+        price: pr,
       }));
     }
 
-    // Batch mode: expand each selected product by its copy count
+    // Batch mode: expand each custom product by its copy count
     const list: Array<{
       id: string;
       title: string;
@@ -98,45 +113,58 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
       price: number;
     }> = [];
 
-    inventory.forEach(item => {
-      const count = batchSelections[item.id] || 0;
-      if (count > 0) {
-        const code =
-          item.barcode ||
-          item.imei ||
-          item.imeis?.[0] ||
-          'PRD-' + item.id.replace(/[^0-9]/g, '').slice(-8);
-
-        for (let i = 0; i < count; i++) {
-          list.push({
-            id: item.id,
-            title: item.name,
-            subtitle: item.category,
-            barcode: code,
-            price: item.salePrice || 0,
-          });
-        }
+    customBatchItems.forEach(item => {
+      const copies = Math.max(0, Number(item.count) || 0);
+      const pr = typeof item.price === 'number' ? item.price : 0;
+      for (let i = 0; i < copies; i++) {
+        list.push({
+          id: item.id,
+          title: item.title || 'Product Label',
+          subtitle: item.subtitle,
+          barcode: item.barcode || '000000000000',
+          price: pr,
+        });
       }
     });
 
     return list;
-  }, [printMode, labelQuantity, productTitle, customSubtitle, barcodeValue, sellingPrice, inventory, batchSelections]);
+  }, [printMode, labelQuantity, productTitle, customSubtitle, barcodeValue, sellingPrice, customBatchItems]);
 
-  // When a product is selected from dropdown
-  const handleProductSelect = (id: string) => {
-    setSelectedProductId(id);
-    const item = inventory.find(i => i.id === id);
-    if (item) {
-      setProductTitle(item.name);
-      setSellingPrice(item.salePrice || 0);
-      const code = item.barcode || item.imei || item.imeis?.[0] || 'PRD-' + item.id.replace(/[^0-9]/g, '').slice(-8);
-      setBarcodeValue(code);
-      setCustomSubtitle(item.category || '');
-      showToast(`Loaded details for "${item.name}"`, 'info');
-    }
+  const handleAddCustomBatchItem = () => {
+    const randomCode = Math.floor(100000000000 + Math.random() * 900000000000).toString();
+    const newItem: CustomBatchItem = {
+      id: 'c-' + Date.now() + '-' + Math.random().toString(36).substring(2, 5),
+      title: '',
+      subtitle: '',
+      price: '',
+      barcode: randomCode,
+      count: 3,
+    };
+    setCustomBatchItems(prev => [...prev, newItem]);
+    showToast('New product row added for barcode printing', 'info');
   };
 
-  // Generate random Code128 / EAN13 barcode
+  const handleUpdateBatchItem = (id: string, field: keyof CustomBatchItem, val: any) => {
+    setCustomBatchItems(prev =>
+      prev.map(item => (item.id === id ? { ...item, [field]: val } : item))
+    );
+  };
+
+  const handleRemoveBatchItem = (id: string) => {
+    if (customBatchItems.length <= 1) {
+      showToast('At least one product item is required in multi-product sheet', 'warning');
+      return;
+    }
+    setCustomBatchItems(prev => prev.filter(item => item.id !== id));
+  };
+
+  const handleGenerateBarcodeForItem = (id: string) => {
+    const randomCode = Math.floor(100000000000 + Math.random() * 900000000000).toString();
+    handleUpdateBatchItem(id, 'barcode', randomCode);
+    showToast('New unique barcode code generated', 'success');
+  };
+
+  // Generate random Code128 / EAN13 barcode for single product
   const handleGenerateRandomBarcode = () => {
     const random12 = Math.floor(100000000000 + Math.random() * 900000000000).toString();
     setBarcodeValue(random12);
@@ -333,218 +361,188 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Controls Column (7 cols) */}
           <div className="lg:col-span-7 space-y-5">
-            {/* Multi-Product Selection Panel OR Single Item Autocomplete */}
+            {/* Multi-Product Custom Builder Panel OR Single Item Custom Panel */}
             {printMode === 'batch' ? (
-              <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
                   <div>
                     <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-2">
                       <Layers className="w-4 h-4 text-blue-600" />
-                      Select Products for A4 Sheet
+                      Multi-Product Custom Barcode List ({customBatchItems.length} Products)
                     </h3>
                     <p className="text-[11px] text-slate-400 mt-0.5">
-                      Check items and set how many barcode stickers to print for each item on the A4 page
+                      Apni marzi sa products ke naam, color/model, price, barcode aur copies enter karein
                     </p>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const all: Record<string, number> = {};
-                        inventory.forEach(i => (all[i.id] = 1));
-                        setBatchSelections(all);
-                        showToast(`Selected all ${inventory.length} products (1 copy each)`, 'info');
-                      }}
-                      className="px-2.5 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-[11px] font-bold transition cursor-pointer"
-                    >
-                      Select All (1 Copy)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const all: Record<string, number> = {};
-                        inventory.forEach(i => (all[i.id] = Math.max(1, i.qty || 1)));
-                        setBatchSelections(all);
-                        showToast('Set label counts to match stock quantities', 'info');
-                      }}
-                      className="px-2.5 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-[11px] font-bold transition cursor-pointer"
-                      title="Set label quantity equal to each item's active stock"
-                    >
-                      Match Stock Qty
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const recent = [...inventory].reverse().slice(0, 15);
-                        const sel: Record<string, number> = {};
-                        recent.forEach(i => (sel[i.id] = Math.max(1, i.qty || 1)));
-                        setBatchSelections(sel);
-                        showToast(`Selected ${recent.length} newly added stock items with their stock quantities`, 'info');
-                      }}
-                      className="px-2.5 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-[11px] font-bold transition cursor-pointer"
-                      title="Select newly arrived inventory items"
-                    >
-                      Newest Stock (15)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setBatchSelections({});
-                        showToast('Cleared all selections', 'info');
-                      }}
-                      className="px-2.5 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-lg text-[11px] font-bold transition cursor-pointer"
-                    >
-                      Clear
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddCustomBatchItem}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer self-start sm:self-auto"
+                  >
+                    <Plus className="w-4 h-4" /> Add Product Row
+                  </button>
                 </div>
 
-                {/* Search */}
-                <div className="relative">
-                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    value={batchSearch}
-                    onChange={e => setBatchSearch(e.target.value)}
-                    placeholder="Search by product name, category, barcode, IMEI..."
-                    className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition"
-                  />
-                </div>
-
-                {/* Inventory Table with Selection & Copies */}
-                <div className="max-h-80 overflow-y-auto border border-slate-100 rounded-xl divide-y divide-slate-100">
-                  {filteredInventoryForBatch.length === 0 ? (
-                    <div className="p-8 text-center text-slate-400 text-xs">
-                      No products found matching filter
-                    </div>
-                  ) : (
-                    filteredInventoryForBatch.map(item => {
-                      const count = batchSelections[item.id] || 0;
-                      const isSelected = count > 0;
-                      return (
-                        <div
-                          key={item.id}
-                          className={`p-3 flex items-center justify-between gap-3 text-xs transition ${
-                            isSelected ? 'bg-blue-50/40' : 'hover:bg-slate-50'
-                          }`}
-                        >
-                          <div
-                            onClick={() => {
-                              setBatchSelections(prev => ({
-                                ...prev,
-                                [item.id]: isSelected ? 0 : 1,
-                              }));
-                            }}
-                            className="flex items-center gap-3 cursor-pointer flex-1 min-w-0"
-                          >
-                            <div className="text-blue-600 shrink-0">
-                              {isSelected ? (
-                                <CheckSquare className="w-4 h-4" />
-                              ) : (
-                                <Square className="w-4 h-4 text-slate-300" />
-                              )}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="font-bold text-slate-900 truncate">{item.name}</p>
-                              <div className="flex items-center gap-2 text-[11px] text-slate-500">
-                                <span>{item.category}</span>
-                                {item.barcode && <span>• Code: {item.barcode}</span>}
-                                {item.imei && <span className="text-blue-600">• IMEI: {item.imei}</span>}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-4 shrink-0">
-                            <span className="font-mono font-bold text-slate-900">
-                              {settings.currency} {(item.salePrice || 0).toLocaleString()}
+                {/* Custom Products List */}
+                <div className="space-y-3 max-h-[460px] overflow-y-auto pr-1">
+                  {customBatchItems.map((item, idx) => (
+                    <div
+                      key={item.id}
+                      className="p-3.5 bg-slate-50/70 border border-slate-200 rounded-xl space-y-2.5 hover:border-blue-300 transition"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="w-6 h-6 rounded-lg bg-blue-600 text-white font-mono font-bold text-xs flex items-center justify-center">
+                          #{idx + 1}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-bold text-slate-600">Stickers to Print:</span>
+                          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-0.5">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleUpdateBatchItem(item.id, 'count', Math.max(1, item.count - 1))
+                              }
+                              className="w-6 h-6 flex items-center justify-center rounded text-slate-600 hover:bg-slate-100 cursor-pointer"
+                            >
+                              <Minus className="w-3 h-3" />
+                            </button>
+                            <span className="w-7 text-center font-mono font-bold text-xs text-blue-700">
+                              {item.count}
                             </span>
-
-                            {/* Copies Stepper */}
-                            <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-0.5">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setBatchSelections(prev => ({
-                                    ...prev,
-                                    [item.id]: Math.max(0, (prev[item.id] || 0) - 1),
-                                  }));
-                                }}
-                                className="w-6 h-6 flex items-center justify-center rounded text-slate-600 hover:bg-slate-100 cursor-pointer"
-                              >
-                                <Minus className="w-3 h-3" />
-                              </button>
-                              <span className="w-7 text-center font-mono font-bold text-xs text-blue-700">
-                                {count}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setBatchSelections(prev => ({
-                                    ...prev,
-                                    [item.id]: (prev[item.id] || 0) + 1,
-                                  }));
-                                }}
-                                className="w-6 h-6 flex items-center justify-center rounded text-slate-600 hover:bg-slate-100 cursor-pointer"
-                              >
-                                <Plus className="w-3 h-3" />
-                              </button>
-                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleUpdateBatchItem(item.id, 'count', item.count + 1)
+                              }
+                              className="w-6 h-6 flex items-center justify-center rounded text-slate-600 hover:bg-slate-100 cursor-pointer"
+                            >
+                              <Plus className="w-3 h-3" />
+                            </button>
                           </div>
+
+                          {customBatchItems.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveBatchItem(item.id)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer ml-1"
+                              title="Delete this row"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
-                      );
-                    })
-                  )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                        <div className="sm:col-span-6">
+                          <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5">
+                            Product Name / Title *
+                          </label>
+                          <input
+                            type="text"
+                            value={item.title}
+                            onChange={e => handleUpdateBatchItem(item.id, 'title', e.target.value)}
+                            placeholder="e.g. Samsung Galaxy A15, 20W Charger"
+                            className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-6">
+                          <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5">
+                            Color / Model / Subtitle
+                          </label>
+                          <input
+                            type="text"
+                            value={item.subtitle}
+                            onChange={e => handleUpdateBatchItem(item.id, 'subtitle', e.target.value)}
+                            placeholder="e.g. Black • 6GB/128GB, Type-C"
+                            className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-5">
+                          <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5">
+                            Price ({settings.currency})
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={item.price}
+                            onChange={e =>
+                              handleUpdateBatchItem(
+                                item.id,
+                                'price',
+                                e.target.value === '' ? '' : Number(e.target.value)
+                              )
+                            }
+                            placeholder="0"
+                            className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold text-emerald-700 focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-7">
+                          <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 flex items-center justify-between">
+                            <span>Barcode Value</span>
+                            <button
+                              type="button"
+                              onClick={() => handleGenerateBarcodeForItem(item.id)}
+                              className="text-[10px] text-blue-600 font-bold hover:underline cursor-pointer flex items-center gap-0.5"
+                            >
+                              <RefreshCw className="w-2.5 h-2.5" /> Auto Barcode
+                            </button>
+                          </label>
+                          <input
+                            type="text"
+                            value={item.barcode}
+                            onChange={e => handleUpdateBatchItem(item.id, 'barcode', e.target.value)}
+                            placeholder="Barcode number / code"
+                            className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold text-blue-700 focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
-                <div className="flex items-center justify-between text-[11px] text-slate-500 px-1">
-                  <span>
-                    Selected: <strong>{Object.values(batchSelections).filter(c => c > 0).length}</strong> Products
-                  </span>
-                  <span>
-                    Total Labels to Print: <strong className="text-blue-700">{printableItemsList.length}</strong> (~{Math.ceil(printableItemsList.length / (sheetColumns * 8))} A4 pages)
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
+                  <button
+                    type="button"
+                    onClick={handleAddCustomBatchItem}
+                    className="w-full sm:w-auto px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-blue-600" /> + Add Another Custom Product
+                  </button>
+
+                  <span className="font-semibold text-slate-600">
+                    Total Stickers on Sheet: <strong className="text-blue-700 font-mono text-sm">{printableItemsList.length}</strong> (~{Math.ceil(printableItemsList.length / (sheetColumns * 8))} A4 Pages)
                   </span>
                 </div>
               </div>
             ) : (
-              /* Quick Product Autocomplete for Single Mode */
+              /* Custom Single Product Mode */
               <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                   <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-2">
                     <Tag className="w-4 h-4 text-blue-600" />
-                    Select Product from Inventory
+                    Custom Single Product Barcode Details
                   </h3>
                   <span className="text-[10px] text-slate-400 font-semibold">
-                    {inventory.length} products available
+                    Enter details to generate repeated sticker sheet
                   </span>
                 </div>
 
-                <div>
-                  <select
-                    value={selectedProductId}
-                    onChange={e => handleProductSelect(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition cursor-pointer"
-                  >
-                    <option value="">-- Choose existing product or enter manually below --</option>
-                    {inventory.map(item => (
-                      <option key={item.id} value={item.id}>
-                        {item.name} ({settings.currency} {item.salePrice}) {item.barcode ? `[Code: ${item.barcode}]` : item.imei ? `[IMEI: ${item.imei}]` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
                 {/* Manual Fields */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2 border-t border-slate-100">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
                   <div className="sm:col-span-2">
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      Product Title on Label
+                      Product Name / Title *
                     </label>
                     <input
                       type="text"
                       value={productTitle}
                       onChange={e => setProductTitle(e.target.value)}
-                      placeholder="e.g. Samsung Galaxy S24 Ultra"
+                      placeholder="e.g. Samsung Galaxy S24 Ultra, Fast Charger"
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white"
                     />
                   </div>
@@ -577,21 +575,36 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
                       type="number"
                       min="0"
                       value={sellingPrice}
-                      onChange={e => setSellingPrice(parseFloat(e.target.value) || 0)}
+                      onChange={e => setSellingPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                      placeholder="0"
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-emerald-700 focus:outline-none focus:border-blue-500 focus:bg-white"
                     />
                   </div>
 
                   <div className="sm:col-span-2">
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      Custom Subtitle / Variant / IMEI
+                      Custom Subtitle / Color / Model
                     </label>
                     <input
                       type="text"
                       value={customSubtitle}
                       onChange={e => setCustomSubtitle(e.target.value)}
-                      placeholder="e.g. 256GB Titanium Gray • 1 Year Warranty"
+                      placeholder="e.g. 256GB Titanium Gray, Black, Type-C"
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Number of Stickers / Copies to Print on Sheet
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={labelQuantity}
+                      onChange={e => setLabelQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-blue-700 focus:outline-none focus:border-blue-500 focus:bg-white"
                     />
                   </div>
                 </div>

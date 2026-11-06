@@ -357,91 +357,121 @@
   background-color: #334155 !important;
 }
 
-/* 6. DARK THEME OVERRIDES */
+/* 6. DARK THEME OVERRIDES (PURE PITCH BLACK OLED) */
 [data-theme="dark"] {
-  --theme-primary: #0284c7;
-  --theme-primary-hover: #0369a1;
-  --theme-primary-light: #0c4a6e;
-  --theme-primary-border: #0369a1;
-  --theme-primary-text: #38bdf8;
-  --theme-app-bg: #0b1120;
-  --theme-card-bg: #131c2e;
-  --theme-card-border: #24324c;
+  --theme-primary: #3b82f6;
+  --theme-primary-hover: #2563eb;
+  --theme-primary-light: #1d4ed8;
+  --theme-primary-border: #2563eb;
+  --theme-primary-text: #60a5fa;
+  --theme-app-bg: #000000;
+  --theme-card-bg: #0a0a0a;
+  --theme-card-border: #1a1a1a;
 
-  --color-blue-50: #0c4a6e;
-  --color-blue-100: #0369a1;
-  --color-blue-200: #0284c7;
-  --color-blue-300: #38bdf8;
-  --color-blue-400: #7dd3fc;
-  --color-blue-500: #0ea5e9;
-  --color-blue-600: #0284c7;
-  --color-blue-700: #0369a1;
-  --color-blue-800: #075985;
-  --color-blue-900: #0c4a6e;
-  --color-blue-950: #082f49;
+  --color-blue-50: #172554;
+  --color-blue-100: #1e3a8a;
+  --color-blue-200: #1d4ed8;
+  --color-blue-300: #2563eb;
+  --color-blue-400: #3b82f6;
+  --color-blue-500: #60a5fa;
+  --color-blue-600: #3b82f6;
+  --color-blue-700: #2563eb;
+  --color-blue-800: #1d4ed8;
+  --color-blue-900: #1e3a8a;
+  --color-blue-950: #172554;
 }
 
 [data-theme="dark"] body,
 [data-theme="dark"] .app-root-container {
-  background-color: #0b1120 !important;
+  background-color: #000000 !important;
   color: #f1f5f9 !important;
 }
 [data-theme="dark"] .bg-white {
-  background-color: #131c2e !important;
+  background-color: #0a0a0a !important;
   color: #f1f5f9 !important;
-  border-color: #24324c !important;
+  border-color: #1c1c1c !important;
+  box-shadow: none !important;
 }
 [data-theme="dark"] .bg-slate-50 {
-  background-color: #0f172a !important;
+  background-color: #111111 !important;
   color: #e2e8f0 !important;
+  border-color: #222222 !important;
+  box-shadow: none !important;
 }
 [data-theme="dark"] .bg-slate-100 {
-  background-color: #1e293b !important;
+  background-color: #171717 !important;
   color: #cbd5e1 !important;
+  border-color: #262626 !important;
+  box-shadow: none !important;
 }
 [data-theme="dark"] .text-slate-900,
 [data-theme="dark"] .text-slate-800 {
-  color: #f8fafc !important;
+  color: #ffffff !important;
 }
 [data-theme="dark"] .text-slate-700,
 [data-theme="dark"] .text-slate-600 {
-  color: #cbd5e1 !important;
+  color: #d1d5db !important;
 }
 [data-theme="dark"] .text-slate-500,
 [data-theme="dark"] .text-slate-400 {
-  color: #94a3b8 !important;
+  color: #9ca3af !important;
 }
 [data-theme="dark"] .border-slate-200,
 [data-theme="dark"] .border-slate-100 {
-  border-color: #24324c !important;
+  border-color: #1f1f1f !important;
 }
 [data-theme="dark"] input,
 [data-theme="dark"] select,
 [data-theme="dark"] textarea {
-  background-color: #0f172a !important;
-  color: #f8fafc !important;
-  border-color: #334155 !important;
+  background-color: #121212 !important;
+  color: #ffffff !important;
+  border-color: #262626 !important;
+  box-shadow: none !important;
 }
 [data-theme="dark"] .bg-blue-600,
 [data-theme="dark"] .btn-primary {
-  background-color: #0284c7 !important;
+  background-color: #2563eb !important;
 }
 [data-theme="dark"] .hover\:bg-blue-700:hover,
 [data-theme="dark"] .btn-primary:hover {
-  background-color: #0369a1 !important;
+  background-color: #1d4ed8 !important;
 }
 [data-theme="dark"] .text-blue-600,
 [data-theme="dark"] .text-blue-700 {
-  color: #38bdf8 !important;
+  color: #60a5fa !important;
 }
 [data-theme="dark"] .bg-blue-50,
 [data-theme="dark"] .bg-blue-50\/80,
 [data-theme="dark"] .bg-blue-50\/50,
 [data-theme="dark"] .bg-blue-50\/40 {
-  background-color: #0c4a6e !important;
+  background-color: #141f36 !important;
 }
 [data-theme="dark"] .brand-badge {
-  background-color: #0284c7 !important;
+  background-color: #2563eb !important;
+}
+
+/* Eliminate all white glows / semi-transparent white shadows in Dark Mode */
+[data-theme="dark"] * {
+  --tw-shadow: 0 0 #0000 !important;
+  --tw-shadow-colored: 0 0 #0000 !important;
+}
+[data-theme="dark"] .shadow-2xs,
+[data-theme="dark"] .shadow-xs,
+[data-theme="dark"] .shadow-sm,
+[data-theme="dark"] .shadow,
+[data-theme="dark"] .shadow-md,
+[data-theme="dark"] .shadow-lg,
+[data-theme="dark"] .shadow-xl,
+[data-theme="dark"] .shadow-2xl {
+  box-shadow: none !important;
+}
+[data-theme="dark"] .bg-white\/60,
+[data-theme="dark"] .bg-white\/70,
+[data-theme="dark"] .bg-white\/80,
+[data-theme="dark"] .bg-white\/90,
+[data-theme="dark"] .bg-white\/95 {
+  background-color: rgba(10, 10, 10, 0.9) !important;
+  box-shadow: none !important;
 }
 
 /* 7. ROYAL LUXURY GOLD & BLACK THEME */

@@ -367,7 +367,6 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                             )}
                             <div>
                               <p className="font-bold text-slate-900 leading-snug">{item.name}</p>
-                              <span className="text-[10px] text-slate-400 font-mono">ID: {item.id}</span>
                             </div>
                           </div>
                         </td>

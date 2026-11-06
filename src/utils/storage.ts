@@ -33,13 +33,13 @@ import {
 } from 'firebase/firestore';
 import { generateEntityId } from './id';
 
-export const STORAGE_KEY = 'MOBILE_POS_PRO_DATA_V7';
+export const STORAGE_KEY = 'MOBILE_POS_PRO_DATA_V10';
 export const LEGACY_STORAGE_KEYS = [
+  'MOBILE_POS_PRO_DATA_V9',
+  'MOBILE_POS_PRO_DATA_V8',
+  'MOBILE_POS_PRO_DATA_V7',
   'MOBILE_POS_PRO_DATA_V6',
   'MOBILE_POS_PRO_DATA_V5',
-  'MOBILE_POS_PRO_DATA_V4',
-  'MOBILE_POS_PRO_DATA_V3',
-  'MOBILE_POS_PRO_DATA_V2',
 ];
 
 export const FIRESTORE_COLLECTION = 'pos_data';
@@ -68,18 +68,7 @@ export const defaultSettings: ShopSettings = {
   loginPageLogo: '/assets/aistudio/Gemini_Generated_Image_5gj5px5gj5px5gj5_c9c27f7d.jpg',
 };
 
-export const defaultCategories: string[] = [
-  'Mobile Phones (New)',
-  'Used / Refurbished Phones',
-  'Keypad & Feature Phones',
-  'Chargers & Adapters',
-  'Data Cables & Converters',
-  'Earphones & TWS Audio',
-  'Power Banks & Batteries',
-  'Cases & Screen Protectors',
-  'Spare Parts & Display Panels',
-  'Accessories & Gadgets',
-];
+export const defaultCategories: string[] = [];
 
 export const defaultExpenseCategories: string[] = [
   'Shop Rent',
@@ -112,7 +101,7 @@ export const initialCleanData: AppData = {
   purchasesLedger: [],
   supplierPurchases: [],
   settings: defaultSettings,
-  categories: defaultCategories,
+  categories: [],
   expenseCategories: defaultExpenseCategories,
   activities: [],
   onlineAccounts: defaultOnlineAccounts,
@@ -244,7 +233,7 @@ export function validateBackupData(parsed: unknown): BackupValidationResult {
     purchasesLedger: Array.isArray(raw.purchasesLedger) ? (raw.purchasesLedger as PurchaseLedgerEntry[]) : [],
     supplierPurchases: Array.isArray(raw.supplierPurchases) ? (raw.supplierPurchases as SupplierPurchase[]) : [],
     settings: mergedSettings,
-    categories: Array.isArray(raw.categories) && raw.categories.length > 0 ? (raw.categories as string[]) : defaultCategories,
+    categories: Array.isArray(raw.categories) ? (raw.categories as string[]) : [],
     expenseCategories: Array.isArray(raw.expenseCategories) && raw.expenseCategories.length > 0 ? (raw.expenseCategories as string[]) : defaultExpenseCategories,
     activities: Array.isArray(raw.activities) ? (raw.activities as ActivityLog[]) : [],
     dailyClosings: Array.isArray(raw.dailyClosings) ? raw.dailyClosings : [],
@@ -714,18 +703,7 @@ export async function loadAppDataFromFirestore(): Promise<AppData | null> {
  */
 export function loadStoredData(): AppData {
   try {
-    let raw = localStorage.getItem(STORAGE_KEY);
-
-    // If not found in current key, check previous legacy keys safely (safe migration without data wipe)
-    if (!raw) {
-      for (const legacyKey of LEGACY_STORAGE_KEYS) {
-        const legacyVal = localStorage.getItem(legacyKey);
-        if (legacyVal) {
-          raw = legacyVal;
-          break;
-        }
-      }
-    }
+    const raw = localStorage.getItem(STORAGE_KEY);
 
     if (!raw) {
       return initialCleanData;

@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { KhataCustomer } from '../types';
-import { X, UserPlus, CreditCard, DollarSign, Camera, Image, Trash2, Phone, MapPin, User, RotateCcw } from 'lucide-react';
+import { X, UserPlus, CreditCard, DollarSign, Camera, Image as ImageIcon, Trash2, Phone, MapPin, User, RotateCcw, Upload } from 'lucide-react';
 import { useToast } from './Toast';
 import { useFormDraft } from '../hooks/useFormDraft';
+import { CameraCaptureModal } from './CameraCaptureModal';
 
 interface AddKhataModalProps {
   isOpen: boolean;
@@ -78,6 +79,7 @@ export const AddKhataModal: React.FC<AddKhataModalProps> = ({
   const setShopName = (val: string) => setFormData(p => ({ ...p, shopName: val }));
   const setCity = (val: string) => setFormData(p => ({ ...p, city: val }));
   const setNtnNumber = (val: string) => setFormData(p => ({ ...p, ntnNumber: val }));
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
 
   if (!isOpen) return null;
 
@@ -326,6 +328,62 @@ export const AddKhataModal: React.FC<AddKhataModalProps> = ({
             />
           </div>
 
+          {/* Customer / CNIC Photo Upload */}
+          <div className="p-3 bg-purple-50/60 rounded-xl border border-purple-200/80 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              {image ? (
+                <div className="relative w-12 h-12 rounded-xl border border-purple-200 overflow-hidden bg-white shrink-0 shadow-2xs">
+                  <img src={image} alt="Customer" className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImage('');
+                      if (fileInputRef.current) fileInputRef.current.value = '';
+                    }}
+                    className="absolute top-0.5 right-0.5 bg-rose-600 text-white rounded-full p-0.5 hover:bg-rose-700 cursor-pointer"
+                    title="Remove Photo"
+                  >
+                    <X className="w-2.5 h-2.5" />
+                  </button>
+                </div>
+              ) : (
+                <div className="w-12 h-12 rounded-xl border border-dashed border-purple-300 bg-white flex items-center justify-center text-purple-400 shrink-0">
+                  <ImageIcon className="w-5 h-5 text-purple-300" />
+                </div>
+              )}
+              <div>
+                <span className="block font-bold text-slate-800 text-[11px]">Customer / CNIC Photo</span>
+                <span className="text-[10px] text-slate-400 block">Optional image record</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleImageChange}
+                accept="image/*"
+                className="hidden"
+                id="khata-photo-file"
+              />
+              <label
+                htmlFor="khata-photo-file"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-lg text-[11px] cursor-pointer transition border border-slate-200 shadow-2xs"
+              >
+                <Upload className="w-3 h-3 text-purple-600" />
+                <span>Gallery</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => setIsCameraOpen(true)}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg text-[11px] cursor-pointer transition shadow-2xs"
+              >
+                <Camera className="w-3 h-3 text-white" />
+                <span>Camera</span>
+              </button>
+            </div>
+          </div>
+
           <div className="pt-3 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 border-t border-slate-100">
             <button
               type="button"
@@ -343,6 +401,17 @@ export const AddKhataModal: React.FC<AddKhataModalProps> = ({
           </div>
         </form>
       </div>
+
+      {/* Live Camera Snapshot Modal for Customer */}
+      <CameraCaptureModal
+        isOpen={isCameraOpen}
+        onClose={() => setIsCameraOpen(false)}
+        title="Capture Customer / CNIC Photo"
+        onCapture={dataUrl => {
+          setImage(dataUrl);
+          showToast('Customer photo captured with camera!', 'success');
+        }}
+      />
     </div>
   );
 };
