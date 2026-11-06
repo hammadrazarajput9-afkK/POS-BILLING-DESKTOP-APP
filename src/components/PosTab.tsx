@@ -1495,24 +1495,6 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                         </div>
 
                         <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                          {saleMode === 'wholesale' && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const boxUnits = item.boxSize || 10;
-                                for (let i = 0; i < boxUnits; i++) {
-                                  addToCart(item);
-                                }
-                              }}
-                              disabled={remainingStock <= 0}
-                              className="px-2 py-1 bg-purple-100 hover:bg-purple-200 text-purple-800 font-extrabold rounded-lg text-[10px] flex items-center gap-1 transition cursor-pointer min-h-[32px] border border-purple-200"
-                              title={`Add 1 Box / Carton (${item.boxSize || 10} units)`}
-                            >
-                              <Package className="w-3 h-3 text-purple-700" />
-                              <span>+{item.boxSize || 10} Box</span>
-                            </button>
-                          )}
-
                           <button
                             type="button"
                             onClick={() => addToCart(item)}
