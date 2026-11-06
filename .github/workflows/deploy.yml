@@ -20,6 +20,6 @@ jobs:
           repoToken: '${{ secrets.GITHUB_TOKEN }}'
           firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_GEN_LANG_CLIENT_0220210628 }}'
           channelId: live
-          projectId: hammadrazarajput9-afkk
+          projectId: gen-lang-client-0220210628
         env:
           FIREBASE_CLI_PREVIEWS: hostingchannels
