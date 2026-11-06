@@ -322,25 +322,25 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
 
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-2 lg:grid-cols-5 sm:gap-4">
           {/* 1. REAL-TIME NET PROFIT */}
-          <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 shadow-xs transition hover:border-emerald-400 hover:shadow-md flex flex-col justify-between">
+          <div className="bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 shadow-xs dark:shadow-none transition hover:border-emerald-400 hover:shadow-md flex flex-col justify-between">
             <div className="flex items-center justify-between mb-1.5 sm:mb-3">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
                 <span className="truncate">Net Profit</span>
               </span>
-              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold shrink-0">
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold shrink-0">
                 <TrendingUp className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
               </div>
             </div>
             <div>
               {data.currentRole === 'salesman' ? (
-                <span className="text-xs sm:text-sm font-bold text-slate-400 flex items-center gap-1 sm:gap-1.5 py-1">
+                <span className="text-xs sm:text-sm font-bold text-slate-400 dark:text-neutral-500 flex items-center gap-1 sm:gap-1.5 py-1">
                   <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" /> Restricted
                 </span>
               ) : (
                 <h3
                   className={`text-sm sm:text-2xl font-black font-mono tabular-nums tracking-tight truncate ${
-                    profitVal >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                    profitVal >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
                   }`}
                 >
                   {data.settings.currency} {showBottomMetrics ? profitVal.toLocaleString() : '••••••'}
@@ -350,23 +350,23 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           </div>
 
           {/* 2. DAILY EXPENSES */}
-          <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 shadow-xs transition hover:border-rose-400 hover:shadow-md flex flex-col justify-between">
+          <div className="bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 shadow-xs dark:shadow-none transition hover:border-rose-400 hover:shadow-md flex flex-col justify-between">
             <div className="flex items-center justify-between mb-1.5 sm:mb-3">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0"></span>
                 <span className="truncate">Expenses</span>
               </span>
-              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold shrink-0">
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center font-bold shrink-0">
                 <Receipt className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
               </div>
             </div>
             <div>
               {data.currentRole === 'salesman' ? (
-                <span className="text-xs sm:text-sm font-bold text-slate-400 flex items-center gap-1 sm:gap-1.5 py-1">
+                <span className="text-xs sm:text-sm font-bold text-slate-400 dark:text-neutral-500 flex items-center gap-1 sm:gap-1.5 py-1">
                   <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" /> Restricted
                 </span>
               ) : (
-                <h3 className="text-sm sm:text-2xl font-black text-slate-900 font-mono tabular-nums tracking-tight truncate">
+                <h3 className="text-sm sm:text-2xl font-black text-slate-900 dark:text-white font-mono tabular-nums tracking-tight truncate">
                   {data.settings.currency} {showBottomMetrics ? expensesVal.toLocaleString() : '••••••'}
                 </h3>
               )}
@@ -374,23 +374,23 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           </div>
 
           {/* 3. SUPPLIER PURCHASES */}
-          <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 shadow-xs transition hover:border-amber-400 hover:shadow-md flex flex-col justify-between">
+          <div className="bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 shadow-xs dark:shadow-none transition hover:border-amber-400 hover:shadow-md flex flex-col justify-between">
             <div className="flex items-center justify-between mb-1.5 sm:mb-3">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
                 <span className="truncate">Outflow</span>
               </span>
-              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold shrink-0">
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold shrink-0">
                 <ShoppingBag className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
               </div>
             </div>
             <div>
               {data.currentRole === 'salesman' ? (
-                <span className="text-xs sm:text-sm font-bold text-slate-400 flex items-center gap-1 sm:gap-1.5 py-1">
+                <span className="text-xs sm:text-sm font-bold text-slate-400 dark:text-neutral-500 flex items-center gap-1 sm:gap-1.5 py-1">
                   <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" /> Restricted
                 </span>
               ) : (
-                <h3 className="text-sm sm:text-2xl font-black text-slate-900 font-mono tabular-nums tracking-tight truncate">
+                <h3 className="text-sm sm:text-2xl font-black text-slate-900 dark:text-white font-mono tabular-nums tracking-tight truncate">
                   {data.settings.currency} {showBottomMetrics ? purchasesVal.toLocaleString() : '••••••'}
                 </h3>
               )}
@@ -398,48 +398,48 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           </div>
 
           {/* 4. TOTAL STOCK VALUE */}
-          <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 shadow-xs transition hover:border-blue-400 hover:shadow-md flex flex-col justify-between">
+          <div className="bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 shadow-xs dark:shadow-none transition hover:border-blue-400 hover:shadow-md flex flex-col justify-between">
             <div className="flex items-center justify-between mb-1.5 sm:mb-3">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0"></span>
                 <span className="truncate">Stock Asset</span>
               </span>
-              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold shrink-0">
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold shrink-0">
                 <Layers className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
               </div>
             </div>
             <div>
               {data.currentRole === 'salesman' ? (
-                <span className="text-xs sm:text-sm font-bold text-slate-400 flex items-center gap-1 sm:gap-1.5 py-1">
+                <span className="text-xs sm:text-sm font-bold text-slate-400 dark:text-neutral-500 flex items-center gap-1 sm:gap-1.5 py-1">
                   <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" /> Restricted
                 </span>
               ) : (
-                <h3 className="text-sm sm:text-2xl font-black text-slate-900 font-mono tabular-nums tracking-tight truncate">
+                <h3 className="text-sm sm:text-2xl font-black text-slate-900 dark:text-white font-mono tabular-nums tracking-tight truncate">
                   {data.settings.currency} {showBottomMetrics ? stockCostVal.toLocaleString() : '••••••'}
                 </h3>
               )}
-              <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 sm:mt-1 truncate">
+              <p className="text-[10px] sm:text-[11px] text-slate-400 dark:text-neutral-500 mt-0.5 sm:mt-1 truncate">
                 {totalInStockUnits} units in stock
               </p>
             </div>
           </div>
 
           {/* 5. TODAY'S CREDIT (UDHAR) GIVEN */}
-          <div className="col-span-2 sm:col-span-1 bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 shadow-xs transition hover:border-orange-500 hover:shadow-md flex flex-col justify-between">
+          <div className="col-span-2 sm:col-span-1 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 shadow-xs dark:shadow-none transition hover:border-orange-500 hover:shadow-md flex flex-col justify-between">
             <div className="flex items-center justify-between mb-1.5 sm:mb-3">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse shrink-0"></span>
                 <span className="truncate">Credit Issued (Today)</span>
               </span>
-              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center font-bold shrink-0">
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-orange-50 dark:bg-orange-950/60 text-orange-600 dark:text-orange-400 flex items-center justify-center font-bold shrink-0">
                 <Banknote className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
               </div>
             </div>
             <div>
-              <h3 className="text-sm sm:text-2xl font-black text-slate-900 font-mono tabular-nums tracking-tight truncate">
+              <h3 className="text-sm sm:text-2xl font-black text-slate-900 dark:text-white font-mono tabular-nums tracking-tight truncate">
                 {data.settings.currency} {showBottomMetrics ? todayUdharGiven.toLocaleString() : '••••••'}
               </h3>
-              <p className="text-[10px] text-slate-400 mt-0.5 sm:mt-1 font-semibold truncate">
+              <p className="text-[10px] text-slate-400 dark:text-neutral-500 mt-0.5 sm:mt-1 font-semibold truncate">
                 Credit sales & Khata balance today
               </p>
             </div>
@@ -450,31 +450,29 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
       {/* ======================================================== */}
       {/* FINANCIAL CHART                                          */}
       {/* ======================================================== */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs">
-        <FinancialChart data={data} />
-      </div>
+      <FinancialChart data={data} />
 
       {/* ======================================================== */}
       {/* BOTTOM SECTION: LOW STOCK ALERTS (Shortcuts removed)     */}
       {/* ======================================================== */}
       <div className="w-full">
         {/* Low Stock Alerts */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="bg-white dark:bg-black rounded-2xl border border-slate-200/80 dark:border-neutral-900 p-5 shadow-none space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-neutral-900 pb-3">
             <div className="flex items-center gap-2">
-              <div className="p-2 bg-rose-50 text-rose-600 rounded-xl">
+              <div className="p-2 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 rounded-xl">
                 <AlertCircle className="w-4 h-4" />
               </div>
               <div>
-                <h4 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                <h4 className="font-extrabold text-slate-900 dark:text-white text-sm flex items-center gap-2">
                   <span>Low Stock Warning</span>
                   {lowStockItems.length > 0 && (
-                    <span className="px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] font-black rounded-full">
+                    <span className="px-2 py-0.5 bg-rose-100 dark:bg-rose-950/80 text-rose-800 dark:text-rose-300 text-[10px] font-black rounded-full border border-rose-200 dark:border-rose-900/40">
                       {lowStockItems.length} ALERT{lowStockItems.length > 1 ? 'S' : ''}
                     </span>
                   )}
                 </h4>
-                <p className="text-[11px] text-slate-400">
+                <p className="text-[11px] text-slate-400 dark:text-neutral-500">
                   Products with {threshold} or fewer units remaining
                 </p>
               </div>
@@ -483,7 +481,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
             <button
               type="button"
               onClick={() => onSwitchTab('inventory')}
-              className="text-xs text-blue-600 font-bold hover:underline flex items-center gap-1 cursor-pointer transition"
+              className="text-xs text-blue-600 dark:text-blue-400 font-bold hover:underline flex items-center gap-1 cursor-pointer transition"
             >
               Open Inventory <ArrowRight className="w-3.5 h-3.5" />
             </button>
@@ -492,8 +490,8 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           {lowStockItems.length === 0 ? (
             <div className="text-center py-6 text-slate-400 text-xs space-y-1">
               <CheckCircle2 className="w-8 h-8 mx-auto text-emerald-500 mb-1" />
-              <p className="font-bold text-slate-700">Stock Levels Healthy</p>
-              <p className="text-[11px] text-slate-400">
+              <p className="font-bold text-slate-700 dark:text-neutral-300">Stock Levels Healthy</p>
+              <p className="text-[11px] text-slate-400 dark:text-neutral-500">
                 All inventory items have more than {threshold} available units
               </p>
             </div>
@@ -502,15 +500,15 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
               {lowStockItems.map(item => (
                 <div
                   key={item.id}
-                  className="flex items-center justify-between p-2.5 rounded-xl bg-rose-50/60 border border-rose-100 text-xs"
+                  className="flex items-center justify-between p-2.5 rounded-xl bg-rose-50/60 dark:bg-neutral-950 border border-rose-100 dark:border-neutral-900 text-xs shadow-none"
                 >
                   <div className="min-w-0 flex-1 pr-2">
-                    <p className="font-bold text-slate-900 truncate">{item.name}</p>
-                    <p className="text-[10px] text-slate-500 truncate">
+                    <p className="font-bold text-slate-900 dark:text-white truncate">{item.name}</p>
+                    <p className="text-[10px] text-slate-500 dark:text-neutral-400 truncate">
                       {item.category} {item.imei && `• IMEI: ${item.imei}`}
                     </p>
                   </div>
-                  <span className="font-black text-rose-700 bg-white border border-rose-200 px-2 py-0.5 rounded-lg text-xs font-mono shrink-0">
+                  <span className="font-black text-rose-700 dark:text-rose-400 bg-white dark:bg-black border border-rose-200 dark:border-neutral-800 px-2 py-0.5 rounded-lg text-xs font-mono shrink-0 shadow-none">
                     {item.qty} Left
                   </span>
                 </div>

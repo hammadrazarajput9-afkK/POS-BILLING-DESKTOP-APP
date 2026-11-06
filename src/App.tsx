@@ -181,6 +181,11 @@ function AppContent() {
   useEffect(() => {
     const activeTheme = data.settings?.theme || 'blue-white';
     document.documentElement.setAttribute('data-theme', activeTheme);
+    if (activeTheme === 'dark' || activeTheme === 'gold-black') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
   }, [data.settings?.theme]);
 
   // Sync to local storage mirror on state updates

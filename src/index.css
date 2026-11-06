@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *, .dark, .dark *));
+
 @layer base {
   body {
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
@@ -358,7 +360,8 @@
 }
 
 /* 6. DARK THEME OVERRIDES (PURE PITCH BLACK OLED) */
-[data-theme="dark"] {
+[data-theme="dark"],
+.dark {
   --theme-primary: #3b82f6;
   --theme-primary-hover: #2563eb;
   --theme-primary-light: #1d4ed8;
@@ -379,98 +382,210 @@
   --color-blue-800: #1d4ed8;
   --color-blue-900: #1e3a8a;
   --color-blue-950: #172554;
+
+  color-scheme: dark;
 }
 
 [data-theme="dark"] body,
-[data-theme="dark"] .app-root-container {
+.dark body,
+[data-theme="dark"] .app-root-container,
+.dark .app-root-container {
   background-color: #000000 !important;
   color: #f1f5f9 !important;
 }
-[data-theme="dark"] .bg-white {
+
+/* Force all white/light card backgrounds to pitch black / dark in dark mode */
+[data-theme="dark"] .bg-white,
+.dark .bg-white {
   background-color: #0a0a0a !important;
   color: #f1f5f9 !important;
-  border-color: #1c1c1c !important;
-  box-shadow: none !important;
+  border-color: #1a1a1a !important;
 }
-[data-theme="dark"] .bg-slate-50 {
-  background-color: #111111 !important;
+
+/* Specific range date box and slate-50 opacity containers */
+[data-theme="dark"] .bg-slate-50,
+.dark .bg-slate-50,
+[data-theme="dark"] [class*="bg-slate-50/"],
+.dark [class*="bg-slate-50/"] {
+  background-color: #0d0d0d !important;
   color: #e2e8f0 !important;
-  border-color: #222222 !important;
-  box-shadow: none !important;
+  border-color: #1a1a1a !important;
 }
-[data-theme="dark"] .bg-slate-100 {
-  background-color: #171717 !important;
+
+[data-theme="dark"] .bg-slate-100,
+.dark .bg-slate-100,
+[data-theme="dark"] [class*="bg-slate-100/"],
+.dark [class*="bg-slate-100/"] {
+  background-color: #141414 !important;
   color: #cbd5e1 !important;
-  border-color: #262626 !important;
-  box-shadow: none !important;
+  border-color: #1e1e1e !important;
 }
+
+/* Low stock warning alerts & light rose pill badges */
+[data-theme="dark"] .bg-rose-50,
+.dark .bg-rose-50,
+[data-theme="dark"] [class*="bg-rose-50/"],
+.dark [class*="bg-rose-50/"] {
+  background-color: #130608 !important;
+  border-color: #2b0e12 !important;
+  color: #fecdd3 !important;
+}
+
+[data-theme="dark"] .bg-rose-100,
+.dark .bg-rose-100,
+[data-theme="dark"] [class*="bg-rose-100/"],
+.dark [class*="bg-rose-100/"] {
+  background-color: #20080d !important;
+  border-color: #3b1218 !important;
+  color: #fda4af !important;
+}
+
+/* All other light tinted badges in dark mode */
+[data-theme="dark"] [class*="bg-emerald-50"],
+.dark [class*="bg-emerald-50"] {
+  background-color: #04140c !important;
+  border-color: #0d2e1c !important;
+}
+
+[data-theme="dark"] [class*="bg-amber-50"],
+.dark [class*="bg-amber-50"] {
+  background-color: #171004 !important;
+  border-color: #2e2008 !important;
+}
+
+[data-theme="dark"] [class*="bg-blue-50"],
+.dark [class*="bg-blue-50"] {
+  background-color: #061120 !important;
+  border-color: #0e2038 !important;
+}
+
+[data-theme="dark"] [class*="bg-orange-50"],
+.dark [class*="bg-orange-50"] {
+  background-color: #160a04 !important;
+  border-color: #2b1408 !important;
+}
+
+/* Text color contrast adaptations */
 [data-theme="dark"] .text-slate-900,
-[data-theme="dark"] .text-slate-800 {
+.dark .text-slate-900,
+[data-theme="dark"] .text-slate-800,
+.dark .text-slate-800 {
   color: #ffffff !important;
 }
 [data-theme="dark"] .text-slate-700,
-[data-theme="dark"] .text-slate-600 {
+.dark .text-slate-700,
+[data-theme="dark"] .text-slate-600,
+.dark .text-slate-600 {
   color: #d1d5db !important;
 }
 [data-theme="dark"] .text-slate-500,
-[data-theme="dark"] .text-slate-400 {
+.dark .text-slate-500,
+[data-theme="dark"] .text-slate-400,
+.dark .text-slate-400 {
   color: #9ca3af !important;
 }
+
+/* All light borders overridden to subtle dark borders */
 [data-theme="dark"] .border-slate-200,
-[data-theme="dark"] .border-slate-100 {
-  border-color: #1f1f1f !important;
+.dark .border-slate-200,
+[data-theme="dark"] .border-slate-100,
+.dark .border-slate-100,
+[data-theme="dark"] [class*="border-slate-200/"],
+.dark [class*="border-slate-200/"],
+[data-theme="dark"] [class*="border-slate-100/"],
+.dark [class*="border-slate-100/"] {
+  border-color: #1c1c1c !important;
 }
+
+[data-theme="dark"] .border-rose-100,
+.dark .border-rose-100,
+[data-theme="dark"] .border-rose-200,
+.dark .border-rose-200,
+[data-theme="dark"] [class*="border-rose-100/"],
+.dark [class*="border-rose-100/"],
+[data-theme="dark"] [class*="border-rose-200/"],
+.dark [class*="border-rose-200/"] {
+  border-color: #2b0e12 !important;
+}
+
+/* Inputs, selects, and textareas */
 [data-theme="dark"] input,
+.dark input,
 [data-theme="dark"] select,
-[data-theme="dark"] textarea {
+.dark select,
+[data-theme="dark"] textarea,
+.dark textarea {
   background-color: #121212 !important;
   color: #ffffff !important;
   border-color: #262626 !important;
   box-shadow: none !important;
 }
+
+/* Primary buttons and accents */
 [data-theme="dark"] .bg-blue-600,
-[data-theme="dark"] .btn-primary {
+.dark .bg-blue-600,
+[data-theme="dark"] .btn-primary,
+.dark .btn-primary {
   background-color: #2563eb !important;
 }
 [data-theme="dark"] .hover\:bg-blue-700:hover,
-[data-theme="dark"] .btn-primary:hover {
+.dark .hover\:bg-blue-700:hover,
+[data-theme="dark"] .btn-primary:hover,
+.dark .btn-primary:hover {
   background-color: #1d4ed8 !important;
 }
 [data-theme="dark"] .text-blue-600,
-[data-theme="dark"] .text-blue-700 {
+.dark .text-blue-600,
+[data-theme="dark"] .text-blue-700,
+.dark .text-blue-700 {
   color: #60a5fa !important;
 }
-[data-theme="dark"] .bg-blue-50,
-[data-theme="dark"] .bg-blue-50\/80,
-[data-theme="dark"] .bg-blue-50\/50,
-[data-theme="dark"] .bg-blue-50\/40 {
-  background-color: #141f36 !important;
-}
-[data-theme="dark"] .brand-badge {
+[data-theme="dark"] .brand-badge,
+.dark .brand-badge {
   background-color: #2563eb !important;
 }
 
-/* Eliminate all white glows / semi-transparent white shadows in Dark Mode */
-[data-theme="dark"] * {
+/* ========================================================
+   TOTAL ANNIHILATION OF WHITE SHADOWS, HALOS & INSETS
+   IN DARK MODE (Fixes Tailwind v4 --tw-inset-shadow halos)
+   ======================================================== */
+[data-theme="dark"],
+.dark {
   --tw-shadow: 0 0 #0000 !important;
   --tw-shadow-colored: 0 0 #0000 !important;
+  --tw-inset-shadow: 0 0 #0000 !important;
+  --tw-inset-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
 }
-[data-theme="dark"] .shadow-2xs,
-[data-theme="dark"] .shadow-xs,
-[data-theme="dark"] .shadow-sm,
-[data-theme="dark"] .shadow,
-[data-theme="dark"] .shadow-md,
-[data-theme="dark"] .shadow-lg,
-[data-theme="dark"] .shadow-xl,
-[data-theme="dark"] .shadow-2xl {
+
+[data-theme="dark"] *,
+.dark * {
+  --tw-shadow: 0 0 #0000 !important;
+  --tw-shadow-colored: 0 0 #0000 !important;
+  --tw-inset-shadow: 0 0 #0000 !important;
+  --tw-inset-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
   box-shadow: none !important;
 }
+
+[data-theme="dark"] [class*="shadow-"],
+.dark [class*="shadow-"] {
+  box-shadow: none !important;
+}
+
 [data-theme="dark"] .bg-white\/60,
+.dark .bg-white\/60,
 [data-theme="dark"] .bg-white\/70,
+.dark .bg-white\/70,
 [data-theme="dark"] .bg-white\/80,
+.dark .bg-white\/80,
 [data-theme="dark"] .bg-white\/90,
-[data-theme="dark"] .bg-white\/95 {
-  background-color: rgba(10, 10, 10, 0.9) !important;
+.dark .bg-white\/90,
+[data-theme="dark"] .bg-white\/95,
+.dark .bg-white\/95 {
+  background-color: rgba(10, 10, 10, 0.95) !important;
   box-shadow: none !important;
 }
 

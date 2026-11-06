@@ -74,7 +74,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Sidebar Panel */}
       <aside
-        className={`fixed lg:static top-0 left-0 bottom-0 z-40 bg-white border-r border-slate-200 flex flex-col justify-between transition-all duration-300 ease-in-out shrink-0 ${
+        className={`fixed lg:static top-0 left-0 bottom-0 z-40 bg-white dark:bg-black border-r border-slate-200 dark:border-neutral-900 flex flex-col justify-between transition-all duration-300 ease-in-out shrink-0 ${
           isOpen
             ? 'w-64 translate-x-0 opacity-100 shadow-xl lg:shadow-none'
             : 'w-0 -translate-x-full lg:-translate-x-full opacity-0 pointer-events-none overflow-hidden border-none'
@@ -82,10 +82,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       >
         <div className="w-64 min-w-[16rem]">
           {/* Brand Header */}
-          <div className="h-16 flex items-center justify-between px-5 border-b border-slate-100">
+          <div className="h-16 flex items-center justify-between px-5 border-b border-slate-100 dark:border-neutral-900">
             <div className="flex items-center gap-2.5 min-w-0">
               {logoSrc ? (
-                <div className="w-12 h-12 rounded-full overflow-hidden bg-white border-2 border-blue-500/30 p-0.5 shadow-sm shrink-0 flex items-center justify-center">
+                <div className="w-12 h-12 rounded-full overflow-hidden bg-white dark:bg-neutral-900 border-2 border-blue-500/30 p-0.5 shadow-sm shrink-0 flex items-center justify-center">
                   <img
                     src={logoSrc}
                     alt={settings.shopName}
@@ -98,10 +98,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
               )}
               <div className="min-w-0">
-                <h1 className="font-extrabold text-slate-900 leading-tight text-sm tracking-tight truncate">
+                <h1 className="font-extrabold text-slate-900 dark:text-white leading-tight text-sm tracking-tight truncate">
                   {settings.shopName || 'Mobile POS Pro'}
                 </h1>
-                <span className="text-[10px] text-blue-600 font-bold tracking-wide uppercase truncate block">
+                <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold tracking-wide uppercase truncate block">
                   VIP Business Suite
                 </span>
               </div>
@@ -151,14 +151,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Sidebar Footer with Shop Profile */}
-        <div className="w-64 min-w-[16rem] p-3 border-t border-slate-100 bg-slate-50/50">
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-2.5 flex items-center justify-between gap-2 shadow-2xs">
+        <div className="w-64 min-w-[16rem] p-3 border-t border-slate-100 dark:border-neutral-900 bg-slate-50/50 dark:bg-black shadow-none">
+          <div className="bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-2xl p-2.5 flex items-center justify-between gap-2 shadow-none dark:shadow-none">
             <div className="flex items-center gap-2.5 min-w-0 flex-1">
               {logoSrc ? (
                 <img
                   src={logoSrc}
                   alt={settings.shopName}
-                  className="w-9 h-9 rounded-full object-cover bg-white border-2 border-slate-200 p-0.5 shadow-xs shrink-0"
+                  className="w-9 h-9 rounded-full object-cover bg-white dark:bg-black border-2 border-slate-200 dark:border-neutral-800 p-0.5 shadow-none shrink-0"
                 />
               ) : (
                 <div className="w-9 h-9 rounded-full brand-badge bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
@@ -166,11 +166,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
               )}
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-bold text-slate-900 truncate">
+                <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
                   {settings.shopName || 'FMZ Mobile POS'}
                 </p>
                 <p className={`text-[10px] font-semibold flex items-center gap-1 truncate ${
-                  currentRole === 'admin' ? 'text-emerald-600' : 'text-amber-600'
+                  currentRole === 'admin' ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
                 }`}>
                   <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                     currentRole === 'admin' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
@@ -184,13 +184,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 type="button"
                 onClick={onOpenSettings}
-                className="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition cursor-pointer shrink-0 min-h-[36px] min-w-[36px] flex items-center justify-center"
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-neutral-850 transition cursor-pointer shrink-0 min-h-[36px] min-w-[36px] flex items-center justify-center"
                 title="Shop Settings & Backup"
               >
                 <Settings className="w-4 h-4" />
               </button>
             ) : (
-              <div className="p-2 text-slate-300 shrink-0" title="Settings restricted to Administrator">
+              <div className="p-2 text-slate-300 dark:text-neutral-600 shrink-0" title="Settings restricted to Administrator">
                 <Lock className="w-3.5 h-3.5" />
               </div>
             )}
