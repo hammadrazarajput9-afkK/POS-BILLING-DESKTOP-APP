@@ -650,27 +650,27 @@ export const Settings: React.FC<SettingsProps> = ({
                         Displayed on top header, navigation sidebar, and main dashboard.
                       </p>
 
-                      <div className="flex items-center gap-3.5">
+                      <div className="flex items-center gap-4">
                         {formData.shopLogo ? (
-                          <div className="relative group w-20 h-20 rounded-full border-3 border-blue-400 bg-white p-1 flex items-center justify-center shadow-xs overflow-hidden shrink-0">
+                          <div className="relative group w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden bg-white shadow-md flex items-center justify-center p-1.5 shrink-0 border border-slate-200">
                             <img
                               src={formData.shopLogo}
                               alt="Shop Logo"
-                              className="w-full h-full object-cover rounded-full"
+                              className="w-full h-full object-contain rounded-full"
                             />
                             <button
                               type="button"
                               onClick={handleRemoveLogo}
-                              className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition cursor-pointer rounded-full"
+                              className="absolute inset-0 bg-slate-900/70 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition cursor-pointer rounded-full"
                               title="Remove Shop Logo"
                             >
-                              <Trash2 className="w-5 h-5 text-rose-300" />
+                              <Trash2 className="w-5 h-5 text-rose-400" />
                             </button>
                           </div>
                         ) : (
-                          <div className="w-20 h-20 rounded-full border-2 border-dashed border-slate-300 bg-white flex flex-col items-center justify-center text-slate-400 shrink-0">
-                            <Store className="w-7 h-7 text-slate-400" />
-                            <span className="text-[9px] font-bold mt-0.5">No Logo</span>
+                          <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full border-2 border-dashed border-slate-300 bg-white flex flex-col items-center justify-center text-slate-400 shrink-0">
+                            <Store className="w-8 h-8 text-slate-400" />
+                            <span className="text-[10px] font-bold mt-1">No Logo</span>
                           </div>
                         )}
 
@@ -738,9 +738,9 @@ export const Settings: React.FC<SettingsProps> = ({
                         Customer invoices, bills aur thermal receipts par alag logo print hoga.
                       </p>
 
-                      <div className="flex items-center gap-3.5">
+                      <div className="flex items-center gap-4">
                         {formData.invoiceLogo ? (
-                          <div className="relative group w-20 h-20 rounded-full border-3 border-indigo-500 bg-white p-1 flex items-center justify-center shadow-xs overflow-hidden shrink-0">
+                          <div className="relative group w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden bg-white shadow-md flex items-center justify-center p-1.5 shrink-0 border border-indigo-200">
                             <img
                               src={formData.invoiceLogo}
                               alt="Dedicated Invoice Logo"
@@ -749,14 +749,14 @@ export const Settings: React.FC<SettingsProps> = ({
                             <button
                               type="button"
                               onClick={handleRemoveInvoiceLogo}
-                              className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition cursor-pointer rounded-full"
+                              className="absolute inset-0 bg-slate-900/70 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition cursor-pointer rounded-full"
                               title="Remove Invoice Logo (Use Shop Logo Default)"
                             >
-                              <Trash2 className="w-5 h-5 text-rose-300" />
+                              <Trash2 className="w-5 h-5 text-rose-400" />
                             </button>
                           </div>
                         ) : formData.shopLogo ? (
-                          <div className="w-20 h-20 rounded-full border-2 border-dashed border-indigo-300 bg-white p-1 flex flex-col items-center justify-center text-slate-400 shrink-0" title="Using main shop logo as fallback">
+                          <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full border-2 border-dashed border-indigo-300 bg-white p-0.5 flex flex-col items-center justify-center text-slate-400 shrink-0" title="Using main shop logo as fallback">
                             <img
                               src={formData.shopLogo}
                               alt="Default Shop Logo"
@@ -764,9 +764,9 @@ export const Settings: React.FC<SettingsProps> = ({
                             />
                           </div>
                         ) : (
-                          <div className="w-20 h-20 rounded-full border-2 border-dashed border-indigo-300 bg-white flex flex-col items-center justify-center text-indigo-400 shrink-0">
-                            <Receipt className="w-7 h-7" />
-                            <span className="text-[9px] font-bold mt-0.5">No Logo</span>
+                          <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full border-2 border-dashed border-indigo-300 bg-white flex flex-col items-center justify-center text-indigo-400 shrink-0">
+                            <Receipt className="w-8 h-8" />
+                            <span className="text-[10px] font-bold mt-1">No Logo</span>
                           </div>
                         )}
 
@@ -1052,12 +1052,12 @@ export const Settings: React.FC<SettingsProps> = ({
                 </div>
 
                 <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-indigo-300 bg-white p-1 flex items-center justify-center shrink-0 shadow-2xs">
+                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border border-indigo-200 bg-white p-0.5 flex items-center justify-center shrink-0 shadow-xs">
                     {formData.invoiceLogo ? (
                       <img
                         src={formData.invoiceLogo}
                         alt="Invoice Logo"
-                        className="w-full h-full object-contain rounded-full"
+                        className="w-full h-full object-cover rounded-full"
                       />
                     ) : formData.shopLogo ? (
                       <img

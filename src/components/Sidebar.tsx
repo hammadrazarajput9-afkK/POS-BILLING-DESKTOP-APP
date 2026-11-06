@@ -85,11 +85,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="h-16 flex items-center justify-between px-5 border-b border-slate-100 dark:border-neutral-900">
             <div className="flex items-center gap-2.5 min-w-0">
               {logoSrc ? (
-                <div className="w-12 h-12 rounded-full overflow-hidden bg-white dark:bg-neutral-900 border-2 border-blue-500/30 p-0.5 shadow-sm shrink-0 flex items-center justify-center">
+                <div className="w-12 h-12 rounded-full overflow-hidden bg-white shadow-sm flex items-center justify-center p-0.5 shrink-0">
                   <img
                     src={logoSrc}
                     alt={settings.shopName}
-                    className="w-full h-full rounded-full object-cover"
+                    className="w-full h-full object-contain rounded-full"
                   />
                 </div>
               ) : (
@@ -155,11 +155,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-2xl p-2.5 flex items-center justify-between gap-2 shadow-none dark:shadow-none">
             <div className="flex items-center gap-2.5 min-w-0 flex-1">
               {logoSrc ? (
-                <img
-                  src={logoSrc}
-                  alt={settings.shopName}
-                  className="w-9 h-9 rounded-full object-cover bg-white dark:bg-black border-2 border-slate-200 dark:border-neutral-800 p-0.5 shadow-none shrink-0"
-                />
+                <div className="w-10 h-10 rounded-full overflow-hidden bg-white shadow-xs shrink-0 flex items-center justify-center p-0.5">
+                  <img
+                    src={logoSrc}
+                    alt={settings.shopName}
+                    className="w-full h-full object-contain rounded-full"
+                  />
+                </div>
               ) : (
                 <div className="w-9 h-9 rounded-full brand-badge bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
                   POS

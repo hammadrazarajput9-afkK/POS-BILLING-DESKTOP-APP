@@ -352,11 +352,11 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
             <div className="text-center border-b border-dashed border-slate-300 pb-3 space-y-1">
               {logoSrc ? (
                 <div className="flex justify-center mb-2">
-                  <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-slate-200 bg-white p-1 shadow-2xs flex items-center justify-center">
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden bg-white p-0.5 shadow-2xs flex items-center justify-center">
                     <img
                       src={logoSrc}
                       alt={settings.shopName}
-                      className="w-full h-full object-contain rounded-full"
+                      className="w-full h-full object-cover rounded-full"
                     />
                   </div>
                 </div>

@@ -83,11 +83,11 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
 
         {logoSrc ? (
-          <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-full overflow-hidden bg-white border-2 border-slate-200 p-0.5 shadow-xs shrink-0 flex items-center justify-center">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full overflow-hidden bg-white shadow-xs shrink-0 flex items-center justify-center p-0.5">
             <img
               src={logoSrc}
               alt="Logo"
-              className="w-full h-full rounded-full object-cover"
+              className="w-full h-full object-contain rounded-full"
             />
           </div>
         ) : null}

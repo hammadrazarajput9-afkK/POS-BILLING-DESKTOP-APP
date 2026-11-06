@@ -357,15 +357,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             {/* Mobile Brand Logo */}
             <div className="shrink-0 lg:hidden">
               {loginPageLogo ? (
-                <div className="w-13 h-13 sm:w-14 sm:h-14 flex items-center justify-center p-1.5 bg-white/15 backdrop-blur-md rounded-xl border border-white/20 shadow-md overflow-hidden">
+                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden bg-white shadow-xl flex items-center justify-center p-1 shrink-0">
                   <img
                     src={loginPageLogo}
                     alt="Brand Logo"
-                    className="max-h-full max-w-full object-contain rounded-md"
+                    className="w-full h-full object-contain rounded-full"
                   />
                 </div>
               ) : (
-                <div className="w-13 h-13 sm:w-14 sm:h-14 flex items-center justify-center bg-white/15 backdrop-blur-md rounded-xl border border-white/20 shadow-md">
+                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center bg-white/15 backdrop-blur-md border border-white/20 shadow-md">
                   <Terminal className="w-6 h-6 text-white animate-pulse" />
                 </div>
               )}
@@ -373,18 +373,18 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           </div>
 
           {/* Desktop Center Showcase Area */}
-          <div className="hidden lg:flex my-auto py-6 flex-1 items-center justify-center relative z-10 w-full min-h-0">
+          <div className="hidden lg:flex my-auto py-2 flex-1 items-center justify-center relative z-10 w-full min-h-0">
             {loginPageLogo ? (
-              <div className="w-full h-full max-h-[300px] flex items-center justify-center p-6 bg-white/10 backdrop-blur-md rounded-[1.5rem] border border-white/20 shadow-xl overflow-hidden transition-all duration-300 hover:scale-[1.03]">
+              <div className="w-72 h-72 sm:w-80 sm:h-80 lg:w-[320px] lg:h-[320px] rounded-full overflow-hidden bg-white shadow-2xl flex items-center justify-center p-2.5 transition-all duration-300 hover:scale-105 shrink-0 ring-4 ring-white/30">
                 <img
                   src={loginPageLogo}
                   alt="Brand Logo"
-                  className="max-h-full max-w-full object-contain rounded-lg"
+                  className="w-full h-full object-contain rounded-full"
                 />
               </div>
             ) : (
-              <div className="w-full h-full max-h-[300px] flex flex-col items-center justify-center gap-4 p-8 bg-white/10 backdrop-blur-md rounded-[1.5rem] border border-white/20 shadow-xl text-center">
-                <Terminal className="w-20 h-20 text-white/90 animate-pulse" />
+              <div className="w-72 h-72 sm:w-80 sm:h-80 lg:w-[320px] lg:h-[320px] rounded-full flex flex-col items-center justify-center gap-3 p-6 bg-white/10 backdrop-blur-md border border-white/20 shadow-2xl text-center">
+                <Terminal className="w-16 h-16 text-white/90 animate-pulse" />
                 <span className="text-[10px] font-black tracking-widest uppercase text-white/60">
                   No Logo Selected
                 </span>
@@ -416,12 +416,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           
           {/* Top Brand Info (Desktop Only since mobile header already contains brand) */}
           <div className="hidden lg:flex items-center gap-3 mb-6 animate-in fade-in duration-300 shrink-0">
-            <div className="bg-indigo-50 border border-indigo-100/50 rounded-xl p-2.5 flex items-center justify-center shadow-xs">
+            <div className="w-11 h-11 rounded-full overflow-hidden bg-white border border-indigo-100 flex items-center justify-center p-0.5 shadow-xs shrink-0">
               {loginPageLogo ? (
                 <img
                   src={loginPageLogo}
                   alt="Brand Logo"
-                  className="max-h-6 max-w-[32px] object-contain"
+                  className="w-full h-full object-cover rounded-full"
                 />
               ) : (
                 <Terminal className="w-5 h-5 text-indigo-600 animate-pulse" />
