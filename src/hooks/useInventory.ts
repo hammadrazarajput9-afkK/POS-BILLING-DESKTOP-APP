@@ -221,6 +221,40 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
   };
 
   /**
+   * Permanent Delete an Inventory item completely from state and Firestore
+   */
+  const handlePermanentDeleteInventory = (id: string) => {
+    if (!hasPermission(data.currentRole || 'admin', 'canDeleteInventory')) {
+      showToast('Permission Denied: Permanent deletion of inventory items is restricted to Administrators', 'error');
+      return;
+    }
+
+    const itemToDelete = data.inventory.find(item => item.id === id);
+    if (!itemToDelete) return;
+
+    // Filter out item from inventory array and clean up imeiRecords
+    setData(prev => ({
+      ...prev,
+      inventory: prev.inventory.filter(item => item.id !== id),
+      imeiRecords: (prev.imeiRecords || []).filter(rec => rec.productId !== id),
+    }));
+
+    deleteInventoryItemFromFirestore(id).catch(err => {
+      console.warn('Firestore permanent delete item warning:', err);
+    });
+
+    logActivity(
+      'Inventory',
+      `Permanently Deleted Product: ${itemToDelete.name}`,
+      `Completely removed product record from system database (Category: ${itemToDelete.category})`,
+      'delete',
+      id
+    );
+
+    showToast(`Product "${itemToDelete.name}" permanently deleted!`, 'success');
+  };
+
+  /**
    * Restore an archived inventory item
    */
   const handleRestoreInventory = (id: string) => {
@@ -316,6 +350,7 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
   return {
     handleSaveStock,
     handleDeleteInventory,
+    handlePermanentDeleteInventory,
     handleRestoreInventory,
     handleStockAdjustment,
     handleAddCategory,

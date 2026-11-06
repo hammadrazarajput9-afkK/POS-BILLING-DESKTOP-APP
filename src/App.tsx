@@ -134,6 +134,7 @@ function AppContent() {
   const {
     handleSaveStock,
     handleDeleteInventory,
+    handlePermanentDeleteInventory,
     handleRestoreInventory,
     handleStockAdjustment,
     handleAddCategory,
@@ -796,6 +797,7 @@ function AppContent() {
                   setStockModalOpen(true);
                 }}
                 onDeleteItem={handleDeleteInventory}
+                onPermanentDeleteItem={handlePermanentDeleteInventory}
                 onRestoreItem={handleRestoreInventory}
                 onAddCategory={handleAddCategory}
                 onDeleteCategory={handleDeleteCategory}
