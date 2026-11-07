@@ -53,11 +53,15 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
       label: 'Khata',
       icon: BookOpen,
     },
-    {
-      id: 'expenses',
-      label: 'Expense',
-      icon: Receipt,
-    },
+    ...(isSalesman
+      ? [
+          {
+            id: 'expenses',
+            label: 'Expense',
+            icon: Receipt,
+          },
+        ]
+      : []),
   ];
 
   return (

@@ -351,10 +351,10 @@ export const StockModal: React.FC<StockModalProps> = ({
   // Variant helper functions
   const handleAddVariant = () => {
     const lastVar = variants[variants.length - 1];
-    let nextRam = '6GB';
-    let nextStorage = '128GB';
+    let nextRam = isKeypad ? '' : '6GB';
+    let nextStorage = isKeypad ? '' : '128GB';
 
-    if (lastVar) {
+    if (lastVar && isAndroid) {
       if (lastVar.ram === '4GB') nextRam = '6GB';
       else if (lastVar.ram === '6GB') nextRam = '8GB';
       else if (lastVar.ram === '8GB') nextRam = '12GB';
@@ -379,7 +379,7 @@ export const StockModal: React.FC<StockModalProps> = ({
     };
 
     setVariants(prev => [...prev, newVar]);
-    showToast(`Variant #${variants.length + 1} added`, 'info');
+    showToast(isKeypad ? `Color Variant #${variants.length + 1} added` : `Variant #${variants.length + 1} added`, 'info');
   };
 
   const handleDuplicateVariant = (idx: number) => {
@@ -658,8 +658,8 @@ export const StockModal: React.FC<StockModalProps> = ({
       return;
     }
 
-    // MULTI-VARIANT FLOW FOR ANDROID MOBILE (when not editing a single existing item)
-    if (isAndroid && !editItem) {
+    // MULTI-VARIANT FLOW FOR ANDROID & KEYPAD MOBILE (when not editing a single existing item)
+    if ((isAndroid || isKeypad) && !editItem) {
       if (variants.length === 0) {
         showToast('Please add at least one mobile variant', 'warning');
         return;
@@ -736,9 +736,11 @@ export const StockModal: React.FC<StockModalProps> = ({
 
         // Build cleanly formatted variant title
         const specs: string[] = [];
-        if (v.ram && v.storage) specs.push(`${v.ram}/${v.storage}`);
-        else if (v.ram) specs.push(v.ram);
-        else if (v.storage) specs.push(v.storage);
+        if (isAndroid) {
+          if (v.ram && v.storage) specs.push(`${v.ram}/${v.storage}`);
+          else if (v.ram) specs.push(v.ram);
+          else if (v.storage) specs.push(v.storage);
+        }
 
         if (v.color?.trim()) specs.push(v.color.trim());
 
@@ -755,8 +757,8 @@ export const StockModal: React.FC<StockModalProps> = ({
           salePrice: sale,
           qty: quantity,
           status: 'ACTIVE',
-          ram: v.ram,
-          storage: v.storage,
+          ram: isAndroid ? v.ram : undefined,
+          storage: isAndroid ? v.storage : undefined,
           color: v.color?.trim() || undefined,
         });
       }
@@ -870,7 +872,7 @@ export const StockModal: React.FC<StockModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-3xl w-full max-w-full overflow-x-hidden p-3.5 sm:p-6 shadow-2xl space-y-4 border border-slate-100 animate-in fade-in zoom-in-95 max-h-[94vh] overflow-y-auto flex flex-col my-auto">
+      <div className="bg-white rounded-2xl max-w-3xl w-full max-w-full overflow-x-hidden p-3.5 sm:p-6 shadow-2xl space-y-4 border border-slate-100 animate-in fade-in zoom-in-95 max-h-[94dvh] lg:max-h-[94vh] overflow-y-auto flex flex-col my-auto">
         {/* Header */}
         <div className="flex items-start sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -1062,18 +1064,20 @@ export const StockModal: React.FC<StockModalProps> = ({
           </div>
 
           {/* ========================================================= */}
-          {/* ANDROID MOBILE MULTI-VARIANT SYSTEM                       */}
+          {/* MOBILE & KEYPAD MULTI-VARIANT / COLOR SYSTEM               */}
           {/* ========================================================= */}
-          {isAndroid && !editItem ? (
+          {(isAndroid || isKeypad) && !editItem ? (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Layers className="w-4 h-4 text-blue-600" />
                   <span className="font-bold text-slate-900 text-xs sm:text-sm">
-                    Mobile Variants ({variants.length})
+                    {isKeypad ? `Color Variants (${variants.length})` : `Mobile Variants (${variants.length})`}
                   </span>
                   <span className="text-[11px] text-slate-400">
-                    Each variant has independent RAM, Storage, Cost, Sale & dynamic IMEIs
+                    {isKeypad
+                      ? 'Each color has independent Quantity, Prices & dedicated IMEIs per phone'
+                      : 'Each variant has independent RAM, Storage, Cost, Sale & dynamic IMEIs'}
                   </span>
                 </div>
                 <button
@@ -1082,7 +1086,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm transition cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>Add Variant</span>
+                  <span>{isKeypad ? 'Add Color Variant' : 'Add Variant'}</span>
                 </button>
               </div>
 
@@ -1111,8 +1115,9 @@ export const StockModal: React.FC<StockModalProps> = ({
                             #{vIdx + 1}
                           </span>
                           <span className="font-extrabold text-slate-800 text-xs sm:text-sm">
-                            Variant {vIdx + 1}: {v.ram || 'RAM'} / {v.storage || 'ROM'}
-                            {v.color ? ` - ${v.color}` : ''}
+                            {isKeypad
+                              ? `Color Variant #${vIdx + 1}: ${v.color?.trim() || 'Specify Color'}`
+                              : `Variant ${vIdx + 1}: ${v.ram || 'RAM'} / ${v.storage || 'ROM'} ${v.color ? `- ${v.color}` : ''}`}
                           </span>
                           <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-slate-100 text-slate-600">
                             {currentQty} {currentQty === 1 ? 'Unit' : 'Units'}
@@ -1142,85 +1147,104 @@ export const StockModal: React.FC<StockModalProps> = ({
                         </div>
                       </div>
 
-                      {/* Specs Row: RAM & Storage Presets + Color */}
-                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                        {/* RAM Selector */}
-                        <div className="sm:col-span-5 space-y-1.5">
-                          <label className="font-bold text-slate-700 flex items-center gap-1 text-[11px]">
-                            <Cpu className="w-3.5 h-3.5 text-blue-600" /> RAM Memory
-                          </label>
-                          <div className="flex flex-wrap gap-1">
-                            {RAM_OPTIONS.map(ramOption => (
-                              <button
-                                key={ramOption}
-                                type="button"
-                                onClick={() => handleUpdateVariantField(vIdx, 'ram', ramOption)}
-                                className={`px-2 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
-                                  v.ram === ramOption
-                                    ? 'bg-blue-600 text-white shadow-2xs'
-                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                                }`}
-                              >
-                                {ramOption}
-                              </button>
-                            ))}
-                          </div>
-                          <input
-                            type="text"
-                            value={v.ram}
-                            onChange={e => handleUpdateVariantField(vIdx, 'ram', e.target.value)}
-                            placeholder="Custom RAM (e.g. 8GB)"
-                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-[11px] font-semibold focus:outline-none focus:border-blue-600"
-                          />
-                        </div>
-
-                        {/* Storage Selector */}
-                        <div className="sm:col-span-4 space-y-1.5">
-                          <label className="font-bold text-slate-700 flex items-center gap-1 text-[11px]">
-                            <HardDrive className="w-3.5 h-3.5 text-indigo-600" /> Storage (ROM)
-                          </label>
-                          <div className="flex flex-wrap gap-1">
-                            {STORAGE_OPTIONS.map(storageOption => (
-                              <button
-                                key={storageOption}
-                                type="button"
-                                onClick={() =>
-                                  handleUpdateVariantField(vIdx, 'storage', storageOption)
-                                }
-                                className={`px-2 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
-                                  v.storage === storageOption
-                                    ? 'bg-indigo-600 text-white shadow-2xs'
-                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                                }`}
-                              >
-                                {storageOption}
-                              </button>
-                            ))}
-                          </div>
-                          <input
-                            type="text"
-                            value={v.storage}
-                            onChange={e => handleUpdateVariantField(vIdx, 'storage', e.target.value)}
-                            placeholder="Custom ROM (e.g. 128GB)"
-                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-[11px] font-semibold focus:outline-none focus:border-indigo-600"
-                          />
-                        </div>
-
-                        {/* Color / Edition */}
-                        <div className="sm:col-span-3 space-y-1.5">
-                          <label className="font-bold text-slate-700 flex items-center gap-1 text-[11px]">
-                            <Palette className="w-3.5 h-3.5 text-purple-600" /> Color / Edition
+                      {/* Specs Row: RAM & Storage for Android OR Color for Keypad */}
+                      {isKeypad ? (
+                        <div className="space-y-1.5 bg-purple-50/60 p-3 rounded-xl border border-purple-200/80">
+                          <label className="font-bold text-purple-900 flex items-center gap-1 text-xs">
+                            <Palette className="w-4 h-4 text-purple-600" /> Phone Color / Shade *
                           </label>
                           <input
                             type="text"
+                            required
                             value={v.color || ''}
                             onChange={e => handleUpdateVariantField(vIdx, 'color', e.target.value)}
-                            placeholder="e.g. Black, Blue"
-                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-semibold focus:outline-none focus:border-purple-600"
+                            placeholder="e.g. Black, Dark Blue, Red, White, Gold, Cyan"
+                            className="w-full bg-white border border-purple-300 rounded-lg px-3 py-2 text-xs font-bold text-purple-950 focus:outline-none focus:border-purple-600 shadow-2xs"
                           />
-                          <span className="text-[10px] text-slate-400 block">Optional shade</span>
+                          <span className="text-[10px] text-purple-700/80 block">
+                            Enter the color name (e.g. Black). The system will automatically create "{name || 'Phone'} ({v.color || 'Color'})" in stock.
+                          </span>
                         </div>
-                      </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                          {/* RAM Selector */}
+                          <div className="sm:col-span-5 space-y-1.5">
+                            <label className="font-bold text-slate-700 flex items-center gap-1 text-[11px]">
+                              <Cpu className="w-3.5 h-3.5 text-blue-600" /> RAM Memory
+                            </label>
+                            <div className="flex flex-wrap gap-1">
+                              {RAM_OPTIONS.map(ramOption => (
+                                <button
+                                  key={ramOption}
+                                  type="button"
+                                  onClick={() => handleUpdateVariantField(vIdx, 'ram', ramOption)}
+                                  className={`px-2 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                                    v.ram === ramOption
+                                      ? 'bg-blue-600 text-white shadow-2xs'
+                                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                  }`}
+                                >
+                                  {ramOption}
+                                </button>
+                              ))}
+                            </div>
+                            <input
+                              type="text"
+                              value={v.ram}
+                              onChange={e => handleUpdateVariantField(vIdx, 'ram', e.target.value)}
+                              placeholder="Custom RAM (e.g. 8GB)"
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-[11px] font-semibold focus:outline-none focus:border-blue-600"
+                            />
+                          </div>
+
+                          {/* Storage Selector */}
+                          <div className="sm:col-span-4 space-y-1.5">
+                            <label className="font-bold text-slate-700 flex items-center gap-1 text-[11px]">
+                              <HardDrive className="w-3.5 h-3.5 text-indigo-600" /> Storage (ROM)
+                            </label>
+                            <div className="flex flex-wrap gap-1">
+                              {STORAGE_OPTIONS.map(storageOption => (
+                                <button
+                                  key={storageOption}
+                                  type="button"
+                                  onClick={() =>
+                                    handleUpdateVariantField(vIdx, 'storage', storageOption)
+                                  }
+                                  className={`px-2 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                                    v.storage === storageOption
+                                      ? 'bg-indigo-600 text-white shadow-2xs'
+                                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                  }`}
+                                >
+                                  {storageOption}
+                                </button>
+                              ))}
+                            </div>
+                            <input
+                              type="text"
+                              value={v.storage}
+                              onChange={e => handleUpdateVariantField(vIdx, 'storage', e.target.value)}
+                              placeholder="Custom ROM (e.g. 128GB)"
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-[11px] font-semibold focus:outline-none focus:border-indigo-600"
+                            />
+                          </div>
+
+                          {/* Color / Edition */}
+                          <div className="sm:col-span-3 space-y-1.5">
+                            <label className="font-bold text-slate-700 flex items-center gap-1 text-[11px]">
+                              <Palette className="w-3.5 h-3.5 text-purple-600" /> Color / Edition
+                            </label>
+                            <input
+                              type="text"
+                              value={v.color || ''}
+                              onChange={e => handleUpdateVariantField(vIdx, 'color', e.target.value)}
+                              placeholder="e.g. Black, Blue"
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-semibold focus:outline-none focus:border-purple-600"
+                            />
+                            <span className="text-[10px] text-slate-400 block">Optional shade</span>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Pricing & Quantity Row */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-slate-50/80 p-3 rounded-xl border border-slate-200/70 items-center">
@@ -1479,7 +1503,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                     min="0"
                     value={costPrice}
                     onChange={e => setCostPrice(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder="Khareed Rate"
+                    placeholder="Cost Price"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[44px]"
                   />
                 </div>

@@ -412,8 +412,8 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
             </div>
 
             {/* Itemized Table */}
-            <div className="border-b border-dashed border-slate-300 pb-3">
-              <table className="w-full text-left text-[11px]">
+            <div className="border-b border-dashed border-slate-300 pb-3 overflow-x-auto">
+              <table className="w-full text-left text-[11px] min-w-[520px] lg:min-w-0">
                 <thead>
                   <tr className="border-b border-slate-300 text-slate-500 font-bold uppercase text-[10px]">
                     <th className="pb-1.5">Item</th>

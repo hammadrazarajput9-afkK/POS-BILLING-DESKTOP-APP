@@ -60,9 +60,6 @@ export const ExpenseCategoryModal: React.FC<ExpenseCategoryModalProps> = ({
             </div>
             <div>
               <h3 className="font-extrabold text-slate-900 text-sm">Manage Expense Categories</h3>
-              <p className="text-[11px] text-slate-500">
-                Add new expense types or delete unused categories
-              </p>
             </div>
           </div>
           <button

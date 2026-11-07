@@ -854,7 +854,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                 </div>
                 <div>
                   <div className="font-extrabold text-rose-900 text-xs">
-                    Permanent Delete (Pura Database Se Mitaein)
+                    Permanent Delete
                   </div>
                   <div className="text-[11px] text-rose-700/90 mt-0.5">
                     Completely erases product record, IMEIs, and stock details from the database forever.

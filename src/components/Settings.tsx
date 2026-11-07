@@ -629,9 +629,6 @@ export const Settings: React.FC<SettingsProps> = ({
                     <Store className="w-4 h-4 text-blue-600" />
                     Branding & Logo Management
                   </h4>
-                  <span className="text-[10px] text-slate-500 font-semibold hidden sm:inline">
-                    App aur Invoices ke liye alag alag logo support
-                  </span>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
@@ -661,7 +658,7 @@ export const Settings: React.FC<SettingsProps> = ({
                             <button
                               type="button"
                               onClick={handleRemoveLogo}
-                              className="absolute inset-0 bg-slate-900/70 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition cursor-pointer rounded-full"
+                              className="absolute max-lg:bottom-1 max-lg:right-1 max-lg:w-7 max-lg:h-7 max-lg:rounded-full max-lg:bg-slate-900/80 max-lg:opacity-100 lg:inset-0 lg:bg-slate-900/70 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition cursor-pointer lg:rounded-full"
                               title="Remove Shop Logo"
                             >
                               <Trash2 className="w-5 h-5 text-rose-400" />
@@ -716,7 +713,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     </div>
                   </div>
 
-                  {/* Card 2: Dedicated Invoice Logo (Alag Invoice Logo) */}
+                  {/* Card 2: Dedicated Invoice Logo */}
                   <div className="p-4 bg-indigo-50/40 rounded-2xl border-2 border-indigo-200/90 space-y-3 flex flex-col justify-between">
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
@@ -726,7 +723,7 @@ export const Settings: React.FC<SettingsProps> = ({
                         </label>
                         {formData.invoiceLogo ? (
                           <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase tracking-wider flex items-center gap-1">
-                            <Check className="w-3 h-3 stroke-[3]" /> Alag Logo Active
+                            <Check className="w-3 h-3 stroke-[3]" /> Dedicated Logo Active
                           </span>
                         ) : (
                           <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 text-[9px] font-bold">
@@ -734,9 +731,6 @@ export const Settings: React.FC<SettingsProps> = ({
                           </span>
                         )}
                       </div>
-                      <p className="text-[11px] text-slate-500 mb-3">
-                        Customer invoices, bills aur thermal receipts par alag logo print hoga.
-                      </p>
 
                       <div className="flex items-center gap-4">
                         {formData.invoiceLogo ? (
@@ -749,7 +743,7 @@ export const Settings: React.FC<SettingsProps> = ({
                             <button
                               type="button"
                               onClick={handleRemoveInvoiceLogo}
-                              className="absolute inset-0 bg-slate-900/70 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition cursor-pointer rounded-full"
+                              className="absolute max-lg:bottom-1 max-lg:right-1 max-lg:w-7 max-lg:h-7 max-lg:rounded-full max-lg:bg-slate-900/80 max-lg:opacity-100 lg:inset-0 lg:bg-slate-900/70 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition cursor-pointer lg:rounded-full"
                               title="Remove Invoice Logo (Use Shop Logo Default)"
                             >
                               <Trash2 className="w-5 h-5 text-rose-400" />
@@ -806,8 +800,8 @@ export const Settings: React.FC<SettingsProps> = ({
                           </div>
                           <p className="text-[10px] text-slate-500">
                             {formData.invoiceLogo 
-                              ? 'Alag invoice logo active hai aur tamam bills pr print hoga.' 
-                              : 'Khali chhorne par main shop logo hi invoice pr print hoga.'}
+                              ? 'Dedicated invoice logo is active and will print on bills.' 
+                              : 'If left empty, main shop logo will print on invoices.'}
                           </p>
                         </div>
                       </div>
@@ -940,7 +934,7 @@ export const Settings: React.FC<SettingsProps> = ({
                               setFormData(prev => ({ ...prev, loginPageLogo: '' }));
                               showToast('Login page logo removed', 'info');
                             }}
-                            className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition cursor-pointer"
+                            className="absolute max-lg:bottom-1 max-lg:right-1 max-lg:w-7 max-lg:h-7 max-lg:rounded-xl max-lg:bg-slate-900/80 max-lg:opacity-100 lg:inset-0 lg:bg-slate-900/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition cursor-pointer"
                             title="Remove Logo"
                           >
                             <Trash2 className="w-5 h-5 text-rose-300" />
@@ -1038,7 +1032,7 @@ export const Settings: React.FC<SettingsProps> = ({
                 <div className="flex items-center justify-between">
                   <label className="block text-xs font-bold text-slate-800 flex items-center gap-2">
                     <Receipt className="w-4 h-4 text-indigo-600" />
-                    Dedicated Invoice & Receipt Logo (Alag Invoice Logo)
+                    Dedicated Invoice & Receipt Logo
                   </label>
                   {formData.invoiceLogo ? (
                     <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase tracking-wider flex items-center gap-1">

@@ -308,12 +308,12 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
         : dateFilterMode === 'month'
         ? 'Is Mahine (This Month)'
         : dateFilterMode === '6month'
-        ? '6 Mahine (Last 6 Months)'
+        ? 'Last 6 Months'
         : dateFilterMode === 'year'
-        ? 'Is Saal (This Year)'
+        ? 'This Year'
         : dateFilterMode === 'custom'
         ? `Custom (${customStartDate || 'Start'} to ${customEndDate || 'End'})`
-        : 'All Time (Pura Record)';
+        : 'All Time';
 
     lines.push(`📊 *${shopName.toUpperCase()} - BUSINESS REPORT*`);
     lines.push(`📅 *Date:* ${dateStr}`);
@@ -395,9 +395,6 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
           <h2 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
             <PieChart className="w-5 h-5 text-blue-600" /> Comprehensive Business Reports
           </h2>
-          <p className="text-xs text-slate-500 dark:text-neutral-400 mt-0.5">
-            Detailed reports, wholesale profit/loss audit, date filters, PDF download, & WhatsApp sharing
-          </p>
         </div>
 
         <div className="text-right">
@@ -416,35 +413,32 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
             </div>
             <div>
               <span className="font-extrabold text-xs text-slate-900 dark:text-white uppercase tracking-wide">
-                Tareekh Filter (Date Range Filter)
+                Date Range Filter
               </span>
-              <p className="text-[10px] text-slate-500 dark:text-neutral-400">
-                Tamam reports aur calculations chunay huay time period ke mutabiq chalain gi
-              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-bold px-2.5 py-1 bg-blue-50 dark:bg-neutral-800 text-blue-700 dark:text-blue-300 rounded-lg border border-blue-200 dark:border-neutral-700">
-              Active: {dateFilterMode === 'today' && 'Aaj (Today)'}
-              {dateFilterMode === 'week' && 'Is Hafte (This Week)'}
-              {dateFilterMode === 'month' && 'Is Mahine (This Month)'}
-              {dateFilterMode === '6month' && '6 Mahine (Last 6 Months)'}
-              {dateFilterMode === 'year' && 'Is Saal (This Year)'}
+              Active: {dateFilterMode === 'today' && 'Today'}
+              {dateFilterMode === 'week' && 'This Week'}
+              {dateFilterMode === 'month' && 'This Month'}
+              {dateFilterMode === '6month' && 'Last 6 Months'}
+              {dateFilterMode === 'year' && 'This Year'}
               {dateFilterMode === 'custom' && 'Specific Date Range'}
-              {dateFilterMode === 'all' && 'Pura Record (All Time)'}
+              {dateFilterMode === 'all' && 'All Time'}
             </span>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5 text-xs pt-1">
           {[
-            { id: 'today', label: 'Aaj (Today)' },
-            { id: 'week', label: 'Is Hafte (Week)' },
-            { id: 'month', label: 'Is Mahine (Month)' },
-            { id: '6month', label: '6 Mahine (6 Months)' },
-            { id: 'year', label: 'Is Saal (Year)' },
-            { id: 'custom', label: 'Specific Date to Date (Custom)' },
-            { id: 'all', label: 'Pura Record (All Time)' },
+            { id: 'today', label: 'Today' },
+            { id: 'week', label: 'This Week' },
+            { id: 'month', label: 'This Month' },
+            { id: '6month', label: '6 Months' },
+            { id: 'year', label: 'This Year' },
+            { id: 'custom', label: 'Custom Date Range' },
+            { id: 'all', label: 'All Time' },
           ].map(opt => (
             <button
               key={opt.id}
@@ -985,7 +979,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
       {/* DETAIL REPORT MODAL & PRINTABLE PDF AREA */}
       {activeReportModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in overflow-y-auto">
-          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-4xl w-full max-w-full overflow-x-hidden p-3 sm:p-6 shadow-2xl space-y-4 border border-slate-100 animate-in zoom-in-95 max-h-[92vh] flex flex-col my-auto">
+          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-4xl w-full max-w-full overflow-x-hidden p-3 sm:p-6 shadow-2xl space-y-4 border border-slate-100 animate-in zoom-in-95 max-h-[92dvh] lg:max-h-[92vh] flex flex-col my-auto">
             {/* Modal Header */}
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 items-stretch sm:items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center justify-between sm:justify-start gap-2.5 min-w-0">
@@ -1057,13 +1051,13 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                 </div>
                 <div className="flex flex-wrap items-center gap-1 text-[11px]">
                   {[
-                    { id: 'today', label: 'Aaj (Today)' },
-                    { id: 'week', label: 'Is Hafte (Week)' },
-                    { id: 'month', label: 'Is Mahine (Month)' },
-                    { id: '6month', label: '6 Mahine (6 Mo)' },
-                    { id: 'year', label: 'Is Saal (Year)' },
-                    { id: 'custom', label: 'Custom Tareekh' },
-                    { id: 'all', label: 'Pura Record (All)' },
+                    { id: 'today', label: 'Today' },
+                    { id: 'week', label: 'This Week' },
+                    { id: 'month', label: 'This Month' },
+                    { id: '6month', label: '6 Months' },
+                    { id: 'year', label: 'This Year' },
+                    { id: 'custom', label: 'Custom Date' },
+                    { id: 'all', label: 'All Time' },
                   ].map(opt => (
                     <button
                       key={opt.id}
@@ -1141,7 +1135,6 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                       <p className={`text-base sm:text-lg font-bold font-mono mt-0.5 truncate ${totalWholesaleProfit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600'}`}>
                         {totalWholesaleProfit >= 0 ? '+' : ''}{currency} {totalWholesaleProfit.toLocaleString()}
                       </p>
-                      <p className="text-[10px] text-slate-500 mt-0.5">Kat peet kar munafa</p>
                     </div>
 
                     <div className="p-3 bg-amber-50 dark:bg-neutral-900 rounded-xl border border-amber-200 dark:border-amber-900/60">
@@ -1149,16 +1142,15 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                       <p className="text-base sm:text-lg font-bold font-mono text-amber-900 dark:text-amber-300 mt-0.5 truncate">
                         {currency} {totalWholesaleDiscountsGiven.toLocaleString()}
                       </p>
-                      <p className="text-[10px] text-slate-500 mt-0.5">Retailers ko riyayat</p>
                     </div>
                   </div>
 
-                  {/* Section 1: Retailers Summary (Kis ko kitna maal diya, kitna munafa hua, kitna discount diya) */}
+                  {/* Section 1: Retailers Summary */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <h4 className="font-extrabold text-slate-900 dark:text-white text-xs uppercase tracking-wide flex items-center gap-1.5">
                         <Users className="w-3.5 h-3.5 text-purple-600" />
-                        Retailer Breakdown (Kis Retailer Ko Kitna Maal Diya)
+                        Retailer Breakdown
                       </h4>
                       <span className="text-[11px] text-slate-500 dark:text-neutral-400 font-semibold">
                         {retailerStats.length} Registered Retailers

@@ -622,8 +622,8 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
             </div>
 
             {/* Table */}
-            <div className="border border-slate-200 rounded-xl overflow-y-auto flex-1 text-xs">
-              <table className="w-full text-left">
+            <div className="border border-slate-200 rounded-xl overflow-x-auto overflow-y-auto flex-1 text-xs">
+              <table className="w-full text-left min-w-[520px] lg:min-w-0">
                 <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase sticky top-0">
                   <tr>
                     <th className="py-2.5 px-3">Date</th>

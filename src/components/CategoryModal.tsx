@@ -60,9 +60,6 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
             </div>
             <div>
               <h3 className="font-extrabold text-slate-900 text-sm">Category Management</h3>
-              <p className="text-[11px] text-slate-400">
-                Create categories or safely delete unused categories
-              </p>
             </div>
           </div>
           <button

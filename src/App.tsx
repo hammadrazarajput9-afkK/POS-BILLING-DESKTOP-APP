@@ -194,6 +194,22 @@ function AppContent() {
     saveStoredData(data);
   }, [data]);
 
+  // Mobile keyboard scroll into view handler
+  useEffect(() => {
+    const handleFocusIn = (e: FocusEvent) => {
+      if (window.matchMedia('(max-width: 1023px)').matches) {
+        const target = e.target as HTMLElement;
+        if (target && ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName)) {
+          setTimeout(() => {
+            target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          }, 300);
+        }
+      }
+    };
+    document.addEventListener('focusin', handleFocusIn);
+    return () => document.removeEventListener('focusin', handleFocusIn);
+  }, []);
+
   const handleOpenPdfReport = (
     tab: 'sales' | 'inventory' | 'khata' | 'expenses' | 'activity' | 'dailyClosing'
   ) => {

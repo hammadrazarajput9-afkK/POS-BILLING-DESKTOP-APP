@@ -135,7 +135,6 @@ export const AddKhataModal: React.FC<AddKhataModalProps> = ({
             </div>
             <div className="min-w-0">
               <h3 className="font-bold text-slate-900 text-sm truncate">New Khata Customer Account</h3>
-              <p className="text-[10px] sm:text-[11px] text-slate-500 truncate">Register customer profile and open ledger account</p>
             </div>
           </div>
           <button

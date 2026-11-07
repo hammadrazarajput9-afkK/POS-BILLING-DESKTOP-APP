@@ -58,14 +58,11 @@ export const PWAUpdateBanner: React.FC = () => {
               </div>
               <div className="min-w-0">
                 <h4 className="font-extrabold text-sm leading-tight flex items-center gap-1.5">
-                  <span>Naya Software Update Aagaya Hai!</span>
+                  <span>New Software Update Available!</span>
                   <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-400 text-slate-900">
                     Live
                   </span>
                 </h4>
-                <p className="text-[11px] text-blue-100 truncate mt-0.5">
-                  Naye features aur updates active karne ke liye foran reload karein.
-                </p>
               </div>
             </div>
 
@@ -95,7 +92,7 @@ export const PWAUpdateBanner: React.FC = () => {
       {offlineReady && (
         <div className="fixed bottom-20 right-4 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-2xl shadow-xl border border-slate-700/80 flex items-center gap-2.5 text-xs animate-in fade-in duration-300">
           <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span>App is 100% ready for offline use (Bina WiFi bhi chalegi).</span>
+          <span>App is 100% ready for offline use.</span>
           <button
             type="button"
             onClick={() => setOfflineReady(false)}
@@ -113,8 +110,7 @@ export const PWAUpdateBanner: React.FC = () => {
             <Monitor className="w-5 h-5" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-bold text-slate-900 leading-tight">Desktop Software Install Karein</p>
-            <p className="text-[11px] text-slate-500 truncate">1-Click mein desktop app banayein (Offline ready)</p>
+            <p className="text-xs font-bold text-slate-900 leading-tight">Install Desktop App</p>
           </div>
           <button
             type="button"

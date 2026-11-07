@@ -1241,7 +1241,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                       <td className="p-3">
                         <div className="font-bold text-slate-900 font-mono group-hover:text-emerald-700 flex items-center gap-1.5">
                           <span>{record.date}</span>
-                          <span className="opacity-0 group-hover:opacity-100 text-[10px] text-emerald-600 bg-emerald-100/70 px-1.5 py-0.2 rounded font-sans transition">
+                          <span className="opacity-0 max-lg:opacity-100 group-hover:opacity-100 text-[10px] text-emerald-600 bg-emerald-100/70 px-1.5 py-0.2 rounded font-sans transition">
                             Inspect →
                           </span>
                         </div>
