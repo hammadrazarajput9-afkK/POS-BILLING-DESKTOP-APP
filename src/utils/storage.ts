@@ -62,13 +62,13 @@ export const defaultSettings: ShopSettings = {
   currency: 'Rs.',
   receiptFooter: 'Thank you for your business! Warranty claims require original receipt and undamaged warranty sticker.',
   theme: 'blue-white',
-  shopLogo: '/assets/aistudio/Gemini_Generated_Image_5gj5px5gj5px5gj5_c9c27f7d.jpg',
-  invoiceLogo: '/assets/aistudio/Gemini_Generated_Image_5gj5px5gj5px5gj5_c9c27f7d.jpg',
+  shopLogo: '/assets/aistudio/Gemini_Generated_Image_5gj5px5gj5px5gj5_cc4a2a95.png',
+  invoiceLogo: '/assets/aistudio/Gemini_Generated_Image_5gj5px5gj5px5gj5_cc4a2a95.png',
   loginPageName: 'FMZ Friends Mobile Zone',
-  loginPageLogo: '/assets/aistudio/Gemini_Generated_Image_5gj5px5gj5px5gj5_c9c27f7d.jpg',
+  loginPageLogo: '/assets/aistudio/Gemini_Generated_Image_5gj5px5gj5px5gj5_cc4a2a95.png',
 };
 
-export const defaultCategories: string[] = [];
+export const defaultCategories: string[] = ['Android Mobile', 'Keypad Phone', 'Accessories', 'Chargers & Cables', 'Audio & AirPods', 'Repair Parts'];
 
 export const defaultExpenseCategories: string[] = [
   'Shop Rent',
@@ -233,7 +233,7 @@ export function validateBackupData(parsed: unknown): BackupValidationResult {
     purchasesLedger: Array.isArray(raw.purchasesLedger) ? (raw.purchasesLedger as PurchaseLedgerEntry[]) : [],
     supplierPurchases: Array.isArray(raw.supplierPurchases) ? (raw.supplierPurchases as SupplierPurchase[]) : [],
     settings: mergedSettings,
-    categories: Array.isArray(raw.categories) ? (raw.categories as string[]) : [],
+    categories: Array.isArray(raw.categories) && raw.categories.length > 0 ? (raw.categories as string[]) : defaultCategories,
     expenseCategories: Array.isArray(raw.expenseCategories) && raw.expenseCategories.length > 0 ? (raw.expenseCategories as string[]) : defaultExpenseCategories,
     activities: Array.isArray(raw.activities) ? (raw.activities as ActivityLog[]) : [],
     dailyClosings: Array.isArray(raw.dailyClosings) ? raw.dailyClosings : [],

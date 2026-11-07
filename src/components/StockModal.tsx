@@ -263,6 +263,23 @@ export const StockModal: React.FC<StockModalProps> = ({
   const isKeypad = isKeypadCategory(category);
   const isMobile = isMobileCategory(category);
 
+  useEffect(() => {
+    if (isKeypad) {
+      setVariants(prev => prev.map(v => ({
+        ...v,
+        ram: '',
+        storage: '',
+        color: v.color || (v.ram ? `${v.ram} Shade` : '')
+      })));
+    } else if (isAndroid) {
+      setVariants(prev => prev.map(v => ({
+        ...v,
+        ram: v.ram || '6GB',
+        storage: v.storage || '128GB'
+      })));
+    }
+  }, [category]);
+
   // Build sets of all existing database IMEIs for real-time validation and cross-checking
   const existingDbImeis = useMemo(() => {
     const invMap = new Map<string, string>(); // lowercase imei -> product name

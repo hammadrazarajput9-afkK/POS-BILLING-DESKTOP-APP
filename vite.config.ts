@@ -11,7 +11,7 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['favicon.png', 'pwa-192x192.png', 'pwa-512x512.png', 'pwa-maskable-512x512.png', 'apple-touch-icon.png', 'icon.svg'],
+        includeAssets: ['favicon.png', 'pwa-192x192.png', 'pwa-512x512.png', 'pwa-maskable-512x512.png', 'apple-touch-icon.png', 'icon.svg', 'assets/aistudio/Gemini_Generated_Image_5gj5px5gj5px5gj5_cc4a2a95.png'],
         manifest: {
           id: '/',
           name: 'FMZ Friends Mobile Zone - POS Pro',
