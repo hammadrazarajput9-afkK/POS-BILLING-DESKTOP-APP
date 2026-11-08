@@ -12,8 +12,7 @@ import {
   X,
   Activity,
   Calculator,
-  Barcode,
-  Lock
+  Barcode
 } from 'lucide-react';
 import { ShopSettings, UserRole } from '../types';
 
@@ -49,12 +48,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'dailyClosing', label: 'Daily Closing', icon: Calculator },
     { id: 'reports', label: 'Reports', icon: BarChart3, adminOnly: true },
     { id: 'activity', label: 'Activity Center', icon: Activity, badge: activityCount, adminOnly: true },
+    { id: 'settings', label: 'Shop Settings', icon: Settings, adminOnly: true },
   ];
 
   const visibleNavItems = navItems.filter(item => currentRole === 'admin' || !item.adminOnly);
 
   const handleNavClick = (id: string) => {
-    onSelectTab(id);
+    if (id === 'settings') {
+      onOpenSettings();
+    } else {
+      onSelectTab(id);
+    }
     if (window.innerWidth < 1024) {
       onClose();
     }
@@ -74,7 +78,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Sidebar Panel */}
       <aside
-        className={`fixed lg:static top-0 left-0 bottom-0 z-40 bg-white dark:bg-black border-r border-slate-200 dark:border-neutral-900 flex flex-col justify-between transition-all duration-300 ease-in-out shrink-0 ${
+        className={`fixed lg:static top-0 left-0 bottom-0 z-40 bg-white dark:bg-black border-r border-slate-200 dark:border-neutral-900 flex flex-col overflow-y-auto transition-all duration-300 ease-in-out shrink-0 ${
           isOpen
             ? 'w-64 translate-x-0 opacity-100 shadow-xl lg:shadow-none'
             : 'w-0 -translate-x-full lg:-translate-x-full opacity-0 pointer-events-none overflow-hidden border-none'
@@ -148,55 +152,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
               );
             })}
           </nav>
-        </div>
-
-        {/* Sidebar Footer with Shop Profile */}
-        <div className="w-64 min-w-[16rem] p-3 border-t border-slate-100 dark:border-neutral-900 bg-slate-50/50 dark:bg-black shadow-none">
-          <div className="bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-2xl p-2.5 flex items-center justify-between gap-2 shadow-none dark:shadow-none">
-            <div className="flex items-center gap-2.5 min-w-0 flex-1">
-              {logoSrc ? (
-                <div className="w-10 h-10 rounded-full overflow-hidden bg-white shadow-xs shrink-0 flex items-center justify-center p-0.5">
-                  <img
-                    src={logoSrc}
-                    alt={settings.shopName}
-                    className="w-full h-full object-contain rounded-full"
-                  />
-                </div>
-              ) : (
-                <div className="w-9 h-9 rounded-full brand-badge bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
-                  POS
-                </div>
-              )}
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                  {settings.shopName || 'FMZ Mobile POS'}
-                </p>
-                <p className={`text-[10px] font-semibold flex items-center gap-1 truncate ${
-                  currentRole === 'admin' ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
-                }`}>
-                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                    currentRole === 'admin' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
-                  }`}></span>
-                  <span className="truncate">{currentRole === 'admin' ? 'Admin Terminal' : 'Salesman Terminal'}</span>
-                </p>
-              </div>
-            </div>
-
-            {currentRole === 'admin' ? (
-              <button
-                type="button"
-                onClick={onOpenSettings}
-                className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-neutral-850 transition cursor-pointer shrink-0 min-h-[36px] min-w-[36px] flex items-center justify-center"
-                title="Shop Settings & Backup"
-              >
-                <Settings className="w-4 h-4" />
-              </button>
-            ) : (
-              <div className="p-2 text-slate-300 dark:text-neutral-600 shrink-0" title="Settings restricted to Administrator">
-                <Lock className="w-3.5 h-3.5" />
-              </div>
-            )}
-          </div>
         </div>
       </aside>
     </>
