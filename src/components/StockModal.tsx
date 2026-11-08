@@ -181,7 +181,9 @@ export const StockModal: React.FC<StockModalProps> = ({
       prevEditItemRef.current = editItem;
       if (editItem) {
         isEditingRef.current = true;
-        setName(editItem.name);
+        // Clean base name without parenthetical specs or color (e.g. "Infinix Note 40 (Black)" -> "Infinix Note 40")
+        const cleanBaseName = editItem.name.replace(/\s*\([^)]*\)\s*$/, '').trim();
+        setName(cleanBaseName || editItem.name);
         setCategory(editItem.category || (categories[0] || ''));
         setImage(editItem.image || '');
         setBarcode(editItem.barcode || '');
@@ -192,14 +194,39 @@ export const StockModal: React.FC<StockModalProps> = ({
         setQty(editItem.qty);
         setColor(editItem.color || '');
 
-        if (editItem.imeis && editItem.imeis.length > 0) {
-          setImeis([...editItem.imeis]);
-        } else if (editItem.imei) {
-          const split = editItem.imei.split(',').map(s => s.trim()).filter(Boolean);
-          setImeis(split.length > 0 ? split : [editItem.imei]);
+        const existingImeis = editItem.imeis && editItem.imeis.length > 0
+          ? [...editItem.imeis]
+          : editItem.imei
+          ? editItem.imei.split(',').map(s => s.trim()).filter(Boolean)
+          : [];
+
+        if (existingImeis.length > 0) {
+          setImeis(existingImeis);
         } else {
           const q = Math.max(1, editItem.qty || 1);
           setImeis(Array(q).fill(''));
+        }
+
+        if (editItem.variants && editItem.variants.length > 0) {
+          setVariants(editItem.variants.map(v => ({
+            ...v,
+            imeis: v.imeis && v.imeis.length > 0 ? [...v.imeis] : Array(Math.max(1, Number(v.qty) || 1)).fill(''),
+          })));
+        } else if (isMobileCategory(editItem.category)) {
+          // If mobile category without variants, seed the current item as Variant #1
+          const parenMatch = editItem.name.match(/\(([^)]+)\)/);
+          const parenColor = parenMatch ? parenMatch[1].trim() : '';
+          setVariants([{
+            id: 'var-1',
+            ram: editItem.ram || (isKeypadCategory(editItem.category) ? '' : '6GB'),
+            storage: editItem.storage || (isKeypadCategory(editItem.category) ? '' : '128GB'),
+            color: editItem.color || parenColor || '',
+            costPrice: editItem.costPrice,
+            wholesalePrice: editItem.wholesalePrice !== undefined ? editItem.wholesalePrice : '',
+            salePrice: editItem.salePrice,
+            qty: editItem.qty || 1,
+            imeis: existingImeis.length > 0 ? existingImeis : [''],
+          }]);
         }
       } else {
         isEditingRef.current = false;
@@ -269,7 +296,7 @@ export const StockModal: React.FC<StockModalProps> = ({
         ...v,
         ram: '',
         storage: '',
-        color: v.color || (v.ram ? `${v.ram} Shade` : '')
+        color: v.color || ''
       })));
     } else if (isAndroid) {
       setVariants(prev => prev.map(v => ({
@@ -675,8 +702,8 @@ export const StockModal: React.FC<StockModalProps> = ({
       return;
     }
 
-    // MULTI-VARIANT FLOW FOR ANDROID & KEYPAD MOBILE (when not editing a single existing item)
-    if ((isAndroid || isKeypad) && !editItem) {
+    // UNIFIED MULTI-VARIANT FLOW FOR ANDROID & KEYPAD (Single unified product with variants array)
+    if (isAndroid || isKeypad) {
       if (variants.length === 0) {
         showToast('Please add at least one mobile variant', 'warning');
         return;
@@ -724,6 +751,7 @@ export const StockModal: React.FC<StockModalProps> = ({
       // 3. Validate all IMEIs for uniqueness against inventory, sales, and sales returns
       const validation = validateImeis({
         imeisToCheck: allVariantImeis,
+        currentProductId: editItem?.id,
         inventory,
         imeiRecords,
         sales,
@@ -735,59 +763,76 @@ export const StockModal: React.FC<StockModalProps> = ({
         return;
       }
 
-      const itemsToSave: Omit<InventoryItem, 'id' | 'createdAt'>[] = [];
-
       for (let i = 0; i < synchronizedVariants.length; i++) {
         const v = synchronizedVariants[i];
         const cost = Number(v.costPrice) || 0;
         const sale = Number(v.salePrice) || 0;
-        const wholesale = v.wholesalePrice !== '' && v.wholesalePrice !== undefined ? Number(v.wholesalePrice) : Math.round(sale * 0.9);
         const quantity = Math.max(1, Number(v.qty) || 1);
 
         if (cost < 0 || sale < 0 || quantity < 1) {
           showToast(`Variant #${i + 1} has invalid price or quantity`, 'error');
           return;
         }
+      }
 
-        const cleanedImeis = (v.imeis || []).map(im => im.trim()).filter(Boolean);
+      const totalQuantity = synchronizedVariants.reduce((sum, v) => sum + (Number(v.qty) || 0), 0);
+      const primaryCost = Number(synchronizedVariants[0]?.costPrice) || 0;
+      const primarySale = Number(synchronizedVariants[0]?.salePrice) || 0;
+      const primaryWholesale = synchronizedVariants[0]?.wholesalePrice !== '' && synchronizedVariants[0]?.wholesalePrice !== undefined
+        ? Number(synchronizedVariants[0]?.wholesalePrice)
+        : Math.round(primarySale * 0.9);
 
-        // Build cleanly formatted variant title
-        const specs: string[] = [];
-        if (isAndroid) {
-          if (v.ram && v.storage) specs.push(`${v.ram}/${v.storage}`);
-          else if (v.ram) specs.push(v.ram);
-          else if (v.storage) specs.push(v.storage);
-        }
+      const allColors = synchronizedVariants.map(v => v.color?.trim()).filter(Boolean).join(', ');
 
-        if (v.color?.trim()) specs.push(v.color.trim());
+      // Check if stock quantity changed during edit for Stock Adjustment tracking
+      const isQtyChanged = editItem && editItem.qty !== totalQuantity;
+      const adjustmentData = isQtyChanged
+        ? {
+            reason: adjustmentReason,
+            notes: adjustmentNotes.trim() || undefined,
+          }
+        : undefined;
 
-        const variantTitle = specs.length > 0 ? `${name.trim()} (${specs.join(' - ')})` : name.trim();
-
-        itemsToSave.push({
-          name: variantTitle,
-          category,
-          image: image || undefined,
-          imei: cleanedImeis.length > 0 ? cleanedImeis.join(', ') : undefined,
-          imeis: cleanedImeis.length > 0 ? cleanedImeis : undefined,
-          costPrice: cost,
-          wholesalePrice: wholesale,
-          salePrice: sale,
-          qty: quantity,
-          status: 'ACTIVE',
-          ram: isAndroid ? v.ram : undefined,
-          storage: isAndroid ? v.storage : undefined,
-          color: v.color?.trim() || undefined,
+      if (isQtyChanged && onStockAdjustment && editItem) {
+        onStockAdjustment({
+          productId: editItem.id,
+          productName: name.trim() || editItem.name,
+          previousQty: editItem.qty,
+          newQty: totalQuantity,
+          difference: totalQuantity - editItem.qty,
+          reason: adjustmentReason,
+          notes: adjustmentNotes.trim() || undefined,
+          adjustedBy: 'Admin',
         });
       }
 
-      onSave(itemsToSave.length === 1 ? itemsToSave[0] : itemsToSave);
+      const singleProduct: Omit<InventoryItem, 'id' | 'createdAt'> = {
+        name: name.trim(),
+        category,
+        image: image || undefined,
+        imei: allVariantImeis.length > 0 ? allVariantImeis.join(', ') : undefined,
+        imeis: allVariantImeis.length > 0 ? allVariantImeis : undefined,
+        costPrice: primaryCost,
+        wholesalePrice: primaryWholesale,
+        salePrice: primarySale,
+        qty: totalQuantity,
+        status: editItem?.status || 'ACTIVE',
+        ram: isAndroid ? synchronizedVariants[0]?.ram : undefined,
+        storage: isAndroid ? synchronizedVariants[0]?.storage : undefined,
+        color: allColors || undefined,
+        variants: synchronizedVariants,
+      };
+
+      onSave(singleProduct, editItem ? editItem.id : undefined, adjustmentData);
       showToast(
-        itemsToSave.length === 1
-          ? `Product "${itemsToSave[0].name}" registered in inventory!`
-          : `${itemsToSave.length} mobile variants added to inventory successfully!`,
+        editItem
+          ? `Product "${singleProduct.name}" updated with ${synchronizedVariants.length} variants!`
+          : `Product "${singleProduct.name}" added with ${synchronizedVariants.length} variants!`,
         'success'
       );
-      resetDraft();
+      if (!editItem) {
+        resetDraft();
+      }
       onClose();
     } else {
       // SINGLE PRODUCT / KEYPAD PHONE / ACCESSORIES / EDIT MODE FLOW
@@ -918,13 +963,6 @@ export const StockModal: React.FC<StockModalProps> = ({
                   </span>
                 )}
               </div>
-              <p className="text-[10px] sm:text-[11px] text-slate-400 truncate">
-                {isAndroid
-                  ? 'Define Android variants with RAM, Storage, Cost, Wholesale, Sale & IMEIs'
-                  : isKeypad
-                  ? 'Enter Keypad model, color, Cost, Wholesale, Sale rates & IMEIs per unit'
-                  : 'Register retail mobile accessories, chargers, handsfree, covers or spare parts'}
-              </p>
             </div>
           </div>
           <button
@@ -1083,18 +1121,13 @@ export const StockModal: React.FC<StockModalProps> = ({
           {/* ========================================================= */}
           {/* MOBILE & KEYPAD MULTI-VARIANT / COLOR SYSTEM               */}
           {/* ========================================================= */}
-          {(isAndroid || isKeypad) && !editItem ? (
+          {(isAndroid || isKeypad) ? (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Layers className="w-4 h-4 text-blue-600" />
                   <span className="font-bold text-slate-900 text-xs sm:text-sm">
                     {isKeypad ? `Color Variants (${variants.length})` : `Mobile Variants (${variants.length})`}
-                  </span>
-                  <span className="text-[11px] text-slate-400">
-                    {isKeypad
-                      ? 'Each color has independent Quantity, Prices & dedicated IMEIs per phone'
-                      : 'Each variant has independent RAM, Storage, Cost, Sale & dynamic IMEIs'}
                   </span>
                 </div>
                 <button
@@ -1168,19 +1201,16 @@ export const StockModal: React.FC<StockModalProps> = ({
                       {isKeypad ? (
                         <div className="space-y-1.5 bg-purple-50/60 p-3 rounded-xl border border-purple-200/80">
                           <label className="font-bold text-purple-900 flex items-center gap-1 text-xs">
-                            <Palette className="w-4 h-4 text-purple-600" /> Phone Color / Shade *
+                            <Palette className="w-4 h-4 text-purple-600" /> Phone Color *
                           </label>
                           <input
                             type="text"
                             required
                             value={v.color || ''}
                             onChange={e => handleUpdateVariantField(vIdx, 'color', e.target.value)}
-                            placeholder="e.g. Black, Dark Blue, Red, White, Gold, Cyan"
-                            className="w-full bg-white border border-purple-300 rounded-lg px-3 py-2 text-xs font-bold text-purple-950 focus:outline-none focus:border-purple-600 shadow-2xs"
+                            placeholder="e.g. Black, Blue, White, Gold, Red"
+                            className="w-full bg-white border border-purple-300 rounded-lg px-3 py-2 text-xs font-bold text-purple-950 focus:outline-none focus:border-purple-600 shadow-2xs min-h-[44px]"
                           />
-                          <span className="text-[10px] text-purple-700/80 block">
-                            Enter the color name (e.g. Black). The system will automatically create "{name || 'Phone'} ({v.color || 'Color'})" in stock.
-                          </span>
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
@@ -1258,7 +1288,6 @@ export const StockModal: React.FC<StockModalProps> = ({
                               placeholder="e.g. Black, Blue"
                               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-semibold focus:outline-none focus:border-purple-600"
                             />
-                            <span className="text-[10px] text-slate-400 block">Optional shade</span>
                           </div>
                         </div>
                       )}
@@ -1367,9 +1396,6 @@ export const StockModal: React.FC<StockModalProps> = ({
                             1 IMEI per phone
                           </span>
                         </div>
-                        <p className="text-[10px] text-slate-500">
-                          Enter or scan IMEI barcodes for each phone unit of this variant:
-                        </p>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
                           {v.imeis.map((imeiStr, imeiIdx) => {
@@ -1492,18 +1518,15 @@ export const StockModal: React.FC<StockModalProps> = ({
               {(isKeypad || (editItem && isMobile)) && (
                 <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
                   <label className="block font-bold text-slate-700 mb-1 text-[11px] flex items-center gap-1">
-                    <Palette className="w-3.5 h-3.5 text-purple-600" /> Phone Color / Shade
+                    <Palette className="w-3.5 h-3.5 text-purple-600" /> Phone Color
                   </label>
                   <input
                     type="text"
                     value={color}
                     onChange={e => setColor(e.target.value)}
-                    placeholder="e.g. Black, Dark Blue, Red"
-                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:border-blue-600"
+                    placeholder="e.g. Black, Blue, White, Gold, Red"
+                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:border-blue-600 min-h-[44px]"
                   />
-                  <span className="text-[10px] text-slate-400 mt-0.5 block">
-                    Keypad phones do not require RAM/ROM variants. Just enter the color and IMEIs below.
-                  </span>
                 </div>
               )}
 

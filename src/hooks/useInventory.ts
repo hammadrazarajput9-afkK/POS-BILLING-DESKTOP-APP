@@ -101,9 +101,31 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
       };
 
       setData(prev => {
-        const updated = prev.inventory.map(item =>
-          item.id === existingId ? updatedItem : item
-        );
+        // Clean up any other legacy separate variant records with the same base name and category
+        const cleanBase = singleItem.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
+        const otherLegacyIds: string[] = [];
+        
+        const filteredInventory = prev.inventory.filter(item => {
+          if (item.id === existingId) return false;
+          const itemBase = item.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
+          if (
+            singleItem.variants &&
+            singleItem.variants.length > 0 &&
+            item.category.toLowerCase() === singleItem.category.toLowerCase() &&
+            itemBase === cleanBase
+          ) {
+            otherLegacyIds.push(item.id);
+            return false;
+          }
+          return true;
+        });
+
+        // Delete consolidated legacy variant docs from Firestore
+        otherLegacyIds.forEach(oldId => {
+          deleteInventoryItemFromFirestore(oldId).catch(err => console.warn(err));
+        });
+
+        const updated = [updatedItem, ...filteredInventory];
         const updatedImeiRecords = recordImeisAvailable({
           items: [updatedItem],
           existingImeiRecords: prev.imeiRecords || [],
@@ -196,28 +218,42 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
     const itemToDelete = data.inventory.find(item => item.id === id);
     if (!itemToDelete) return;
 
+    const cleanBase = itemToDelete.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
+    const relatedIds = data.inventory
+      .filter(i => {
+        if (i.id === id) return true;
+        const iBase = i.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
+        return i.category.toLowerCase() === itemToDelete.category.toLowerCase() && iBase === cleanBase;
+      })
+      .map(i => i.id);
+
     setData(prev => ({
       ...prev,
       inventory: prev.inventory.map(item =>
-        item.id === id ? { ...item, status: 'ARCHIVED' as const } : item
+        relatedIds.includes(item.id) ? { ...item, status: 'ARCHIVED' as const } : item
       ),
     }));
 
-    saveInventoryItemToFirestore({ ...itemToDelete, status: 'ARCHIVED' }).catch(() => {
-      deleteInventoryItemFromFirestore(id).catch(err => {
-        console.warn('Firestore delete item warning:', err);
-      });
+    relatedIds.forEach(targetId => {
+      const it = data.inventory.find(i => i.id === targetId);
+      if (it) {
+        saveInventoryItemToFirestore({ ...it, status: 'ARCHIVED' }).catch(() => {
+          deleteInventoryItemFromFirestore(targetId).catch(err => {
+            console.warn('Firestore delete item warning:', err);
+          });
+        });
+      }
     });
 
     logActivity(
       'Inventory',
-      `Archived Item: ${itemToDelete.name}`,
+      `Archived Item: ${cleanBase || itemToDelete.name}`,
       `Removed from active stock (Category: ${itemToDelete.category})`,
       'delete',
       id
     );
 
-    showToast(`Product "${itemToDelete.name}" archived from active catalog`, 'info');
+    showToast(`Product "${cleanBase || itemToDelete.name}" archived from active catalog`, 'info');
   };
 
   /**
@@ -232,26 +268,37 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
     const itemToDelete = data.inventory.find(item => item.id === id);
     if (!itemToDelete) return;
 
-    // Filter out item from inventory array and clean up imeiRecords
+    const cleanBase = itemToDelete.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
+    const relatedIds = data.inventory
+      .filter(i => {
+        if (i.id === id) return true;
+        const iBase = i.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
+        return i.category.toLowerCase() === itemToDelete.category.toLowerCase() && iBase === cleanBase;
+      })
+      .map(i => i.id);
+
+    // Filter out item and its variants from inventory array and clean up imeiRecords
     setData(prev => ({
       ...prev,
-      inventory: prev.inventory.filter(item => item.id !== id),
-      imeiRecords: (prev.imeiRecords || []).filter(rec => rec.productId !== id),
+      inventory: prev.inventory.filter(item => !relatedIds.includes(item.id)),
+      imeiRecords: (prev.imeiRecords || []).filter(rec => !relatedIds.includes(rec.productId)),
     }));
 
-    deleteInventoryItemFromFirestore(id).catch(err => {
-      console.warn('Firestore permanent delete item warning:', err);
+    relatedIds.forEach(targetId => {
+      deleteInventoryItemFromFirestore(targetId).catch(err => {
+        console.warn('Firestore permanent delete item warning:', err);
+      });
     });
 
     logActivity(
       'Inventory',
-      `Permanently Deleted Product: ${itemToDelete.name}`,
-      `Completely removed product record from system database (Category: ${itemToDelete.category})`,
+      `Permanently Deleted Product: ${cleanBase || itemToDelete.name}`,
+      `Completely removed product record and all variants from system database (Category: ${itemToDelete.category})`,
       'delete',
       id
     );
 
-    showToast(`Product "${itemToDelete.name}" permanently deleted!`, 'success');
+    showToast(`Product "${cleanBase || itemToDelete.name}" permanently deleted!`, 'success');
   };
 
   /**

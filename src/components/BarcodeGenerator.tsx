@@ -66,32 +66,7 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
     } catch (e) {
       console.warn('Failed to load saved barcode batch items:', e);
     }
-    return [
-      {
-        id: 'c-1',
-        title: 'Samsung Galaxy A15',
-        subtitle: 'Black • 6GB/128GB',
-        price: 42000,
-        barcode: '890123456781',
-        count: 4,
-      },
-      {
-        id: 'c-2',
-        title: '25W Fast Charger Type-C',
-        subtitle: 'White • Adapter',
-        price: 1500,
-        barcode: '890123456782',
-        count: 6,
-      },
-      {
-        id: 'c-3',
-        title: 'TWS Wireless Earbuds',
-        subtitle: 'Matte Black • PureBass',
-        price: 2800,
-        barcode: '890123456783',
-        count: 4,
-      },
-    ];
+    return [];
   });
 
   // Sync customBatchItems to localStorage on every change
@@ -173,7 +148,13 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
 
   const handleRemoveBatchItem = (id: string) => {
     const itemToRemove = customBatchItems.find(i => i.id === id);
-    setCustomBatchItems(prev => prev.filter(item => item.id !== id));
+    const updated = customBatchItems.filter(item => item.id !== id);
+    setCustomBatchItems(updated);
+    try {
+      localStorage.setItem(BARCODE_ITEMS_STORAGE_KEY, JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Failed to persist barcode batch items:', e);
+    }
     if (itemToRemove) {
       showToast(`Deleted barcode row: "${itemToRemove.title || 'Product'}"`, 'info');
     }
@@ -181,6 +162,11 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
 
   const handleClearAllBatchItems = () => {
     setCustomBatchItems([]);
+    try {
+      localStorage.setItem(BARCODE_ITEMS_STORAGE_KEY, JSON.stringify([]));
+    } catch (e) {
+      console.warn('Failed to clear barcode batch items:', e);
+    }
     showToast('All barcode demo items deleted permanently!', 'info');
   };
 

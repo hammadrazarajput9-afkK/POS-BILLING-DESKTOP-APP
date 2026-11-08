@@ -1,5 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { InventoryItem, ItemCategory, StockAdjustment, SaleRecord } from '../types';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { InventoryItem, ItemCategory, StockAdjustment, SaleRecord, MobileVariant } from '../types';
 import {
   Search,
   Plus,
@@ -21,7 +23,10 @@ import {
   X,
   Clock,
   UserCheck,
-  Camera
+  Camera,
+  LayoutGrid,
+  List,
+  Share2
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { ConfirmModal } from './ConfirmModal';
@@ -72,15 +77,177 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
   const [productToPermanentDelete, setProductToPermanentDelete] = useState<InventoryItem | null>(null);
   const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
 
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  const [selectedProductPopup, setSelectedProductPopup] = useState<InventoryItem | null>(null);
+
+  const handleWhatsAppShareProduct = (item: InventoryItem) => {
+    const shopName = 'FMZ Friends Mobile Zone';
+    const lines: string[] = [];
+    lines.push(`📦 *${shopName.toUpperCase()} - PRODUCT DETAILS*`);
+    lines.push(`----------------------------------------`);
+    lines.push(`• *Product:* ${item.name}`);
+    lines.push(`• *Category:* ${item.category}`);
+    lines.push(`• *Price:* ${currency} ${item.salePrice.toLocaleString()}`);
+    lines.push(`• *In Stock:* ${item.qty} units`);
+    if (item.barcode) {
+      lines.push(`• *Barcode:* ${item.barcode}`);
+    }
+
+    if (item.variants && item.variants.length > 0) {
+      lines.push(`\n*COLOR / SPECIFICATION VARIANTS:*`);
+      item.variants.forEach((v: MobileVariant, idx: number) => {
+        const col = v.color || `${v.ram || ''} ${v.storage || ''}`.trim() || `Variant ${idx + 1}`;
+        const imeisStr = (v.imeis || []).filter(Boolean).join(', ');
+        lines.push(`${idx + 1}. *${col}* - ${v.qty || 1} units${imeisStr ? `\n   IMEIs: ${imeisStr}` : ''}`);
+      });
+    } else if (item.imeis && item.imeis.filter(Boolean).length > 0) {
+      lines.push(`\n*IMEIs:* ${item.imeis.filter(Boolean).join(', ')}`);
+    } else if (item.imei) {
+      lines.push(`\n*IMEI:* ${item.imei}`);
+    }
+
+    lines.push(`----------------------------------------`);
+    lines.push(`Visit our shop or order now!`);
+
+    const encoded = encodeURIComponent(lines.join('\n'));
+    window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
+    showToast('Product details shared to WhatsApp!', 'success');
+  };
+
+  const handleDownloadProductPdf = (item: InventoryItem) => {
+    const doc = new jsPDF();
+    const shopName = 'FMZ Friends Mobile Zone';
+
+    doc.setFontSize(18);
+    doc.setTextColor(30, 58, 138);
+    doc.text(shopName.toUpperCase(), 14, 20);
+
+    doc.setFontSize(12);
+    doc.setTextColor(100, 100, 100);
+    doc.text('PRODUCT SPECIFICATION & IMEI RECORD', 14, 28);
+
+    doc.setLineWidth(0.5);
+    doc.setDrawColor(200, 200, 200);
+    doc.line(14, 32, 196, 32);
+
+    doc.setFontSize(11);
+    doc.setTextColor(20, 20, 20);
+    doc.text(`Product Name: ${item.name}`, 14, 42);
+    doc.text(`Category: ${item.category}`, 14, 50);
+    doc.text(`Sale Price: ${currency} ${item.salePrice.toLocaleString()}`, 14, 58);
+    doc.text(`In-Stock Units: ${item.qty}`, 14, 66);
+    doc.text(`Barcode / SKU: ${item.barcode || 'N/A'}`, 14, 74);
+    doc.text(`Date Generated: ${new Date().toLocaleDateString()}`, 14, 82);
+
+    const rows: any[] = [];
+    if (item.variants && item.variants.length > 0) {
+      item.variants.forEach((v: MobileVariant, idx: number) => {
+        const imeisStr = (v.imeis || []).filter(Boolean).join(', ') || 'N/A';
+        rows.push([
+          `Variant #${idx + 1}`,
+          v.color || `${v.ram || ''} ${v.storage || ''}`.trim() || 'Standard',
+          `${v.qty || 1} Units`,
+          imeisStr
+        ]);
+      });
+    } else if (item.imeis && item.imeis.length > 0) {
+      rows.push(['Standard', 'Default', `${item.qty} Units`, item.imeis.join(', ')]);
+    } else if (item.imei) {
+      rows.push(['Standard', 'Default', `${item.qty} Units`, item.imei]);
+    } else {
+      rows.push(['Standard', 'Default', `${item.qty} Units`, 'N/A']);
+    }
+
+    autoTable(doc, {
+      startY: 92,
+      head: [['#', 'Color / Specification', 'Quantity', 'Dedicated IMEIs / Serial Numbers']],
+      body: rows,
+      theme: 'grid',
+      headStyles: { fillColor: [37, 99, 235] },
+      styles: { fontSize: 9, cellPadding: 4 },
+    });
+
+    doc.save(`product_${item.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_details.pdf`);
+    showToast('Product PDF downloaded successfully!', 'success');
+  };
+
   // Check if a product is referenced in historical sales
   const isProductReferenced = (itemId: string): boolean => {
     return sales.some(s => s.items.some(i => i.id === itemId));
   };
 
+  // Consolidates products by base model title and category so all color variants live inside 1 product
+  const unifiedInventory = useMemo(() => {
+    const map = new Map<string, InventoryItem>();
+
+    for (const item of inventory) {
+      // Remove any trailing parentheses from older legacy items (e.g. "Model (Black)" -> "Model")
+      const baseName = item.name.replace(/\s*\([^)]*\)\s*$/, '').trim();
+      const groupKey = `${(item.category || '').toLowerCase()}:::${(baseName || item.name).toLowerCase()}`;
+
+      if (!map.has(groupKey)) {
+        const initialVariants: MobileVariant[] = item.variants && item.variants.length > 0
+          ? [...item.variants]
+          : [{
+              id: 'var-' + item.id,
+              ram: item.ram || '',
+              storage: item.storage || '',
+              color: item.color || (item.name.match(/\(([^)]+)\)/)?.[1] || ''),
+              costPrice: item.costPrice,
+              wholesalePrice: item.wholesalePrice !== undefined ? item.wholesalePrice : '',
+              salePrice: item.salePrice,
+              qty: item.qty,
+              imeis: item.imeis && item.imeis.length > 0 ? [...item.imeis] : item.imei ? [item.imei] : [],
+            }];
+
+        map.set(groupKey, {
+          ...item,
+          name: baseName || item.name,
+          variants: initialVariants,
+        });
+      } else {
+        // Merge with existing product group
+        const existing = map.get(groupKey)!;
+        const newQty = existing.qty + item.qty;
+        const existingImeisList = existing.imeis || (existing.imei ? existing.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
+        const itemImeisList = item.imeis || (item.imei ? item.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
+        const combinedImeis = Array.from(new Set([...existingImeisList, ...itemImeisList]));
+
+        const curVariants = [...(existing.variants || [])];
+        if (item.variants && item.variants.length > 0) {
+          curVariants.push(...item.variants);
+        } else {
+          curVariants.push({
+            id: 'var-' + item.id,
+            ram: item.ram || '',
+            storage: item.storage || '',
+            color: item.color || (item.name.match(/\(([^)]+)\)/)?.[1] || ''),
+            costPrice: item.costPrice,
+            wholesalePrice: item.wholesalePrice !== undefined ? item.wholesalePrice : '',
+            salePrice: item.salePrice,
+            qty: item.qty,
+            imeis: itemImeisList,
+          });
+        }
+
+        map.set(groupKey, {
+          ...existing,
+          qty: newQty,
+          image: existing.image || item.image,
+          imeis: combinedImeis,
+          imei: combinedImeis.join(', '),
+          variants: curVariants,
+        });
+      }
+    }
+
+    return Array.from(map.values());
+  }, [inventory]);
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
 
-    return inventory.filter(item => {
+    return unifiedInventory.filter(item => {
       // Status Filter
       if (statusFilter === 'ACTIVE' && item.status === 'ARCHIVED') return false;
       if (statusFilter === 'ARCHIVED' && item.status !== 'ARCHIVED') return false;
@@ -95,12 +262,14 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
       const imeiString = [
         item.imei || '',
         ...(item.imeis || []),
+        ...(item.variants?.flatMap(v => v.imeis || []) || []),
       ].join(' ');
 
-      const combinedText = `${item.name} ${item.category} ${item.barcode || ''} ${imeiString}`.toLowerCase();
+      const variantColors = (item.variants || []).map(v => v.color || '').join(' ');
+      const combinedText = `${item.name} ${item.category} ${variantColors} ${item.barcode || ''} ${imeiString}`.toLowerCase();
       return tokens.every(token => combinedText.includes(token));
     });
-  }, [inventory, search, categoryFilter, statusFilter]);
+  }, [unifiedInventory, search, categoryFilter, statusFilter]);
 
   const activeItems = useMemo(() => {
     return inventory.filter(i => i.status !== 'ARCHIVED');
@@ -322,361 +491,529 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
           </div>
         </div>
 
-        {/* Desktop Inventory Data Table (>= lg: breakpoint) */}
-        <div className="hidden lg:block border border-slate-200/80 rounded-xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
-                <tr>
-                  <th className="p-3">Product Name</th>
-                  <th className="p-3">Category</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3">IMEI / Barcode</th>
-                  <th className="p-3 text-right">Cost Price</th>
-                  <th className="p-3 text-right">Sale Price</th>
-                  <th className="p-3 text-center">In Stock</th>
-                  <th className="p-3 text-center">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-xs">
-                {filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="text-center py-12 text-slate-400">
-                      <Package className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-                      <p className="font-semibold text-slate-700">No matching products found</p>
-                      <p className="text-[11px] text-slate-400">Try adjusting your search query or category filter</p>
-                    </td>
-                  </tr>
-                ) : (
-                  filtered.map(item => {
-                    const isArchived = item.status === 'ARCHIVED';
+        {/* View Mode Toggle & Product Grid / Table */}
+        <div className="space-y-4 pt-1">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200/80">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-700">Display Layout:</span>
+              <div className="bg-white p-1 rounded-xl border border-slate-200 flex items-center gap-1 shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('grid')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                    viewMode === 'grid' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" /> Product Cards (Daraz Style)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('table')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                    viewMode === 'table' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <List className="w-3.5 h-3.5" /> Table View
+                </button>
+              </div>
+            </div>
+            <span className="text-xs font-bold text-slate-600">
+              Showing {filtered.length} products
+            </span>
+          </div>
 
-                    return (
-                      <tr key={item.id} className={`transition ${isArchived ? 'bg-slate-50/70 opacity-75' : 'hover:bg-slate-50/60'}`}>
-                        <td className="p-3 font-semibold text-slate-900">
-                          <div className="flex items-center gap-2.5">
-                            {item.image ? (
-                              <div className="w-9 h-9 rounded-lg border border-slate-200 overflow-hidden bg-slate-50 shrink-0 shadow-2xs">
-                                <img
-                                  src={item.image}
-                                  alt={item.name}
-                                  className="w-full h-full object-cover"
-                                />
-                              </div>
-                            ) : (
-                              <div className="w-9 h-9 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 font-bold shrink-0 text-xs">
-                                {item.name.charAt(0).toUpperCase()}
-                              </div>
-                            )}
-                            <div>
-                              <p className="font-bold text-slate-900 leading-snug">{item.name}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="p-3">
-                          <span className="inline-block px-2 py-0.5 rounded-md font-medium text-[11px] bg-slate-100 text-slate-700">
-                            {item.category}
-                          </span>
-                        </td>
-                        <td className="p-3">
-                          {isArchived ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
-                              <Archive className="w-3 h-3 text-slate-500" /> Archived
-                            </span>
+          {viewMode === 'grid' ? (
+            /* Daraz / Amazon Style Product Card Grid */
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5 sm:gap-4">
+              {filtered.length === 0 ? (
+                <div className="col-span-full text-center py-16 bg-slate-50 rounded-2xl border border-dashed border-slate-300">
+                  <Package className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+                  <p className="font-semibold text-slate-700 text-xs">No matching products found</p>
+                  <p className="text-[11px] text-slate-400">Try adjusting your search query or category filter</p>
+                </div>
+              ) : (
+                filtered.map(item => {
+                  const isArchived = item.status === 'ARCHIVED';
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => setSelectedProductPopup(item)}
+                      className={`bg-white border border-slate-200/90 rounded-2xl p-3.5 shadow-2xs hover:shadow-xl hover:border-blue-400 transition-all duration-300 cursor-pointer flex flex-col justify-between group ${
+                        isArchived ? 'opacity-75 bg-slate-50' : ''
+                      }`}
+                    >
+                      <div>
+                        {/* Normal Sized Product Image (Daraz / Amazon Style) */}
+                        <div className="relative w-full h-44 sm:h-52 rounded-xl overflow-hidden bg-slate-50 border border-slate-100 flex items-center justify-center p-2.5">
+                          {item.image ? (
+                            <img
+                              src={item.image}
+                              alt={item.name}
+                              className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
+                            />
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
-                              Active
+                            <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-black text-xl shadow-inner">
+                              {item.name.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          {isArchived && (
+                            <span className="absolute top-2 right-2 bg-slate-800 text-white text-[9px] font-bold px-2 py-0.5 rounded-full shadow-xs">
+                              Archived
                             </span>
                           )}
+                        </div>
+
+                        {/* Category & Color Variants Badge */}
+                        <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
+                          <span className="inline-block text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md truncate max-w-full">
+                            {item.category}
+                          </span>
+                          {item.variants && item.variants.length > 0 && (
+                            <span className="inline-block text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200/60 px-1.5 py-0.5 rounded-md">
+                              {item.variants.length} Colors
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Product Name */}
+                        <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm line-clamp-2 mt-1 leading-snug group-hover:text-blue-600 transition">
+                          {item.name}
+                        </h4>
+                      </div>
+
+                      {/* Price & Stock */}
+                      <div className="mt-3.5 pt-2.5 border-t border-slate-100 flex items-center justify-between">
+                        <div>
+                          <span className="text-[10px] text-slate-400 block uppercase font-semibold">Price</span>
+                          <span className="font-mono font-extrabold text-blue-600 text-xs sm:text-sm">
+                            {currency} {item.salePrice.toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] text-slate-400 block uppercase font-semibold">Stock</span>
+                          <span className={`font-mono font-bold text-xs px-2 py-0.5 rounded-full ${
+                            item.qty > 1 ? 'bg-emerald-50 text-emerald-700' : item.qty === 1 ? 'bg-amber-100 text-amber-800' : 'bg-rose-50 text-rose-700'
+                          }`}>
+                            {item.qty} left
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          ) : (
+            /* Table View */
+            <div className="border border-slate-200/80 rounded-xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
+                    <tr>
+                      <th className="p-3">Product Name</th>
+                      <th className="p-3">Category</th>
+                      <th className="p-3">Status</th>
+                      <th className="p-3">IMEI / Barcode</th>
+                      <th className="p-3 text-right">Cost Price</th>
+                      <th className="p-3 text-right">Sale Price</th>
+                      <th className="p-3 text-center">In Stock</th>
+                      <th className="p-3 text-center">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs">
+                    {filtered.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="text-center py-12 text-slate-400">
+                          <Package className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                          <p className="font-semibold text-slate-700">No matching products found</p>
+                          <p className="text-[11px] text-slate-400">Try adjusting your search query or category filter</p>
                         </td>
-                        <td className="p-3">
-                          {item.imeis && item.imeis.length > 0 ? (
-                            <div className="space-y-0.5">
-                              {item.imeis.slice(0, 2).map((im, idx) => (
-                                <div
-                                  key={idx}
-                                  className="flex items-center gap-1.5 font-mono text-[11px] text-blue-700"
-                                >
-                                  <span>{im}</span>
+                      </tr>
+                    ) : (
+                      filtered.map(item => {
+                        const isArchived = item.status === 'ARCHIVED';
+
+                        return (
+                          <tr key={item.id} className={`transition ${isArchived ? 'bg-slate-50/70 opacity-75' : 'hover:bg-slate-50/60'}`}>
+                            <td className="p-3 font-semibold text-slate-900">
+                              <div className="flex items-center gap-2.5">
+                                {item.image ? (
+                                  <div className="w-9 h-9 rounded-lg border border-slate-200 overflow-hidden bg-slate-50 shrink-0 shadow-2xs">
+                                    <img
+                                      src={item.image}
+                                      alt={item.name}
+                                      className="w-full h-full object-cover"
+                                    />
+                                  </div>
+                                ) : (
+                                  <div className="w-9 h-9 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 font-bold shrink-0 text-xs">
+                                    {item.name.charAt(0).toUpperCase()}
+                                  </div>
+                                )}
+                                <div>
+                                  <p className="font-bold text-slate-900 leading-snug">{item.name}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="p-3">
+                              <span className="inline-block px-2 py-0.5 rounded-md font-medium text-[11px] bg-slate-100 text-slate-700">
+                                {item.category}
+                              </span>
+                            </td>
+                            <td className="p-3">
+                              {isArchived ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
+                                  <Archive className="w-3 h-3 text-slate-500" /> Archived
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+                                  Active
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-3">
+                              {item.imeis && item.imeis.length > 0 ? (
+                                <div className="space-y-0.5">
+                                  {item.imeis.slice(0, 2).map((im, idx) => (
+                                    <div
+                                      key={idx}
+                                      className="flex items-center gap-1.5 font-mono text-[11px] text-blue-700"
+                                    >
+                                      <span>{im}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCopyImei(im)}
+                                        className="text-slate-400 hover:text-blue-600 p-0.5 rounded cursor-pointer"
+                                        title="Copy IMEI"
+                                      >
+                                        {copiedImei === im ? (
+                                          <Check className="w-3 h-3 text-emerald-600" />
+                                        ) : (
+                                          <Copy className="w-3 h-3" />
+                                        )}
+                                      </button>
+                                    </div>
+                                  ))}
+                                  {item.imeis.length > 2 && (
+                                    <p className="text-[9px] text-blue-600 font-semibold">
+                                      +{item.imeis.length - 2} more IMEIs
+                                    </p>
+                                  )}
+                                </div>
+                              ) : item.imei ? (
+                                <div className="flex items-center gap-1.5 font-mono text-[11px] text-blue-700">
+                                  <span>{item.imei}</span>
                                   <button
                                     type="button"
-                                    onClick={() => handleCopyImei(im)}
+                                    onClick={() => handleCopyImei(item.imei!)}
                                     className="text-slate-400 hover:text-blue-600 p-0.5 rounded cursor-pointer"
                                     title="Copy IMEI"
                                   >
-                                    {copiedImei === im ? (
+                                    {copiedImei === item.imei ? (
                                       <Check className="w-3 h-3 text-emerald-600" />
                                     ) : (
                                       <Copy className="w-3 h-3" />
                                     )}
                                   </button>
                                 </div>
-                              ))}
-                              {item.imeis.length > 2 && (
-                                <p className="text-[9px] text-blue-600 font-semibold">
-                                  +{item.imeis.length - 2} more IMEIs
-                                </p>
-                              )}
-                            </div>
-                          ) : item.imei ? (
-                            <div className="flex items-center gap-1.5 font-mono text-[11px] text-blue-700">
-                              <span>{item.imei}</span>
-                              <button
-                                type="button"
-                                onClick={() => handleCopyImei(item.imei!)}
-                                className="text-slate-400 hover:text-blue-600 p-0.5 rounded cursor-pointer"
-                                title="Copy IMEI"
-                              >
-                                {copiedImei === item.imei ? (
-                                  <Check className="w-3 h-3 text-emerald-600" />
-                                ) : (
-                                  <Copy className="w-3 h-3" />
-                                )}
-                              </button>
-                            </div>
-                          ) : item.barcode ? (
-                            <span className="font-mono text-[11px] text-slate-500">{item.barcode}</span>
-                          ) : (
-                            <span className="text-slate-400 text-[11px]">--</span>
-                          )}
-                        </td>
-                        <td className="p-3 text-right font-mono tabular-nums text-slate-600 font-medium">
-                          {isAdmin ? `${currency} ${item.costPrice.toLocaleString()}` : '••••'}
-                        </td>
-                        <td className="p-3 text-right font-mono tabular-nums font-bold text-slate-900">
-                          {currency} {item.salePrice.toLocaleString()}
-                        </td>
-                        <td className="p-3 text-center">
-                          <span
-                            className={`font-mono font-bold text-xs px-2.5 py-0.5 rounded-full ${
-                              item.qty > 1
-                                ? 'bg-emerald-50 text-emerald-700'
-                                : item.qty === 1
-                                ? 'bg-amber-100 text-amber-800 font-extrabold border border-amber-300'
-                                : 'bg-rose-50 text-rose-700 border border-rose-200'
-                            }`}
-                          >
-                            {item.qty === 1 ? '1 (Single Left)' : item.qty}
-                          </span>
-                        </td>
-                        <td className="p-3 text-center">
-                          {isAdmin ? (
-                            <div className="inline-flex items-center gap-1">
-                              {isArchived ? (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => onRestoreItem && onRestoreItem(item.id)}
-                                    className="px-2 py-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition flex items-center gap-1 cursor-pointer"
-                                    title="Restore / Unarchive Product"
-                                  >
-                                    <RotateCcw className="w-3 h-3" /> Restore
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setProductToPermanentDelete(item)}
-                                    className="px-2 py-1 text-[11px] font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition flex items-center gap-1 cursor-pointer"
-                                    title="Permanently delete from database"
-                                  >
-                                    <Trash2 className="w-3 h-3 text-rose-600" /> Permanent Delete
-                                  </button>
-                                </>
+                              ) : item.barcode ? (
+                                <span className="font-mono text-[11px] text-slate-500">{item.barcode}</span>
                               ) : (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => onOpenEditModal(item)}
-                                    className="p-1 text-slate-500 hover:text-blue-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
-                                    title="Edit Product"
-                                  >
-                                    <Edit2 className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setProductToDelete(item)}
-                                    className="p-1 text-slate-500 hover:text-rose-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
-                                    title="Delete / Archive Product"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </>
+                                <span className="text-slate-400 text-[11px]">--</span>
                               )}
-                            </div>
-                          ) : (
-                            <span
-                              className="inline-flex items-center gap-1 text-[10px] text-slate-400 font-semibold bg-slate-100 px-2 py-0.5 rounded-md cursor-not-allowed"
-                              title="Editing and deletion locked in Salesman mode"
-                            >
-                              <Lock className="w-3 h-3 text-slate-400" />
-                              Locked
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Mobile Product Cards View (< lg: breakpoint) */}
-        <div className="block lg:hidden space-y-3">
-          {filtered.length === 0 ? (
-            <div className="text-center py-10 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-400 space-y-1">
-              <Package className="w-8 h-8 mx-auto text-slate-300" />
-              <p className="font-semibold text-slate-700">No matching products found</p>
-              <p className="text-[11px] text-slate-400">Try adjusting your search query</p>
-            </div>
-          ) : (
-            filtered.map(item => {
-              const isArchived = item.status === 'ARCHIVED';
-
-              return (
-                <div
-                  key={item.id}
-                  className={`bg-white border rounded-2xl p-3.5 space-y-3 shadow-xs transition ${
-                    isArchived ? 'border-slate-200 opacity-70 bg-slate-50' : 'border-slate-200'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    {item.image ? (
-                      <div className="w-12 h-12 rounded-xl border border-slate-200 overflow-hidden bg-slate-50 shrink-0 shadow-2xs">
-                        <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
-                      </div>
-                    ) : (
-                      <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 font-bold shrink-0 text-sm">
-                        {item.name.charAt(0).toUpperCase()}
-                      </div>
+                            </td>
+                            <td className="p-3 text-right font-mono tabular-nums text-slate-600 font-medium">
+                              {isAdmin ? `${currency} ${item.costPrice.toLocaleString()}` : '••••'}
+                            </td>
+                            <td className="p-3 text-right font-mono tabular-nums font-bold text-slate-900">
+                              {currency} {item.salePrice.toLocaleString()}
+                            </td>
+                            <td className="p-3 text-center">
+                              <span
+                                className={`font-mono font-bold text-xs px-2.5 py-0.5 rounded-full ${
+                                  item.qty > 1
+                                    ? 'bg-emerald-50 text-emerald-700'
+                                    : item.qty === 1
+                                    ? 'bg-amber-100 text-amber-800 font-extrabold border border-amber-300'
+                                    : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                }`}
+                              >
+                                {item.qty === 1 ? '1 (Single Left)' : item.qty}
+                              </span>
+                            </td>
+                            <td className="p-3 text-center">
+                              {isAdmin ? (
+                                <div className="inline-flex items-center gap-1">
+                                  {isArchived ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => onRestoreItem && onRestoreItem(item.id)}
+                                        className="px-2 py-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition flex items-center gap-1 cursor-pointer"
+                                        title="Restore / Unarchive Product"
+                                      >
+                                        <RotateCcw className="w-3 h-3" /> Restore
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setProductToPermanentDelete(item)}
+                                        className="px-2 py-1 text-[11px] font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition flex items-center gap-1 cursor-pointer"
+                                        title="Permanently delete from database"
+                                      >
+                                        <Trash2 className="w-3 h-3 text-rose-600" /> Permanent Delete
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => onOpenEditModal(item)}
+                                        className="p-1 text-slate-500 hover:text-blue-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                                        title="Edit Product"
+                                      >
+                                        <Edit2 className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setProductToDelete(item)}
+                                        className="p-1 text-slate-500 hover:text-rose-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                                        title="Delete / Archive Product"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              ) : (
+                                <span
+                                  className="inline-flex items-center gap-1 text-[10px] text-slate-400 font-semibold bg-slate-100 px-2 py-0.5 rounded-md cursor-not-allowed"
+                                  title="Editing and deletion locked in Salesman mode"
+                                >
+                                  <Lock className="w-3 h-3 text-slate-400" />
+                                  Locked
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
-
-                    <div className="flex-1 min-w-0 space-y-1">
-                      <div className="flex items-start justify-between gap-1.5">
-                        <h4 className="font-bold text-slate-900 text-xs leading-snug line-clamp-2">
-                          {item.name}
-                        </h4>
-                        <span
-                          className={`font-mono font-bold text-[10px] px-2 py-0.5 rounded-full shrink-0 ${
-                            item.qty > 1
-                              ? 'bg-emerald-50 text-emerald-700'
-                              : item.qty === 1
-                              ? 'bg-amber-100 text-amber-800 font-extrabold border border-amber-300'
-                              : 'bg-rose-50 text-rose-700 border border-rose-200'
-                          }`}
-                        >
-                          {item.qty > 0 ? `${item.qty} in stock` : 'Out of stock'}
-                        </span>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-1 text-[10px]">
-                        <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-medium">
-                          {item.category}
-                        </span>
-                        {isArchived ? (
-                          <span className="bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-bold">
-                            Archived
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Price & IMEI row */}
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
-                    <div>
-                      <span className="text-[10px] text-slate-400 block font-semibold">Sale Price</span>
-                      <span className="font-extrabold text-blue-600 text-sm font-mono tabular-nums">
-                        {currency} {item.salePrice.toLocaleString()}
-                      </span>
-                      {isAdmin && (
-                        <span className="text-[10px] text-slate-400 font-mono block">
-                          Cost: {currency} {item.costPrice.toLocaleString()}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Touch-Friendly Action Buttons */}
-                    <div className="flex items-center gap-1.5">
-                      {isAdmin && (
-                        <>
-                          {isArchived ? (
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => onRestoreItem && onRestoreItem(item.id)}
-                                className="px-2.5 py-1.5 bg-emerald-50 text-emerald-700 font-bold rounded-xl text-xs border border-emerald-200 transition flex items-center gap-1 min-h-[40px] cursor-pointer"
-                              >
-                                <RotateCcw className="w-3.5 h-3.5" /> Restore
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setProductToPermanentDelete(item)}
-                                className="px-2.5 py-1.5 bg-rose-50 text-rose-700 font-bold rounded-xl text-xs border border-rose-200 transition flex items-center gap-1 min-h-[40px] cursor-pointer"
-                                title="Permanent Delete"
-                              >
-                                <Trash2 className="w-3.5 h-3.5 text-rose-600" /> Permanent Delete
-                              </button>
-                            </div>
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => onOpenEditModal(item)}
-                                className="px-3.5 py-2 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 font-bold rounded-xl text-xs border border-slate-200 transition flex items-center gap-1.5 min-h-[44px] cursor-pointer"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" /> Edit
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setProductToDelete(item)}
-                                className="p-2.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl transition border border-rose-200 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer"
-                                title="Delete"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* IMEI Barcode pills on mobile */}
-                  {item.imeis && item.imeis.length > 0 ? (
-                    <div className="pt-1.5 border-t border-slate-100 flex flex-wrap items-center gap-1">
-                      <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">IMEIs:</span>
-                      {item.imeis.slice(0, 3).map((im, idx) => (
-                        <span
-                          key={idx}
-                          onClick={() => handleCopyImei(im)}
-                          className="font-mono text-[9px] text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded cursor-pointer"
-                        >
-                          {im}
-                        </span>
-                      ))}
-                      {item.imeis.length > 3 && (
-                        <span className="text-[9px] text-blue-600 font-semibold font-mono">
-                          +{item.imeis.length - 3} more
-                        </span>
-                      )}
-                    </div>
-                  ) : item.imei ? (
-                    <div className="pt-1.5 border-t border-slate-100 flex items-center gap-1 text-[10px] font-mono text-blue-700">
-                      <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">IMEI:</span>
-                      <span
-                        onClick={() => handleCopyImei(item.imei!)}
-                        className="bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded cursor-pointer"
-                      >
-                        {item.imei}
-                      </span>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
         </div>
+
+      {/* Animated Product Details Popup Modal (WhatsApp Share & Product PDF excluding wholesale/cost) */}
+      {selectedProductPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-5 sm:p-6 shadow-2xl space-y-5 border border-slate-100 my-auto animate-in zoom-in-95 duration-200 overflow-y-auto max-h-[90dvh]">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                  <Package className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-sm sm:text-base">Product Details & IMEI Record</h3>
+                  <p className="text-[11px] text-slate-500">Complete stock specifications & customer share options</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedProductPopup(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Product Card / Image & Info */}
+            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
+              {selectedProductPopup.image ? (
+                <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-sm shrink-0 flex items-center justify-center p-1">
+                  <img
+                    src={selectedProductPopup.image}
+                    alt={selectedProductPopup.name}
+                    className="w-full h-full object-cover rounded-xl"
+                  />
+                </div>
+              ) : (
+                <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-black text-3xl shadow-md shrink-0">
+                  {selectedProductPopup.name.charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div className="space-y-2 text-left w-full">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-blue-100 text-blue-800 rounded-md">
+                    {selectedProductPopup.category}
+                  </span>
+                  <h4 className="font-extrabold text-slate-900 text-base sm:text-lg mt-1">{selectedProductPopup.name}</h4>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                  <div>
+                    <span className="text-slate-400 block text-[10px] font-bold uppercase">Sale Price</span>
+                    <span className="font-mono font-black text-blue-600 text-sm sm:text-base">
+                      {currency} {selectedProductPopup.salePrice.toLocaleString()}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px] font-bold uppercase">In Stock</span>
+                    <span className="font-mono font-bold text-slate-800 text-sm sm:text-base">
+                      {selectedProductPopup.qty} units
+                    </span>
+                  </div>
+                </div>
+                {selectedProductPopup.barcode && (
+                  <div className="text-xs">
+                    <span className="text-slate-400 text-[10px] font-bold uppercase">Barcode / SKU: </span>
+                    <span className="font-mono font-bold text-slate-700">{selectedProductPopup.barcode}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Colors & IMEIs Breakdown */}
+            <div className="space-y-3">
+              <h5 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                <Layers className="w-4 h-4 text-blue-600" />
+                Color Variants & Dedicated IMEIs
+              </h5>
+
+              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                {selectedProductPopup.variants && selectedProductPopup.variants.length > 0 ? (
+                  selectedProductPopup.variants.map((v: MobileVariant, vIdx: number) => (
+                    <div key={v.id || vIdx} className="p-3 bg-white border border-slate-200 rounded-xl space-y-1.5 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                          <span className="w-5 h-5 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center font-mono text-[10px]">
+                            #{vIdx + 1}
+                          </span>
+                          {v.color || `${v.ram || ''} ${v.storage || ''}`.trim() || 'Standard Variant'}
+                        </span>
+                        <span className="font-mono text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                          {v.qty || 1} units
+                        </span>
+                      </div>
+                      {v.imeis && v.imeis.filter(Boolean).length > 0 && (
+                        <div className="pt-1 border-t border-slate-100 flex flex-wrap gap-1">
+                          {v.imeis.filter(Boolean).map((im: string, imIdx: number) => (
+                            <button
+                              key={imIdx}
+                              type="button"
+                              onClick={() => handleCopyImei(im)}
+                              className="font-mono text-[10px] bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer transition"
+                              title="Click to copy IMEI"
+                            >
+                              <span>IMEI: {im}</span>
+                              {copiedImei === im ? (
+                                <Check className="w-3 h-3 text-emerald-600" />
+                              ) : (
+                                <Copy className="w-3 h-3 text-blue-400" />
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                ) : selectedProductPopup.imeis && selectedProductPopup.imeis.filter(Boolean).length > 0 ? (
+                  <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-2">
+                    <span className="text-xs font-bold text-slate-700 block">Registered IMEIs / Serials:</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedProductPopup.imeis.filter(Boolean).map((im, imIdx) => (
+                        <button
+                          key={imIdx}
+                          type="button"
+                          onClick={() => handleCopyImei(im)}
+                          className="font-mono text-[10px] bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer transition"
+                          title="Click to copy IMEI"
+                        >
+                          <span>{im}</span>
+                          {copiedImei === im ? (
+                            <Check className="w-3 h-3 text-emerald-600" />
+                          ) : (
+                            <Copy className="w-3 h-3 text-blue-400" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : selectedProductPopup.imei ? (
+                  <div className="p-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-700">IMEI: </span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyImei(selectedProductPopup.imei!)}
+                      className="font-mono text-xs text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>{selectedProductPopup.imei}</span>
+                      {copiedImei === selectedProductPopup.imei ? (
+                        <Check className="w-3 h-3 text-emerald-600" />
+                      ) : (
+                        <Copy className="w-3 h-3 text-blue-400" />
+                      )}
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 italic py-2 text-center bg-slate-50 rounded-xl">
+                    No specific IMEI tracked for this product item.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Action Buttons: WhatsApp Share & Separate Product PDF (strictly excluding wholesale & cost) */}
+            <div className="space-y-2 pt-2 border-t border-slate-100">
+              <div className="flex flex-col sm:flex-row items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleWhatsAppShareProduct(selectedProductPopup)}
+                  className="w-full sm:flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-2 min-h-[42px]"
+                >
+                  <Share2 className="w-4 h-4" /> Share to WhatsApp
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleDownloadProductPdf(selectedProductPopup)}
+                  className="w-full sm:flex-1 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-2 min-h-[42px]"
+                >
+                  <FileText className="w-4 h-4" /> Download Product PDF
+                </button>
+              </div>
+
+              {isAdmin && (
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const item = selectedProductPopup;
+                      setSelectedProductPopup(null);
+                      onOpenEditModal(item);
+                    }}
+                    className="flex-1 py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 min-h-[38px]"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" /> Edit Product
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const item = selectedProductPopup;
+                      setSelectedProductPopup(null);
+                      setProductToDelete(item);
+                    }}
+                    className="py-2 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 min-h-[38px]"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Delete
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       </div>
 
       {/* Category Management Modal with Data Safety Lock */}

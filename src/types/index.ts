@@ -19,6 +19,7 @@ export interface InventoryItem {
   ram?: string;
   storage?: string;
   color?: string;
+  variants?: MobileVariant[];
 }
 
 export type ImeiStatus = 'AVAILABLE' | 'SOLD' | 'RETURNED';
