@@ -19,10 +19,12 @@ import {
 import { UserAccount, UserRole, ShopSettings } from '../types';
 import { useToast } from './Toast';
 import { sendOtpEmail } from '../utils/emailService';
+import { saveUserToFirestore, fetchLiveUsersFromFirestore } from '../utils/storage';
 
 interface AuthScreenProps {
   existingUsers: UserAccount[];
   onAuthSuccess: (user: UserAccount) => void;
+  onSyncUsers?: (users: UserAccount[]) => void;
   settings: ShopSettings;
 }
 
@@ -51,6 +53,7 @@ const playEmailSound = () => {
 export const AuthScreen: React.FC<AuthScreenProps> = ({
   existingUsers,
   onAuthSuccess,
+  onSyncUsers,
   settings,
 }) => {
   const { showToast } = useToast();
@@ -58,7 +61,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const loginPageName = settings?.loginPageName || settings?.shopName || 'FMZ SHOP POS';
   const loginPageLogo = settings?.loginPageLogo || settings?.shopLogo || settings?.logo || '';
 
-  // If there are no admins registered, we are in first-time register mode
   const hasAdmin = useMemo(() => {
     return existingUsers.some((u) => u.role === 'admin');
   }, [existingUsers]);
@@ -68,7 +70,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   }, [existingUsers]);
 
   // Main UI Mode: 'login' | 'register' | 'forgot'
-  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>(hasAdmin ? 'login' : 'register');
+  // Defaults to 'login' so users opening on new devices can immediately sign into their existing admin accounts!
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
+  const [isCheckingCloud, setIsCheckingCloud] = useState(false);
 
   // Register Mode States
   const [regName, setRegName] = useState('');
@@ -107,13 +111,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     return () => clearInterval(interval);
   }, [otpCooldown]);
 
-  // Keep mode in sync if admin registration status changes
-  useEffect(() => {
-    if (!hasAdmin) {
-      setMode('register');
-    }
-  }, [hasAdmin]);
-
   // Helper to send OTP via EmailJS
   const dispatchOtp = async (toEmail: string, code: string): Promise<boolean> => {
     setIsSendingOtp(true);
@@ -138,7 +135,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     }
   };
 
-  // 1. Submit First-Time Admin Registration
+  // 1. Submit First-Time or Additional Admin Registration
   const handleRegisterSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!regName.trim() || !regEmail.trim() || !regPassword.trim() || !regConfirmPassword.trim()) {
@@ -169,6 +166,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       createdAt: new Date().toISOString(),
     };
 
+    // Immediately save new admin to Cloud Firestore so other devices can log in right away!
+    saveUserToFirestore(newAdmin).catch(err => {
+      console.warn('Failed to save user to Firestore on register:', err);
+    });
+
     showToast('Administrator successfully registered!', 'success');
     onAuthSuccess(newAdmin);
   };
@@ -182,13 +184,31 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       return;
     }
 
+    const emailNorm = loginEmail.trim().toLowerCase();
+
     if (activeTab === 'salesman') {
-      const user = existingUsers.find(
+      let user = existingUsers.find(
         (u) =>
-          u.email.toLowerCase() === loginEmail.trim().toLowerCase() &&
+          u.email.toLowerCase() === emailNorm &&
           u.password === loginPassword &&
           u.role === 'salesman'
       );
+
+      // If not found in local state, query cloud Firestore directly (seamless on new devices)
+      if (!user) {
+        setIsCheckingCloud(true);
+        const liveUsers = await fetchLiveUsersFromFirestore();
+        setIsCheckingCloud(false);
+        if (liveUsers.length > 0) {
+          if (onSyncUsers) onSyncUsers(liveUsers);
+          user = liveUsers.find(
+            (u) =>
+              u.email.toLowerCase() === emailNorm &&
+              u.password === loginPassword &&
+              u.role === 'salesman'
+          );
+        }
+      }
 
       if (!user) {
         showToast('Invalid Salesman Email or Password', 'error');
@@ -199,15 +219,31 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       onAuthSuccess(user);
     } else {
       // Admin Login credentials check
-      const adminUser = existingUsers.find(
+      let adminUser = existingUsers.find(
         (u) =>
-          u.email.toLowerCase() === loginEmail.trim().toLowerCase() &&
+          u.email.toLowerCase() === emailNorm &&
           u.password === loginPassword &&
           u.role === 'admin'
       );
 
+      // If not found in local memory, check live cloud Firestore (useful on brand new devices)
       if (!adminUser) {
-        showToast('Invalid Administrator Email or Password', 'error');
+        setIsCheckingCloud(true);
+        const liveUsers = await fetchLiveUsersFromFirestore();
+        setIsCheckingCloud(false);
+        if (liveUsers.length > 0) {
+          if (onSyncUsers) onSyncUsers(liveUsers);
+          adminUser = liveUsers.find(
+            (u) =>
+              u.email.toLowerCase() === emailNorm &&
+              u.password === loginPassword &&
+              u.role === 'admin'
+          );
+        }
+      }
+
+      if (!adminUser) {
+        showToast('Invalid Administrator Email or Password. If you need a new account, switch to Create Admin.', 'error');
         return;
       }
 
@@ -263,9 +299,22 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       return;
     }
 
-    const adminUser = existingUsers.find(
-      (u) => u.email.toLowerCase() === forgotEmail.trim().toLowerCase() && u.role === 'admin'
+    const emailNorm = forgotEmail.trim().toLowerCase();
+    let adminUser = existingUsers.find(
+      (u) => u.email.toLowerCase() === emailNorm && u.role === 'admin'
     );
+
+    if (!adminUser) {
+      setIsCheckingCloud(true);
+      const liveUsers = await fetchLiveUsersFromFirestore();
+      setIsCheckingCloud(false);
+      if (liveUsers.length > 0) {
+        if (onSyncUsers) onSyncUsers(liveUsers);
+        adminUser = liveUsers.find(
+          (u) => u.email.toLowerCase() === emailNorm && u.role === 'admin'
+        );
+      }
+    }
 
     if (!adminUser) {
       showToast('No Administrator account found with this Email address', 'error');
@@ -283,7 +332,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   };
 
   // 6. Forgot Password - Verify Code and Save New Password
-  const handleSaveNewPasswordWithOtp = (e: React.FormEvent) => {
+  const handleSaveNewPasswordWithOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!forgotOtpInput.trim()) {
       showToast('Please enter the 6-digit verification code sent to your email', 'warning');
@@ -310,9 +359,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       return;
     }
 
-    const adminUser = existingUsers.find(
-      (u) => u.email.toLowerCase() === forgotEmail.trim().toLowerCase() && u.role === 'admin'
+    const emailNorm = forgotEmail.trim().toLowerCase();
+    let adminUser = existingUsers.find(
+      (u) => u.email.toLowerCase() === emailNorm && u.role === 'admin'
     );
+
+    if (!adminUser) {
+      const liveUsers = await fetchLiveUsersFromFirestore();
+      adminUser = liveUsers.find(
+        (u) => u.email.toLowerCase() === emailNorm && u.role === 'admin'
+      );
+    }
 
     if (!adminUser) {
       showToast('Administrator account not found', 'error');
@@ -323,6 +380,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       ...adminUser,
       password: newPassword,
     };
+
+    saveUserToFirestore(updatedAdmin).catch(err => {
+      console.warn('Failed to update password in Firestore:', err);
+    });
 
     showToast('Password reset successful! Logging you in...', 'success');
     onAuthSuccess(updatedAdmin);
@@ -440,14 +501,50 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           {/* Core Content Area - Vertically flexible to fill mobile viewport */}
           <div className="flex-1 w-full flex flex-col justify-between max-w-none sm:max-w-md mx-auto min-h-0">
             
-            {/* ================= REGISTER VIEW (Only if no admin exists) ================= */}
+            {/* Top Navigation Switch: Log In vs Create Admin */}
+            {mode !== 'forgot' && adminLoginStep !== 'otp' && (
+              <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-2xl mb-4 border border-slate-200/80 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('login');
+                    setAdminLoginStep('credentials');
+                  }}
+                  className={`py-2.5 px-3 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                    mode === 'login'
+                      ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/60'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Log In</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('register');
+                  }}
+                  className={`py-2.5 px-3 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                    mode === 'register'
+                      ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/60'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>Create Admin</span>
+                </button>
+              </div>
+            )}
+
+            {/* ================= REGISTER VIEW ================= */}
             {mode === 'register' && (
               <div className="animate-in fade-in duration-300 w-full flex-1 flex flex-col justify-between">
                 <form onSubmit={handleRegisterSubmit} className="w-full flex-1 flex flex-col justify-between space-y-2 sm:space-y-3 py-1">
                   <div className="space-y-0.5">
                     <h2 className="text-lg sm:text-2xl font-black text-slate-900 tracking-tight leading-tight">Create Master Admin Account</h2>
                     <p className="text-xs text-slate-500 font-medium">
-                      Register your root terminal administrator profile to initialize the POS database.
+                      Register your root terminal administrator profile to initialize or link the POS database.
                     </p>
                   </div>
 
@@ -531,18 +628,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                     <span>Register Master Administrator</span>
                   </button>
 
-                  {hasAdmin && (
-                    <p className="text-center text-xs text-slate-500 font-bold pt-1">
-                      Already registered?{' '}
-                      <button
-                        type="button"
-                        onClick={() => setMode('login')}
-                        className="text-indigo-600 font-extrabold hover:underline transition cursor-pointer"
-                      >
-                        Sign in here
-                      </button>
-                    </p>
-                  )}
+                  <p className="text-center text-xs text-slate-500 font-bold pt-1">
+                    Already registered on another device?{' '}
+                    <button
+                      type="button"
+                      onClick={() => setMode('login')}
+                      className="text-indigo-600 font-extrabold hover:underline transition cursor-pointer"
+                    >
+                      Log in here
+                    </button>
+                  </p>
                 </form>
               </div>
             )}
@@ -550,23 +645,20 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             {/* ================= LOGIN VIEW ================= */}
             {mode === 'login' && (
               <div className="animate-in fade-in duration-300 w-full flex-1 flex flex-col justify-between">
-                
-                {/* 1. SALESMAN LOGIN: IF NO SALESMEN REGISTERED */}
                 {activeTab === 'salesman' && salesmenCount === 0 ? (
                   <div className="w-full flex-1 flex flex-col justify-between py-2 animate-in slide-in-from-bottom-5 duration-300 space-y-3">
-                    <div className="text-center py-5 px-4 bg-amber-50 border border-amber-200 rounded-2xl text-amber-700 space-y-2">
-                      <Shield className="w-8 h-8 text-amber-500 mx-auto mb-1 animate-pulse" />
-                      <h3 className="text-xs font-black">No Salesman Accounts Registered Yet</h3>
-                      <p className="text-[11px] text-slate-600 leading-relaxed font-medium">
-                        No salesman accounts have been created yet on this terminal.
-                        Please log in using the Master Admin account and register salespersons from <strong>Settings &gt; User Management</strong>.
+                    <div className="text-center py-6 px-4 bg-amber-50 border border-amber-200/90 rounded-2xl text-amber-900 space-y-2.5 shadow-xs">
+                      <Shield className="w-10 h-10 text-amber-500 mx-auto mb-1 animate-pulse" />
+                      <h3 className="text-sm sm:text-base font-black text-amber-950">No Salesman Account Created Yet</h3>
+                      <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                        No salesman account has been created yet. Kindly log in using your Master Admin account and go to <strong>Settings &gt; User Management</strong> to create a salesman account.
                       </p>
                     </div>
 
                     <button
                       type="button"
                       onClick={() => setActiveTab('admin')}
-                      className="w-full py-3.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 transition cursor-pointer"
+                      className="w-full py-3.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 transition cursor-pointer hover:scale-[1.01]"
                     >
                       <Shield className="w-4 h-4" />
                       <span>Go to Admin Login</span>
@@ -743,10 +835,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                     <div className="pt-2">
                       <button
                         type="submit"
-                        disabled={isSendingOtp}
+                        disabled={isSendingOtp || isCheckingCloud}
                         className="w-full py-3.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm shadow-md shadow-indigo-600/20 flex items-center justify-center gap-2 transition hover:scale-[1.01] cursor-pointer"
                       >
-                        {isSendingOtp ? (
+                        {isCheckingCloud ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Verifying with Cloud Database...</span>
+                          </>
+                        ) : isSendingOtp ? (
                           <>
                             <Loader2 className="w-4 h-4 animate-spin" />
                             <span>Sending 6-Digit OTP to Email...</span>
@@ -776,6 +873,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                           onClick={() => {
                             setActiveTab('salesman');
                             setAdminLoginStep('credentials');
+                            if (salesmenCount === 0) {
+                              showToast('No salesman account created yet. Kindly log in as Admin and go to Settings to create a salesman account.', 'warning');
+                            }
                           }}
                           className={`flex items-center justify-center gap-2 py-3 px-3 rounded-xl text-xs font-bold border transition cursor-pointer ${
                             activeTab === 'salesman'
@@ -808,9 +908,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                       <button
                         type="button"
                         onClick={() => setMode('register')}
-                        className="text-xs text-slate-500 hover:text-slate-800 font-semibold hover:underline transition cursor-pointer"
+                        className="text-xs text-indigo-600 hover:text-indigo-800 font-bold hover:underline transition cursor-pointer flex items-center justify-center gap-1.5 mx-auto"
                       >
-                        Create another Admin account
+                        <UserPlus className="w-3.5 h-3.5" />
+                        <span>Need a new terminal account? Create Admin</span>
                       </button>
                     </div>
                   </form>

@@ -52,6 +52,7 @@ export const SUB_COLLECTIONS = {
   KHATA: 'khata',
   EXPENSES: 'expenses',
   ACTIVITIES: 'activities',
+  USERS: 'users',
 } as const;
 
 export const defaultSettings: ShopSettings = {
@@ -516,12 +517,94 @@ export async function saveRootConfigToFirestore(data: Partial<AppData>): Promise
       supplierPurchases: data.supplierPurchases || [],
       salesReturns: data.salesReturns || [],
       tabPreferences: data.tabPreferences || {},
-      users: data.users || [],
       currentRole: data.currentRole || 'admin',
     };
+
+    // Protect existing users from accidental wipe on startup
+    if (data.users && data.users.length > 0) {
+      configToSave.users = data.users;
+    }
+
     await setDoc(rootDocRef, sanitizeForFirestore(configToSave) as Record<string, unknown>, { merge: true });
   } catch (err) {
     console.warn('Failed to save root config to Firestore:', err);
+  }
+}
+
+/**
+ * Dedicated persistence for an individual user in Firestore sub-collection & root
+ */
+export async function saveUserToFirestore(user: UserAccount): Promise<void> {
+  try {
+    const userDocRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.USERS, user.id);
+    await setDoc(userDocRef, sanitizeForFirestore(user) as Record<string, unknown>, { merge: true });
+
+    const rootDocRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID);
+    const rootSnap = await getDoc(rootDocRef);
+    if (rootSnap.exists()) {
+      const curUsers = (rootSnap.data()?.users as UserAccount[]) || [];
+      const idx = curUsers.findIndex(u => u.id === user.id);
+      const updated = idx >= 0 ? curUsers.map(u => (u.id === user.id ? user : u)) : [...curUsers, user];
+      await setDoc(rootDocRef, { users: sanitizeForFirestore(updated) }, { merge: true });
+    }
+  } catch (err) {
+    console.warn('Failed to save individual user to Firestore:', err);
+  }
+}
+
+/**
+ * Deletes an individual user document from Firestore
+ */
+export async function deleteUserFromFirestore(userId: string): Promise<void> {
+  try {
+    const userDocRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.USERS, userId);
+    await deleteDoc(userDocRef);
+
+    const rootDocRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID);
+    const rootSnap = await getDoc(rootDocRef);
+    if (rootSnap.exists()) {
+      const curUsers = (rootSnap.data()?.users as UserAccount[]) || [];
+      const updated = curUsers.filter(u => u.id !== userId);
+      await setDoc(rootDocRef, { users: sanitizeForFirestore(updated) }, { merge: true });
+    }
+  } catch (err) {
+    console.warn('Failed to delete individual user from Firestore:', err);
+  }
+}
+
+/**
+ * Fetches live user profiles from Firestore for instant login across devices
+ */
+export async function fetchLiveUsersFromFirestore(): Promise<UserAccount[]> {
+  try {
+    const [subSnap, rootSnap] = await Promise.all([
+      getDocs(collection(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.USERS)).catch(() => ({
+        docs: [],
+        forEach: () => {},
+      } as any)),
+      getDoc(doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID)).catch(() => null),
+    ]);
+
+    const usersMap = new Map<string, UserAccount>();
+
+    if (rootSnap && rootSnap.exists()) {
+      const rootUsers = (rootSnap.data()?.users as UserAccount[]) || [];
+      rootUsers.forEach(u => {
+        if (u && u.id) usersMap.set(u.id, u);
+      });
+    }
+
+    if (subSnap && subSnap.docs) {
+      subSnap.forEach((d: any) => {
+        const u = d.data() as UserAccount;
+        if (u && u.id) usersMap.set(u.id, u);
+      });
+    }
+
+    return Array.from(usersMap.values());
+  } catch (err) {
+    console.warn('Failed to fetch live users from Firestore:', err);
+    return [];
   }
 }
 
@@ -630,8 +713,8 @@ export async function loadAppDataFromFirestore(): Promise<AppData | null> {
       }
     }
 
-    // Load sub-collections in parallel
-    const [salesSnap, invSnap, khataSnap, expSnap, actSnap] = await Promise.all([
+    // Load sub-collections in parallel including users
+    const [salesSnap, invSnap, khataSnap, expSnap, actSnap, usersSnap] = await Promise.all([
       getDocs(collection(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.SALES)),
       getDocs(collection(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.INVENTORY)),
       getDocs(collection(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.KHATA)),
@@ -643,6 +726,10 @@ export async function loadAppDataFromFirestore(): Promise<AppData | null> {
           limit(300)
         )
       ).catch(() => getDocs(collection(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.ACTIVITIES))),
+      getDocs(collection(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.USERS)).catch(() => ({
+        docs: [],
+        forEach: () => {},
+      } as any)),
     ]);
 
     const sales: SaleRecord[] = [];
@@ -660,6 +747,21 @@ export async function loadAppDataFromFirestore(): Promise<AppData | null> {
     const activities: ActivityLog[] = [];
     actSnap.forEach(docSnap => activities.push(docSnap.data() as ActivityLog));
 
+    // Reconcile users from sub-collection and root document
+    const subUsers: UserAccount[] = [];
+    if (usersSnap && usersSnap.docs) {
+      usersSnap.forEach((docSnap: any) => subUsers.push(docSnap.data() as UserAccount));
+    }
+    const rootUsers = (rootData.users as UserAccount[]) || [];
+    const usersMap = new Map<string, UserAccount>();
+    rootUsers.forEach(u => {
+      if (u && u.id) usersMap.set(u.id, u);
+    });
+    subUsers.forEach(u => {
+      if (u && u.id) usersMap.set(u.id, u);
+    });
+    const assembledUsers = Array.from(usersMap.values());
+
     // Assemble unified AppData
     const assembledData: AppData = {
       backupVersion: CURRENT_BACKUP_VERSION,
@@ -675,7 +777,7 @@ export async function loadAppDataFromFirestore(): Promise<AppData | null> {
       supplierPurchases: (rootData.supplierPurchases as SupplierPurchase[]) || [],
       salesReturns: (rootData.salesReturns as SalesReturnRecord[]) || [],
       tabPreferences: (rootData.tabPreferences as TabPreferences) || {},
-      users: (rootData.users as UserAccount[]) || [],
+      users: assembledUsers,
       currentRole: (rootData.currentRole as UserRole) || 'admin',
       currentUser: (rootData.currentUser as UserAccount) || undefined,
       inventory,

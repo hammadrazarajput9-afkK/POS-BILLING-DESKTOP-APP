@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   AppData,
   ShopSettings,
@@ -20,6 +20,7 @@ import {
   deleteExpenseItemFromFirestore,
   saveRootConfigToFirestore,
   saveActivityLogToFirestore,
+  saveUserToFirestore,
   clearAllStoredData,
 } from './utils/storage';
 import { recordImeisReversed, recordImeisAvailable } from './utils/imeiManager';
@@ -162,9 +163,12 @@ function AppContent() {
   } = useKhata({ data, setData, logActivity, showToast });
 
   // Safe Schema Migration and Firebase Synchronization on Mount (No Risky Data Wipe!)
+  const isInitialSyncDoneRef = useRef(false);
+
   useEffect(() => {
     migrateAndInitializeData(updatedData => {
       setData(updatedData);
+      isInitialSyncDoneRef.current = true;
     });
   }, []);
 
@@ -191,7 +195,9 @@ function AppContent() {
 
   // Sync to local storage mirror on state updates
   useEffect(() => {
-    saveStoredData(data);
+    if (isInitialSyncDoneRef.current || (data.users && data.users.length > 0) || data.inventory.length > 0) {
+      saveStoredData(data);
+    }
   }, [data]);
 
   // Mobile keyboard scroll into view handler
@@ -699,6 +705,12 @@ function AppContent() {
         <PWAUpdateBanner />
         <AuthScreen
           existingUsers={data.users || []}
+          onSyncUsers={syncedUsers => {
+            setData(prev => ({
+              ...prev,
+              users: syncedUsers,
+            }));
+          }}
           onAuthSuccess={user => {
             if (user.role === 'salesman') {
               setActiveTab('pos');
@@ -713,6 +725,10 @@ function AppContent() {
                 currentUser: user,
                 currentRole: user.role,
               };
+            });
+            // Immediately sync this user to Cloud Firestore
+            saveUserToFirestore(user).catch(err => {
+              console.warn('Failed to sync authenticated user to Firestore:', err);
             });
           }}
           settings={data.settings}
@@ -995,6 +1011,7 @@ function AppContent() {
           saveRootConfigToFirestore({ users }).catch(err => {
             console.warn('Firestore users sync warning:', err);
           });
+          users.forEach(u => saveUserToFirestore(u).catch(() => {}));
         }}
       />
 

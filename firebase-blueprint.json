@@ -129,6 +129,38 @@
           "description": "Action summary title"
         }
       }
+    },
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "User profile with role-based access for terminal login",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique user account identifier"
+        },
+        "name": {
+          "type": "string",
+          "description": "User display name"
+        },
+        "email": {
+          "type": "string",
+          "description": "User login email address"
+        },
+        "password": {
+          "type": "string",
+          "description": "Password or credentials hash"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "salesman"],
+          "description": "System access role"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Account registration timestamp"
+        }
+      }
     }
   },
   "firestore": {
@@ -155,6 +187,10 @@
     "/pos_data/{storeId}/activities/{activityId}": {
       "schema": "ActivityLog",
       "description": "System and operator audit log entries sub-collection"
+    },
+    "/pos_data/{storeId}/users/{userId}": {
+      "schema": "UserAccount",
+      "description": "User account profiles for terminal multi-device authentication"
     }
   }
 }
