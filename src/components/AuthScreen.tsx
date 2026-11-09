@@ -396,26 +396,33 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       <div className="relative w-full h-full max-h-[100dvh] sm:h-auto sm:max-h-[92vh] max-w-md lg:max-w-5xl bg-white sm:rounded-[2.5rem] shadow-[0_25px_80px_rgba(0,0,0,0.3)] border-0 sm:border sm:border-white/30 overflow-hidden z-10 flex flex-col justify-between">
         
         {/* ================= MOBILE-ONLY PROMINENT HERO HEADER WITH LARGE LOGO & STORE NAME ================= */}
-        <div className="lg:hidden p-4 sm:p-6 bg-gradient-to-br from-[#7e22ce] via-[#6366f1] to-[#4c1d95] text-white flex flex-col items-center justify-center text-center relative overflow-hidden shrink-0 shadow-lg z-10">
-          {/* Background Glow */}
-          <div className="absolute top-[-30%] right-[-20%] w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none" />
-          <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-purple-400/20 rounded-full blur-xl pointer-events-none" />
+        <div className="lg:hidden pt-4 px-4 pb-6 bg-gradient-to-br from-[#7e22ce] via-[#6366f1] to-[#4c1d95] text-white flex flex-col items-center justify-center text-center relative overflow-hidden shrink-0 shadow-lg z-10">
+          {/* Background Glow Blobs */}
+          <div className="absolute top-[-30%] right-[-20%] w-56 h-56 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+          <div className="absolute -bottom-10 -left-10 w-48 h-48 bg-purple-400/20 rounded-full blur-xl pointer-events-none" />
 
-          {/* Extra Large Circle Badge Container on Mobile */}
-          <div className="w-32 h-32 sm:w-40 sm:h-40 bg-white rounded-full p-3 sm:p-4 shadow-2xl border-4 border-white/50 flex items-center justify-center shrink-0 mb-2.5 relative z-10 animate-in zoom-in-95 duration-300">
+          {/* Extra Large White Circle Badge Container on Mobile */}
+          <div className="w-36 h-36 sm:w-44 sm:h-44 bg-white rounded-full p-3.5 sm:p-4 shadow-[0_20px_50px_rgba(0,0,0,0.35)] border-4 border-white/50 flex items-center justify-center shrink-0 mb-2.5 relative z-10 animate-in zoom-in-95 duration-300">
             <img
               src={loginPageLogo}
               alt={loginPageName}
-              className="w-full h-full object-contain rounded-full select-none"
+              className="w-full h-full object-contain rounded-full select-none filter drop-shadow-sm"
             />
           </div>
 
           {/* Extra Large Shop Name on Mobile */}
-          <div className="relative z-10 space-y-1">
+          <div className="relative z-10 space-y-1 mb-1">
             <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight drop-shadow-lg leading-tight">
               {loginPageName}
             </h2>
-            <div className="h-1 w-12 bg-white/40 rounded-full mx-auto mt-1.5 animate-pulse" />
+            <div className="h-1 w-12 bg-white/40 rounded-full mx-auto mt-1 animate-pulse" />
+          </div>
+
+          {/* Organic Wave Edge Cutout SVG Transition */}
+          <div className="absolute -bottom-1 left-0 right-0 w-full overflow-hidden leading-none z-20 text-white fill-current">
+            <svg className="w-full h-4 sm:h-6" viewBox="0 0 1200 120" preserveAspectRatio="none">
+              <path d="M0,0 C150,80 350,-30 500,50 C650,130 900,10 1200,30 L1200,120 L0,120 Z" fill="#ffffff" />
+            </svg>
           </div>
 
           {isCheckingCloud && (
