@@ -18,12 +18,15 @@ import {
   Mail,
   Lock,
   Receipt,
-  Key
+  Key,
+  RefreshCw,
+  QrCode,
 } from 'lucide-react';
 import { useToast } from './Toast';
-import { clearAllStoredData, validateBackupData, BackupValidationResult, CURRENT_BACKUP_VERSION } from '../utils/storage';
+import { clearAllStoredData, validateBackupData, BackupValidationResult, CURRENT_BACKUP_VERSION, saveUserToFirestore } from '../utils/storage';
 import { firebaseConfig } from '../utils/firebase';
 import { CameraCaptureModal } from './CameraCaptureModal';
+import { TotpSetupModal } from './TotpSetupModal';
 
 export interface SettingsProps {
   isOpen: boolean;
@@ -97,6 +100,13 @@ export const Settings: React.FC<SettingsProps> = ({
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+
+  // 2FA Authenticator Modal State
+  const [isTotpSetupOpen, setIsTotpSetupOpen] = useState(false);
+
+  const currentAdminUser = useMemo(() => {
+    return fullData.currentUser || fullData.users?.find(u => u.role === 'admin');
+  }, [fullData]);
 
   // Pre-Restore Confirmation Modal State
   const [pendingRestoreData, setPendingRestoreData] = useState<AppData | null>(null);
@@ -1365,6 +1375,57 @@ export const Settings: React.FC<SettingsProps> = ({
 
           {activeSubTab === 'password' && (
             <div className="space-y-5 animate-in fade-in duration-200">
+              {/* Authenticator 2FA Security Section */}
+              <div className="bg-gradient-to-r from-indigo-50/90 to-purple-50/90 p-4 rounded-2xl border-2 border-indigo-200/90 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-xs">
+                      <ShieldCheck className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm">Authenticator 2FA Security</h4>
+                      <p className="text-[11px] text-slate-600 font-medium">
+                        Google Authenticator, Authy, or Microsoft Authenticator (TOTP)
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {currentAdminUser?.is2faEnabled ? (
+                      <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-black rounded-full uppercase tracking-wider flex items-center gap-1 border border-emerald-200">
+                        <Check className="w-3 h-3 stroke-[3]" /> 2FA Active
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-[10px] font-bold rounded-full uppercase tracking-wider border border-amber-200">
+                        Setup Required
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-2 border-t border-indigo-100">
+                  <div className="text-xs text-slate-600 space-y-0.5">
+                    <p className="font-semibold text-slate-800">
+                      Admin Email: <span className="font-mono font-bold text-indigo-900">{currentAdminUser?.email || 'admin@fmzpos.com'}</span>
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      {currentAdminUser?.is2faEnabled 
+                        ? '2FA is configured and protecting your login. You can refresh or reset your QR code anytime.'
+                        : 'Click "Setup Now" to generate a QR Code & Secret Key for Google Authenticator.'}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsTotpSetupOpen(true)}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-md shadow-indigo-600/20 shrink-0 cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>{currentAdminUser?.is2faEnabled ? 'Refresh / Reset QR Code & Setup Key' : 'Setup Authenticator 2FA Now'}</span>
+                  </button>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 {/* Change Master Admin Password Form */}
                 <div className="bg-slate-50/60 p-4 rounded-2xl border border-slate-200/80 space-y-4">
@@ -1825,6 +1886,31 @@ export const Settings: React.FC<SettingsProps> = ({
           </div>
         </div>
       )}
+
+      {/* TOTP 2FA Setup / Refresh Modal */}
+      <TotpSetupModal
+        isOpen={isTotpSetupOpen}
+        onClose={() => setIsTotpSetupOpen(false)}
+        adminEmail={currentAdminUser?.email || 'admin@fmzpos.com'}
+        existingSecret={undefined} // Generates a fresh key for reset/refresh
+        onVerifySuccess={(newSecret) => {
+          if (currentAdminUser) {
+            const updatedAdmin: UserAccount = {
+              ...currentAdminUser,
+              totpSecret: newSecret,
+              is2faEnabled: true,
+            };
+            saveUserToFirestore(updatedAdmin, updatedAdmin.storeId);
+            if (onUpdateUsers && fullData.users) {
+              const updatedUsers = fullData.users.map(u => u.id === updatedAdmin.id ? updatedAdmin : u);
+              onUpdateUsers(updatedUsers);
+            }
+          }
+          showToast('Authenticator 2FA key refreshed & locked in successfully!', 'success');
+        }}
+        title="Refresh / Reset Authenticator 2FA Key"
+        description="Scanning the new QR Code will invalidate your previous key. Enter the 6-digit passcode from Google Authenticator to confirm."
+      />
     </div>
   );
 };

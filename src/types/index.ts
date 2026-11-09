@@ -330,6 +330,8 @@ export interface UserAccount {
   role: UserRole;
   storeId?: string; // Hierarchical store isolation ID
   createdAt: string;
+  totpSecret?: string; // Base32 secret string for Authenticator App
+  is2faEnabled?: boolean; // True once TOTP 2FA setup is verified
 }
 
 export interface ShopSettings {

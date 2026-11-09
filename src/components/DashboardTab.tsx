@@ -30,8 +30,12 @@ import {
   Eye,
   Store,
   EyeOff,
-  Lock
+  Lock,
+  ShieldCheck,
 } from 'lucide-react';
+import { TotpSetupModal } from './TotpSetupModal';
+import { saveUserToFirestore } from '../utils/storage';
+import { useToast } from './Toast';
 
 interface DashboardTabProps {
   data: AppData;
@@ -48,6 +52,18 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
 }) => {
   // Dynamic Cash Drawer Engine
   const cashDrawer = useCashDrawer(data);
+
+  const { showToast } = useToast();
+  // 2FA Setup Modal State for Dashboard Banner
+  const [is2faModalOpen, setIs2faModalOpen] = useState(false);
+
+  const currentUser = useMemo(() => {
+    return data.currentUser || data.users?.find(u => u.role === 'admin');
+  }, [data]);
+
+  const is2faMissing = useMemo(() => {
+    return currentUser && currentUser.role === 'admin' && !currentUser.is2faEnabled;
+  }, [currentUser]);
 
   // Cash Ledger Drill-down Modal state
   const [isDrilldownOpen, setIsDrilldownOpen] = useState(false);
@@ -152,6 +168,38 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
+      {/* ======================================================== */}
+      {/* PROMINENT 2FA SECURITY SETUP BANNER FOR UNVERIFIED ADMINS*/}
+      {/* ======================================================== */}
+      {is2faMissing && (
+        <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-purple-900 rounded-3xl p-5 text-white shadow-xl border border-indigo-700/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="flex items-center gap-3.5">
+            <div className="p-3 bg-indigo-500/20 backdrop-blur-md rounded-2xl border border-indigo-400/30 text-indigo-200 shrink-0">
+              <ShieldCheck className="w-7 h-7 text-emerald-400" />
+            </div>
+            <div className="space-y-0.5">
+              <h4 className="font-extrabold text-sm sm:text-base text-white flex flex-wrap items-center gap-2">
+                <span>Setup your Authenticator app for enhanced security</span>
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[10px] font-black uppercase tracking-wider">
+                  Recommended
+                </span>
+              </h4>
+              <p className="text-xs text-indigo-200/90 font-medium leading-relaxed">
+                Protect your store ledger and multi-device account using Google Authenticator, Authy, or Microsoft Authenticator.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIs2faModalOpen(true)}
+            className="w-full sm:w-auto px-5 py-3 bg-emerald-400 hover:bg-emerald-300 active:scale-95 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 cursor-pointer shrink-0"
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span>Setup Now</span>
+          </button>
+        </div>
+      )}
       {/* ======================================================== */}
       {/* REAL-TIME DYNAMIC CASH DRAWER & ASSET BALANCING BANNER   */}
       {/* ======================================================== */}
@@ -711,6 +759,31 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           </div>
         </div>
       )}
+
+      {/* TOTP 2FA Setup Modal from Dashboard Banner */}
+      <TotpSetupModal
+        isOpen={is2faModalOpen}
+        onClose={() => setIs2faModalOpen(false)}
+        adminEmail={currentUser?.email || 'admin@fmzpos.com'}
+        existingSecret={currentUser?.totpSecret}
+        onVerifySuccess={(newSecret) => {
+          if (currentUser) {
+            const updatedUser = {
+              ...currentUser,
+              totpSecret: newSecret,
+              is2faEnabled: true,
+            };
+            saveUserToFirestore(updatedUser, updatedUser.storeId);
+            if (data.users) {
+              data.users = data.users.map(u => u.id === updatedUser.id ? updatedUser : u);
+            }
+            data.currentUser = updatedUser;
+          }
+          showToast('Authenticator 2FA successfully configured & locked in!', 'success');
+        }}
+        title="Setup Authenticator App (2FA)"
+        description="Scan the QR Code using Google Authenticator, Authy, or Microsoft Authenticator and enter the 6-digit passcode to verify."
+      />
     </div>
   );
 };

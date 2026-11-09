@@ -883,8 +883,40 @@ export async function loadAppDataFromFirestore(targetStoreId?: string): Promise<
     const sales: SaleRecord[] = [];
     salesSnap.forEach(docSnap => sales.push(docSnap.data() as SaleRecord));
 
+    if (sales.length === 0 && storeId !== DEFAULT_STORE_ID) {
+      try {
+        const mainSalesSnap = await getDocs(collection(db, STORES_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.SALES));
+        mainSalesSnap.forEach(docSnap => sales.push(docSnap.data() as SaleRecord));
+      } catch {
+        // ignore
+      }
+    }
+
     const inventory: InventoryItem[] = [];
     invSnap.forEach(docSnap => inventory.push(docSnap.data() as InventoryItem));
+
+    // Fallback migration: If this tenant store has 0 inventory items, check if main_store or legacy has products
+    if (inventory.length === 0 && storeId !== DEFAULT_STORE_ID) {
+      try {
+        const mainStoreInvSnap = await getDocs(collection(db, STORES_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.INVENTORY));
+        mainStoreInvSnap.forEach(docSnap => inventory.push(docSnap.data() as InventoryItem));
+
+        if (inventory.length === 0) {
+          const legacyInvSnap = await getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.INVENTORY));
+          legacyInvSnap.forEach(docSnap => inventory.push(docSnap.data() as InventoryItem));
+        }
+
+        // If we found fallback inventory, auto-save them into this store so they persist!
+        if (inventory.length > 0) {
+          console.info(`Auto-migrated ${inventory.length} products from main_store to active store [${storeId}]`);
+          for (const item of inventory) {
+            await saveInventoryItemToFirestore(item, storeId);
+          }
+        }
+      } catch (fallbackErr) {
+        console.warn('Fallback inventory check warning:', fallbackErr);
+      }
+    }
 
     const khata: KhataCustomer[] = [];
     khataSnap.forEach(docSnap => khata.push(docSnap.data() as KhataCustomer));
