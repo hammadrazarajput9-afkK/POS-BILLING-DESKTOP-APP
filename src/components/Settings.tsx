@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { ShopSettings, AppData, AppTheme, UserAccount } from '../types';
 import {
   X,
@@ -127,6 +127,17 @@ export const Settings: React.FC<SettingsProps> = ({
 
   // Iframe-safe User Deletion State
   const [userToDelete, setUserToDelete] = useState<UserAccount | null>(null);
+
+  const currentStoreId = fullData.currentUser?.storeId || fullData.currentUser?.id;
+  const storeScopedUsers: UserAccount[] = useMemo(() => {
+    return (fullData.users || []).filter((u: UserAccount) => {
+      if (u.id === fullData.currentUser?.id) return true;
+      if (currentStoreId && u.storeId) {
+        return u.storeId === currentStoreId;
+      }
+      return true;
+    });
+  }, [fullData.users, fullData.currentUser, currentStoreId]);
 
   if (!isOpen) return null;
 
@@ -371,12 +382,14 @@ export const Settings: React.FC<SettingsProps> = ({
       return;
     }
 
+    const currentAdminStoreId = fullData.currentUser?.storeId || fullData.currentUser?.id || 'main_store';
     const newSalesman: UserAccount = {
       id: 'USR-SLS-' + Date.now(),
       name: salesmanName.trim(),
       email: emailLower,
       password: salesmanPassword,
       role: 'salesman',
+      storeId: currentAdminStoreId, // Explicitly tagged with parent Admin's storeId!
       createdAt: new Date().toISOString(),
     };
 
@@ -1154,7 +1167,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     </span>
                   </div>
                   <p className="text-slate-600 font-medium">
-                    Connected to Firebase project: <strong className="font-mono text-emerald-700">{firebaseConfig.projectId || 'fmz-shop-pos'}</strong> (Collection: <strong className="font-mono text-emerald-700">pos_data</strong>). All inventory, sales invoices, customer credit ledgers, and expenses automatically sync in the cloud with offline resilience.
+                    Connected to Firebase project: <strong className="font-mono text-emerald-700">{firebaseConfig.projectId || 'fmz-shop-pos'}</strong> (Store Partition: <strong className="font-mono text-emerald-700">stores/{currentStoreId || 'main_store'}</strong>). All inventory, sales invoices, customer credit ledgers, and expenses automatically sync in your private isolated store.
                   </p>
                 </div>
               </div>
@@ -1291,12 +1304,12 @@ export const Settings: React.FC<SettingsProps> = ({
                   </div>
 
                   <div className="overflow-y-auto max-h-[220px] pr-1 space-y-2 flex-1">
-                    {(fullData.users || []).length === 0 ? (
+                    {storeScopedUsers.length === 0 ? (
                       <div className="text-center py-8 text-slate-400 text-[11px] font-bold">
                         No secondary users registered. Add a salesman on the left.
                       </div>
                     ) : (
-                      (fullData.users || []).map(usr => (
+                      storeScopedUsers.map(usr => (
                         <div
                           key={usr.id}
                           className="p-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between shadow-3xs gap-2"
@@ -1430,7 +1443,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     </div>
                   </div>
 
-                  {(fullData.users || []).filter(u => u.role === 'salesman').length === 0 ? (
+                  {storeScopedUsers.filter(u => u.role === 'salesman').length === 0 ? (
                     <div className="text-center py-8 bg-white border border-slate-200/70 rounded-xl p-4 space-y-2">
                       <Key className="w-7 h-7 text-slate-300 mx-auto" />
                       <p className="text-xs text-slate-500 font-bold">No Salesman registered yet</p>
@@ -1451,7 +1464,7 @@ export const Settings: React.FC<SettingsProps> = ({
                           className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-amber-500"
                         >
                           <option value="">-- Choose Salesman Account --</option>
-                          {(fullData.users || [])
+                          {storeScopedUsers
                             .filter(u => u.role === 'salesman')
                             .map(s => (
                               <option key={s.id} value={s.id}>

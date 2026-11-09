@@ -111,27 +111,18 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     return () => clearInterval(interval);
   }, [otpCooldown]);
 
-  // Helper to send OTP via EmailJS
-  const dispatchOtp = async (toEmail: string, code: string): Promise<boolean> => {
+  // Helper to send OTP via Brevo HTTP API
+  const dispatchOtp = async (toEmail: string, code: string, recipientName?: string): Promise<{ success: boolean; message?: string }> => {
     setIsSendingOtp(true);
     try {
-      const result = await sendOtpEmail(toEmail, code);
+      const result = await sendOtpEmail(toEmail, code, recipientName);
       setIsSendingOtp(false);
       playEmailSound();
-
-      if (result.success) {
-        showToast(`6-Digit OTP code sent to ${toEmail}. Please check your inbox!`, 'success');
-        return true;
-      } else {
-        // Even if network had a partial issue, notify user
-        showToast(`OTP dispatched to ${toEmail}. Check your email inbox!`, 'info');
-        return true;
-      }
+      return result;
     } catch (err: any) {
       setIsSendingOtp(false);
-      console.error('Email dispatch error:', err);
-      showToast(`OTP generated for ${toEmail}. Check inbox and spam folder.`, 'info');
-      return true;
+      console.error('Brevo API dispatch error:', err);
+      return { success: false, message: err?.message || 'Network error while contacting Brevo API' };
     }
   };
 
@@ -157,17 +148,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       return;
     }
 
+    const adminId = 'USR-ADM-' + Date.now();
     const newAdmin: UserAccount = {
-      id: 'USR-ADM-' + Date.now(),
+      id: adminId,
       name: regName.trim(),
       email: emailNormalized,
       password: regPassword,
       role: 'admin',
+      storeId: adminId, // Isolated multi-tenant store ID matching Admin UID
       createdAt: new Date().toISOString(),
     };
 
-    // Immediately save new admin to Cloud Firestore so other devices can log in right away!
-    saveUserToFirestore(newAdmin).catch(err => {
+    // Immediately save new admin to Cloud Firestore global registry & store collection
+    saveUserToFirestore(newAdmin, adminId).catch(err => {
       console.warn('Failed to save user to Firestore on register:', err);
     });
 
@@ -215,8 +208,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         return;
       }
 
-      showToast(`Welcome back, ${user.name}!`, 'success');
-      onAuthSuccess(user);
+      const resolvedSalesman: UserAccount = {
+        ...user,
+        storeId: user.storeId || 'main_store',
+      };
+
+      showToast(`Welcome back, ${resolvedSalesman.name}!`, 'success');
+      onAuthSuccess(resolvedSalesman);
     } else {
       // Admin Login credentials check
       let adminUser = existingUsers.find(
@@ -247,14 +245,25 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         return;
       }
 
+      const resolvedAdmin: UserAccount = {
+        ...adminUser,
+        storeId: adminUser.storeId || adminUser.id,
+      };
+
       // Generate a secure fresh 6-digit OTP code
       const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-      setPendingAdminUser(adminUser);
+      setPendingAdminUser(resolvedAdmin);
       setExpectedAdminOtp(otpCode);
       setAdminOtpInput(''); // Strictly empty, never pre-filled!
 
-      // Send OTP to Admin's Email via EmailJS
-      await dispatchOtp(adminUser.email, otpCode);
+      // Send OTP to Admin's registered Email via Brevo HTTP API
+      const sendResult = await dispatchOtp(resolvedAdmin.email, otpCode, resolvedAdmin.name);
+
+      if (sendResult.success) {
+        showToast(`6-Digit OTP code sent to ${resolvedAdmin.email} via Brevo. Please check your inbox!`, 'success');
+      } else {
+        showToast(`OTP dispatched. (${sendResult.message || 'Please check email inbox/spam.'})`, 'info');
+      }
 
       // Hide login form and show "Enter 6-Digit OTP Code" screen
       setAdminLoginStep('otp');
@@ -288,7 +297,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     setExpectedAdminOtp(newOtp);
     setAdminOtpInput('');
     setOtpCooldown(60);
-    await dispatchOtp(pendingAdminUser.email, newOtp);
+    const sendResult = await dispatchOtp(pendingAdminUser.email, newOtp, pendingAdminUser.name);
+    if (sendResult.success) {
+      showToast(`Fresh OTP code sent to ${pendingAdminUser.email}!`, 'success');
+    } else {
+      showToast(`Notice: ${sendResult.message || 'OTP regenerated.'}`, 'info');
+    }
   };
 
   // 5. Forgot Password - Request Reset Code
@@ -326,8 +340,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     setForgotOtpInput('');
     setIsSendingForgotOtp(true);
 
-    await dispatchOtp(adminUser.email, code);
+    const sendResult = await dispatchOtp(adminUser.email, code, adminUser.name);
     setIsSendingForgotOtp(false);
+
+    if (sendResult.success) {
+      showToast(`Reset code sent to ${adminUser.email}. Please check your email.`, 'success');
+    } else {
+      showToast(`Notice: ${sendResult.message || 'Verification code dispatched.'}`, 'info');
+    }
     setForgotStep('verify');
   };
 
@@ -378,10 +398,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
     const updatedAdmin: UserAccount = {
       ...adminUser,
+      storeId: adminUser.storeId || adminUser.id,
       password: newPassword,
     };
 
-    saveUserToFirestore(updatedAdmin).catch(err => {
+    saveUserToFirestore(updatedAdmin, updatedAdmin.storeId).catch(err => {
       console.warn('Failed to update password in Firestore:', err);
     });
 

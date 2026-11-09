@@ -328,6 +328,7 @@ export interface UserAccount {
   email: string;
   password?: string;
   role: UserRole;
+  storeId?: string; // Hierarchical store isolation ID
   createdAt: string;
 }
 

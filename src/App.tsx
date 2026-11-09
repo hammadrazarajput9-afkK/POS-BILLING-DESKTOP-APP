@@ -22,6 +22,12 @@ import {
   saveActivityLogToFirestore,
   saveUserToFirestore,
   clearAllStoredData,
+  setActiveStoreId,
+  getActiveStoreId,
+  saveCurrentSession,
+  getSavedSessionUser,
+  clearCurrentSession,
+  loadAppDataFromFirestore,
 } from './utils/storage';
 import { recordImeisReversed, recordImeisAvailable } from './utils/imeiManager';
 import { generateEntityId } from './utils/id';
@@ -166,10 +172,25 @@ function AppContent() {
   const isInitialSyncDoneRef = useRef(false);
 
   useEffect(() => {
+    // Check if an active authenticated user session exists (e.g., across refreshes)
+    const sessionUser = getSavedSessionUser();
+    const targetStoreId = sessionUser ? (sessionUser.storeId || sessionUser.id) : undefined;
+    if (targetStoreId) {
+      setActiveStoreId(targetStoreId);
+    }
+
     migrateAndInitializeData(updatedData => {
-      setData(updatedData);
+      if (sessionUser) {
+        setData({
+          ...updatedData,
+          currentUser: sessionUser,
+          currentRole: sessionUser.role,
+        });
+      } else {
+        setData(updatedData);
+      }
       isInitialSyncDoneRef.current = true;
-    });
+    }, targetStoreId);
   }, []);
 
   // Safeguard: Ensure salesman role is never on admin-only tabs
@@ -193,10 +214,11 @@ function AppContent() {
     }
   }, [data.settings?.theme]);
 
-  // Sync to local storage mirror on state updates
+  // Sync to local storage mirror on state updates (strictly partitioned per store)
   useEffect(() => {
     if (isInitialSyncDoneRef.current || (data.users && data.users.length > 0) || data.inventory.length > 0) {
-      saveStoredData(data);
+      const activeSid = data.currentUser?.storeId || data.currentUser?.id;
+      saveStoredData(data, activeSid);
     }
   }, [data]);
 
@@ -686,6 +708,7 @@ function AppContent() {
   };
 
   const handleLogout = () => {
+    clearCurrentSession();
     setData(prev => ({
       ...prev,
       currentUser: undefined,
@@ -712,22 +735,46 @@ function AppContent() {
             }));
           }}
           onAuthSuccess={user => {
+            const userStoreId = user.storeId || user.id;
+            setActiveStoreId(userStoreId);
+            saveCurrentSession(user);
+
             if (user.role === 'salesman') {
               setActiveTab('pos');
             }
-            setData(prev => {
-              const users = prev.users || [];
-              const userExists = users.some(u => u.id === user.id);
-              const updatedUsers = userExists ? users.map(u => (u.id === user.id ? user : u)) : [...users, user];
-              return {
-                ...prev,
-                users: updatedUsers,
-                currentUser: user,
-                currentRole: user.role,
-              };
+
+            // Immediately load the isolated store's local cached data
+            const localStoreData = loadStoredData(userStoreId);
+            const currentUsers = localStoreData.users || [];
+            const userExists = currentUsers.some(u => u.id === user.id);
+            const updatedUsers = userExists ? currentUsers.map(u => (u.id === user.id ? user : u)) : [...currentUsers, user];
+
+            setData({
+              ...localStoreData,
+              users: updatedUsers,
+              currentUser: user,
+              currentRole: user.role,
             });
-            // Immediately sync this user to Cloud Firestore
-            saveUserToFirestore(user).catch(err => {
+
+            // Sync live remote data for this isolated store from Firestore
+            loadAppDataFromFirestore(userStoreId).then(remoteData => {
+              if (remoteData) {
+                const rUsers = remoteData.users || [];
+                const rUserExists = rUsers.some(u => u.id === user.id);
+                const rUpdatedUsers = rUserExists ? rUsers.map(u => (u.id === user.id ? user : u)) : [...rUsers, user];
+
+                setData({
+                  ...remoteData,
+                  users: rUpdatedUsers,
+                  currentUser: user,
+                  currentRole: user.role,
+                });
+                saveStoredData(remoteData, userStoreId);
+              }
+            });
+
+            // Immediately sync this user to Cloud Firestore global registry & store
+            saveUserToFirestore(user, userStoreId).catch(err => {
               console.warn('Failed to sync authenticated user to Firestore:', err);
             });
           }}
@@ -1007,11 +1054,12 @@ function AppContent() {
           showToast('Backup restored successfully', 'success');
         }}
         onUpdateUsers={(users: UserAccount[]) => {
+          const activeSid = data.currentUser?.storeId || data.currentUser?.id;
           setData(prev => ({ ...prev, users }));
-          saveRootConfigToFirestore({ users }).catch(err => {
+          saveRootConfigToFirestore({ users }, activeSid).catch(err => {
             console.warn('Firestore users sync warning:', err);
           });
-          users.forEach(u => saveUserToFirestore(u).catch(() => {}));
+          users.forEach(u => saveUserToFirestore(u, activeSid).catch(() => {}));
         }}
       />
 

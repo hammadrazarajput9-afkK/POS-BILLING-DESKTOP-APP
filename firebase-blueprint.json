@@ -156,6 +156,10 @@
           "enum": ["admin", "salesman"],
           "description": "System access role"
         },
+        "storeId": {
+          "type": "string",
+          "description": "Tenant store identifier (Store Owner Admin UID)"
+        },
         "createdAt": {
           "type": "string",
           "description": "Account registration timestamp"
@@ -164,33 +168,41 @@
     }
   },
   "firestore": {
-    "/pos_data/{storeId}": {
+    "/users/{userId}": {
+      "schema": "UserAccount",
+      "description": "Global user account registry for cross-device authentication and store mapping"
+    },
+    "/stores/{storeId}": {
       "schema": "StoreConfig",
       "description": "Root store document containing settings, categories, and store metadata"
     },
-    "/pos_data/{storeId}/sales/{saleId}": {
+    "/stores/{storeId}/sales/{saleId}": {
       "schema": "Sale",
-      "description": "Individual sales invoices sub-collection"
+      "description": "Individual sales invoices sub-collection isolated per store"
     },
-    "/pos_data/{storeId}/inventory/{itemId}": {
+    "/stores/{storeId}/inventory/{itemId}": {
       "schema": "InventoryItem",
-      "description": "Inventory stock items sub-collection"
+      "description": "Inventory stock items sub-collection isolated per store"
     },
-    "/pos_data/{storeId}/khata/{customerId}": {
+    "/stores/{storeId}/khata/{customerId}": {
       "schema": "KhataCustomer",
-      "description": "Customer credit accounts and ledgers sub-collection"
+      "description": "Customer credit accounts and ledgers sub-collection isolated per store"
     },
-    "/pos_data/{storeId}/expenses/{expenseId}": {
+    "/stores/{storeId}/expenses/{expenseId}": {
       "schema": "Expense",
-      "description": "Shop daily operational expenses sub-collection"
+      "description": "Shop daily operational expenses sub-collection isolated per store"
     },
-    "/pos_data/{storeId}/activities/{activityId}": {
+    "/stores/{storeId}/activities/{activityId}": {
       "schema": "ActivityLog",
-      "description": "System and operator audit log entries sub-collection"
+      "description": "System and operator audit log entries sub-collection isolated per store"
     },
-    "/pos_data/{storeId}/users/{userId}": {
+    "/stores/{storeId}/users/{userId}": {
       "schema": "UserAccount",
-      "description": "User account profiles for terminal multi-device authentication"
+      "description": "Store user account profiles and salesmen isolated per store"
+    },
+    "/pos_data/{storeId}": {
+      "schema": "StoreConfig",
+      "description": "Legacy store document for seamless backwards compatibility"
     }
   }
 }

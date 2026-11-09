@@ -18,11 +18,28 @@ service cloud.firestore {
       allow write: if isValidId(docId);
     }
 
-    // POS Application Store Data & Sub-Collections
+    // Global multi-tenant user authentication registry (cross-device lookup)
+    match /users/{userId} {
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(userId);
+    }
+
+    // Hierarchical Multi-Tenant Store Data & Sub-Collections (/stores/{storeId}/...)
+    match /stores/{storeId} {
+      allow read, write: if isValidId(storeId);
+
+      // Sub-collections: sales, inventory, khata, expenses, activities, users
+      match /{subcollection}/{docId} {
+        allow get: if isValidId(storeId) && isValidId(subcollection) && isValidId(docId);
+        allow list: if isValidId(storeId) && isValidId(subcollection);
+        allow create, update, delete: if isValidId(storeId) && isValidId(subcollection) && isValidId(docId);
+      }
+    }
+
+    // Backward-compatibility fallback for legacy pos_data paths
     match /pos_data/{storeId} {
       allow read, write: if isValidId(storeId);
 
-      // Sub-collections (sales, inventory, khata, expenses, activities)
       match /{subcollection}/{docId} {
         allow get: if isValidId(storeId) && isValidId(subcollection) && isValidId(docId);
         allow list: if isValidId(storeId) && isValidId(subcollection);

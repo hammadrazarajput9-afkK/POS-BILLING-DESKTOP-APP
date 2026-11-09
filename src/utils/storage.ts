@@ -33,6 +33,38 @@ import {
 } from 'firebase/firestore';
 import { generateEntityId } from './id';
 
+/**
+ * Hierarchical Multi-Tenant Store Configuration:
+ * - Master Store Collection: 'stores'
+ * - Store Document: /stores/{adminStoreId}
+ * - Isolated Sub-collections:
+ *     /stores/{adminStoreId}/sales/{invNo}
+ *     /stores/{adminStoreId}/inventory/{itemId}
+ *     /stores/{adminStoreId}/khata/{customerId}
+ *     /stores/{adminStoreId}/expenses/{expenseId}
+ *     /stores/{adminStoreId}/activities/{activityId}
+ *     /stores/{adminStoreId}/users/{userId}
+ * - Global User Registry for cross-device authentication:
+ *     /users/{userId}
+ */
+export const STORES_COLLECTION = 'stores';
+export const LEGACY_FIRESTORE_COLLECTION = 'pos_data';
+export const DEFAULT_STORE_ID = 'main_store';
+
+// Aliases for backwards compatibility
+export const FIRESTORE_COLLECTION = STORES_COLLECTION;
+export const FIRESTORE_DOCUMENT_ID = DEFAULT_STORE_ID;
+
+export const SUB_COLLECTIONS = {
+  SALES: 'sales',
+  INVENTORY: 'inventory',
+  KHATA: 'khata',
+  EXPENSES: 'expenses',
+  ACTIVITIES: 'activities',
+  USERS: 'users',
+} as const;
+
+// Legacy storage keys
 export const STORAGE_KEY = 'MOBILE_POS_PRO_DATA_V10';
 export const LEGACY_STORAGE_KEYS = [
   'MOBILE_POS_PRO_DATA_V9',
@@ -42,18 +74,63 @@ export const LEGACY_STORAGE_KEYS = [
   'MOBILE_POS_PRO_DATA_V5',
 ];
 
-export const FIRESTORE_COLLECTION = 'pos_data';
-export const FIRESTORE_DOCUMENT_ID = 'main_store';
+// Active runtime store context
+let currentActiveStoreId: string = DEFAULT_STORE_ID;
 
-// Sub-collections to avoid Firestore 1MB document limit
-export const SUB_COLLECTIONS = {
-  SALES: 'sales',
-  INVENTORY: 'inventory',
-  KHATA: 'khata',
-  EXPENSES: 'expenses',
-  ACTIVITIES: 'activities',
-  USERS: 'users',
-} as const;
+export function setActiveStoreId(storeId?: string | null): void {
+  if (storeId && storeId.trim()) {
+    currentActiveStoreId = storeId.trim();
+  }
+}
+
+export function getActiveStoreId(): string {
+  return currentActiveStoreId;
+}
+
+// Partitioned LocalStorage key per store to ensure 100% zero data leakage between admins on the same browser
+export function getLocalStorageKey(storeId?: string): string {
+  const sid = storeId || currentActiveStoreId || DEFAULT_STORE_ID;
+  return `MOBILE_POS_STORE_${sid}_V10`;
+}
+
+// Session persistence for active logged-in user and store
+export const SESSION_STORAGE_KEY = 'MOBILE_POS_ACTIVE_USER_SESSION';
+
+export function saveCurrentSession(user?: UserAccount | null): void {
+  try {
+    if (user) {
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(user));
+      const sid = user.storeId || user.id;
+      setActiveStoreId(sid);
+    } else {
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+    }
+  } catch (e) {
+    console.warn('Session save warning:', e);
+  }
+}
+
+export function getSavedSessionUser(): UserAccount | null {
+  try {
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.id && parsed.email) {
+      return parsed as UserAccount;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+export function clearCurrentSession(): void {
+  try {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
 
 export const defaultSettings: ShopSettings = {
   shopName: 'FMZ Friends Mobile Zone',
@@ -186,6 +263,7 @@ export function validateBackupData(parsed: unknown): BackupValidationResult {
       ram: typeof item.ram === 'string' ? item.ram : undefined,
       storage: typeof item.storage === 'string' ? item.storage : undefined,
       color: typeof item.color === 'string' ? item.color : undefined,
+      variants: Array.isArray(item.variants) ? (item.variants as any) : undefined,
     })),
     khata: rawKhata.map((cust) => ({
       id: typeof cust.id === 'string' ? cust.id : generateEntityId('KHT'),
@@ -286,56 +364,57 @@ export function sanitizeForFirestore<T>(obj: T): unknown {
 }
 
 /**
- * Refactored Firestore Architecture (Sub-collections):
- * 1. Root Document: pos_data/main_store holds configuration and metadata
- * 2. Sub-collections:
- *    - pos_data/main_store/sales/{invNo}
- *    - pos_data/main_store/inventory/{id}
- *    - pos_data/main_store/khata/{id}
- *    - pos_data/main_store/expenses/{id}
- *    - pos_data/main_store/activities/{id}
+ * Resolves the active store document reference.
  */
+function getStoreDocRef(storeId?: string) {
+  const sid = storeId || currentActiveStoreId || DEFAULT_STORE_ID;
+  return doc(db, STORES_COLLECTION, sid);
+}
 
 /**
- * Saves a sale atomically using Firestore writeBatch:
- * - Writes Sale to `pos_data/main_store/sales/{invNo}`
- * - Updates affected inventory items in `pos_data/main_store/inventory/{itemId}`
- * - Updates customer balance in `pos_data/main_store/khata/{customerId}` if credit sale
- * - Records activity in `pos_data/main_store/activities/{actId}`
- * - Updates root metadata
+ * Saves a sale atomically using Firestore writeBatch inside the isolated store:
+ * - Writes Sale to `/stores/{storeId}/sales/{invNo}`
+ * - Updates affected inventory items in `/stores/{storeId}/inventory/{itemId}`
+ * - Updates customer balance in `/stores/{storeId}/khata/{customerId}` if credit sale
+ * - Records activity in `/stores/{storeId}/activities/{actId}`
+ * - Updates store root metadata
  */
-export async function saveSaleAtomic(params: {
-  sale: SaleRecord;
-  inventoryUpdates: Array<{
-    id: string;
-    newQty: number;
-    remainingImeis?: string[];
-  }>;
-  khataUpdate?: {
-    customerId: string;
-    newBalance: number;
-    transaction: {
+export async function saveSaleAtomic(
+  params: {
+    sale: SaleRecord;
+    inventoryUpdates: Array<{
       id: string;
-      date: string;
-      type: 'credit' | 'payment' | 'debit';
-      amount: number;
-      note?: string;
+      newQty: number;
+      remainingImeis?: string[];
+    }>;
+    khataUpdate?: {
+      customerId: string;
+      newBalance: number;
+      transaction: {
+        id: string;
+        date: string;
+        type: 'credit' | 'payment' | 'debit';
+        amount: number;
+        note?: string;
+      };
     };
-  };
-  activity?: ActivityLog;
-}): Promise<void> {
+    activity?: ActivityLog;
+  },
+  targetStoreId?: string
+): Promise<void> {
+  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   const { sale, inventoryUpdates, khataUpdate, activity } = params;
 
   try {
     const batch = writeBatch(db);
 
-    // 1. Write sale document
-    const saleDocRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.SALES, sale.invNo);
+    // 1. Write sale document into isolated store
+    const saleDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.SALES, sale.invNo);
     batch.set(saleDocRef, sanitizeForFirestore(sale) as Record<string, unknown>);
 
     // 2. Atomic update to inventory subcollection
     for (const invUpdate of inventoryUpdates) {
-      const invDocRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.INVENTORY, invUpdate.id);
+      const invDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.INVENTORY, invUpdate.id);
       const updateData: Record<string, unknown> = {
         qty: invUpdate.newQty,
       };
@@ -348,7 +427,7 @@ export async function saveSaleAtomic(params: {
 
     // 3. Atomic update to Khata customer if credit sale
     if (khataUpdate) {
-      const khataDocRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.KHATA, khataUpdate.customerId);
+      const khataDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.KHATA, khataUpdate.customerId);
       const custSnap = await getDoc(khataDocRef);
       if (custSnap.exists()) {
         const currentData = custSnap.data() as KhataCustomer;
@@ -367,12 +446,12 @@ export async function saveSaleAtomic(params: {
 
     // 4. Activity logging
     if (activity) {
-      const actDocRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.ACTIVITIES, activity.id);
+      const actDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.ACTIVITIES, activity.id);
       batch.set(actDocRef, sanitizeForFirestore(activity) as Record<string, unknown>);
     }
 
-    // 5. Update root document timestamp
-    const rootDocRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID);
+    // 5. Update store root document timestamp
+    const rootDocRef = doc(db, STORES_COLLECTION, storeId);
     batch.set(
       rootDocRef,
       {
@@ -384,128 +463,139 @@ export async function saveSaleAtomic(params: {
 
     await batch.commit();
   } catch (err) {
-    console.error('Failed to commit atomic sale in Firestore:', err);
+    console.error(`Failed to commit atomic sale in Firestore for store [${storeId}]:`, err);
     throw err;
   }
 }
 
 /**
- * Deletes a sale document from `pos_data/main_store/sales/{invNo}`
+ * Deletes a sale document from `/stores/{storeId}/sales/{invNo}`
  */
-export async function deleteSaleFromFirestore(invNo: string): Promise<void> {
+export async function deleteSaleFromFirestore(invNo: string, targetStoreId?: string): Promise<void> {
+  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   try {
-    const saleDocRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.SALES, invNo);
+    const saleDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.SALES, invNo);
     await deleteDoc(saleDocRef);
   } catch (err) {
-    console.warn('Failed to delete sale from Firestore:', err);
+    console.warn(`Failed to delete sale [${invNo}] from store [${storeId}]:`, err);
   }
 }
 
 /**
- * Updates a sale document in `pos_data/main_store/sales/{invNo}`
+ * Updates a sale document in `/stores/{storeId}/sales/{invNo}`
  */
-export async function updateSaleInFirestore(sale: SaleRecord): Promise<void> {
+export async function updateSaleInFirestore(sale: SaleRecord, targetStoreId?: string): Promise<void> {
+  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   try {
-    const saleDocRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.SALES, sale.invNo);
+    const saleDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.SALES, sale.invNo);
     await setDoc(saleDocRef, sanitizeForFirestore(sale) as Record<string, unknown>, { merge: true });
   } catch (err) {
-    console.warn('Failed to update sale in Firestore:', err);
+    console.warn(`Failed to update sale [${sale.invNo}] in store [${storeId}]:`, err);
   }
 }
 
 /**
- * Saves a single inventory item to `pos_data/main_store/inventory/{id}`
+ * Saves a single inventory item to `/stores/{storeId}/inventory/{id}`
  */
-export async function saveInventoryItemToFirestore(item: InventoryItem): Promise<void> {
+export async function saveInventoryItemToFirestore(item: InventoryItem, targetStoreId?: string): Promise<void> {
+  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   try {
-    const itemDocRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.INVENTORY, item.id);
+    const itemDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.INVENTORY, item.id);
     await setDoc(itemDocRef, sanitizeForFirestore(item) as Record<string, unknown>, { merge: true });
   } catch (err) {
-    console.warn('Failed to save inventory item to Firestore:', err);
+    console.warn(`Failed to save inventory item [${item.id}] to store [${storeId}]:`, err);
   }
 }
 
 /**
- * Deletes an inventory item from `pos_data/main_store/inventory/{id}`
+ * Deletes an inventory item from `/stores/{storeId}/inventory/{id}`
  */
-export async function deleteInventoryItemFromFirestore(id: string): Promise<void> {
+export async function deleteInventoryItemFromFirestore(id: string, targetStoreId?: string): Promise<void> {
+  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   try {
-    const itemDocRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.INVENTORY, id);
+    const itemDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.INVENTORY, id);
     await deleteDoc(itemDocRef);
   } catch (err) {
-    console.warn('Failed to delete inventory item from Firestore:', err);
+    console.warn(`Failed to delete inventory item [${id}] from store [${storeId}]:`, err);
   }
 }
 
 /**
- * Saves a single Khata customer to `pos_data/main_store/khata/{id}`
+ * Saves a single Khata customer to `/stores/{storeId}/khata/{id}`
  */
-export async function saveKhataCustomerToFirestore(customer: KhataCustomer): Promise<void> {
+export async function saveKhataCustomerToFirestore(customer: KhataCustomer, targetStoreId?: string): Promise<void> {
+  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   try {
-    const custDocRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.KHATA, customer.id);
+    const custDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.KHATA, customer.id);
     await setDoc(custDocRef, sanitizeForFirestore(customer) as Record<string, unknown>, { merge: true });
   } catch (err) {
-    console.warn('Failed to save Khata customer to Firestore:', err);
+    console.warn(`Failed to save Khata customer [${customer.id}] to store [${storeId}]:`, err);
   }
 }
 
 /**
- * Deletes a Khata customer from `pos_data/main_store/khata/{id}`
+ * Deletes a Khata customer from `/stores/{storeId}/khata/{id}`
  */
-export async function deleteKhataCustomerFromFirestore(id: string): Promise<void> {
+export async function deleteKhataCustomerFromFirestore(id: string, targetStoreId?: string): Promise<void> {
+  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   try {
-    const custDocRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.KHATA, id);
+    const custDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.KHATA, id);
     await deleteDoc(custDocRef);
   } catch (err) {
-    console.warn('Failed to delete Khata customer from Firestore:', err);
+    console.warn(`Failed to delete Khata customer [${id}] from store [${storeId}]:`, err);
   }
 }
 
 /**
- * Saves an expense item to `pos_data/main_store/expenses/{id}`
+ * Saves an expense item to `/stores/{storeId}/expenses/{id}`
  */
-export async function saveExpenseItemToFirestore(expense: ExpenseItem): Promise<void> {
+export async function saveExpenseItemToFirestore(expense: ExpenseItem, targetStoreId?: string): Promise<void> {
+  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   try {
-    const expDocRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.EXPENSES, expense.id);
+    const expDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.EXPENSES, expense.id);
     await setDoc(expDocRef, sanitizeForFirestore(expense) as Record<string, unknown>, { merge: true });
   } catch (err) {
-    console.warn('Failed to save expense item to Firestore:', err);
+    console.warn(`Failed to save expense item [${expense.id}] to store [${storeId}]:`, err);
   }
 }
 
 /**
- * Deletes an expense item from `pos_data/main_store/expenses/{id}`
+ * Deletes an expense item from `/stores/{storeId}/expenses/{id}`
  */
-export async function deleteExpenseItemFromFirestore(id: string): Promise<void> {
+export async function deleteExpenseItemFromFirestore(id: string, targetStoreId?: string): Promise<void> {
+  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   try {
-    const expDocRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.EXPENSES, id);
+    const expDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.EXPENSES, id);
     await deleteDoc(expDocRef);
   } catch (err) {
-    console.warn('Failed to delete expense item from Firestore:', err);
+    console.warn(`Failed to delete expense item [${id}] from store [${storeId}]:`, err);
   }
 }
 
 /**
- * Saves an activity log to `pos_data/main_store/activities/{id}`
+ * Saves an activity log to `/stores/{storeId}/activities/{id}`
  */
-export async function saveActivityLogToFirestore(activity: ActivityLog): Promise<void> {
+export async function saveActivityLogToFirestore(activity: ActivityLog, targetStoreId?: string): Promise<void> {
+  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   try {
-    const actDocRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.ACTIVITIES, activity.id);
+    const actDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.ACTIVITIES, activity.id);
     await setDoc(actDocRef, sanitizeForFirestore(activity) as Record<string, unknown>);
   } catch (err) {
-    console.warn('Failed to save activity log to Firestore:', err);
+    console.warn(`Failed to save activity log [${activity.id}] to store [${storeId}]:`, err);
   }
 }
 
 /**
- * Saves root configuration and settings to `pos_data/main_store`
+ * Saves root configuration and settings to `/stores/{storeId}`
  */
-export async function saveRootConfigToFirestore(data: Partial<AppData>): Promise<void> {
+export async function saveRootConfigToFirestore(data: Partial<AppData>, targetStoreId?: string): Promise<void> {
+  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   try {
-    const rootDocRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID);
+    const rootDocRef = doc(db, STORES_COLLECTION, storeId);
     const configToSave: Record<string, unknown> = {
       backupVersion: CURRENT_BACKUP_VERSION,
       lastModified: new Date().toISOString(),
+      storeId,
       settings: data.settings || defaultSettings,
       categories: data.categories || defaultCategories,
       expenseCategories: data.expenseCategories || defaultExpenseCategories,
@@ -520,47 +610,68 @@ export async function saveRootConfigToFirestore(data: Partial<AppData>): Promise
       currentRole: data.currentRole || 'admin',
     };
 
-    // Protect existing users from accidental wipe on startup
     if (data.users && data.users.length > 0) {
       configToSave.users = data.users;
     }
 
     await setDoc(rootDocRef, sanitizeForFirestore(configToSave) as Record<string, unknown>, { merge: true });
   } catch (err) {
-    console.warn('Failed to save root config to Firestore:', err);
+    console.warn(`Failed to save root config for store [${storeId}]:`, err);
   }
 }
 
 /**
- * Dedicated persistence for an individual user in Firestore sub-collection & root
+ * Dual Persistence for User Accounts:
+ * 1. Global registry at `/users/{user.id}` (enables instant multi-device login discovery)
+ * 2. Store sub-collection at `/stores/{storeId}/users/{user.id}`
+ * 3. Store root document `users` array
  */
-export async function saveUserToFirestore(user: UserAccount): Promise<void> {
-  try {
-    const userDocRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.USERS, user.id);
-    await setDoc(userDocRef, sanitizeForFirestore(user) as Record<string, unknown>, { merge: true });
+export async function saveUserToFirestore(user: UserAccount, targetStoreId?: string): Promise<void> {
+  const effectiveStoreId = user.storeId || targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
+  const userWithStore: UserAccount = {
+    ...user,
+    storeId: effectiveStoreId,
+  };
 
-    const rootDocRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID);
+  try {
+    // 1. Save to global authentication registry so ANY device can look up this account
+    const globalUserDocRef = doc(db, 'users', userWithStore.id);
+    await setDoc(globalUserDocRef, sanitizeForFirestore(userWithStore) as Record<string, unknown>, { merge: true });
+
+    // 2. Save into the tenant store's users sub-collection
+    const storeUserDocRef = doc(db, STORES_COLLECTION, effectiveStoreId, SUB_COLLECTIONS.USERS, userWithStore.id);
+    await setDoc(storeUserDocRef, sanitizeForFirestore(userWithStore) as Record<string, unknown>, { merge: true });
+
+    // 3. Update users list in store root document
+    const rootDocRef = doc(db, STORES_COLLECTION, effectiveStoreId);
     const rootSnap = await getDoc(rootDocRef);
     if (rootSnap.exists()) {
       const curUsers = (rootSnap.data()?.users as UserAccount[]) || [];
-      const idx = curUsers.findIndex(u => u.id === user.id);
-      const updated = idx >= 0 ? curUsers.map(u => (u.id === user.id ? user : u)) : [...curUsers, user];
+      const idx = curUsers.findIndex(u => u.id === userWithStore.id);
+      const updated = idx >= 0 ? curUsers.map(u => (u.id === userWithStore.id ? userWithStore : u)) : [...curUsers, userWithStore];
       await setDoc(rootDocRef, { users: sanitizeForFirestore(updated) }, { merge: true });
     }
   } catch (err) {
-    console.warn('Failed to save individual user to Firestore:', err);
+    console.warn('Failed to save user account to Firestore:', err);
   }
 }
 
 /**
- * Deletes an individual user document from Firestore
+ * Deletes an individual user document from global registry and store
  */
-export async function deleteUserFromFirestore(userId: string): Promise<void> {
+export async function deleteUserFromFirestore(userId: string, targetStoreId?: string): Promise<void> {
+  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   try {
-    const userDocRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.USERS, userId);
-    await deleteDoc(userDocRef);
+    // 1. Delete from global registry
+    const globalUserDocRef = doc(db, 'users', userId);
+    await deleteDoc(globalUserDocRef).catch(() => {});
 
-    const rootDocRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID);
+    // 2. Delete from store sub-collection
+    const storeUserDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.USERS, userId);
+    await deleteDoc(storeUserDocRef).catch(() => {});
+
+    // 3. Update store root doc users list
+    const rootDocRef = doc(db, STORES_COLLECTION, storeId);
     const rootSnap = await getDoc(rootDocRef);
     if (rootSnap.exists()) {
       const curUsers = (rootSnap.data()?.users as UserAccount[]) || [];
@@ -568,37 +679,72 @@ export async function deleteUserFromFirestore(userId: string): Promise<void> {
       await setDoc(rootDocRef, { users: sanitizeForFirestore(updated) }, { merge: true });
     }
   } catch (err) {
-    console.warn('Failed to delete individual user from Firestore:', err);
+    console.warn(`Failed to delete user [${userId}] from Firestore:`, err);
   }
 }
 
 /**
- * Fetches live user profiles from Firestore for instant login across devices
+ * Fetches all registered live user profiles from Firestore for multi-device authentication.
+ * Searches global `/users` collection and checks legacy paths if needed.
  */
 export async function fetchLiveUsersFromFirestore(): Promise<UserAccount[]> {
   try {
-    const [subSnap, rootSnap] = await Promise.all([
-      getDocs(collection(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.USERS)).catch(() => ({
-        docs: [],
-        forEach: () => {},
-      } as any)),
-      getDoc(doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID)).catch(() => null),
-    ]);
-
     const usersMap = new Map<string, UserAccount>();
 
-    if (rootSnap && rootSnap.exists()) {
-      const rootUsers = (rootSnap.data()?.users as UserAccount[]) || [];
-      rootUsers.forEach(u => {
-        if (u && u.id) usersMap.set(u.id, u);
+    // 1. Global registry
+    try {
+      const globalSnap = await getDocs(collection(db, 'users'));
+      globalSnap.forEach(d => {
+        const u = d.data() as UserAccount;
+        if (u && u.id) {
+          // Normalize storeId if missing
+          if (!u.storeId) {
+            u.storeId = u.role === 'admin' ? u.id : DEFAULT_STORE_ID;
+          }
+          usersMap.set(u.id, u);
+        }
       });
+    } catch {
+      // Continue to fallback checks
     }
 
-    if (subSnap && subSnap.docs) {
-      subSnap.forEach((d: any) => {
+    // 2. Check current store's users sub-collection
+    try {
+      const sid = currentActiveStoreId || DEFAULT_STORE_ID;
+      const storeUsersSnap = await getDocs(collection(db, STORES_COLLECTION, sid, SUB_COLLECTIONS.USERS));
+      storeUsersSnap.forEach(d => {
         const u = d.data() as UserAccount;
-        if (u && u.id) usersMap.set(u.id, u);
+        if (u && u.id && !usersMap.has(u.id)) {
+          if (!u.storeId) u.storeId = sid;
+          usersMap.set(u.id, u);
+        }
       });
+    } catch {
+      // ignore
+    }
+
+    // 3. Legacy compatibility fallback: /pos_data/main_store/users
+    try {
+      const legacySnap = await getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.USERS));
+      legacySnap.forEach(d => {
+        const u = d.data() as UserAccount;
+        if (u && u.id && !usersMap.has(u.id)) {
+          if (!u.storeId) u.storeId = u.role === 'admin' ? u.id : DEFAULT_STORE_ID;
+          usersMap.set(u.id, u);
+        }
+      });
+      const legacyRootSnap = await getDoc(doc(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID));
+      if (legacyRootSnap.exists()) {
+        const legacyRootUsers = (legacyRootSnap.data()?.users as UserAccount[]) || [];
+        legacyRootUsers.forEach(u => {
+          if (u && u.id && !usersMap.has(u.id)) {
+            if (!u.storeId) u.storeId = u.role === 'admin' ? u.id : DEFAULT_STORE_ID;
+            usersMap.set(u.id, u);
+          }
+        });
+      }
+    } catch {
+      // ignore
     }
 
     return Array.from(usersMap.values());
@@ -609,20 +755,21 @@ export async function fetchLiveUsersFromFirestore(): Promise<UserAccount[]> {
 }
 
 /**
- * Saves complete AppData to Firestore using chunked write batches to populate sub-collections.
- * Ideal for manual backup restore or initial migration.
+ * Saves complete AppData to Firestore under `/stores/{storeId}` using chunked write batches.
  */
-export async function saveAppDataToFirestore(data: AppData): Promise<void> {
+export async function saveAppDataToFirestore(data: AppData, targetStoreId?: string): Promise<void> {
+  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
+
   try {
     // 1. Save root document
-    await saveRootConfigToFirestore(data);
+    await saveRootConfigToFirestore(data, storeId);
 
     // 2. Save Inventory in batches
     const inventoryChunks = chunkArray(data.inventory || [], 450);
     for (const chunk of inventoryChunks) {
       const batch = writeBatch(db);
       for (const item of chunk) {
-        const itemRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.INVENTORY, item.id);
+        const itemRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.INVENTORY, item.id);
         batch.set(itemRef, sanitizeForFirestore(item) as Record<string, unknown>);
       }
       await batch.commit();
@@ -633,7 +780,7 @@ export async function saveAppDataToFirestore(data: AppData): Promise<void> {
     for (const chunk of salesChunks) {
       const batch = writeBatch(db);
       for (const sale of chunk) {
-        const saleRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.SALES, sale.invNo);
+        const saleRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.SALES, sale.invNo);
         batch.set(saleRef, sanitizeForFirestore(sale) as Record<string, unknown>);
       }
       await batch.commit();
@@ -644,7 +791,7 @@ export async function saveAppDataToFirestore(data: AppData): Promise<void> {
     for (const chunk of khataChunks) {
       const batch = writeBatch(db);
       for (const cust of chunk) {
-        const custRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.KHATA, cust.id);
+        const custRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.KHATA, cust.id);
         batch.set(custRef, sanitizeForFirestore(cust) as Record<string, unknown>);
       }
       await batch.commit();
@@ -655,7 +802,7 @@ export async function saveAppDataToFirestore(data: AppData): Promise<void> {
     for (const chunk of expenseChunks) {
       const batch = writeBatch(db);
       for (const exp of chunk) {
-        const expRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.EXPENSES, exp.id);
+        const expRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.EXPENSES, exp.id);
         batch.set(expRef, sanitizeForFirestore(exp) as Record<string, unknown>);
       }
       await batch.commit();
@@ -666,67 +813,68 @@ export async function saveAppDataToFirestore(data: AppData): Promise<void> {
     if (recentActivities.length > 0) {
       const batch = writeBatch(db);
       for (const act of recentActivities) {
-        const actRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.ACTIVITIES, act.id);
+        const actRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.ACTIVITIES, act.id);
         batch.set(actRef, sanitizeForFirestore(act) as Record<string, unknown>);
       }
       await batch.commit();
     }
   } catch (error) {
-    console.error('Error saving data to Firebase Firestore sub-collections:', error);
+    console.error(`Error saving data to Firebase Firestore store [${storeId}]:`, error);
     if (
       error instanceof Error &&
       (error.message.includes('permission') || (error as any).code === 'permission-denied')
     ) {
-      handleFirestoreError(error, OperationType.WRITE, `${FIRESTORE_COLLECTION}/${FIRESTORE_DOCUMENT_ID}`);
+      handleFirestoreError(error, OperationType.WRITE, `${STORES_COLLECTION}/${storeId}`);
     }
     throw error;
   }
 }
 
 /**
- * Loads POS application data from Firebase Firestore sub-collections architecture.
- * Automatically checks for legacy single-document data and migrates it seamlessly!
+ * Loads isolated POS store data from Firebase Firestore.
+ * Supports automatic fallback migration from legacy pos_data/main_store if the primary store is not yet initialized.
  */
-export async function loadAppDataFromFirestore(): Promise<AppData | null> {
-  try {
-    const rootDocRef = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID);
-    const rootDocSnap = await getDoc(rootDocRef);
+export async function loadAppDataFromFirestore(targetStoreId?: string): Promise<AppData | null> {
+  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
 
+  try {
+    let rootDocRef = doc(db, STORES_COLLECTION, storeId);
+    let rootDocSnap = await getDoc(rootDocRef);
+
+    // If store document does not exist yet, check if legacy pos_data/main_store exists for backward compatibility
     if (!rootDocSnap.exists()) {
+      const legacyRef = doc(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID);
+      const legacySnap = await getDoc(legacyRef);
+
+      if (legacySnap.exists() && (storeId === DEFAULT_STORE_ID || storeId.startsWith('USR-ADM-'))) {
+        console.info(`Migrating legacy store data from [${LEGACY_FIRESTORE_COLLECTION}/${DEFAULT_STORE_ID}] to [${STORES_COLLECTION}/${storeId}]...`);
+        // Load legacy sub-collections and migrate
+        const legacyData = await loadAppDataFromLegacyFirestore();
+        if (legacyData) {
+          await saveAppDataToFirestore(legacyData, storeId);
+          return legacyData;
+        }
+      }
+
       return null;
     }
 
     const rootData = rootDocSnap.data() as Record<string, unknown>;
 
-    // Check if legacy monolithic structure exists on root doc, and auto-migrate if needed
-    const hasLegacyMonolith =
-      (Array.isArray(rootData.inventory) && rootData.inventory.length > 0) ||
-      (Array.isArray(rootData.sales) && rootData.sales.length > 0) ||
-      (Array.isArray(rootData.khata) && rootData.khata.length > 0);
-
-    if (hasLegacyMonolith) {
-      console.info('Legacy monolithic document detected. Auto-migrating to Firestore sub-collections...');
-      const legacyValidation = validateBackupData(rootData);
-      if (legacyValidation.valid && legacyValidation.data) {
-        await saveAppDataToFirestore(legacyValidation.data);
-        return legacyValidation.data;
-      }
-    }
-
-    // Load sub-collections in parallel including users
+    // Load sub-collections for this isolated store in parallel
     const [salesSnap, invSnap, khataSnap, expSnap, actSnap, usersSnap] = await Promise.all([
-      getDocs(collection(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.SALES)),
-      getDocs(collection(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.INVENTORY)),
-      getDocs(collection(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.KHATA)),
-      getDocs(collection(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.EXPENSES)),
+      getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.SALES)),
+      getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.INVENTORY)),
+      getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.KHATA)),
+      getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.EXPENSES)),
       getDocs(
         query(
-          collection(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.ACTIVITIES),
+          collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.ACTIVITIES),
           orderBy('timestamp', 'desc'),
           limit(300)
         )
-      ).catch(() => getDocs(collection(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.ACTIVITIES))),
-      getDocs(collection(db, FIRESTORE_COLLECTION, FIRESTORE_DOCUMENT_ID, SUB_COLLECTIONS.USERS)).catch(() => ({
+      ).catch(() => getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.ACTIVITIES))),
+      getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.USERS)).catch(() => ({
         docs: [],
         forEach: () => {},
       } as any)),
@@ -747,7 +895,7 @@ export async function loadAppDataFromFirestore(): Promise<AppData | null> {
     const activities: ActivityLog[] = [];
     actSnap.forEach(docSnap => activities.push(docSnap.data() as ActivityLog));
 
-    // Reconcile users from sub-collection and root document
+    // Reconcile users for this store
     const subUsers: UserAccount[] = [];
     if (usersSnap && usersSnap.docs) {
       usersSnap.forEach((docSnap: any) => subUsers.push(docSnap.data() as UserAccount));
@@ -762,7 +910,6 @@ export async function loadAppDataFromFirestore(): Promise<AppData | null> {
     });
     const assembledUsers = Array.from(usersMap.values());
 
-    // Assemble unified AppData
     const assembledData: AppData = {
       backupVersion: CURRENT_BACKUP_VERSION,
       lastModified: typeof rootData.lastModified === 'string' ? rootData.lastModified : new Date().toISOString(),
@@ -789,33 +936,111 @@ export async function loadAppDataFromFirestore(): Promise<AppData | null> {
 
     return assembledData;
   } catch (error) {
-    console.error('Error loading data from Firebase Firestore sub-collections:', error);
+    console.error(`Error loading data from Firebase Firestore store [${storeId}]:`, error);
     if (
       error instanceof Error &&
       (error.message.includes('permission') || (error as any).code === 'permission-denied')
     ) {
-      handleFirestoreError(error, OperationType.GET, `${FIRESTORE_COLLECTION}/${FIRESTORE_DOCUMENT_ID}`);
+      handleFirestoreError(error, OperationType.GET, `${STORES_COLLECTION}/${storeId}`);
     }
     return null;
   }
 }
 
 /**
- * Loads data from localStorage with schema version migration.
+ * Internal helper to read legacy pos_data/main_store for migration
  */
-export function loadStoredData(): AppData {
+async function loadAppDataFromLegacyFirestore(): Promise<AppData | null> {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const rootDocRef = doc(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID);
+    const rootDocSnap = await getDoc(rootDocRef);
+    if (!rootDocSnap.exists()) return null;
+    const rootData = rootDocSnap.data() as Record<string, unknown>;
 
-    if (!raw) {
-      return initialCleanData;
+    const [salesSnap, invSnap, khataSnap, expSnap, actSnap, usersSnap] = await Promise.all([
+      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.SALES)).catch(() => ({ docs: [], forEach: () => {} } as any)),
+      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.INVENTORY)).catch(() => ({ docs: [], forEach: () => {} } as any)),
+      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.KHATA)).catch(() => ({ docs: [], forEach: () => {} } as any)),
+      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.EXPENSES)).catch(() => ({ docs: [], forEach: () => {} } as any)),
+      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.ACTIVITIES)).catch(() => ({ docs: [], forEach: () => {} } as any)),
+      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.USERS)).catch(() => ({ docs: [], forEach: () => {} } as any)),
+    ]);
+
+    const sales: SaleRecord[] = [];
+    salesSnap.forEach((d: any) => sales.push(d.data()));
+
+    const inventory: InventoryItem[] = [];
+    invSnap.forEach((d: any) => inventory.push(d.data()));
+
+    const khata: KhataCustomer[] = [];
+    khataSnap.forEach((d: any) => khata.push(d.data()));
+
+    const expenses: ExpenseItem[] = [];
+    expSnap.forEach((d: any) => expenses.push(d.data()));
+
+    const activities: ActivityLog[] = [];
+    actSnap.forEach((d: any) => activities.push(d.data()));
+
+    const users: UserAccount[] = [];
+    usersSnap.forEach((d: any) => users.push(d.data()));
+    const rootUsers = (rootData.users as UserAccount[]) || [];
+    const usersMap = new Map<string, UserAccount>();
+    rootUsers.forEach(u => u && u.id && usersMap.set(u.id, u));
+    users.forEach(u => u && u.id && usersMap.set(u.id, u));
+
+    return {
+      backupVersion: CURRENT_BACKUP_VERSION,
+      lastModified: new Date().toISOString(),
+      settings: (rootData.settings as ShopSettings) || defaultSettings,
+      categories: (rootData.categories as string[]) || defaultCategories,
+      expenseCategories: (rootData.expenseCategories as string[]) || defaultExpenseCategories,
+      onlineAccounts: (rootData.onlineAccounts as OnlineAccount[]) || defaultOnlineAccounts,
+      dailyClosings: (rootData.dailyClosings as DailyClosingRecord[]) || [],
+      imeiRecords: (rootData.imeiRecords as ImeiRecord[]) || [],
+      stockAdjustments: (rootData.stockAdjustments as StockAdjustment[]) || [],
+      purchasesLedger: (rootData.purchasesLedger as PurchaseLedgerEntry[]) || [],
+      supplierPurchases: (rootData.supplierPurchases as SupplierPurchase[]) || [],
+      salesReturns: (rootData.salesReturns as SalesReturnRecord[]) || [],
+      tabPreferences: (rootData.tabPreferences as TabPreferences) || {},
+      users: Array.from(usersMap.values()),
+      currentRole: 'admin',
+      inventory,
+      sales,
+      khata,
+      expenses,
+      activities,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Loads data from isolated localStorage partition with schema version migration.
+ */
+export function loadStoredData(targetStoreId?: string): AppData {
+  try {
+    const key = getLocalStorageKey(targetStoreId);
+    const raw = localStorage.getItem(key);
+
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const validation = validateBackupData(parsed);
+      if (validation.valid && validation.data) {
+        return validation.data;
+      }
     }
 
-    const parsed = JSON.parse(raw);
-    const validation = validateBackupData(parsed);
-    if (validation.valid && validation.data) {
-      return validation.data;
+    // Fallback to legacy unpartitioned key only if loading default/first store
+    const legacyRaw = localStorage.getItem(STORAGE_KEY);
+    if (legacyRaw && (!targetStoreId || targetStoreId === DEFAULT_STORE_ID)) {
+      const parsedLegacy = JSON.parse(legacyRaw);
+      const validation = validateBackupData(parsedLegacy);
+      if (validation.valid && validation.data) {
+        return validation.data;
+      }
     }
+
     return initialCleanData;
   } catch (error) {
     console.error('Failed to parse local stored data:', error);
@@ -826,80 +1051,87 @@ export function loadStoredData(): AppData {
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 
 /**
- * Primary save routine: Updates local storage mirror and syncs subcollections.
+ * Primary save routine: Updates isolated local storage mirror and syncs store config.
  */
-export function saveStoredData(data: AppData): void {
+export function saveStoredData(data: AppData, targetStoreId?: string): void {
+  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   const dataWithMeta: AppData = {
     ...data,
     backupVersion: CURRENT_BACKUP_VERSION,
     lastModified: new Date().toISOString(),
   };
 
-  // 1. Fast local cache update
+  // 1. Fast isolated local cache update
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(dataWithMeta));
+    const key = getLocalStorageKey(storeId);
+    localStorage.setItem(key, JSON.stringify(dataWithMeta));
   } catch (error) {
     console.warn('LocalStorage save failed:', error);
   }
 
-  // 2. Debounced save for root config
+  // 2. Debounced save for store root config
   if (saveTimeout) {
     clearTimeout(saveTimeout);
   }
   saveTimeout = setTimeout(() => {
-    saveRootConfigToFirestore(dataWithMeta).catch(err => {
-      console.warn('Firebase Firestore remote save warning:', err);
+    saveRootConfigToFirestore(dataWithMeta, storeId).catch(err => {
+      console.warn(`Firebase Firestore remote save warning for store [${storeId}]:`, err);
     });
   }, 400);
 }
 
 /**
  * Safe Data Migration and Initialization Utility:
- * Replaces risky startup wipe routines. Safely migrates schemas and reconciles local & remote data.
+ * Migrates schemas and reconciles local & remote data for the given store.
  */
-export async function migrateAndInitializeData(onDataLoaded: (data: AppData) => void): Promise<void> {
+export async function migrateAndInitializeData(
+  onDataLoaded: (data: AppData) => void,
+  targetStoreId?: string
+): Promise<void> {
+  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
+  setActiveStoreId(storeId);
+
   try {
-    const localData = loadStoredData();
+    const localData = loadStoredData(storeId);
     onDataLoaded(localData);
 
-    const remoteData = await loadAppDataFromFirestore();
+    const remoteData = await loadAppDataFromFirestore(storeId);
 
     if (remoteData) {
-      // Remote data exists: update local cache and state safely
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteData));
+        localStorage.setItem(getLocalStorageKey(storeId), JSON.stringify(remoteData));
       } catch (err) {
         console.warn('Failed to update local mirror from Firestore:', err);
       }
       onDataLoaded(remoteData);
     } else if (localData.inventory.length > 0 || localData.sales.length > 0 || localData.khata.length > 0) {
-      // First time setting up Firestore from existing local data
-      await saveAppDataToFirestore(localData);
+      await saveAppDataToFirestore(localData, storeId);
       onDataLoaded(localData);
     } else {
-      // Brand new store setup
-      await saveAppDataToFirestore(initialCleanData);
+      await saveAppDataToFirestore(initialCleanData, storeId);
       onDataLoaded(initialCleanData);
     }
   } catch (err) {
-    console.error('Error in safe data migration/sync with Firestore:', err);
-    onDataLoaded(loadStoredData());
+    console.error(`Error in safe data migration/sync with Firestore for store [${storeId}]:`, err);
+    onDataLoaded(loadStoredData(storeId));
   }
 }
 
-/**
- * Alias for backward compatibility if referenced elsewhere.
- */
 export const initializeIndexedDB = migrateAndInitializeData;
 
 /**
- * Resets all stored data cleanly without throwing uncaught errors.
+ * Resets all stored data cleanly for the active store without throwing uncaught errors.
  */
-export async function clearAllStoredData(): Promise<AppData> {
+export async function clearAllStoredData(targetStoreId?: string): Promise<AppData> {
+  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
+
   try {
-    localStorage.removeItem(STORAGE_KEY);
-    for (const key of LEGACY_STORAGE_KEYS) {
-      localStorage.removeItem(key);
+    localStorage.removeItem(getLocalStorageKey(storeId));
+    if (storeId === DEFAULT_STORE_ID) {
+      localStorage.removeItem(STORAGE_KEY);
+      for (const key of LEGACY_STORAGE_KEYS) {
+        localStorage.removeItem(key);
+      }
     }
   } catch {
     // ignore
@@ -908,13 +1140,13 @@ export async function clearAllStoredData(): Promise<AppData> {
   const clean: AppData = { ...initialCleanData, lastModified: new Date().toISOString() };
 
   try {
-    await saveAppDataToFirestore(clean);
+    await saveAppDataToFirestore(clean, storeId);
   } catch (err) {
-    console.warn('Firebase Firestore reset warning:', err);
+    console.warn(`Firebase Firestore reset warning for store [${storeId}]:`, err);
   }
 
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
+    localStorage.setItem(getLocalStorageKey(storeId), JSON.stringify(clean));
   } catch {
     // ignore
   }
