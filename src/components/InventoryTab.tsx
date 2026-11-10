@@ -378,23 +378,23 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
       </div>
 
       {/* Main Stock Table Container */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-5 space-y-4 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+      <div className="bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-5 space-y-3 sm:space-y-4 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 border-b border-slate-100 pb-3 sm:pb-4">
           <div>
-            <h3 className="font-bold text-slate-900 text-base">Inventory & IMEI Master Stock</h3>
-            <p className="text-xs text-slate-500">
+            <h3 className="font-extrabold text-slate-900 text-sm sm:text-base">Inventory & IMEI Master Stock</h3>
+            <p className="text-[11px] sm:text-xs text-slate-500">
               Manage mobile phones, serial numbers, chargers, displays, and screen protectors
             </p>
           </div>
-          <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
             <button
               type="button"
               onClick={() => setIsAdjustmentsModalOpen(true)}
-              className="flex-1 sm:flex-initial px-3 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs rounded-xl border border-amber-200/80 transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs min-h-[42px]"
+              className="flex-1 sm:flex-initial px-2.5 sm:px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs rounded-xl border border-amber-200/80 transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs h-8.5 sm:h-9.5"
               title="View Manual Stock Quantity Adjustment History"
             >
               <History className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-              <span className="truncate">Stock Log</span>
+              <span className="truncate">Log</span>
               {stockAdjustments.length > 0 && (
                 <span className="bg-amber-200 text-amber-900 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
                   {stockAdjustments.length}
@@ -405,28 +405,28 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
               <button
                 type="button"
                 onClick={onOpenPdfReport}
-                className="flex-1 sm:flex-initial px-3.5 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200/80 transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs min-h-[42px]"
+                className="flex-1 sm:flex-initial px-2.5 sm:px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200/80 transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs h-8.5 sm:h-9.5"
                 title="Export Stock Valuation & Low Stock PDF Report"
               >
-                <FileText className="w-3.5 h-3.5 text-rose-600 shrink-0" /> Export PDF
+                <FileText className="w-3.5 h-3.5 text-rose-600 shrink-0" /> <span className="truncate">PDF</span>
               </button>
             )}
             <button
               onClick={handleExportCSV}
-              className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer min-h-[42px]"
+              className="flex-1 sm:flex-initial px-2.5 sm:px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer h-8.5 sm:h-9.5"
             >
               <Download className="w-3.5 h-3.5 shrink-0" /> CSV
             </button>
             <button
               type="button"
               onClick={() => setIsCategoryModalOpen(true)}
-              className="px-3.5 py-2.5 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs rounded-xl border border-purple-200/60 transition flex items-center justify-center gap-1.5 cursor-pointer min-h-[42px]"
+              className="flex-1 sm:flex-initial px-2.5 sm:px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs rounded-xl border border-purple-200/60 transition flex items-center justify-center gap-1.5 cursor-pointer h-8.5 sm:h-9.5"
             >
               <Tag className="w-3.5 h-3.5 shrink-0" /> Categories
             </button>
             <button
               onClick={onOpenAddModal}
-              className="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl shadow-md shadow-blue-500/20 transition flex items-center justify-center gap-1.5 cursor-pointer min-h-[44px]"
+              className="w-full sm:w-auto px-3.5 sm:px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl shadow-md shadow-blue-500/20 transition flex items-center justify-center gap-1.5 cursor-pointer h-9 sm:h-9.5"
             >
               <Plus className="w-4 h-4 shrink-0" /> Add Product
             </button>
@@ -434,15 +434,15 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
         </div>
 
         {/* Filter Controls */}
-        <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3">
           <div className="relative flex-1 flex items-center">
-            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search by Brand, Category, Model, IMEI or Barcode..."
-              className="w-full pl-10 pr-24 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[44px]"
+              className="w-full pl-9 pr-24 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white transition h-9 sm:h-10"
             />
             <div className="absolute right-1.5 flex items-center gap-1">
               {search && (
@@ -538,21 +538,21 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                     <div
                       key={item.id}
                       onClick={() => setSelectedProductPopup(item)}
-                      className={`bg-white border border-slate-200/90 rounded-2xl p-3.5 shadow-2xs hover:shadow-xl hover:border-blue-400 transition-all duration-300 cursor-pointer flex flex-col justify-between group ${
+                      className={`bg-white border border-slate-200/90 rounded-2xl p-2.5 sm:p-3.5 shadow-2xs hover:shadow-xl hover:border-blue-400 transition-all duration-200 cursor-pointer flex flex-col justify-between group ${
                         isArchived ? 'opacity-75 bg-slate-50' : ''
                       }`}
                     >
                       <div>
                         {/* Normal Sized Product Image (Daraz / Amazon Style) */}
-                        <div className="relative w-full h-44 sm:h-52 rounded-xl overflow-hidden bg-slate-50 border border-slate-100 flex items-center justify-center p-2.5">
+                        <div className="relative w-full h-28 sm:h-44 rounded-xl overflow-hidden bg-slate-50 border border-slate-100 flex items-center justify-center p-2">
                           {item.image ? (
                             <img
                               src={item.image}
                               alt={item.name}
-                              className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
+                              className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-200"
                             />
                           ) : (
-                            <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-black text-xl shadow-inner">
+                            <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-black text-lg sm:text-xl shadow-inner">
                               {item.name.charAt(0).toUpperCase()}
                             </div>
                           )}
@@ -830,17 +830,17 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
             </div>
 
             {/* Product Card / Image & Info */}
-            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
+            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-3 sm:gap-4 bg-slate-50 p-3 sm:p-4 rounded-2xl border border-slate-200/80">
               {selectedProductPopup.image ? (
-                <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-sm shrink-0 flex items-center justify-center p-1">
+                <div className="w-20 h-20 sm:w-28 sm:h-28 rounded-xl border border-slate-200 overflow-hidden bg-white shadow-xs shrink-0 flex items-center justify-center p-1">
                   <img
                     src={selectedProductPopup.image}
                     alt={selectedProductPopup.name}
-                    className="w-full h-full object-cover rounded-xl"
+                    className="w-full h-full object-contain rounded-lg"
                   />
                 </div>
               ) : (
-                <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-black text-3xl shadow-md shrink-0">
+                <div className="w-20 h-20 sm:w-28 sm:h-28 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-2xl sm:text-3xl shadow-md shrink-0">
                   {selectedProductPopup.name.charAt(0).toUpperCase()}
                 </div>
               )}

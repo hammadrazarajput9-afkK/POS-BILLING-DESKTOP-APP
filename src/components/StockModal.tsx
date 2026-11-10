@@ -90,22 +90,73 @@ const initialStockDraft: StockDraftState = {
   variants: [createDefaultVariant('var-1', '4GB', '64GB')],
 };
 
+const LAST_SELECTED_CAT_KEY = 'mobile_pos_last_selected_category';
+
+export const getLastSelectedCategory = (categories: string[]): string => {
+  try {
+    const saved = localStorage.getItem(LAST_SELECTED_CAT_KEY);
+    if (saved && categories && categories.includes(saved)) {
+      return saved;
+    }
+  } catch {
+    // ignore
+  }
+  if (categories && categories.length > 0) {
+    return categories[0];
+  }
+  return 'Keypad Phone';
+};
+
 export const isAndroidCategory = (cat: string): boolean => {
   if (!cat) return false;
   const c = cat.toLowerCase().trim();
-  return c.includes('android') || c.includes('smart') || c.includes('smartphone');
+  // Exclude non-phone categories
+  if (
+    c.includes('keypad') ||
+    c.includes('feature') ||
+    c.includes('button') ||
+    c.includes('accessory') ||
+    c.includes('accessories') ||
+    c.includes('charger') ||
+    c.includes('cable') ||
+    c.includes('audio') ||
+    c.includes('airpod') ||
+    c.includes('headphone') ||
+    c.includes('repair') ||
+    c.includes('part') ||
+    c.includes('cover') ||
+    c.includes('case') ||
+    c.includes('glass') ||
+    c.includes('protector')
+  ) {
+    return false;
+  }
+  return c.includes('android') || c.includes('smartphone') || (c.includes('smart') && c.includes('mobile'));
 };
 
 export const isKeypadCategory = (cat: string): boolean => {
   if (!cat) return false;
   const c = cat.toLowerCase().trim();
-  return c.includes('keypad') || c.includes('feature') || c.includes('button');
+  if (
+    c.includes('android') ||
+    c.includes('smart') ||
+    c.includes('smartphone') ||
+    c.includes('accessory') ||
+    c.includes('accessories') ||
+    c.includes('charger') ||
+    c.includes('cable') ||
+    c.includes('audio') ||
+    c.includes('headphone') ||
+    c.includes('repair')
+  ) {
+    return false;
+  }
+  return c.includes('keypad') || c.includes('feature') || c.includes('button') || c.includes('bar phone');
 };
 
 export const isMobileCategory = (cat: string): boolean => {
   if (!cat) return false;
-  const c = cat.toLowerCase().trim();
-  return isAndroidCategory(cat) || isKeypadCategory(cat) || c.includes('mobile') || c.includes('phone');
+  return isAndroidCategory(cat) || isKeypadCategory(cat);
 };
 
 export const StockModal: React.FC<StockModalProps> = ({
@@ -230,9 +281,10 @@ export const StockModal: React.FC<StockModalProps> = ({
         }
       } else {
         isEditingRef.current = false;
-        // Restore from draftData safely once
+        // Pre-select last chosen category so adding multiple items in the same category is sticky & fast
+        const lastCategory = getLastSelectedCategory(categories);
         setName(draftData.name || '');
-        setCategory(draftData.category || categories[0] || '');
+        setCategory(lastCategory);
         setImage(draftData.image || '');
         setBarcode(draftData.barcode || '');
         setCostPrice(draftData.costPrice !== undefined ? draftData.costPrice : '');
@@ -243,10 +295,11 @@ export const StockModal: React.FC<StockModalProps> = ({
         setColor('');
         setImeis(draftData.imeis && draftData.imeis.length > 0 ? [...draftData.imeis] : ['']);
 
-        if (draftData.variants && draftData.variants.length > 0) {
+        if (draftData.variants && draftData.variants.length > 0 && isAndroidCategory(lastCategory)) {
           setVariants(draftData.variants.map(v => ({ ...v, imeis: [...(v.imeis || [''])] })));
         } else {
-          setVariants([createDefaultVariant('var-1', '4GB', '64GB')]);
+          const isAndroidLast = isAndroidCategory(lastCategory);
+          setVariants([createDefaultVariant('var-1', isAndroidLast ? '6GB' : '', isAndroidLast ? '128GB' : '')]);
         }
       }
       setIsCreatingCategory(false);
@@ -254,7 +307,7 @@ export const StockModal: React.FC<StockModalProps> = ({
     }
     prevIsOpenRef.current = isOpen;
     prevEditItemRef.current = editItem;
-  }, [isOpen, editItem]);
+  }, [isOpen, editItem, categories]);
 
   // Debounced draft save to avoid freezing during high-speed barcode scanning
   const draftTimerRef = useRef<any>(null);
@@ -658,6 +711,15 @@ export const StockModal: React.FC<StockModalProps> = ({
   };
 
   // Category inline save handler
+  const handleSelectCategory = (selectedCat: string) => {
+    setCategory(selectedCat);
+    try {
+      localStorage.setItem(LAST_SELECTED_CAT_KEY, selectedCat);
+    } catch {
+      // ignore
+    }
+  };
+
   const handleSaveNewCategory = (e: React.MouseEvent) => {
     e.preventDefault();
     const trimmed = newCategoryName.trim();
@@ -668,14 +730,14 @@ export const StockModal: React.FC<StockModalProps> = ({
 
     if (categories.some(c => c.toLowerCase() === trimmed.toLowerCase())) {
       showToast('Category already exists', 'info');
-      setCategory(trimmed);
+      handleSelectCategory(trimmed);
       setIsCreatingCategory(false);
       setNewCategoryName('');
       return;
     }
 
     onAddCategory(trimmed);
-    setCategory(trimmed);
+    handleSelectCategory(trimmed);
     setIsCreatingCategory(false);
     setNewCategoryName('');
     showToast(`Category "${trimmed}" created!`, 'success');
@@ -831,6 +893,11 @@ export const StockModal: React.FC<StockModalProps> = ({
         'success'
       );
       if (!editItem) {
+        try {
+          localStorage.setItem(LAST_SELECTED_CAT_KEY, category);
+        } catch {
+          // ignore
+        }
         resetDraft();
       }
       onClose();
@@ -917,6 +984,11 @@ export const StockModal: React.FC<StockModalProps> = ({
 
       showToast(editItem ? 'Product updated successfully' : 'Product added to stock', 'success');
       if (!editItem) {
+        try {
+          localStorage.setItem(LAST_SELECTED_CAT_KEY, category);
+        } catch {
+          // ignore
+        }
         resetDraft();
       }
       onClose();
@@ -1104,7 +1176,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                 ) : (
                   <select
                     value={category}
-                    onChange={e => setCategory(e.target.value)}
+                    onChange={e => handleSelectCategory(e.target.value)}
                     className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:border-blue-600 shadow-2xs min-h-[44px]"
                   >
                     {categories.map(c => (

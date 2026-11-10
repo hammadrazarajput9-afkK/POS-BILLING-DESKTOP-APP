@@ -30,6 +30,7 @@ import {
   query,
   orderBy,
   limit,
+  onSnapshot,
 } from 'firebase/firestore';
 import { generateEntityId } from './id';
 
@@ -596,28 +597,59 @@ export async function saveRootConfigToFirestore(data: Partial<AppData>, targetSt
       backupVersion: CURRENT_BACKUP_VERSION,
       lastModified: new Date().toISOString(),
       storeId,
-      settings: data.settings || defaultSettings,
-      categories: data.categories || defaultCategories,
-      expenseCategories: data.expenseCategories || defaultExpenseCategories,
-      onlineAccounts: data.onlineAccounts || defaultOnlineAccounts,
-      dailyClosings: data.dailyClosings || [],
-      imeiRecords: data.imeiRecords || [],
-      stockAdjustments: data.stockAdjustments || [],
-      purchasesLedger: data.purchasesLedger || [],
-      supplierPurchases: data.supplierPurchases || [],
-      salesReturns: data.salesReturns || [],
-      tabPreferences: data.tabPreferences || {},
-      currentRole: data.currentRole || 'admin',
     };
 
-    if (data.users && data.users.length > 0) {
-      configToSave.users = data.users;
-    }
+    if (data.settings !== undefined) configToSave.settings = data.settings;
+    if (data.categories !== undefined) configToSave.categories = data.categories;
+    if (data.expenseCategories !== undefined) configToSave.expenseCategories = data.expenseCategories;
+    if (data.onlineAccounts !== undefined) configToSave.onlineAccounts = data.onlineAccounts;
+    if (data.dailyClosings !== undefined) configToSave.dailyClosings = data.dailyClosings;
+    if (data.imeiRecords !== undefined) configToSave.imeiRecords = data.imeiRecords;
+    if (data.stockAdjustments !== undefined) configToSave.stockAdjustments = data.stockAdjustments;
+    if (data.purchasesLedger !== undefined) configToSave.purchasesLedger = data.purchasesLedger;
+    if (data.supplierPurchases !== undefined) configToSave.supplierPurchases = data.supplierPurchases;
+    if (data.salesReturns !== undefined) configToSave.salesReturns = data.salesReturns;
+    if (data.tabPreferences !== undefined) configToSave.tabPreferences = data.tabPreferences;
+    if (data.currentRole !== undefined) configToSave.currentRole = data.currentRole;
+    if (data.users !== undefined && data.users.length > 0) configToSave.users = data.users;
 
     await setDoc(rootDocRef, sanitizeForFirestore(configToSave) as Record<string, unknown>, { merge: true });
   } catch (err) {
     console.warn(`Failed to save root config for store [${storeId}]:`, err);
   }
+}
+
+/**
+ * Real-time subscription to root store settings, categories, and config changes across devices.
+ */
+export function subscribeToStoreRootConfig(
+  targetStoreId: string,
+  onUpdate: (updatedRoot: Partial<AppData>) => void
+): () => void {
+  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
+  const rootDocRef = doc(db, STORES_COLLECTION, storeId);
+
+  return onSnapshot(
+    rootDocRef,
+    (docSnap) => {
+      if (docSnap.exists()) {
+        const rootData = docSnap.data() as Record<string, unknown>;
+        const patch: Partial<AppData> = {};
+
+        if (rootData.settings) patch.settings = rootData.settings as ShopSettings;
+        if (rootData.categories) patch.categories = rootData.categories as string[];
+        if (rootData.expenseCategories) patch.expenseCategories = rootData.expenseCategories as string[];
+        if (rootData.onlineAccounts) patch.onlineAccounts = rootData.onlineAccounts as OnlineAccount[];
+        if (rootData.tabPreferences) patch.tabPreferences = rootData.tabPreferences as TabPreferences;
+        if (rootData.users) patch.users = rootData.users as UserAccount[];
+
+        onUpdate(patch);
+      }
+    },
+    (err) => {
+      console.warn(`Real-time root config subscription warning for store [${storeId}]:`, err);
+    }
+  );
 }
 
 /**
@@ -1048,6 +1080,34 @@ async function loadAppDataFromLegacyFirestore(): Promise<AppData | null> {
 }
 
 /**
+ * Helper to fetch fallback cached inventory across local keys
+ */
+function getFallbackLocalInventory(): InventoryItem[] {
+  try {
+    const mainKey = getLocalStorageKey(DEFAULT_STORE_ID);
+    const mainRaw = localStorage.getItem(mainKey);
+    if (mainRaw) {
+      const parsed = JSON.parse(mainRaw);
+      const validation = validateBackupData(parsed);
+      if (validation.valid && validation.data && validation.data.inventory && validation.data.inventory.length > 0) {
+        return validation.data.inventory;
+      }
+    }
+    const legacyRaw = localStorage.getItem(STORAGE_KEY);
+    if (legacyRaw) {
+      const parsedLegacy = JSON.parse(legacyRaw);
+      const validation = validateBackupData(parsedLegacy);
+      if (validation.valid && validation.data && validation.data.inventory && validation.data.inventory.length > 0) {
+        return validation.data.inventory;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
+/**
  * Loads data from isolated localStorage partition with schema version migration.
  */
 export function loadStoredData(targetStoreId?: string): AppData {
@@ -1059,13 +1119,33 @@ export function loadStoredData(targetStoreId?: string): AppData {
       const parsed = JSON.parse(raw);
       const validation = validateBackupData(parsed);
       if (validation.valid && validation.data) {
+        if (validation.data.inventory && validation.data.inventory.length > 0) {
+          return validation.data;
+        }
+        const fallbackInv = getFallbackLocalInventory();
+        if (fallbackInv.length > 0) {
+          return {
+            ...validation.data,
+            inventory: fallbackInv,
+          };
+        }
         return validation.data;
       }
     }
 
-    // Fallback to legacy unpartitioned key only if loading default/first store
+    // Check main store or legacy key fallback
+    const mainKey = getLocalStorageKey(DEFAULT_STORE_ID);
+    const mainRaw = localStorage.getItem(mainKey);
+    if (mainRaw) {
+      const parsedMain = JSON.parse(mainRaw);
+      const validation = validateBackupData(parsedMain);
+      if (validation.valid && validation.data) {
+        return validation.data;
+      }
+    }
+
     const legacyRaw = localStorage.getItem(STORAGE_KEY);
-    if (legacyRaw && (!targetStoreId || targetStoreId === DEFAULT_STORE_ID)) {
+    if (legacyRaw) {
       const parsedLegacy = JSON.parse(legacyRaw);
       const validation = validateBackupData(parsedLegacy);
       if (validation.valid && validation.data) {
@@ -1130,6 +1210,10 @@ export async function migrateAndInitializeData(
     const remoteData = await loadAppDataFromFirestore(storeId);
 
     if (remoteData) {
+      // Ensure inventory is preserved if remote data inventory is empty but local has items
+      if ((!remoteData.inventory || remoteData.inventory.length === 0) && localData.inventory.length > 0) {
+        remoteData.inventory = localData.inventory;
+      }
       try {
         localStorage.setItem(getLocalStorageKey(storeId), JSON.stringify(remoteData));
       } catch (err) {

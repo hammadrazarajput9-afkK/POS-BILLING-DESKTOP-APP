@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { InventoryItem, CartItem, PaymentMethod, SaleRecord, InvoiceType, KhataCustomer, OnlineAccount, ShopSettings } from '../types';
+import { InventoryItem, CartItem, PaymentMethod, SaleRecord, InvoiceType, KhataCustomer, OnlineAccount, ShopSettings, MobileVariant } from '../types';
 import {
   Search,
   ShoppingCart,
@@ -29,7 +29,10 @@ import {
   ArrowRight,
   ChevronUp,
   Camera,
-  Sparkles
+  Sparkles,
+  Layers,
+  Copy,
+  Info
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
@@ -115,6 +118,38 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
   const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
   const [cameraScannerTarget, setCameraScannerTarget] = useState<'productSearch' | 'historySearch'>('productSearch');
+  const [selectedProductDetails, setSelectedProductDetails] = useState<InventoryItem | null>(null);
+  const [copiedImei, setCopiedImei] = useState<string | null>(null);
+
+  const handleCopyImei = (imei: string) => {
+    navigator.clipboard.writeText(imei);
+    setCopiedImei(imei);
+    showToast(`IMEI copied to clipboard: ${imei}`, 'info');
+    setTimeout(() => setCopiedImei(null), 2000);
+  };
+
+  const handleWhatsAppShareProduct = (item: InventoryItem) => {
+    const shopName = settings?.shopName || 'Friends Mobile Zone';
+    const unitPrice = getItemUnitPrice(item);
+    let text = `📱 *${item.name}*\n🏪 *${shopName}*\n\n`;
+    text += `📂 *Category:* ${item.category}\n`;
+    text += `💰 *Price:* ${currency} ${unitPrice.toLocaleString()}${saleMode === 'wholesale' ? ' (Wholesale)' : ''}\n`;
+    text += `📦 *Available Stock:* ${item.qty} units\n`;
+    if (item.barcode) text += `🔖 *Barcode:* ${item.barcode}\n`;
+
+    if (item.variants && item.variants.length > 0) {
+      text += `\n🎨 *Available Variants:*\n`;
+      item.variants.forEach((v, idx) => {
+        text += `• Variant ${idx + 1}: ${v.color || ''} ${v.ram ? `(${v.ram}/${v.storage})` : ''} - Stock: ${v.qty || 1}\n`;
+      });
+    }
+
+    if (settings?.phone) text += `\n📞 *Contact / WhatsApp:* ${settings.phone}`;
+    if (settings?.address) text += `\n📍 *Address:* ${settings.address}`;
+
+    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank');
+  };
 
   // Lock background body scroll when mobile cart drawer is open
   React.useEffect(() => {
@@ -714,9 +749,13 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   };
 
   const renderCartContent = (isMobile = false) => (
-    <div className={`bg-white rounded-2xl p-4 sm:p-5 space-y-4 flex flex-col h-full ${isMobile ? '' : 'border border-slate-200/90 shadow-xs'}`}>
+    <div
+      className={`bg-white rounded-2xl p-3 sm:p-4 space-y-3 flex flex-col h-full min-h-0 ${
+        isMobile ? 'overflow-y-auto' : 'border border-slate-200/90 shadow-xs overflow-hidden'
+      }`}
+    >
       {/* Cart Header */}
-      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+      <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 shrink-0">
         <div className="flex items-center gap-2">
           <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
             <ShoppingCart className="w-4 h-4 text-blue-600" /> Active Billing Cart ({totalCartItems})
@@ -760,7 +799,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       </div>
 
       {/* TWO INVOICE TYPES: Cash Customer vs Credit/Khata Customer */}
-      <div className="space-y-2 bg-slate-50 p-3 rounded-2xl border border-slate-200/80">
+      <div className="space-y-2 bg-slate-50 p-2.5 sm:p-3 rounded-2xl border border-slate-200/80 shrink-0">
         <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
           Invoice Type
         </label>
@@ -768,7 +807,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
           <button
             type="button"
             onClick={() => setInvoiceType('cash')}
-            className={`py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer min-h-[44px] ${
+            className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer min-h-[40px] ${
               invoiceType === 'cash'
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
@@ -781,7 +820,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
           <button
             type="button"
             onClick={() => setInvoiceType('credit')}
-            className={`py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer min-h-[44px] ${
+            className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer min-h-[40px] ${
               invoiceType === 'credit'
                 ? 'bg-purple-600 text-white shadow-xs'
                 : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
@@ -798,7 +837,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
             <select
               value={selectedKhataId}
               onChange={e => handleKhataSelect(e.target.value)}
-              className="w-full bg-white border border-purple-200 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-800 focus:outline-none focus:border-purple-600 min-h-[44px]"
+              className="w-full bg-white border border-purple-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-purple-600 min-h-[40px]"
             >
               <option value="">Select Existing Khata Customer...</option>
               {khataCustomers.map(k => (
@@ -812,7 +851,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       </div>
 
       {/* Customer Info */}
-      <div className="space-y-2">
+      <div className="space-y-2 shrink-0">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <input
             type="text"
@@ -868,8 +907,8 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       </div>
 
       {/* Cart Itemized Table */}
-      <div className="border border-slate-200/80 rounded-xl overflow-hidden flex-1 min-h-[140px]">
-        <div className={`overflow-y-auto ${isMobile ? 'max-h-56' : 'max-h-52'}`}>
+      <div className={`border border-slate-200/80 rounded-xl overflow-hidden flex flex-col ${isMobile ? 'min-h-[140px] max-h-56' : 'flex-1 min-h-[110px] max-h-[180px] xl:max-h-[220px] 2xl:max-h-[260px]'}`}>
+        <div className="overflow-y-auto flex-1 scrollbar-thin">
           <table className="w-full text-left border-collapse">
             <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200 sticky top-0">
               <tr>
@@ -984,7 +1023,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       </div>
 
       {/* Pricing Totals & Payment Method */}
-      <div className="space-y-3 pt-2 border-t border-slate-100 text-xs">
+      <div className="space-y-2.5 pt-2 border-t border-slate-100 text-xs shrink-0">
         <div className="space-y-1.5 text-slate-600">
           <div className="flex justify-between">
             <span>Subtotal ({saleMode === 'wholesale' ? 'B2B Wholesale' : 'Retail'}):</span>
@@ -1214,32 +1253,32 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   }, [filteredSales]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-2.5 sm:space-y-4 flex flex-col flex-1 min-h-0 lg:h-full lg:overflow-hidden">
       {/* Sub-tab Navigation Panel */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white border border-slate-200/80 rounded-2xl p-2.5 sm:p-3 shadow-xs w-full max-w-full overflow-hidden">
-        <div className="grid grid-cols-2 sm:flex bg-slate-100 p-1 rounded-xl w-full sm:w-fit gap-1">
+      <div className="flex items-center justify-between gap-2 bg-white border border-slate-200/80 rounded-2xl p-1.5 sm:p-2.5 shadow-xs w-full max-w-full overflow-hidden shrink-0">
+        <div className="flex bg-slate-100 p-0.5 sm:p-1 rounded-xl w-full sm:w-fit gap-1">
           <button
             type="button"
             onClick={() => setPosSubTab('billing')}
-            className={`flex items-center justify-center gap-1.5 px-3 sm:px-5 py-2.5 rounded-lg text-xs font-extrabold transition cursor-pointer min-h-[42px] ${
+            className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer h-9 sm:h-9.5 ${
               posSubTab === 'billing'
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <ShoppingCart className="w-4 h-4 shrink-0" />
+            <ShoppingCart className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
             <span className="truncate">New Sale</span>
           </button>
           <button
             type="button"
             onClick={() => setPosSubTab('history')}
-            className={`flex items-center justify-center gap-1.5 px-3 sm:px-5 py-2.5 rounded-lg text-xs font-extrabold transition cursor-pointer min-h-[42px] ${
+            className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer h-9 sm:h-9.5 ${
               posSubTab === 'history'
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <FileText className="w-4 h-4 shrink-0" />
+            <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
             <span className="truncate">History</span>
             {(sales || []).length > 0 && (
               <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold ${
@@ -1251,8 +1290,8 @@ const PosTabComponent: React.FC<PosTabProps> = ({
           </button>
         </div>
 
-        {/* Developer Tag */}
-        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 border border-slate-200/80 rounded-xl w-fit self-end sm:self-auto">
+        {/* Developer Tag - Hidden on tiny screens to avoid wrapping */}
+        <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 border border-slate-200/80 rounded-xl shrink-0">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
           <span className="text-[9px] font-extrabold text-slate-500 tracking-wider font-mono">
             HAMMAD DEVELOPER
@@ -1261,88 +1300,88 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       </div>
 
       {posSubTab === 'billing' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left Column: Catalog & Search (7 Cols) */}
-          <div className="lg:col-span-7 space-y-4">
-            {/* Mode Switcher Banner: Retail vs Wholesale Mode */}
-            <div className={`border rounded-2xl p-2.5 sm:p-3.5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition ${
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 lg:gap-5 flex-1 min-h-0 lg:overflow-hidden">
+          {/* Left Column: Catalog & Search (7 Cols) - Desktop scrollable products */}
+          <div className="lg:col-span-7 flex flex-col min-h-0 lg:h-full space-y-2.5 sm:space-y-3.5">
+            {/* Mode Switcher Banner: Retail vs Wholesale Mode (Compact on mobile) */}
+            <div className={`border rounded-2xl p-2 sm:p-3 shadow-xs flex items-center justify-between gap-2 shrink-0 transition ${
               saleMode === 'wholesale'
                 ? 'bg-gradient-to-r from-purple-900 via-indigo-900 to-purple-800 text-white border-purple-700/80 shadow-purple-900/20'
                 : 'bg-white border-slate-200/90 text-slate-900'
             }`}>
-              <div className="flex items-center gap-2.5">
-                <div className={`p-2.5 rounded-xl shrink-0 ${
+              <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+                <div className={`p-1.5 sm:p-2 rounded-xl shrink-0 ${
                   saleMode === 'wholesale' ? 'bg-white/15 text-amber-300 backdrop-blur-md' : 'bg-emerald-100 text-emerald-700'
                 }`}>
-                  {saleMode === 'wholesale' ? <Package className="w-5 h-5 animate-pulse" /> : <ShoppingCart className="w-5 h-5" />}
+                  {saleMode === 'wholesale' ? <Package className="w-4 h-4 sm:w-5 sm:h-5 animate-pulse" /> : <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5" />}
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-extrabold text-xs sm:text-sm leading-tight">
-                      {saleMode === 'wholesale' ? 'B2B Wholesale Sales Mode' : 'Retail Sales Mode'}
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <h4 className="font-extrabold text-xs sm:text-sm leading-tight truncate">
+                      {saleMode === 'wholesale' ? 'B2B Wholesale' : 'Retail Mode'}
                     </h4>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                    <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider ${
                       saleMode === 'wholesale' ? 'bg-amber-400 text-slate-900' : 'bg-emerald-100 text-emerald-800'
                     }`}>
-                      {saleMode === 'wholesale' ? 'Wholesale Active' : 'Retail'}
+                      {saleMode === 'wholesale' ? 'W/S' : 'Retail'}
                     </span>
                   </div>
-                  <p className={`text-[11px] mt-0.5 ${saleMode === 'wholesale' ? 'text-purple-100' : 'text-slate-500'}`}>
+                  <p className={`text-[10px] sm:text-[11px] mt-0.5 hidden md:block ${saleMode === 'wholesale' ? 'text-purple-100' : 'text-slate-500'}`}>
                     {saleMode === 'wholesale'
-                      ? 'Wholesale prices, bulk cartons & retailer invoice terms active'
-                      : 'Standard consumer prices & walk-in customer billing'}
+                      ? 'Wholesale prices & bulk terms active'
+                      : 'Standard retail consumer prices'}
                   </p>
                 </div>
               </div>
 
               {/* Mode Toggle Switcher Buttons */}
-              <div className={`flex items-center p-1 rounded-xl border shrink-0 ${
+              <div className={`flex items-center p-0.5 sm:p-1 rounded-xl border shrink-0 ${
                 saleMode === 'wholesale' ? 'bg-purple-950/60 border-purple-600/50' : 'bg-slate-100 border-slate-200'
               }`}>
                 <button
                   type="button"
                   onClick={() => setSaleMode('retail')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 min-h-[38px] ${
+                  className={`px-2.5 sm:px-3 py-1 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1 h-7 sm:h-8 ${
                     saleMode === 'retail'
                       ? 'bg-emerald-600 text-white shadow-xs'
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  <ShoppingCart className="w-3.5 h-3.5" />
+                  <ShoppingCart className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                   <span>Retail</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setSaleMode('wholesale')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 min-h-[38px] ${
+                  className={`px-2.5 sm:px-3 py-1 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1 h-7 sm:h-8 ${
                     saleMode === 'wholesale'
                       ? 'bg-purple-600 text-white shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <Package className="w-3.5 h-3.5" />
-                  <span>Wholesale</span>
+                  <Package className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                  <span>W/S</span>
                 </button>
               </div>
             </div>
 
             {/* Search & Category Filter Bar */}
-            <div className="bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-4 space-y-3 shadow-xs">
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-2.5 sm:p-3 space-y-2 shadow-xs shrink-0">
               <div className="relative flex items-center">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   placeholder="Search title, category, barcode, or IMEI..."
-                  className="w-full pl-9 pr-24 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[44px]"
+                  className="w-full pl-8.5 pr-20 sm:pr-24 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white transition h-9 sm:h-10"
                 />
-                <div className="absolute right-1.5 flex items-center gap-1">
+                <div className="absolute right-1 flex items-center gap-1">
                   {search && (
                     <button
                       type="button"
                       onClick={() => setSearch('')}
-                      className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                      className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
                       title="Clear search"
                     >
                       <X className="w-3.5 h-3.5" />
@@ -1354,36 +1393,36 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                       setCameraScannerTarget('productSearch');
                       setIsCameraScannerOpen(true);
                     }}
-                    className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-xs flex items-center gap-1 text-[11px] font-extrabold cursor-pointer transition min-h-[36px]"
+                    className="px-2 sm:px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-xs flex items-center gap-1 text-[11px] font-extrabold cursor-pointer transition h-7 sm:h-8"
                     title="Live Camera Barcode & IMEI Scanner"
                   >
-                    <Camera className="w-3.5 h-3.5" />
+                    <Camera className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                     <span>Scan</span>
                   </button>
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs w-full max-w-full">
-                <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-x-auto scrollbar-thin pb-1.5 pt-0.5 touch-pan-x max-w-full">
+              <div className="flex items-center justify-between gap-1.5 text-xs w-full max-w-full">
+                <div className="flex-1 min-w-0 flex items-center gap-1 overflow-x-auto scrollbar-thin pb-0.5 pt-0.5 touch-pan-x max-w-full">
                   {['ALL', ...categories].map(cat => (
                     <button
                       key={cat}
                       type="button"
                       onClick={() => setSelectedCategory(cat)}
-                      className={`px-3 py-1.5 rounded-xl font-bold text-xs whitespace-nowrap transition shrink-0 cursor-pointer ${
+                      className={`px-2.5 py-1 rounded-xl font-bold text-[11px] sm:text-xs whitespace-nowrap transition shrink-0 cursor-pointer ${
                         selectedCategory === cat
                           ? 'bg-blue-600 text-white shadow-xs'
-                          : 'bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-neutral-700'
+                          : 'bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200'
                       }`}
                     >
-                      {cat === 'ALL' ? 'All Items' : cat}
+                      {cat === 'ALL' ? 'All' : cat}
                     </button>
                   ))}
                   {categories.length > 5 && (
                     <select
                       value={selectedCategory}
                       onChange={e => setSelectedCategory(e.target.value)}
-                      className="px-2 py-1.5 rounded-xl bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-neutral-200 text-xs font-bold border border-slate-200 dark:border-neutral-700 shrink-0 cursor-pointer outline-none"
+                      className="px-2 py-1 rounded-xl bg-slate-100 text-slate-700 text-[11px] sm:text-xs font-bold border border-slate-200 shrink-0 cursor-pointer outline-none"
                     >
                       <option value="ALL">All ({categories.length})</option>
                       {categories.map(c => (
@@ -1399,161 +1438,166 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                   <button
                     type="button"
                     onClick={() => onOpenSalesReturn(null)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 self-end sm:self-auto shadow-xs whitespace-nowrap min-h-[34px]"
+                    className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-xl text-[10px] sm:text-xs font-bold transition cursor-pointer shrink-0 shadow-xs whitespace-nowrap h-7 sm:h-8"
                     title="Process Customer Sales Return & Refund"
                   >
-                    <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
-                    <span className="hidden sm:inline">Sales Return / Refund</span>
+                    <RotateCcw className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-700" />
+                    <span className="hidden sm:inline">Sales Return</span>
                     <span className="sm:hidden">Return</span>
                   </button>
                 )}
               </div>
             </div>
 
-            {/* Product Cards Grid - 2 Column Compact Grid on Mobile */}
-            <div className="grid grid-cols-2 sm:grid-cols-2 gap-2 sm:gap-3 max-h-[620px] overflow-y-auto pr-1 touch-pan-y">
+            {/* Product Cards Grid - Compact Responsive Daraz Style */}
+            <div className="flex-1 min-h-0 overflow-y-auto pr-1 sm:pr-1.5 scrollbar-thin touch-pan-y">
               {filteredItems.length === 0 ? (
-                <div className="col-span-2 text-center py-16 bg-white rounded-2xl border border-slate-200 text-xs text-slate-400 space-y-2">
-                  <Package className="w-10 h-10 mx-auto text-slate-300" />
+                <div className="text-center py-12 bg-white rounded-2xl border border-slate-200 text-xs text-slate-400 space-y-2">
+                  <Package className="w-8 h-8 mx-auto text-slate-300" />
                   <p className="font-semibold text-slate-600">No matching products found</p>
                   <button
+                    type="button"
                     onClick={onOpenAddStock}
-                    className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 bg-blue-50 text-blue-600 font-bold rounded-xl hover:bg-blue-100 transition cursor-pointer min-h-[40px]"
+                    className="mt-1.5 inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-50 text-blue-600 font-bold rounded-xl hover:bg-blue-100 transition cursor-pointer h-9"
                   >
-                    <Plus className="w-4 h-4" /> Add Product
+                    <Plus className="w-3.5 h-3.5" /> Add Product
                   </button>
                 </div>
               ) : (
-                filteredItems.map(item => {
-                  const inCartItem = cart.find(c => c.id === item.id);
-                  const remainingStock = item.qty - (inCartItem?.cartQty || 0);
+                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-2 sm:gap-3 pb-16 lg:pb-3">
+                  {filteredItems.map(item => {
+                    const inCartItem = cart.find(c => c.id === item.id);
+                    const remainingStock = item.qty - (inCartItem?.cartQty || 0);
 
-                  return (
-                    <div
-                      key={item.id}
-                      onClick={() => addToCart(item)}
-                      className={`bg-white border rounded-2xl p-2.5 sm:p-4 flex flex-col justify-between transition cursor-pointer hover:shadow-md active:scale-[0.98] ${
-                        remainingStock <= 0
-                          ? 'opacity-60 border-slate-200 hover:border-slate-300'
-                          : 'border-slate-200/90 hover:border-blue-500'
-                      }`}
-                    >
-                      <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                        {/* Product Photo Thumbnail */}
-                        {item.image ? (
-                          <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-xl border border-slate-200 overflow-hidden bg-slate-50 shrink-0 shadow-2xs">
-                            <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
-                          </div>
-                        ) : (
-                          <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-xl border border-slate-200/80 bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
-                            <Package className="w-5 h-5 sm:w-6 sm:h-6 text-slate-400" />
-                          </div>
-                        )}
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => setSelectedProductDetails(item)}
+                        className={`bg-white border rounded-2xl p-2 sm:p-2.5 shadow-2xs hover:shadow-lg hover:border-blue-400 transition-all duration-200 cursor-pointer flex flex-col justify-between group relative ${
+                          remainingStock <= 0
+                            ? 'opacity-60 border-slate-200 hover:border-slate-300'
+                            : 'border-slate-200/90 hover:border-blue-500'
+                        }`}
+                      >
+                        <div>
+                          {/* Daraz / Amazon Style Product Photo Container (Height optimized for mobile preview) */}
+                          <div className="relative w-full h-24 sm:h-36 rounded-xl overflow-hidden bg-slate-50 border border-slate-100 flex items-center justify-center p-1.5 sm:p-2 group-hover:scale-[1.02] transition-transform duration-200">
+                            {item.image ? (
+                              <img
+                                src={item.image}
+                                alt={item.name}
+                                className="w-full h-full object-contain"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-black text-sm sm:text-lg shadow-inner">
+                                {item.name.charAt(0).toUpperCase()}
+                              </div>
+                            )}
 
-                        <div className="space-y-1 min-w-0 flex-1">
-                          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-1">
-                            <h4 className="font-bold text-slate-900 text-[11px] sm:text-xs leading-tight sm:leading-snug line-clamp-2">
-                              {item.name}
-                            </h4>
+                            {/* Remaining Stock Badge */}
                             <span
-                              className={`text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full shrink-0 font-mono w-fit ${
+                              className={`absolute top-1.5 right-1.5 text-[8px] sm:text-[9px] font-extrabold px-1.5 py-0.2 rounded-full font-mono shadow-xs backdrop-blur-xs ${
                                 remainingStock > 2
-                                  ? 'bg-emerald-50 text-emerald-700'
+                                  ? 'bg-emerald-500/90 text-white'
                                   : remainingStock > 0
-                                  ? 'bg-amber-50 text-amber-700'
-                                  : 'bg-rose-50 text-rose-700'
+                                  ? 'bg-amber-500/90 text-white'
+                                  : 'bg-rose-500/90 text-white'
                               }`}
                             >
-                              {remainingStock > 0 ? `${remainingStock} Stock` : 'Out'}
+                              {remainingStock > 0 ? `${remainingStock} left` : 'Out'}
                             </span>
+
+                            {/* Click for Details Hint on desktop hover */}
+                            <div className="hidden sm:block absolute inset-x-0 bottom-0 py-0.5 bg-slate-900/60 backdrop-blur-xs text-white text-[8px] font-bold text-center opacity-0 group-hover:opacity-100 transition-opacity">
+                              Click for Details
+                            </div>
                           </div>
 
-                          <div className="flex flex-wrap items-center gap-1 text-[10px] sm:text-[11px] text-slate-500">
-                            <span className="font-medium bg-slate-100 px-1.5 py-0.5 rounded text-[9px] sm:text-[10px]">
+                          {/* Category & Color Variants Badge */}
+                          <div className="mt-1.5 flex items-center gap-1 flex-wrap">
+                            <span className="inline-block text-[8px] sm:text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded truncate max-w-[100px]">
                               {item.category}
                             </span>
-                            {item.imeis && item.imeis.length > 0 ? (
-                              <span className="font-mono text-[9px] sm:text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded truncate max-w-[110px] sm:max-w-[170px]" title={item.imeis.join(', ')}>
-                                IMEI: {item.imeis[0]}
+                            {item.variants && item.variants.length > 0 && (
+                              <span className="inline-block text-[8px] sm:text-[9px] font-bold text-purple-700 bg-purple-50 border border-purple-200/60 px-1 py-0.5 rounded">
+                                {item.variants.length} Colors
                               </span>
-                            ) : item.imei ? (
-                              <span className="font-mono text-[9px] sm:text-[10px] text-blue-600 truncate max-w-[110px] sm:max-w-[170px]">
-                                IMEI: {item.imei}
-                              </span>
-                            ) : item.barcode ? (
-                              <span className="font-mono text-[9px] sm:text-[10px] text-slate-400 truncate">
-                                Code: {item.barcode}
-                              </span>
-                            ) : null}
+                            )}
+                          </div>
+
+                          {/* Product Title */}
+                          <h4 className="font-extrabold text-slate-900 text-[11px] sm:text-xs line-clamp-2 mt-1 leading-tight group-hover:text-blue-600 transition">
+                            {item.name}
+                          </h4>
+                        </div>
+
+                        {/* Price & Add to Cart Action */}
+                        <div className="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between gap-1">
+                          <div className="min-w-0">
+                            <span className="text-[8px] sm:text-[9px] text-slate-400 block uppercase font-semibold">
+                              {saleMode === 'wholesale' ? 'W/S' : 'Price'}
+                            </span>
+                            <span
+                              className={`font-mono font-extrabold text-[11px] sm:text-xs tabular-nums truncate block ${
+                                saleMode === 'wholesale' ? 'text-purple-700' : 'text-blue-600'
+                              }`}
+                            >
+                              {currency} {getItemUnitPrice(item).toLocaleString()}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={() => addToCart(item)}
+                              disabled={remainingStock <= 0}
+                              className={`px-2 py-1 font-bold rounded-lg text-[10px] sm:text-xs flex items-center gap-0.5 transition cursor-pointer h-7 sm:h-7.5 shrink-0 shadow-2xs ${
+                                remainingStock <= 0
+                                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                                  : saleMode === 'wholesale'
+                                  ? 'bg-purple-600 hover:bg-purple-700 text-white active:scale-95'
+                                  : 'bg-blue-600 hover:bg-blue-700 text-white active:scale-95'
+                              }`}
+                              title="Add directly to bill"
+                            >
+                              <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                              <span>Add</span>
+                            </button>
                           </div>
                         </div>
                       </div>
-
-                      <div className="flex items-center justify-between mt-2.5 sm:mt-3.5 pt-2 sm:pt-2.5 border-t border-slate-100">
-                        <div>
-                          {saleMode === 'wholesale' ? (
-                            <div>
-                              <div className="font-extrabold text-purple-700 text-xs sm:text-sm font-mono tabular-nums flex items-center gap-1">
-                                <span>{currency} {getItemUnitPrice(item).toLocaleString()}</span>
-                                <span className="text-[9px] bg-purple-100 text-purple-800 px-1 py-0.2 rounded font-black uppercase">W/S</span>
-                              </div>
-                              <span className="text-[10px] text-slate-400 line-through font-mono">
-                                {currency} {item.salePrice.toLocaleString()}
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="font-extrabold text-blue-600 text-xs sm:text-sm font-mono tabular-nums">
-                              {currency} {item.salePrice.toLocaleString()}
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                          <button
-                            type="button"
-                            onClick={() => addToCart(item)}
-                            disabled={remainingStock <= 0}
-                            className={`px-2 sm:px-2.5 py-1 font-bold rounded-lg text-[10px] sm:text-[11px] flex items-center gap-0.5 sm:gap-1 transition cursor-pointer min-h-[32px] ${
-                              saleMode === 'wholesale'
-                                ? 'bg-purple-600 text-white hover:bg-purple-700'
-                                : 'bg-blue-50 hover:bg-blue-100 text-blue-600'
-                            }`}
-                          >
-                            <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> Add
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
+                    );
+                  })}
+                </div>
               )}
             </div>
           </div>
 
           {/* Right Column: Checkout & Billing Cart (Desktop Only >= lg:) */}
-          <div className="hidden lg:block lg:col-span-5 space-y-4">
+          <div className="hidden lg:flex lg:flex-col lg:col-span-5 h-full min-h-0 overflow-hidden">
             {renderCartContent(false)}
           </div>
 
-          {/* Mobile Floating Cart Trigger Bar (lg:hidden) */}
+          {/* Mobile Floating Cart Trigger Bar (Sits cleanly at bottom without bottom-nav gap) */}
           {cart.length > 0 && (
-            <div className="lg:hidden fixed bottom-[68px] left-3 right-3 z-30 animate-in slide-in-from-bottom duration-200">
+            <div className="lg:hidden fixed bottom-3 left-3 right-3 sm:bottom-4 sm:left-4 sm:right-4 z-30 animate-in slide-in-from-bottom duration-200">
               <div
                 onClick={() => setIsMobileCartOpen(true)}
-                className="bg-slate-900/95 backdrop-blur-md text-white rounded-2xl p-3 shadow-2xl flex items-center justify-between cursor-pointer border border-slate-700/60 active:scale-[0.99] transition"
+                className="bg-slate-900/95 backdrop-blur-md text-white rounded-2xl p-2.5 sm:p-3 shadow-2xl flex items-center justify-between cursor-pointer border border-slate-700/60 active:scale-[0.99] transition"
               >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="relative p-2 bg-blue-600 rounded-xl text-white shrink-0">
-                    <ShoppingCart className="w-5 h-5" />
-                    <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-xs animate-pulse">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="relative p-1.5 sm:p-2 bg-blue-600 rounded-xl text-white shrink-0">
+                    <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[8px] font-black w-3.5 h-3.5 rounded-full flex items-center justify-center shadow-xs animate-pulse">
                       {cart.reduce((a, b) => a + b.cartQty, 0)}
                     </span>
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[11px] font-bold text-slate-300">
+                    <p className="text-[10px] sm:text-[11px] font-bold text-slate-300">
                       {cart.reduce((a, b) => a + b.cartQty, 0)} items in Cart
                     </p>
-                    <p className="text-sm font-extrabold font-mono text-emerald-400 tabular-nums">
+                    <p className="text-xs sm:text-sm font-extrabold font-mono text-emerald-400 tabular-nums">
                       {currency} {grandTotal.toLocaleString()}
                     </p>
                   </div>
@@ -1561,10 +1605,10 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
                 <button
                   type="button"
-                  className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl flex items-center gap-1 shadow-md shadow-blue-500/25 transition cursor-pointer min-h-[44px]"
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl flex items-center gap-1 shadow-md shadow-blue-500/25 transition cursor-pointer h-9 sm:h-10"
                 >
                   <span>Checkout</span>
-                  <ChevronUp className="w-4 h-4" />
+                  <ChevronUp className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
@@ -1580,12 +1624,12 @@ const PosTabComponent: React.FC<PosTabProps> = ({
               />
 
               {/* Drawer Panel */}
-              <div className="relative z-10 bg-white rounded-t-3xl max-h-[88vh] flex flex-col shadow-2xl border-t border-slate-200 animate-in slide-in-from-bottom duration-300 overflow-hidden">
+              <div className="relative z-10 bg-white rounded-t-3xl max-h-[85vh] flex flex-col shadow-2xl border-t border-slate-200 animate-in slide-in-from-bottom duration-300 overflow-hidden">
                 {/* Drawer Handle */}
                 <div className="w-12 h-1.5 bg-slate-300 rounded-full mx-auto mt-2.5 mb-1 shrink-0" />
 
                 {/* Cart Content Container */}
-                <div className="p-4 sm:p-5 overflow-y-auto flex-1">
+                <div className="p-2.5 sm:p-4 overflow-y-auto flex-1">
                   {renderCartContent(true)}
                 </div>
               </div>
@@ -2227,6 +2271,225 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                   <span>Save Info Changes</span>
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Product Details Modal (Daraz Style Details & IMEIs) */}
+      {selectedProductDetails && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-4 sm:p-6 shadow-2xl space-y-4 border border-slate-100 my-auto animate-in zoom-in-95 duration-200 overflow-y-auto max-h-[90dvh]">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                  <Package className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-sm sm:text-base">Product Details & Specs</h3>
+                  <p className="text-[11px] text-slate-500">Stock specifications, IMEI inventory & instant billing</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedProductDetails(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Product Card / Image & Info */}
+            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-3 sm:gap-4 bg-slate-50 p-3 sm:p-4 rounded-2xl border border-slate-200/80">
+              {selectedProductDetails.image ? (
+                <div className="w-20 h-20 sm:w-28 sm:h-28 rounded-xl border border-slate-200 overflow-hidden bg-white shadow-xs shrink-0 flex items-center justify-center p-1">
+                  <img
+                    src={selectedProductDetails.image}
+                    alt={selectedProductDetails.name}
+                    className="w-full h-full object-contain rounded-lg"
+                  />
+                </div>
+              ) : (
+                <div className="w-20 h-20 sm:w-28 sm:h-28 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-2xl sm:text-3xl shadow-md shrink-0">
+                  {selectedProductDetails.name.charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div className="space-y-1.5 text-left w-full min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-blue-100 text-blue-800 rounded-md">
+                    {selectedProductDetails.category}
+                  </span>
+                  {selectedProductDetails.variants && selectedProductDetails.variants.length > 0 && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 bg-purple-100 text-purple-800 rounded-md">
+                      {selectedProductDetails.variants.length} Color Variants
+                    </span>
+                  )}
+                </div>
+                <h4 className="font-extrabold text-slate-900 text-base sm:text-lg leading-snug">
+                  {selectedProductDetails.name}
+                </h4>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs pt-1">
+                  <div>
+                    <span className="text-slate-400 block text-[10px] font-bold uppercase">Retail Price</span>
+                    <span className="font-mono font-black text-blue-600 text-sm sm:text-base">
+                      {currency} {selectedProductDetails.salePrice.toLocaleString()}
+                    </span>
+                  </div>
+                  {selectedProductDetails.wholesalePrice ? (
+                    <div>
+                      <span className="text-purple-600 block text-[10px] font-bold uppercase">Wholesale Price</span>
+                      <span className="font-mono font-black text-purple-700 text-sm sm:text-base">
+                        {currency} {selectedProductDetails.wholesalePrice.toLocaleString()}
+                      </span>
+                    </div>
+                  ) : null}
+                  <div>
+                    <span className="text-slate-400 block text-[10px] font-bold uppercase">In Stock</span>
+                    <span className={`font-mono font-bold text-sm sm:text-base ${
+                      selectedProductDetails.qty > 0 ? 'text-emerald-700' : 'text-rose-600'
+                    }`}>
+                      {selectedProductDetails.qty} units
+                    </span>
+                  </div>
+                </div>
+
+                {selectedProductDetails.barcode && (
+                  <div className="text-xs pt-0.5">
+                    <span className="text-slate-400 text-[10px] font-bold uppercase">Barcode / SKU: </span>
+                    <span className="font-mono font-bold text-slate-700">{selectedProductDetails.barcode}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Colors & IMEIs Breakdown */}
+            <div className="space-y-2.5">
+              <h5 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                <Layers className="w-4 h-4 text-blue-600" />
+                Color Variants & Dedicated IMEIs
+              </h5>
+
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1 scrollbar-thin">
+                {selectedProductDetails.variants && selectedProductDetails.variants.length > 0 ? (
+                  selectedProductDetails.variants.map((v: MobileVariant, vIdx: number) => (
+                    <div key={v.id || vIdx} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                          <span className="w-5 h-5 rounded-md bg-blue-100 text-blue-700 flex items-center justify-center font-mono text-[10px]">
+                            #{vIdx + 1}
+                          </span>
+                          {v.color || `${v.ram || ''} ${v.storage || ''}`.trim() || 'Standard Variant'}
+                        </span>
+                        <span className="font-mono text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                          {v.qty || 1} units
+                        </span>
+                      </div>
+                      {v.imeis && v.imeis.filter(Boolean).length > 0 && (
+                        <div className="pt-1 border-t border-slate-200/70 flex flex-wrap gap-1">
+                          {v.imeis.filter(Boolean).map((im: string, imIdx: number) => (
+                            <button
+                              key={imIdx}
+                              type="button"
+                              onClick={() => handleCopyImei(im)}
+                              className="font-mono text-[10px] bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer transition shadow-2xs"
+                              title="Click to copy IMEI"
+                            >
+                              <span>IMEI: {im}</span>
+                              {copiedImei === im ? (
+                                <Check className="w-3 h-3 text-emerald-600" />
+                              ) : (
+                                <Copy className="w-3 h-3 text-blue-400" />
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                ) : selectedProductDetails.imeis && selectedProductDetails.imeis.filter(Boolean).length > 0 ? (
+                  <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                    <span className="text-xs font-bold text-slate-700 block">Registered IMEIs:</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedProductDetails.imeis.filter(Boolean).map((im, imIdx) => (
+                        <button
+                          key={imIdx}
+                          type="button"
+                          onClick={() => handleCopyImei(im)}
+                          className="font-mono text-[10px] bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer transition shadow-2xs"
+                          title="Click to copy IMEI"
+                        >
+                          <span>{im}</span>
+                          {copiedImei === im ? (
+                            <Check className="w-3 h-3 text-emerald-600" />
+                          ) : (
+                            <Copy className="w-3 h-3 text-blue-400" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : selectedProductDetails.imei ? (
+                  <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-700">IMEI: </span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyImei(selectedProductDetails.imei!)}
+                      className="font-mono text-xs text-blue-700 bg-white hover:bg-blue-50 border border-blue-200 px-2 py-1 rounded flex items-center gap-1 cursor-pointer shadow-2xs"
+                    >
+                      <span>{selectedProductDetails.imei}</span>
+                      {copiedImei === selectedProductDetails.imei ? (
+                        <Check className="w-3 h-3 text-emerald-600" />
+                      ) : (
+                        <Copy className="w-3 h-3 text-blue-400" />
+                      )}
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 italic py-2 text-center bg-slate-50 rounded-xl">
+                    No dedicated IMEI tracked for this product item.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  addToCart(selectedProductDetails);
+                  showToast(`Added ${selectedProductDetails.name} to bill`, 'success');
+                }}
+                disabled={selectedProductDetails.qty <= (cart.find(c => c.id === selectedProductDetails.id)?.cartQty || 0)}
+                className={`w-full sm:flex-1 py-2.5 px-4 font-bold text-xs rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-2 min-h-[42px] ${
+                  selectedProductDetails.qty <= (cart.find(c => c.id === selectedProductDetails.id)?.cartQty || 0)
+                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20 active:scale-[0.98]'
+                }`}
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add to Bill / Cart</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleWhatsAppShareProduct(selectedProductDetails)}
+                className="w-full sm:w-auto py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-2 min-h-[42px]"
+                title="Share details with customer on WhatsApp"
+              >
+                <Share2 className="w-4 h-4" />
+                <span>Share WhatsApp</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedProductDetails(null)}
+                className="w-full sm:w-auto py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer min-h-[42px]"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

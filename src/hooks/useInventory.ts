@@ -10,6 +10,7 @@ import { recordImeisAvailable } from '../utils/imeiManager';
 import {
   saveInventoryItemToFirestore,
   deleteInventoryItemFromFirestore,
+  saveRootConfigToFirestore,
 } from '../utils/storage';
 import { hasPermission } from '../utils/permissions';
 import { generateEntityId } from '../utils/id';
@@ -339,20 +340,30 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
     const trimmed = catName.trim();
     if (!trimmed || data.categories.includes(trimmed)) return;
 
+    const updatedCategories = [...data.categories, trimmed];
     setData(prev => ({
       ...prev,
-      categories: [...prev.categories, trimmed],
+      categories: updatedCategories,
     }));
+
+    saveRootConfigToFirestore({ categories: updatedCategories }).catch(err => {
+      console.warn('Firestore category creation sync warning:', err);
+    });
 
     logActivity('Category', `Created Category: ${trimmed}`, 'Added to product categories list', 'create');
     showToast(`Category "${trimmed}" added!`, 'success');
   };
 
   const handleDeleteCategory = (catName: string): boolean => {
+    const updatedCategories = data.categories.filter(c => c !== catName);
     setData(prev => ({
       ...prev,
-      categories: prev.categories.filter(c => c !== catName),
+      categories: updatedCategories,
     }));
+
+    saveRootConfigToFirestore({ categories: updatedCategories }).catch(err => {
+      console.warn('Firestore category deletion sync warning:', err);
+    });
 
     logActivity('Category', `Deleted Category: ${catName}`, 'Removed from category lists', 'delete');
     showToast(`Category "${catName}" deleted!`, 'info');

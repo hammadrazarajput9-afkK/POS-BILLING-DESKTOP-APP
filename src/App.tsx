@@ -28,6 +28,7 @@ import {
   getSavedSessionUser,
   clearCurrentSession,
   loadAppDataFromFirestore,
+  subscribeToStoreRootConfig,
 } from './utils/storage';
 import { recordImeisReversed, recordImeisAvailable } from './utils/imeiManager';
 import { generateEntityId } from './utils/id';
@@ -55,7 +56,6 @@ import { SettingsModal } from './components/SettingsModal';
 import { DailyClosingTab } from './components/DailyClosingTab';
 import { TabSettingsModal } from './components/TabSettingsModal';
 import { PdfExportModal } from './components/PdfExportModal';
-import { BottomNavigation } from './components/BottomNavigation';
 import { PWAUpdateBanner } from './components/PWAUpdateBanner';
 
 // Modular Custom Hooks
@@ -221,6 +221,79 @@ function AppContent() {
       saveStoredData(data, activeSid);
     }
   }, [data]);
+
+  // Live Real-Time Firestore Synchronization for Store Settings, Categories & Config across devices
+  useEffect(() => {
+    const activeSid = data.currentUser?.storeId || data.currentUser?.id || getActiveStoreId();
+    if (!activeSid) return;
+
+    const unsubscribe = subscribeToStoreRootConfig(activeSid, (incomingPatch) => {
+      setData(prev => {
+        let hasChanges = false;
+        const patchToApply: Partial<AppData> = {};
+
+        if (
+          incomingPatch.settings &&
+          JSON.stringify(prev.settings) !== JSON.stringify(incomingPatch.settings)
+        ) {
+          patchToApply.settings = incomingPatch.settings;
+          hasChanges = true;
+        }
+
+        if (
+          incomingPatch.categories &&
+          JSON.stringify(prev.categories) !== JSON.stringify(incomingPatch.categories)
+        ) {
+          patchToApply.categories = incomingPatch.categories;
+          hasChanges = true;
+        }
+
+        if (
+          incomingPatch.expenseCategories &&
+          JSON.stringify(prev.expenseCategories) !== JSON.stringify(incomingPatch.expenseCategories)
+        ) {
+          patchToApply.expenseCategories = incomingPatch.expenseCategories;
+          hasChanges = true;
+        }
+
+        if (
+          incomingPatch.onlineAccounts &&
+          JSON.stringify(prev.onlineAccounts) !== JSON.stringify(incomingPatch.onlineAccounts)
+        ) {
+          patchToApply.onlineAccounts = incomingPatch.onlineAccounts;
+          hasChanges = true;
+        }
+
+        if (
+          incomingPatch.tabPreferences &&
+          JSON.stringify(prev.tabPreferences) !== JSON.stringify(incomingPatch.tabPreferences)
+        ) {
+          patchToApply.tabPreferences = incomingPatch.tabPreferences;
+          hasChanges = true;
+        }
+
+        if (
+          incomingPatch.users &&
+          JSON.stringify(prev.users) !== JSON.stringify(incomingPatch.users)
+        ) {
+          patchToApply.users = incomingPatch.users;
+          hasChanges = true;
+        }
+
+        if (hasChanges) {
+          return {
+            ...prev,
+            ...patchToApply,
+          };
+        }
+        return prev;
+      });
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [data.currentUser?.storeId, data.currentUser?.id]);
 
   // Mobile keyboard scroll into view handler
   useEffect(() => {
@@ -409,10 +482,15 @@ function AppContent() {
       ...acc,
     };
 
+    const updatedOnlineAccounts = [...(data.onlineAccounts || []), newAccount];
     setData(prev => ({
       ...prev,
-      onlineAccounts: [...(prev.onlineAccounts || []), newAccount],
+      onlineAccounts: updatedOnlineAccounts,
     }));
+
+    saveRootConfigToFirestore({ onlineAccounts: updatedOnlineAccounts }).catch(err => {
+      console.warn('Firestore online account creation sync warning:', err);
+    });
 
     logActivity(
       'Settings',
@@ -427,10 +505,15 @@ function AppContent() {
 
   const handleDeleteOnlineAccount = (id: string) => {
     const acc = (data.onlineAccounts || []).find(a => a.id === id);
+    const updatedOnlineAccounts = (data.onlineAccounts || []).filter(a => a.id !== id);
     setData(prev => ({
       ...prev,
-      onlineAccounts: (prev.onlineAccounts || []).filter(a => a.id !== id),
+      onlineAccounts: updatedOnlineAccounts,
     }));
+
+    saveRootConfigToFirestore({ onlineAccounts: updatedOnlineAccounts }).catch(err => {
+      console.warn('Firestore online account deletion sync warning:', err);
+    });
 
     if (acc) {
       logActivity('Settings', `Deleted Online Account: ${acc.name}`, 'Account removed from daily closing', 'delete', id);
@@ -743,33 +826,49 @@ function AppContent() {
               setActiveTab('pos');
             }
 
-            // Immediately load the isolated store's local cached data
+            // Immediately load the isolated store's local cached data (with fallback for instant product rendering)
             const localStoreData = loadStoredData(userStoreId);
             const currentUsers = localStoreData.users || [];
             const userExists = currentUsers.some(u => u.id === user.id);
             const updatedUsers = userExists ? currentUsers.map(u => (u.id === user.id ? user : u)) : [...currentUsers, user];
 
-            setData({
+            // Retain existing active inventory if localStoreData inventory is empty so products NEVER disappear
+            const currentInventory = data.inventory && data.inventory.length > 0 ? data.inventory : [];
+            const finalLocalInventory = (localStoreData.inventory && localStoreData.inventory.length > 0)
+              ? localStoreData.inventory
+              : currentInventory;
+
+            const initialMergedData: AppData = {
               ...localStoreData,
+              inventory: finalLocalInventory,
               users: updatedUsers,
               currentUser: user,
               currentRole: user.role,
-            });
+            };
 
-            // Sync live remote data for this isolated store from Firestore
+            setData(initialMergedData);
+
+            // Sync live remote data for this isolated store from Firestore in background
             loadAppDataFromFirestore(userStoreId).then(remoteData => {
               if (remoteData) {
                 const rUsers = remoteData.users || [];
                 const rUserExists = rUsers.some(u => u.id === user.id);
                 const rUpdatedUsers = rUserExists ? rUsers.map(u => (u.id === user.id ? user : u)) : [...rUsers, user];
 
-                setData({
+                const finalInventory = (remoteData.inventory && remoteData.inventory.length > 0)
+                  ? remoteData.inventory
+                  : finalLocalInventory;
+
+                const finalData: AppData = {
                   ...remoteData,
+                  inventory: finalInventory,
                   users: rUpdatedUsers,
                   currentUser: user,
                   currentRole: user.role,
-                });
-                saveStoredData(remoteData, userStoreId);
+                };
+
+                setData(finalData);
+                saveStoredData(finalData, userStoreId);
               }
             });
 
@@ -820,8 +919,14 @@ function AppContent() {
         />
 
         {/* Scrollable Tab Content - Optimized with Conditional Rendering (Unmounts Inactive Tabs) */}
-        <main className="flex-1 overflow-y-auto p-3.5 sm:p-6 pb-24 lg:pb-6">
-          <div className="max-w-7xl mx-auto">
+        <main
+          className={`flex-1 ${
+            activeTab === 'pos'
+              ? 'p-2 sm:p-3 lg:p-3 overflow-y-auto lg:overflow-hidden pb-3 lg:pb-2'
+              : 'overflow-y-auto p-2.5 sm:p-5 pb-6 lg:pb-6'
+          }`}
+        >
+          <div className={activeTab === 'pos' ? 'w-full h-full flex flex-col min-h-0' : 'max-w-7xl mx-auto'}>
             {activeTab === 'dashboard' && (data.currentRole || 'admin') === 'admin' && (
               <DashboardTab
                 data={data}
@@ -975,15 +1080,6 @@ function AppContent() {
             )}
           </div>
         </main>
-
-        {/* Mobile Sticky Bottom Dock / Navigation Bar (lg:hidden) */}
-        <BottomNavigation
-          activeTab={activeTab}
-          onSelectTab={setActiveTab}
-          onOpenMenu={() => setIsMenuOpen(true)}
-          currentRole={data.currentRole || 'admin'}
-          cartItemCount={cartItemCount}
-        />
       </div>
 
       {/* Global Application Modals */}
