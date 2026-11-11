@@ -1579,9 +1579,9 @@ const PosTabComponent: React.FC<PosTabProps> = ({
             {renderCartContent(false)}
           </div>
 
-          {/* Mobile Floating Cart Trigger Bar (Sits cleanly at bottom without bottom-nav gap) */}
+          {/* Mobile Floating Cart Trigger Bar (Sits cleanly right above bottom navigation bar) */}
           {cart.length > 0 && (
-            <div className="lg:hidden fixed bottom-3 left-3 right-3 sm:bottom-4 sm:left-4 sm:right-4 z-30 animate-in slide-in-from-bottom duration-200">
+            <div className="lg:hidden fixed bottom-[calc(4.2rem+env(safe-area-inset-bottom,0px))] left-3 right-3 sm:left-4 sm:right-4 z-30 animate-in slide-in-from-bottom duration-200">
               <div
                 onClick={() => setIsMobileCartOpen(true)}
                 className="bg-slate-900/95 backdrop-blur-md text-white rounded-2xl p-2.5 sm:p-3 shadow-2xl flex items-center justify-between cursor-pointer border border-slate-700/60 active:scale-[0.99] transition"

@@ -582,11 +582,11 @@ export const Settings: React.FC<SettingsProps> = ({
         </div>
 
         {/* Subtabs Selector */}
-        <div className="flex gap-2 border-b border-slate-100 pb-2 shrink-0">
+        <div className="flex items-center gap-1.5 border-b border-slate-100 pb-2 shrink-0 overflow-x-auto max-w-full">
           <button
             type="button"
             onClick={() => setActiveSubTab('profile')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 whitespace-nowrap ${
               activeSubTab === 'profile'
                 ? 'bg-blue-600 text-white shadow-2xs'
                 : 'text-slate-600 hover:bg-slate-100'
@@ -598,7 +598,7 @@ export const Settings: React.FC<SettingsProps> = ({
           <button
             type="button"
             onClick={() => setActiveSubTab('branding')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 whitespace-nowrap ${
               activeSubTab === 'branding'
                 ? 'bg-blue-600 text-white shadow-2xs'
                 : 'text-slate-600 hover:bg-slate-100'
@@ -610,7 +610,7 @@ export const Settings: React.FC<SettingsProps> = ({
           <button
             type="button"
             onClick={() => setActiveSubTab('backup')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 whitespace-nowrap ${
               activeSubTab === 'backup'
                 ? 'bg-blue-600 text-white shadow-2xs'
                 : 'text-slate-600 hover:bg-slate-100'
@@ -624,7 +624,7 @@ export const Settings: React.FC<SettingsProps> = ({
               <button
                 type="button"
                 onClick={() => setActiveSubTab('users')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 whitespace-nowrap ${
                   activeSubTab === 'users'
                     ? 'bg-blue-600 text-white shadow-2xs'
                     : 'text-slate-600 hover:bg-slate-100'
@@ -635,7 +635,7 @@ export const Settings: React.FC<SettingsProps> = ({
               <button
                 type="button"
                 onClick={() => setActiveSubTab('password')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 whitespace-nowrap ${
                   activeSubTab === 'password'
                     ? 'bg-blue-600 text-white shadow-2xs'
                     : 'text-slate-600 hover:bg-slate-100'
