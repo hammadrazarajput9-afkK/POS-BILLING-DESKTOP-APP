@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Cloud, CloudOff } from 'lucide-react';
+import { Cloud, CloudOff, AlertCircle, ExternalLink } from 'lucide-react';
+import { getQuotaExceededFlag, subscribeQuotaState } from '../utils/firebase';
 
 export const OnlineStatusBadge: React.FC = () => {
   const [isOnline, setIsOnline] = useState<boolean>(() => {
     return typeof navigator !== 'undefined' ? navigator.onLine : true;
   });
+  const [isQuotaExceeded, setIsQuotaExceeded] = useState<boolean>(() => getQuotaExceededFlag());
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -13,11 +15,38 @@ export const OnlineStatusBadge: React.FC = () => {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
+    const unsubscribeQuota = subscribeQuotaState((exceeded) => {
+      setIsQuotaExceeded(exceeded);
+    });
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      unsubscribeQuota();
     };
   }, []);
+
+  const consoleLink =
+    'https://console.firebase.google.com/project/gen-lang-client-0220210628/firestore/databases/ai-studio-61fe2539-4730-4793-b629-a517b8cd5fe3/data?openUpgradeDialog=true';
+
+  if (isQuotaExceeded) {
+    return (
+      <a
+        href={consoleLink}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-900 border border-amber-300 hover:bg-amber-100 transition shadow-2xs cursor-pointer"
+        title="Firebase daily free quota limit reached. App is running seamlessly in Local Database mode (IndexedDB). Click to open Firebase Console to upgrade or reset."
+      >
+        <span className="relative flex h-2 w-2">
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+        </span>
+        <AlertCircle className="w-3.5 h-3.5 text-amber-600 hidden sm:inline" />
+        <span className="hidden sm:inline">Local DB (Daily Quota Reached)</span>
+        <ExternalLink className="w-3 h-3 text-amber-700 hidden sm:inline" />
+      </a>
+    );
+  }
 
   return (
     <div

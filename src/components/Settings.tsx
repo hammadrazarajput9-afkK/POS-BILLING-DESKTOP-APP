@@ -404,6 +404,10 @@ export const Settings: React.FC<SettingsProps> = ({
     };
 
     const updatedUsers = [...existingUsers, newSalesman];
+    saveUserToFirestore(newSalesman, currentAdminStoreId).catch((err) => {
+      console.warn('Failed to save salesman account to Firestore:', err);
+    });
+
     if (onUpdateUsers) {
       onUpdateUsers(updatedUsers);
     }

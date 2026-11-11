@@ -18,7 +18,7 @@ import {
   PaymentMethod,
   DailyClosingRecord,
 } from '../types';
-import { db, handleFirestoreError, OperationType } from './firebase';
+import { db, handleFirestoreError, OperationType, isQuotaError, setQuotaExceededFlag } from './firebase';
 import {
   doc,
   getDoc,
@@ -882,7 +882,11 @@ export async function saveAppDataToFirestore(data: AppData, targetStoreId?: stri
       await batch.commit();
     }
   } catch (error) {
-    console.error(`Error saving data to Firebase Firestore store [${storeId}]:`, error);
+    console.warn(`Firebase Firestore save notice for store [${storeId}]:`, error);
+    if (isQuotaError(error)) {
+      setQuotaExceededFlag(true);
+      return;
+    }
     if (
       error instanceof Error &&
       (error.message.includes('permission') || (error as any).code === 'permission-denied')
@@ -1042,7 +1046,11 @@ export async function loadAppDataFromFirestore(targetStoreId?: string): Promise<
 
     return assembledData;
   } catch (error) {
-    console.error(`Error loading data from Firebase Firestore store [${storeId}]:`, error);
+    console.warn(`Firebase Firestore load notice for store [${storeId}]:`, error);
+    if (isQuotaError(error)) {
+      setQuotaExceededFlag(true);
+      return null;
+    }
     if (
       error instanceof Error &&
       (error.message.includes('permission') || (error as any).code === 'permission-denied')

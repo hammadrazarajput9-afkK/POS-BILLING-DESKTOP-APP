@@ -188,90 +188,75 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
     const emailNorm = loginEmail.trim().toLowerCase();
 
-    if (activeTab === 'salesman') {
-      let user = allUsersPool.find(
-        (u) =>
-          u.email.toLowerCase() === emailNorm &&
-          u.password === loginPassword &&
-          u.role === 'salesman'
-      );
+    // 1. Always fetch fresh live user registry from Firestore for cross-device authentication
+    setIsCheckingCloud(true);
+    const liveUsers = await fetchLiveUsersFromFirestore();
+    setIsCheckingCloud(false);
+    if (liveUsers.length > 0) {
+      setCloudUsers(liveUsers);
+      if (onSyncUsers) onSyncUsers(liveUsers);
+    }
+    const pool = liveUsers.length > 0 ? liveUsers : allUsersPool;
 
-      if (!user) {
-        setIsCheckingCloud(true);
-        const liveUsers = await fetchLiveUsersFromFirestore();
-        setIsCheckingCloud(false);
-        if (liveUsers.length > 0) {
-          setCloudUsers(liveUsers);
-          if (onSyncUsers) onSyncUsers(liveUsers);
-          user = liveUsers.find(
-            (u) =>
-              u.email.toLowerCase() === emailNorm &&
-              u.password === loginPassword &&
-              u.role === 'salesman'
-          );
-        }
-      }
+    // 2. Check if credentials match a Salesman account
+    const salesmanUser = pool.find(
+      (u) =>
+        u.email.toLowerCase() === emailNorm &&
+        u.password === loginPassword &&
+        u.role === 'salesman'
+    );
 
-      if (!user) {
+    if (salesmanUser || activeTab === 'salesman') {
+      if (salesmanUser) {
+        const resolvedSalesman: UserAccount = {
+          ...salesmanUser,
+          storeId: salesmanUser.storeId || 'main_store',
+        };
+        showToast(`Welcome back, Salesman ${resolvedSalesman.name}!`, 'success');
+        onAuthSuccess(resolvedSalesman, rememberMe);
+        return;
+      } else {
         showToast('Invalid Salesman Email or Password', 'error');
         return;
       }
+    }
 
-      const resolvedSalesman: UserAccount = {
-        ...user,
-        storeId: user.storeId || 'main_store',
-      };
+    // 3. Match admin account by email, prioritizing already 2FA-secured profiles
+    const matchingAdmins = pool.filter(
+      (u) => u.email.toLowerCase() === emailNorm && u.role === 'admin'
+    );
 
-      showToast(`Welcome back, ${resolvedSalesman.name}!`, 'success');
-      onAuthSuccess(resolvedSalesman, rememberMe);
+    const adminUser =
+      matchingAdmins.find((u) => (u.is2faEnabled || u.totpSecret) && u.password === loginPassword) ||
+      matchingAdmins.find((u) => u.password === loginPassword);
+
+    if (!adminUser) {
+      showToast('Invalid Email address or Password.', 'error');
+      return;
+    }
+
+    const resolvedAdmin: UserAccount = {
+      ...adminUser,
+      storeId: adminUser.storeId || adminUser.id,
+    };
+
+    setPendingAdminUser(resolvedAdmin);
+    setTotpInputCode('');
+
+    // 4. ZERO-EXPOSURE SECURITY GUARANTEE:
+    // If 2FA has EVER been set up (is2faEnabled or totpSecret present),
+    // NEVER show QR code setup. Go straight to 6-digit TOTP code input!
+    if (resolvedAdmin.is2faEnabled || resolvedAdmin.totpSecret) {
+      setAdminLoginStep('totp');
+      showToast('Please enter the 6-digit passcode from your Google Authenticator app.', 'info');
     } else {
-      // 1. Always fetch fresh live user registry from Firestore for cross-device authentication
-      setIsCheckingCloud(true);
-      const liveUsers = await fetchLiveUsersFromFirestore();
-      setIsCheckingCloud(false);
-      if (liveUsers.length > 0) {
-        setCloudUsers(liveUsers);
-        if (onSyncUsers) onSyncUsers(liveUsers);
-      }
-      const pool = liveUsers.length > 0 ? liveUsers : allUsersPool;
-
-      // 2. Match admin account by email, prioritizing already 2FA-secured profiles
-      const matchingAdmins = pool.filter(
-        (u) => u.email.toLowerCase() === emailNorm && u.role === 'admin'
-      );
-
-      const adminUser =
-        matchingAdmins.find((u) => (u.is2faEnabled || u.totpSecret) && u.password === loginPassword) ||
-        matchingAdmins.find((u) => u.password === loginPassword);
-
-      if (!adminUser) {
-        showToast('Invalid Administrator Email or Password.', 'error');
-        return;
-      }
-
-      const resolvedAdmin: UserAccount = {
-        ...adminUser,
-        storeId: adminUser.storeId || adminUser.id,
-      };
-
-      setPendingAdminUser(resolvedAdmin);
-      setTotpInputCode('');
-
-      // 3. ZERO-EXPOSURE SECURITY GUARANTEE:
-      // If 2FA has EVER been set up (is2faEnabled or totpSecret present),
-      // NEVER show QR code setup. Go straight to 6-digit TOTP code input!
-      if (resolvedAdmin.is2faEnabled || resolvedAdmin.totpSecret) {
-        setAdminLoginStep('totp');
-        showToast('Please enter the 6-digit passcode from your Google Authenticator app.', 'info');
-      } else {
-        // Only reached if an admin has genuinely never paired an Authenticator app
-        setIsGeneratingSetup(true);
-        const setup = await generateTotpSetup(resolvedAdmin.email, resolvedAdmin.totpSecret);
-        setIsGeneratingSetup(false);
-        setTotpSetupData(setup);
-        setAdminLoginStep('setup');
-        showToast('First-time setup: Scan QR code with Google Authenticator.', 'info');
-      }
+      // Only reached if an admin has genuinely never paired an Authenticator app
+      setIsGeneratingSetup(true);
+      const setup = await generateTotpSetup(resolvedAdmin.email, resolvedAdmin.totpSecret);
+      setIsGeneratingSetup(false);
+      setTotpSetupData(setup);
+      setAdminLoginStep('setup');
+      showToast('First-time setup: Scan QR code with Google Authenticator.', 'info');
     }
   };
 

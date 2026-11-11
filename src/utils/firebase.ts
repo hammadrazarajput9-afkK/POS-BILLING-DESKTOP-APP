@@ -41,7 +41,47 @@ export interface FirestoreErrorInfo {
   };
 }
 
-export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
+let quotaExceededState = false;
+const quotaListeners: Array<(isExceeded: boolean) => void> = [];
+
+export function isQuotaError(error: unknown): boolean {
+  if (!error) return false;
+  const msg = error instanceof Error ? error.message : String(error);
+  return (
+    msg.includes('Quota limit exceeded') ||
+    msg.includes('Quota exceeded') ||
+    msg.includes('RESOURCE_EXHAUSTED') ||
+    msg.includes('free daily read units') ||
+    msg.includes('quota metric') ||
+    msg.includes('firestore.googleapis.com')
+  );
+}
+
+export function setQuotaExceededFlag(val: boolean): void {
+  if (quotaExceededState !== val) {
+    quotaExceededState = val;
+    quotaListeners.forEach(l => l(val));
+  }
+}
+
+export function getQuotaExceededFlag(): boolean {
+  return quotaExceededState;
+}
+
+export function subscribeQuotaState(listener: (isExceeded: boolean) => void): () => void {
+  quotaListeners.push(listener);
+  return () => {
+    const idx = quotaListeners.indexOf(listener);
+    if (idx >= 0) quotaListeners.splice(idx, 1);
+  };
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): void {
+  if (isQuotaError(error)) {
+    setQuotaExceededFlag(true);
+    console.warn(`[Firestore Quota Notice] Operation ${operationType} on [${path}] reached free daily limit. Application seamlessly operates in local IndexedDB mode.`);
+    return;
+  }
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
@@ -67,7 +107,9 @@ async function testConnection() {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
-    // Offline mode is handled smoothly by Firestore cache
+    if (isQuotaError(error)) {
+      setQuotaExceededFlag(true);
+    }
   }
 }
 testConnection();
