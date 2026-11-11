@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, X, RefreshCw, Check, AlertCircle, Image as ImageIcon } from 'lucide-react';
+import { Camera, X, RefreshCw, Check, AlertCircle, Image as ImageIcon, Flashlight, FlashlightOff } from 'lucide-react';
 
 interface CameraCaptureModalProps {
   isOpen: boolean;
@@ -22,6 +22,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [torchOn, setTorchOn] = useState(false);
 
   // Stop camera tracks
   const stopStream = () => {
@@ -29,6 +30,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
+    setTorchOn(false);
   };
 
   // Start camera stream
@@ -94,6 +96,23 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   }, [isOpen, facingMode]);
 
   if (!isOpen) return null;
+
+  // Toggle flashlight / torch
+  const toggleTorch = async () => {
+    if (!streamRef.current) return;
+    const track = streamRef.current.getVideoTracks()[0];
+    if (!track) return;
+    try {
+      const nextState = !torchOn;
+      await (track as any).applyConstraints({
+        advanced: [{ torch: nextState }],
+      });
+      setTorchOn(nextState);
+    } catch (err) {
+      console.warn('Torch constraint toggle warning:', err);
+      setTorchOn(prev => !prev);
+    }
+  };
 
   // Capture current video frame to canvas
   const handleSnap = () => {
@@ -234,14 +253,28 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
             </>
           ) : !errorMsg ? (
             <>
-              <button
-                type="button"
-                onClick={handleFlipCamera}
-                className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer"
-                title="Switch Camera (Front / Back)"
-              >
-                <RefreshCw className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleFlipCamera}
+                  className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer min-h-[44px]"
+                  title="Switch Camera (Front / Back)"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={toggleTorch}
+                  className={`px-3 py-2.5 rounded-xl transition cursor-pointer flex items-center gap-1.5 min-h-[44px] ${
+                    torchOn ? 'bg-amber-500 text-black font-extrabold' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                  }`}
+                  title="Toggle Flashlight / Flash"
+                >
+                  {torchOn ? <Flashlight className="w-4 h-4" /> : <FlashlightOff className="w-4 h-4" />}
+                  <span className="text-[11px] font-bold">Flash</span>
+                </button>
+              </div>
 
               <button
                 type="button"
@@ -253,7 +286,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
                 <div className="w-10 h-10 rounded-full bg-white/20 border border-white/40" />
               </button>
 
-              <label className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer" title="Upload from Device File">
+              <label className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer min-h-[44px] flex items-center justify-center" title="Upload from Device File">
                 <ImageIcon className="w-4 h-4" />
                 <input
                   type="file"

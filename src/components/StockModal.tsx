@@ -1365,10 +1365,10 @@ export const StockModal: React.FC<StockModalProps> = ({
                       )}
 
                       {/* Pricing & Quantity Row */}
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-slate-50/80 p-3 rounded-xl border border-slate-200/70 items-center">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5 bg-slate-50/80 p-2.5 sm:p-3 rounded-xl border border-slate-200/70 items-center">
                         <div>
-                          <label className="block font-bold text-slate-700 mb-1 text-[11px]">
-                            1. Cost Price ({currency}) *
+                          <label className="block font-bold text-slate-700 mb-1 text-[10px] sm:text-[11px] truncate" title="Cost Price">
+                            1. Cost ({currency}) *
                           </label>
                           <input
                             type="number"
@@ -1381,14 +1381,14 @@ export const StockModal: React.FC<StockModalProps> = ({
                                 e.target.value === '' ? '' : Number(e.target.value)
                               )
                             }
-                            placeholder="0"
-                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-xs font-mono font-bold focus:outline-none focus:border-blue-600 min-h-[44px]"
+                            placeholder="Cost Price"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2 sm:px-2.5 py-2 text-xs font-mono font-bold focus:outline-none focus:border-blue-600 min-h-[44px]"
                           />
                         </div>
 
                         <div>
-                          <label className="block font-bold text-purple-900 mb-1 text-[11px]">
-                            2. Wholesale Price ({currency})
+                          <label className="block font-bold text-purple-900 mb-1 text-[10px] sm:text-[11px] truncate" title="Wholesale Price">
+                            2. Wholesale ({currency})
                           </label>
                           <input
                             type="number"
@@ -1402,13 +1402,13 @@ export const StockModal: React.FC<StockModalProps> = ({
                               )
                             }
                             placeholder="Wholesale"
-                            className="w-full bg-purple-50/70 border border-purple-200 rounded-lg px-2.5 py-2 text-xs font-mono font-bold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[44px]"
+                            className="w-full bg-purple-50/70 border border-purple-200 rounded-lg px-2 sm:px-2.5 py-2 text-xs font-mono font-bold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[44px]"
                           />
                         </div>
 
                         <div>
-                          <label className="block font-bold text-slate-700 mb-1 text-[11px]">
-                            3. Sale Price ({currency}) *
+                          <label className="block font-bold text-slate-700 mb-1 text-[10px] sm:text-[11px] truncate" title="Sale Price">
+                            3. Sale ({currency}) *
                           </label>
                           <input
                             type="number"
@@ -1421,14 +1421,14 @@ export const StockModal: React.FC<StockModalProps> = ({
                                 e.target.value === '' ? '' : Number(e.target.value)
                               )
                             }
-                            placeholder="0"
-                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-xs font-mono font-bold focus:outline-none focus:border-blue-600 min-h-[44px]"
+                            placeholder="Sale Price"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2 sm:px-2.5 py-2 text-xs font-mono font-bold focus:outline-none focus:border-blue-600 min-h-[44px]"
                           />
                         </div>
 
                         <div>
-                          <label className="block font-bold text-slate-700 mb-1 text-[11px]">
-                            Quantity (Units) *
+                          <label className="block font-bold text-slate-700 mb-1 text-[10px] sm:text-[11px] truncate" title="Quantity">
+                            Qty (Units) *
                           </label>
                           <input
                             type="number"
@@ -1442,7 +1442,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                               )
                             }
                             placeholder="1"
-                            className="w-full bg-white border border-blue-400 rounded-lg px-2.5 py-2 text-xs font-mono font-extrabold text-blue-700 focus:outline-none focus:border-blue-600 min-h-[44px]"
+                            className="w-full bg-white border border-blue-400 rounded-lg px-2 sm:px-2.5 py-2 text-xs font-mono font-extrabold text-blue-700 focus:outline-none focus:border-blue-600 min-h-[44px]"
                           />
                         </div>
                       </div>
@@ -1603,10 +1603,10 @@ export const StockModal: React.FC<StockModalProps> = ({
               )}
 
               {/* Pricing & Quantity Row: 1. Cost Price -> 2. Wholesale Price -> 3. Sale Price -> Quantity */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
                 {/* 1. Cost Price */}
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">
+                  <label className="block font-bold text-slate-700 mb-1 text-[10px] sm:text-xs truncate" title="Cost Price">
                     1. Cost Price ({currency}) *
                   </label>
                   <input
@@ -1616,14 +1616,14 @@ export const StockModal: React.FC<StockModalProps> = ({
                     value={costPrice}
                     onChange={e => setCostPrice(e.target.value === '' ? '' : Number(e.target.value))}
                     placeholder="Cost Price"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[44px]"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 sm:px-3 py-2 text-xs font-mono font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[44px]"
                   />
                 </div>
 
                 {/* 2. Wholesale Price */}
                 <div>
-                  <label className="block font-bold text-purple-900 mb-1">
-                    2. Wholesale Price ({currency})
+                  <label className="block font-bold text-purple-900 mb-1 text-[10px] sm:text-xs truncate" title="Wholesale Price">
+                    2. Wholesale ({currency})
                   </label>
                   <input
                     type="number"
@@ -1631,13 +1631,13 @@ export const StockModal: React.FC<StockModalProps> = ({
                     value={wholesalePrice}
                     onChange={e => setWholesalePrice(e.target.value === '' ? '' : Number(e.target.value))}
                     placeholder="Wholesale Rate"
-                    className="w-full bg-purple-50/60 border border-purple-200 rounded-xl px-3 py-2 text-xs font-mono font-semibold text-purple-950 focus:outline-none focus:border-purple-600 focus:bg-white transition min-h-[44px]"
+                    className="w-full bg-purple-50/60 border border-purple-200 rounded-xl px-2.5 sm:px-3 py-2 text-xs font-mono font-semibold text-purple-950 focus:outline-none focus:border-purple-600 focus:bg-white transition min-h-[44px]"
                   />
                 </div>
 
                 {/* 3. Sale Price */}
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">
+                  <label className="block font-bold text-slate-700 mb-1 text-[10px] sm:text-xs truncate" title="Sale Price">
                     3. Sale Price ({currency}) *
                   </label>
                   <input
@@ -1646,14 +1646,16 @@ export const StockModal: React.FC<StockModalProps> = ({
                     min="0"
                     value={salePrice}
                     onChange={e => setSalePrice(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder="Retail Sale Rate"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[44px]"
+                    placeholder="Sale Price"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 sm:px-3 py-2 text-xs font-mono font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[44px]"
                   />
                 </div>
 
                 {/* 4. Quantity */}
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Quantity (Units) *</label>
+                  <label className="block font-bold text-slate-700 mb-1 text-[10px] sm:text-xs truncate" title="Quantity">
+                    Quantity (Units) *
+                  </label>
                   <input
                     type="number"
                     required
@@ -1664,7 +1666,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                       handleSingleQtyChange(e.target.value === '' ? '' : Number(e.target.value))
                     }
                     placeholder="1"
-                    className="w-full bg-slate-50 border border-blue-400 rounded-xl px-3 py-2 text-xs font-mono font-bold text-blue-700 focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[44px]"
+                    className="w-full bg-slate-50 border border-blue-400 rounded-xl px-2.5 sm:px-3 py-2 text-xs font-mono font-bold text-blue-700 focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[44px]"
                   />
                 </div>
               </div>
@@ -1775,22 +1777,22 @@ export const StockModal: React.FC<StockModalProps> = ({
                 </div>
               ) : (
                 <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-1.5">
-                  <label className="block font-bold text-slate-700">Barcode / Item Code</label>
+                  <label className="block font-bold text-slate-700 text-xs">Barcode / Item Code</label>
                   <div className="relative flex items-center">
                     <Barcode className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input
                       type="text"
                       value={barcode}
                       onChange={e => setBarcode(e.target.value)}
-                      placeholder="Barcode / Code (Scan or Type)"
-                      className="w-full pl-9 pr-24 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono focus:outline-none focus:border-blue-600 min-h-[44px]"
+                      placeholder="Scan or type barcode..."
+                      className="w-full pl-8 pr-20 sm:pr-24 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono focus:outline-none focus:border-blue-600 min-h-[44px]"
                     />
                     <button
                       type="button"
                       onClick={() =>
                         openBarcodeScanner('Scan Product Barcode', code => setBarcode(code))
                       }
-                      className="absolute right-1.5 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-extrabold flex items-center gap-1 cursor-pointer transition min-h-[32px]"
+                      className="absolute right-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-extrabold flex items-center gap-1 cursor-pointer transition min-h-[34px]"
                     >
                       <Camera className="w-3.5 h-3.5" />
                       <span>Scan</span>
