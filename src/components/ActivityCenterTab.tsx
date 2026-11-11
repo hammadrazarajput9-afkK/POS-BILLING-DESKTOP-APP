@@ -156,7 +156,7 @@ const ActivityCenterTabComponent: React.FC<ActivityCenterTabProps> = ({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6 w-full max-w-full overflow-x-hidden">
       {/* 24-Hour Rolling Window Information Banner */}
       <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-2xl p-4.5 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -208,28 +208,28 @@ const ActivityCenterTabComponent: React.FC<ActivityCenterTabProps> = ({
       </div>
 
       {/* Main Audit Feed Card */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-5 space-y-4 shadow-xs">
+      <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 sm:p-5 space-y-4 shadow-xs overflow-hidden">
         {/* Controls Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto">
+            <div className="relative w-full sm:w-64">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Search audit trail..."
-                className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white w-56 sm:w-64"
+                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white h-9.5"
               />
             </div>
 
-            <div className="flex items-center gap-1 text-xs">
+            <div className="flex items-center gap-1.5 text-xs overflow-x-auto pb-1 max-w-full shrink-0">
               {['ALL', 'Sale', 'Inventory', 'Purchase', 'Khata', 'Expense', 'Settings'].map(cat => (
                 <button
                   key={cat}
                   type="button"
                   onClick={() => setSelectedCat(cat)}
-                  className={`px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer shrink-0 whitespace-nowrap text-xs ${
                     selectedCat === cat
                       ? 'bg-blue-600 text-white font-bold'
                       : 'bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
@@ -241,32 +241,32 @@ const ActivityCenterTabComponent: React.FC<ActivityCenterTabProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             {onOpenPdfReport && (
               <button
                 type="button"
                 onClick={onOpenPdfReport}
-                className="px-3 py-1.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                className="flex-1 sm:flex-initial px-3 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-2xs h-9.5"
                 title="Export System Audit Log PDF Report"
               >
-                <FileText className="w-3.5 h-3.5 text-rose-600" /> Export PDF
+                <FileText className="w-3.5 h-3.5 text-rose-600 shrink-0" /> <span className="truncate">PDF</span>
               </button>
             )}
 
             <button
               type="button"
               onClick={handleExportCSV}
-              className="px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+              className="flex-1 sm:flex-initial px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer h-9.5"
             >
-              <Download className="w-3.5 h-3.5 text-blue-600" /> Export CSV
+              <Download className="w-3.5 h-3.5 text-blue-600 shrink-0" /> <span className="truncate">CSV</span>
             </button>
 
             <button
               type="button"
               onClick={() => setShowClearConfirm(true)}
-              className="px-3 py-1.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+              className="flex-1 sm:flex-initial px-3 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer h-9.5"
             >
-              <Trash2 className="w-3.5 h-3.5" /> Clear Feed
+              <Trash2 className="w-3.5 h-3.5 shrink-0" /> <span className="truncate">Clear</span>
             </button>
           </div>
         </div>

@@ -98,7 +98,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [activeTab, setActiveTab] = useState<UserRole>('admin');
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(true);
+  const [rememberMe, setRememberMe] = useState(false);
 
   // Admin TOTP 2FA Login States
   const [adminLoginStep, setAdminLoginStep] = useState<'credentials' | 'totp' | 'setup'>('credentials');
@@ -454,11 +454,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           <div className="absolute -bottom-10 -left-10 w-48 h-48 bg-purple-400/20 rounded-full blur-xl pointer-events-none" />
 
           {/* Extra Large White Circle Badge Container on Mobile */}
-          <div className="w-36 h-36 sm:w-44 sm:h-44 bg-white rounded-full p-3.5 sm:p-4 shadow-[0_20px_50px_rgba(0,0,0,0.35)] border-4 border-white/50 flex items-center justify-center shrink-0 mb-2.5 relative z-10 animate-in zoom-in-95 duration-300">
+          <div className="w-40 h-40 sm:w-48 sm:h-48 bg-gradient-to-br from-white via-slate-50 to-purple-50 rounded-full p-2.5 sm:p-3.5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] border-4 border-white/70 flex items-center justify-center shrink-0 mb-3 relative z-10 animate-in zoom-in-95 duration-300">
             <img
               src={loginPageLogo}
               alt={loginPageName}
-              className="w-full h-full object-contain rounded-full select-none filter drop-shadow-sm"
+              className="w-full h-full object-contain rounded-full select-none filter drop-shadow-md transition hover:scale-105"
             />
           </div>
 
@@ -467,7 +467,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight drop-shadow-lg leading-tight">
               {loginPageName}
             </h2>
-            <div className="h-1 w-12 bg-white/40 rounded-full mx-auto mt-1 animate-pulse" />
+            <div className="h-1 w-14 bg-white/50 rounded-full mx-auto mt-1 animate-pulse" />
           </div>
 
           {/* Organic Wave Edge Cutout SVG Transition */}

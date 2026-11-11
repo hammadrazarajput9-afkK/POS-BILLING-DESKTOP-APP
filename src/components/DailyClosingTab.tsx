@@ -1125,8 +1125,8 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+          <div className="flex flex-wrap items-center gap-2 text-xs max-w-full">
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto max-w-full shrink-0">
               {(['all', 'daily', 'weekly', 'monthly', 'yearly'] as const).map(f => (
                 <button
                   key={f}
@@ -1135,7 +1135,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                     setHistoryFilter(f);
                     setFilterDate('');
                   }}
-                  className={`px-2.5 py-1 rounded-lg font-bold capitalize transition cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-lg font-bold capitalize transition cursor-pointer shrink-0 whitespace-nowrap ${
                     historyFilter === f && !filterDate
                       ? 'bg-white text-emerald-700 shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
