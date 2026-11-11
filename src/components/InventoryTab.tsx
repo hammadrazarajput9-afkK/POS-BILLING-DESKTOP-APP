@@ -466,11 +466,11 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
               </button>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <select
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value as any)}
-              className="bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl px-3 py-2 outline-none focus:border-blue-600 cursor-pointer"
+              className="w-full bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl px-3 py-2.5 outline-none focus:border-blue-600 cursor-pointer h-10"
             >
               <option value="ALL">All Statuses (Active & Archived)</option>
               <option value="ACTIVE">Active Stock Only</option>
@@ -479,7 +479,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
             <select
               value={categoryFilter}
               onChange={e => setCategoryFilter(e.target.value)}
-              className="bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl px-3 py-2 outline-none focus:border-blue-600 cursor-pointer"
+              className="w-full bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl px-3 py-2.5 outline-none focus:border-blue-600 cursor-pointer h-10 truncate"
             >
               <option value="ALL">All Categories</option>
               {categories.map(cat => (

@@ -107,13 +107,16 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
       scannerRef.current = html5QrCode;
 
       const config = {
-        fps: 20,
+        fps: 30,
         qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-          const width = Math.min(viewfinderWidth * 0.85, 320);
-          const height = Math.min(viewfinderHeight * 0.65, 180);
+          const width = Math.min(viewfinderWidth * 0.9, 360);
+          const height = Math.min(viewfinderHeight * 0.7, 200);
           return { width, height };
         },
         aspectRatio: 1.333334,
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true,
+        },
       };
 
       await html5QrCode.start(
