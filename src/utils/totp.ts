@@ -1,3 +1,4 @@
+import './polyfills';
 import * as OTPAuth from 'otpauth';
 import QRCode from 'qrcode';
 
