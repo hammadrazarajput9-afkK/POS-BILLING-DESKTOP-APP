@@ -23,7 +23,7 @@ import {
   QrCode,
 } from 'lucide-react';
 import { useToast } from './Toast';
-import { clearAllStoredData, validateBackupData, BackupValidationResult, CURRENT_BACKUP_VERSION, saveUserToFirestore } from '../utils/storage';
+import { clearAllStoredData, validateBackupData, BackupValidationResult, CURRENT_BACKUP_VERSION, saveUserToFirestore, deleteUserFromFirestore } from '../utils/storage';
 import { firebaseConfig } from '../utils/firebase';
 import { CameraCaptureModal } from './CameraCaptureModal';
 import { TotpSetupModal } from './TotpSetupModal';
@@ -540,10 +540,16 @@ export const Settings: React.FC<SettingsProps> = ({
     }
 
     const updatedUsers = existingUsers.filter(u => u.id !== userToDelete.id);
+
+    // Permanently purge document from Cloud Firestore registry and all store paths
+    deleteUserFromFirestore(userToDelete.id, fullData.currentUser?.storeId).catch(err => {
+      console.warn('Failed to delete user document from Firestore:', err);
+    });
+
     if (onUpdateUsers) {
       onUpdateUsers(updatedUsers);
     }
-    showToast(`User "${userToDelete.name}" has been deleted`, 'info');
+    showToast(`User "${userToDelete.name}" has been permanently deleted`, 'info');
     setUserToDelete(null);
   };
 

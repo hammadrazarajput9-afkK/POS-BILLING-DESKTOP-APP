@@ -23,7 +23,7 @@ import { saveUserToFirestore, fetchLiveUsersFromFirestore } from '../utils/stora
 
 interface AuthScreenProps {
   existingUsers: UserAccount[];
-  onAuthSuccess: (user: UserAccount) => void;
+  onAuthSuccess: (user: UserAccount, rememberMe?: boolean) => void;
   onSyncUsers?: (users: UserAccount[]) => void;
   settings: ShopSettings;
 }
@@ -98,6 +98,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [activeTab, setActiveTab] = useState<UserRole>('admin');
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
 
   // Admin TOTP 2FA Login States
   const [adminLoginStep, setAdminLoginStep] = useState<'credentials' | 'totp' | 'setup'>('credentials');
@@ -222,7 +223,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       };
 
       showToast(`Welcome back, ${resolvedSalesman.name}!`, 'success');
-      onAuthSuccess(resolvedSalesman);
+      onAuthSuccess(resolvedSalesman, rememberMe);
     } else {
       // 1. Always fetch fresh live user registry from Firestore for cross-device authentication
       setIsCheckingCloud(true);
@@ -301,7 +302,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         is2faEnabled: true,
       };
       showToast(`2FA Verified! Welcome back, Administrator ${verifiedUser.name}!`, 'success');
-      onAuthSuccess(verifiedUser);
+      onAuthSuccess(verifiedUser, rememberMe);
     } else {
       showToast('Invalid 6-digit passcode. Check Google Authenticator / Authy app.', 'error');
     }
@@ -331,7 +332,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
       await saveUserToFirestore(updatedAdmin, updatedAdmin.storeId);
       showToast('Authenticator 2FA successfully configured & locked in!', 'success');
-      onAuthSuccess(updatedAdmin);
+      onAuthSuccess(updatedAdmin, rememberMe);
     } else {
       showToast('Invalid 6-digit code! Make sure your app scanned the QR code correctly.', 'error');
     }
@@ -492,9 +493,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             
             {/* Desktop-only Top Bar */}
             <div className="hidden lg:flex items-center justify-between mb-2">
-              <span className="text-xs font-black tracking-wider text-purple-700 uppercase">
-                {mode === 'login' ? 'Authentication' : mode === 'register' ? 'New Account' : 'Reset Password'}
-              </span>
+              <span />
 
               {isCheckingCloud && (
                 <div className="flex items-center gap-1.5 text-xs font-bold text-purple-600 animate-pulse">
@@ -837,7 +836,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                           <label className="flex items-center gap-1.5 cursor-pointer hover:text-slate-900">
                             <input
                               type="checkbox"
-                              defaultChecked
+                              checked={rememberMe}
+                              onChange={(e) => setRememberMe(e.target.checked)}
                               className="w-3.5 h-3.5 rounded border-slate-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
                             />
                             <span>Remember me</span>
@@ -1031,9 +1031,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 <div className="h-1 w-14 bg-white/40 rounded-full mx-auto mt-2 animate-pulse" />
               </div>
 
-              <div className="pt-2 text-[10px] text-purple-200/80 font-mono tracking-wider">
-                Multi-Tenant Store Active
-              </div>
+
             </div>
           </div>
 

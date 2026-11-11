@@ -817,10 +817,14 @@ function AppContent() {
               users: syncedUsers,
             }));
           }}
-          onAuthSuccess={user => {
+          onAuthSuccess={(user, rememberMe = true) => {
             const userStoreId = user.storeId || user.id;
             setActiveStoreId(userStoreId);
-            saveCurrentSession(user);
+            if (rememberMe) {
+              saveCurrentSession(user);
+            } else {
+              clearCurrentSession();
+            }
 
             if (user.role === 'salesman') {
               setActiveTab('pos');
@@ -828,9 +832,10 @@ function AppContent() {
 
             // Immediately load the isolated store's local cached data (with fallback for instant product rendering)
             const localStoreData = loadStoredData(userStoreId);
-            const currentUsers = localStoreData.users || [];
-            const userExists = currentUsers.some(u => u.id === user.id);
-            const updatedUsers = userExists ? currentUsers.map(u => (u.id === user.id ? user : u)) : [...currentUsers, user];
+            const currentUsers = (localStoreData.users || []).filter(
+              u => u && u.id && (u.role !== 'admin' || u.id === user.id)
+            );
+            const updatedUsers = currentUsers.some(u => u.id === user.id) ? currentUsers : [user, ...currentUsers];
 
             // Retain existing active inventory if localStoreData inventory is empty so products NEVER disappear
             const currentInventory = data.inventory && data.inventory.length > 0 ? data.inventory : [];
@@ -851,9 +856,10 @@ function AppContent() {
             // Sync live remote data for this isolated store from Firestore in background
             loadAppDataFromFirestore(userStoreId).then(remoteData => {
               if (remoteData) {
-                const rUsers = remoteData.users || [];
-                const rUserExists = rUsers.some(u => u.id === user.id);
-                const rUpdatedUsers = rUserExists ? rUsers.map(u => (u.id === user.id ? user : u)) : [...rUsers, user];
+                const rUsers = (remoteData.users || []).filter(
+                  u => u && u.id && (u.role !== 'admin' || u.id === user.id)
+                );
+                const rUpdatedUsers = rUsers.some(u => u.id === user.id) ? rUsers : [user, ...rUsers];
 
                 const finalInventory = (remoteData.inventory && remoteData.inventory.length > 0)
                   ? remoteData.inventory
@@ -1151,7 +1157,9 @@ function AppContent() {
         }}
         onUpdateUsers={(users: UserAccount[]) => {
           const activeSid = data.currentUser?.storeId || data.currentUser?.id;
-          setData(prev => ({ ...prev, users }));
+          const updatedData = { ...data, users };
+          setData(updatedData);
+          saveStoredData(updatedData, activeSid);
           saveRootConfigToFirestore({ users }, activeSid).catch(err => {
             console.warn('Firestore users sync warning:', err);
           });

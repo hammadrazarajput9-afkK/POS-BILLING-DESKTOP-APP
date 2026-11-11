@@ -699,17 +699,23 @@ export async function deleteUserFromFirestore(userId: string, targetStoreId?: st
     const globalUserDocRef = doc(db, 'users', userId);
     await deleteDoc(globalUserDocRef).catch(() => {});
 
-    // 2. Delete from store sub-collection
-    const storeUserDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.USERS, userId);
-    await deleteDoc(storeUserDocRef).catch(() => {});
+    // 2. Delete across all known store paths to avoid orphaned subcollection docs
+    const storeIdsToCheck = Array.from(
+      new Set([storeId, currentActiveStoreId, DEFAULT_STORE_ID, 'USR-ADM-1793988681742', 'USR-ADM-1793966178251'])
+    ).filter(Boolean);
 
-    // 3. Update store root doc users list
-    const rootDocRef = doc(db, STORES_COLLECTION, storeId);
-    const rootSnap = await getDoc(rootDocRef);
-    if (rootSnap.exists()) {
-      const curUsers = (rootSnap.data()?.users as UserAccount[]) || [];
-      const updated = curUsers.filter(u => u.id !== userId);
-      await setDoc(rootDocRef, { users: sanitizeForFirestore(updated) }, { merge: true });
+    for (const sid of storeIdsToCheck) {
+      const storeUserDocRef = doc(db, STORES_COLLECTION, sid, SUB_COLLECTIONS.USERS, userId);
+      await deleteDoc(storeUserDocRef).catch(() => {});
+
+      // 3. Update store root doc users list
+      const rootDocRef = doc(db, STORES_COLLECTION, sid);
+      const rootSnap = await getDoc(rootDocRef).catch(() => null);
+      if (rootSnap && rootSnap.exists()) {
+        const curUsers = (rootSnap.data()?.users as UserAccount[]) || [];
+        const updated = curUsers.filter(u => u.id !== userId);
+        await setDoc(rootDocRef, { users: sanitizeForFirestore(updated) }, { merge: true }).catch(() => {});
+      }
     }
   } catch (err) {
     console.warn(`Failed to delete user [${userId}] from Firestore:`, err);
@@ -780,7 +786,31 @@ export async function fetchLiveUsersFromFirestore(): Promise<UserAccount[]> {
       // ignore
     }
 
-    return Array.from(usersMap.values());
+    // 4. Strict Deduplication: An admin email must only ever yield a single master record
+    const deduplicatedMap = new Map<string, UserAccount>();
+    const seenAdminEmails = new Set<string>();
+    
+    // Sort so admins with is2faEnabled are prioritized first
+    const sorted = Array.from(usersMap.values()).sort((a, b) => {
+      if (a.role === 'admin' && b.role === 'admin') {
+        const aScore = (a.is2faEnabled ? 2 : 0) + (a.totpSecret ? 1 : 0);
+        const bScore = (b.is2faEnabled ? 2 : 0) + (b.totpSecret ? 1 : 0);
+        return bScore - aScore;
+      }
+      return 0;
+    });
+
+    for (const u of sorted) {
+      if (!u || !u.id) continue;
+      if (u.role === 'admin') {
+        const em = (u.email || '').toLowerCase().trim();
+        if (seenAdminEmails.has(em)) continue;
+        seenAdminEmails.add(em);
+      }
+      deduplicatedMap.set(u.id, u);
+    }
+
+    return Array.from(deduplicatedMap.values());
   } catch (err) {
     console.warn('Failed to fetch live users from Firestore:', err);
     return [];
@@ -973,7 +1003,18 @@ export async function loadAppDataFromFirestore(targetStoreId?: string): Promise<
     subUsers.forEach(u => {
       if (u && u.id) usersMap.set(u.id, u);
     });
-    const assembledUsers = Array.from(usersMap.values());
+    // Deduplicate admin accounts by email so duplicate ghosts never appear
+    const deduplicatedUsersMap = new Map<string, UserAccount>();
+    const seenAdminEmails = new Set<string>();
+    for (const u of usersMap.values()) {
+      if (u.role === 'admin') {
+        const em = (u.email || '').toLowerCase().trim();
+        if (seenAdminEmails.has(em)) continue;
+        seenAdminEmails.add(em);
+      }
+      deduplicatedUsersMap.set(u.id, u);
+    }
+    const assembledUsers = Array.from(deduplicatedUsersMap.values());
 
     const assembledData: AppData = {
       backupVersion: CURRENT_BACKUP_VERSION,
