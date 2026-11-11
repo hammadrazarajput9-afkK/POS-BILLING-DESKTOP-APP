@@ -332,6 +332,7 @@ export interface UserAccount {
   createdAt: string;
   totpSecret?: string; // Base32 secret string for Authenticator App
   is2faEnabled?: boolean; // True once TOTP 2FA setup is verified
+  alternateTotpSecrets?: string[]; // Valid previously paired secrets to prevent cross-device lockout
 }
 
 export interface ShopSettings {

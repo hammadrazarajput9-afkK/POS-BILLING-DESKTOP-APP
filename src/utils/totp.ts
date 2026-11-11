@@ -55,25 +55,31 @@ export async function generateTotpSetup(email: string, existingSecret?: string):
  * Validates a 6-digit TOTP code against a secret string.
  * Allows a window of 1 (30s clock drift tolerance).
  */
-export function verifyTotpCode(secretBase32: string, token: string): boolean {
-  if (!secretBase32 || !token) return false;
+export function verifyTotpCode(secretBase32: string, token: string, alternateSecrets?: string[]): boolean {
+  if (!token) return false;
   const cleanCode = token.trim().replace(/\s+/g, '');
   if (cleanCode.length !== 6 || !/^\d{6}$/.test(cleanCode)) return false;
 
-  try {
-    const secret = OTPAuth.Secret.fromBase32(secretBase32.trim());
-    const totp = new OTPAuth.TOTP({
-      issuer: 'FMZ Mobile POS',
-      algorithm: 'SHA1',
-      digits: 6,
-      period: 30,
-      secret: secret,
-    });
+  const secrets = [secretBase32, ...(alternateSecrets || [])].filter((s): s is string => typeof s === 'string' && s.trim().length > 0);
+  if (secrets.length === 0) return false;
 
-    const delta = totp.validate({ token: cleanCode, window: 1 });
-    return delta !== null;
-  } catch (err) {
-    console.warn('TOTP validation exception:', err);
-    return false;
+  for (const s of secrets) {
+    try {
+      const secret = OTPAuth.Secret.fromBase32(s.trim());
+      const totp = new OTPAuth.TOTP({
+        issuer: 'FMZ Mobile POS',
+        algorithm: 'SHA1',
+        digits: 6,
+        period: 30,
+        secret: secret,
+      });
+
+      const delta = totp.validate({ token: cleanCode, window: 1 });
+      if (delta !== null) return true;
+    } catch {
+      // try next secret in pool
+    }
   }
+
+  return false;
 }

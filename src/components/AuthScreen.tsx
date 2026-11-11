@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Shield,
   User,
@@ -44,9 +44,44 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     (settings?.logo && settings.logo.trim()) ||
     defaultLogo;
 
+  // Live cloud users fetched on mount for instant multi-device authentication
+  const [cloudUsers, setCloudUsers] = useState<UserAccount[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    setIsCheckingCloud(true);
+    fetchLiveUsersFromFirestore()
+      .then((live) => {
+        if (isMounted) {
+          setIsCheckingCloud(false);
+          if (live && live.length > 0) {
+            setCloudUsers(live);
+            if (onSyncUsers) onSyncUsers(live);
+          }
+        }
+      })
+      .catch(() => {
+        if (isMounted) setIsCheckingCloud(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const allUsersPool = useMemo(() => {
+    const map = new Map<string, UserAccount>();
+    existingUsers.forEach((u) => u && u.id && map.set(u.id, u));
+    cloudUsers.forEach((u) => u && u.id && map.set(u.id, u));
+    return Array.from(map.values());
+  }, [existingUsers, cloudUsers]);
+
+  const hasAdminAccount = useMemo(() => {
+    return allUsersPool.some((u) => u.role === 'admin');
+  }, [allUsersPool]);
+
   const salesmenCount = useMemo(() => {
-    return existingUsers.filter((u) => u.role === 'salesman').length;
-  }, [existingUsers]);
+    return allUsersPool.filter((u) => u.role === 'salesman').length;
+  }, [allUsersPool]);
 
   // Main UI Mode: 'login' | 'register' | 'forgot'
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
@@ -80,7 +115,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [forgotTargetAdmin, setForgotTargetAdmin] = useState<UserAccount | null>(null);
 
-  // 1. Submit Admin Registration
+  // 1. Submit Admin Registration (Strictly restricted to initial system initialization)
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!regName.trim() || !regEmail.trim() || !regPassword.trim() || !regConfirmPassword.trim()) {
@@ -97,8 +132,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     }
 
     const emailNormalized = regEmail.trim().toLowerCase();
-    if (existingUsers.some((u) => u.email.toLowerCase() === emailNormalized)) {
-      showToast('An account with this Email address already exists', 'error');
+
+    // Multi-Device Security: Check if an Admin is already registered in cloud
+    setIsCheckingCloud(true);
+    const liveUsers = await fetchLiveUsersFromFirestore();
+    setIsCheckingCloud(false);
+    const pool = liveUsers.length > 0 ? liveUsers : allUsersPool;
+
+    if (pool.some((u) => u.role === 'admin')) {
+      showToast('An Administrator is already registered. Please sign in with your password and 2FA code.', 'error');
+      setMode('login');
       return;
     }
 
@@ -145,7 +188,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     const emailNorm = loginEmail.trim().toLowerCase();
 
     if (activeTab === 'salesman') {
-      let user = existingUsers.find(
+      let user = allUsersPool.find(
         (u) =>
           u.email.toLowerCase() === emailNorm &&
           u.password === loginPassword &&
@@ -157,6 +200,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         const liveUsers = await fetchLiveUsersFromFirestore();
         setIsCheckingCloud(false);
         if (liveUsers.length > 0) {
+          setCloudUsers(liveUsers);
           if (onSyncUsers) onSyncUsers(liveUsers);
           user = liveUsers.find(
             (u) =>
@@ -180,33 +224,27 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       showToast(`Welcome back, ${resolvedSalesman.name}!`, 'success');
       onAuthSuccess(resolvedSalesman);
     } else {
-      let adminUser = existingUsers.find(
-        (u) =>
-          u.email.toLowerCase() === emailNorm &&
-          u.password === loginPassword &&
-          u.role === 'admin'
+      // 1. Always fetch fresh live user registry from Firestore for cross-device authentication
+      setIsCheckingCloud(true);
+      const liveUsers = await fetchLiveUsersFromFirestore();
+      setIsCheckingCloud(false);
+      if (liveUsers.length > 0) {
+        setCloudUsers(liveUsers);
+        if (onSyncUsers) onSyncUsers(liveUsers);
+      }
+      const pool = liveUsers.length > 0 ? liveUsers : allUsersPool;
+
+      // 2. Match admin account by email, prioritizing already 2FA-secured profiles
+      const matchingAdmins = pool.filter(
+        (u) => u.email.toLowerCase() === emailNorm && u.role === 'admin'
       );
 
-      if (!adminUser) {
-        setIsCheckingCloud(true);
-        const liveUsers = await fetchLiveUsersFromFirestore();
-        setIsCheckingCloud(false);
-        if (liveUsers.length > 0) {
-          if (onSyncUsers) onSyncUsers(liveUsers);
-          adminUser = liveUsers.find(
-            (u) =>
-              u.email.toLowerCase() === emailNorm &&
-              u.password === loginPassword &&
-              u.role === 'admin'
-          );
-        }
-      }
+      const adminUser =
+        matchingAdmins.find((u) => (u.is2faEnabled || u.totpSecret) && u.password === loginPassword) ||
+        matchingAdmins.find((u) => u.password === loginPassword);
 
       if (!adminUser) {
-        showToast(
-          'Invalid Administrator Email or Password. Switch to Create Admin if you need a new account.',
-          'error'
-        );
+        showToast('Invalid Administrator Email or Password.', 'error');
         return;
       }
 
@@ -218,16 +256,20 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       setPendingAdminUser(resolvedAdmin);
       setTotpInputCode('');
 
-      if (resolvedAdmin.is2faEnabled && resolvedAdmin.totpSecret) {
+      // 3. ZERO-EXPOSURE SECURITY GUARANTEE:
+      // If 2FA has EVER been set up (is2faEnabled or totpSecret present),
+      // NEVER show QR code setup. Go straight to 6-digit TOTP code input!
+      if (resolvedAdmin.is2faEnabled || resolvedAdmin.totpSecret) {
         setAdminLoginStep('totp');
-        showToast('Please enter the 6-digit code from your Authenticator app.', 'info');
+        showToast('Please enter the 6-digit passcode from your Google Authenticator app.', 'info');
       } else {
+        // Only reached if an admin has genuinely never paired an Authenticator app
         setIsGeneratingSetup(true);
         const setup = await generateTotpSetup(resolvedAdmin.email, resolvedAdmin.totpSecret);
         setIsGeneratingSetup(false);
         setTotpSetupData(setup);
         setAdminLoginStep('setup');
-        showToast('First-time login: Please setup Google Authenticator 2FA.', 'info');
+        showToast('First-time setup: Scan QR code with Google Authenticator.', 'info');
       }
     }
   };
@@ -236,7 +278,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const handleVerifyAdminTotp = (e: React.FormEvent) => {
     e.preventDefault();
     if (!pendingAdminUser || !pendingAdminUser.totpSecret) {
-      showToast('Authenticator secret not found. Please setup 2FA.', 'error');
+      showToast('Authenticator secret not found. Please log in with valid credentials.', 'error');
       setAdminLoginStep('credentials');
       return;
     }
@@ -247,10 +289,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       return;
     }
 
-    const isValid = verifyTotpCode(pendingAdminUser.totpSecret, cleanCode);
+    const isValid = verifyTotpCode(
+      pendingAdminUser.totpSecret,
+      cleanCode,
+      pendingAdminUser.alternateTotpSecrets
+    );
+
     if (isValid) {
-      showToast(`2FA Verified! Welcome back, Administrator ${pendingAdminUser.name}!`, 'success');
-      onAuthSuccess(pendingAdminUser);
+      const verifiedUser: UserAccount = {
+        ...pendingAdminUser,
+        is2faEnabled: true,
+      };
+      showToast(`2FA Verified! Welcome back, Administrator ${verifiedUser.name}!`, 'success');
+      onAuthSuccess(verifiedUser);
     } else {
       showToast('Invalid 6-digit passcode. Check Google Authenticator / Authy app.', 'error');
     }
@@ -368,7 +419,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         return;
       }
 
-      const isValid = verifyTotpCode(targetAdmin.totpSecret, cleanCode);
+      const isValid = verifyTotpCode(targetAdmin.totpSecret, cleanCode, targetAdmin.alternateTotpSecrets);
       if (!isValid) {
         showToast('Invalid 6-digit Authenticator passcode!', 'error');
         return;
@@ -456,6 +507,24 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             {/* Form Content Router */}
             <div className="flex-1 flex flex-col justify-center my-auto overflow-hidden py-1">
               {mode === 'register' ? (
+                hasAdminAccount ? (
+                  <div className="text-center space-y-3 py-6 animate-in fade-in duration-300">
+                    <div className="inline-flex p-3 bg-purple-50 text-purple-600 rounded-full">
+                      <ShieldCheck className="w-8 h-8" />
+                    </div>
+                    <h2 className="text-lg font-black text-slate-900">Administrator Already Registered</h2>
+                    <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                      This store terminal is already protected by Google Authenticator 2FA. Please sign in with your credentials.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setMode('login')}
+                      className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-full text-xs font-bold shadow-md hover:from-purple-700 hover:to-indigo-700 transition cursor-pointer"
+                    >
+                      Sign In to Terminal
+                    </button>
+                  </div>
+                ) : (
                 /* ================= ADMIN REGISTRATION FORM ================= */
                 <form onSubmit={handleRegisterSubmit} className="space-y-2.5 sm:space-y-3.5 animate-in fade-in duration-300">
                   <div className="text-center space-y-0.5 mb-1">
@@ -552,6 +621,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                     </button>
                   </p>
                 </form>
+                )
               ) : mode === 'login' ? (
                 /* ================= LOGIN ROUTER ================= */
                 <div className="w-full space-y-2.5 sm:space-y-4 animate-in fade-in duration-300">
@@ -798,17 +868,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                         <ArrowRight className="w-4 h-4" />
                       </button>
 
-                      {/* Don't have an account link */}
-                      <p className="text-center text-[11px] sm:text-xs text-slate-500 font-medium pt-1">
-                        Don't have an account?{' '}
-                        <button
-                          type="button"
-                          onClick={() => setMode('register')}
-                          className="text-purple-600 font-bold hover:underline cursor-pointer"
-                        >
-                          Create Admin
-                        </button>
-                      </p>
+                      {/* Don't have an account link - Only visible on first-time setup when no admin exists */}
+                      {!hasAdminAccount && (
+                        <p className="text-center text-[11px] sm:text-xs text-slate-500 font-medium pt-1">
+                          Don't have an account?{' '}
+                          <button
+                            type="button"
+                            onClick={() => setMode('register')}
+                            className="text-purple-600 font-bold hover:underline cursor-pointer"
+                          >
+                            Create Admin
+                          </button>
+                        </p>
+                      )}
                     </form>
                   )}
                 </div>
