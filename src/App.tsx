@@ -890,7 +890,7 @@ function AppContent() {
   }
 
   return (
-    <div className="flex h-[100dvh] overflow-hidden bg-slate-50 text-slate-800">
+    <div className="flex h-[100dvh] w-full overflow-hidden bg-slate-50 text-slate-800 app-root-container">
       {/* PWA Offline & Automatic Update Notification */}
       <PWAUpdateBanner />
 

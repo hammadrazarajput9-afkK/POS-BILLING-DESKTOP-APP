@@ -3,10 +3,43 @@
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *, .dark, .dark *));
 
 @layer base {
+  html, body, #root {
+    height: 100dvh;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
   body {
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    background-color: var(--theme-app-bg, #f8fafc);
   }
-  
+
+  /* Fullscreen Edge-to-Edge Mobile Display (Mobile viewport only) */
+  @media (max-width: 767px) {
+    html, body, #root {
+      height: 100dvh !important;
+      min-height: 100dvh !important;
+      background-color: var(--theme-app-bg, #f8fafc);
+    }
+
+    body {
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+      padding-left: env(safe-area-inset-left, 0px);
+      padding-right: env(safe-area-inset-right, 0px);
+      box-sizing: border-box;
+    }
+
+    .app-root-container {
+      height: 100dvh !important;
+      min-height: 100dvh !important;
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+  }
+
   .font-mono, .tabular-nums {
     font-family: 'JetBrains Mono', monospace;
     font-variant-numeric: tabular-nums;
