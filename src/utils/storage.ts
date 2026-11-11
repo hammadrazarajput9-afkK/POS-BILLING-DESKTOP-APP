@@ -33,6 +33,7 @@ import {
   onSnapshot,
 } from 'firebase/firestore';
 import { generateEntityId } from './id';
+import { openDB, IDBPDatabase } from 'idb';
 
 /**
  * Hierarchical Multi-Tenant Store Configuration:
@@ -1160,10 +1161,119 @@ export function loadStoredData(targetStoreId?: string): AppData {
   }
 }
 
+const IDB_NAME = 'FMZ_POS_LOCAL_DATABASE';
+const IDB_STORE_NAME = 'store_data';
+const IDB_VERSION = 1;
+
+let dbPromise: Promise<IDBPDatabase> | null = null;
+
+function getIDB(): Promise<IDBPDatabase> {
+  if (!dbPromise) {
+    dbPromise = openDB(IDB_NAME, IDB_VERSION, {
+      upgrade(database) {
+        if (!database.objectStoreNames.contains(IDB_STORE_NAME)) {
+          database.createObjectStore(IDB_STORE_NAME, { keyPath: 'storeId' });
+        }
+      },
+    });
+  }
+  return dbPromise;
+}
+
+export async function saveToIndexedDB(storeId: string, data: AppData): Promise<void> {
+  try {
+    const idb = await getIDB();
+    await idb.put(IDB_STORE_NAME, { storeId, data, updatedAt: new Date().toISOString() });
+  } catch (err) {
+    console.warn(`IndexedDB save error for store [${storeId}]:`, err);
+  }
+}
+
+export async function loadFromIndexedDB(storeId: string): Promise<AppData | null> {
+  try {
+    const idb = await getIDB();
+    const record = await idb.get(IDB_STORE_NAME, storeId);
+    if (record && record.data) {
+      const validation = validateBackupData(record.data);
+      if (validation.valid && validation.data) {
+        return validation.data;
+      }
+    }
+  } catch (err) {
+    console.warn(`IndexedDB load error for store [${storeId}]:`, err);
+  }
+  return null;
+}
+
+/**
+ * Strips heavy base64 data URLs to guarantee the synchronous localStorage mirror
+ * never exceeds the browser 5MB limit. Full images are safely preserved in IndexedDB and Firestore.
+ */
+function stripLargePayloadForLocalStorage(data: AppData): AppData {
+  const sanitizeImg = (img?: string): string | undefined => {
+    if (!img) return undefined;
+    if (img.startsWith('data:') || img.length > 500) {
+      return undefined;
+    }
+    return img;
+  };
+
+  return {
+    ...data,
+    inventory: (data.inventory || []).map(item => ({
+      ...item,
+      image: sanitizeImg(item.image),
+    })),
+    khata: (data.khata || []).map(c => ({
+      ...c,
+      image: sanitizeImg(c.image),
+    })),
+  };
+}
+
+/**
+ * Safely writes data to localStorage, handling QuotaExceededError transparently.
+ */
+function safeSetLocalStorage(key: string, data: AppData): void {
+  try {
+    const sanitized = stripLargePayloadForLocalStorage(data);
+    localStorage.setItem(key, JSON.stringify(sanitized));
+  } catch {
+    try {
+      // If still exceeding quota, prune historical records in the localStorage mirror
+      // (Full history remains completely intact in IndexedDB and Firestore)
+      const lightweight: AppData = {
+        ...stripLargePayloadForLocalStorage(data),
+        sales: (data.sales || []).slice(0, 100),
+        activities: (data.activities || []).slice(0, 50),
+      };
+      localStorage.setItem(key, JSON.stringify(lightweight));
+    } catch {
+      try {
+        // Clear legacy storage keys to free browser quota
+        for (const legacyKey of LEGACY_STORAGE_KEYS) {
+          localStorage.removeItem(legacyKey);
+        }
+        const minimal: AppData = {
+          ...initialCleanData,
+          settings: data.settings,
+          categories: data.categories,
+          expenseCategories: data.expenseCategories,
+          inventory: (data.inventory || []).map(i => ({ ...i, image: undefined })),
+          khata: (data.khata || []).map(k => ({ ...k, image: undefined, history: [] })),
+        };
+        localStorage.setItem(key, JSON.stringify(minimal));
+      } catch {
+        // Silently suppress quota error; full data is in IndexedDB
+      }
+    }
+  }
+}
+
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 
 /**
- * Primary save routine: Updates isolated local storage mirror and syncs store config.
+ * Primary save routine: Updates isolated local storage mirror, IndexedDB, and Firestore.
  */
 export function saveStoredData(data: AppData, targetStoreId?: string): void {
   const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
@@ -1173,15 +1283,16 @@ export function saveStoredData(data: AppData, targetStoreId?: string): void {
     lastModified: new Date().toISOString(),
   };
 
-  // 1. Fast isolated local cache update
-  try {
-    const key = getLocalStorageKey(storeId);
-    localStorage.setItem(key, JSON.stringify(dataWithMeta));
-  } catch (error) {
-    console.warn('LocalStorage save failed:', error);
-  }
+  // 1. Safe local mirror update (quota-protected)
+  const key = getLocalStorageKey(storeId);
+  safeSetLocalStorage(key, dataWithMeta);
 
-  // 2. Debounced save for store root config
+  // 2. Full offline persistence in IndexedDB (supports hundreds of MBs + images)
+  saveToIndexedDB(storeId, dataWithMeta).catch(err => {
+    console.warn(`IndexedDB save error for store [${storeId}]:`, err);
+  });
+
+  // 3. Debounced save for store root config
   if (saveTimeout) {
     clearTimeout(saveTimeout);
   }
@@ -1194,7 +1305,8 @@ export function saveStoredData(data: AppData, targetStoreId?: string): void {
 
 /**
  * Safe Data Migration and Initialization Utility:
- * Migrates schemas and reconciles local & remote data for the given store.
+ * Reads from localStorage for instant render, IndexedDB for high-res images,
+ * and reconciles with Firestore.
  */
 export async function migrateAndInitializeData(
   onDataLoaded: (data: AppData) => void,
@@ -1204,27 +1316,45 @@ export async function migrateAndInitializeData(
   setActiveStoreId(storeId);
 
   try {
+    // 1. Instant zero-latency render from synchronous localStorage mirror
     const localData = loadStoredData(storeId);
     onDataLoaded(localData);
 
+    // 2. Fast rehydration from IndexedDB (contains full images and full records)
+    let currentBestData = localData;
+    try {
+      const idbData = await loadFromIndexedDB(storeId);
+      if (idbData && idbData.inventory && idbData.inventory.length > 0) {
+        currentBestData = idbData;
+        onDataLoaded(idbData);
+      }
+    } catch (idbErr) {
+      console.warn('Initial IndexedDB rehydration warning:', idbErr);
+    }
+
+    // 3. Remote synchronization from Firebase Firestore
     const remoteData = await loadAppDataFromFirestore(storeId);
 
     if (remoteData) {
-      // Ensure inventory is preserved if remote data inventory is empty but local has items
-      if ((!remoteData.inventory || remoteData.inventory.length === 0) && localData.inventory.length > 0) {
-        remoteData.inventory = localData.inventory;
+      // Ensure inventory is preserved if remote data inventory is empty but current has items
+      if ((!remoteData.inventory || remoteData.inventory.length === 0) && currentBestData.inventory.length > 0) {
+        remoteData.inventory = currentBestData.inventory;
       }
-      try {
-        localStorage.setItem(getLocalStorageKey(storeId), JSON.stringify(remoteData));
-      } catch (err) {
-        console.warn('Failed to update local mirror from Firestore:', err);
-      }
+      
+      // Update IndexedDB (full payload) and safe localStorage mirror
+      await saveToIndexedDB(storeId, remoteData);
+      safeSetLocalStorage(getLocalStorageKey(storeId), remoteData);
+
       onDataLoaded(remoteData);
-    } else if (localData.inventory.length > 0 || localData.sales.length > 0 || localData.khata.length > 0) {
-      await saveAppDataToFirestore(localData, storeId);
-      onDataLoaded(localData);
+    } else if (currentBestData.inventory.length > 0 || currentBestData.sales.length > 0 || currentBestData.khata.length > 0) {
+      await saveAppDataToFirestore(currentBestData, storeId);
+      await saveToIndexedDB(storeId, currentBestData);
+      safeSetLocalStorage(getLocalStorageKey(storeId), currentBestData);
+      onDataLoaded(currentBestData);
     } else {
       await saveAppDataToFirestore(initialCleanData, storeId);
+      await saveToIndexedDB(storeId, initialCleanData);
+      safeSetLocalStorage(getLocalStorageKey(storeId), initialCleanData);
       onDataLoaded(initialCleanData);
     }
   } catch (err) {
@@ -1236,7 +1366,7 @@ export async function migrateAndInitializeData(
 export const initializeIndexedDB = migrateAndInitializeData;
 
 /**
- * Resets all stored data cleanly for the active store without throwing uncaught errors.
+ * Resets all stored data cleanly for the active store across localStorage, IndexedDB, and Firestore.
  */
 export async function clearAllStoredData(targetStoreId?: string): Promise<AppData> {
   const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
@@ -1253,6 +1383,13 @@ export async function clearAllStoredData(targetStoreId?: string): Promise<AppDat
     // ignore
   }
 
+  try {
+    const idb = await getIDB();
+    await idb.delete(IDB_STORE_NAME, storeId);
+  } catch {
+    // ignore
+  }
+
   const clean: AppData = { ...initialCleanData, lastModified: new Date().toISOString() };
 
   try {
@@ -1261,11 +1398,8 @@ export async function clearAllStoredData(targetStoreId?: string): Promise<AppDat
     console.warn(`Firebase Firestore reset warning for store [${storeId}]:`, err);
   }
 
-  try {
-    localStorage.setItem(getLocalStorageKey(storeId), JSON.stringify(clean));
-  } catch {
-    // ignore
-  }
+  await saveToIndexedDB(storeId, clean);
+  safeSetLocalStorage(getLocalStorageKey(storeId), clean);
 
   return clean;
 }
