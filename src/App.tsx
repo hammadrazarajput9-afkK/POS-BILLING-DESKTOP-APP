@@ -74,6 +74,7 @@ function AppContent() {
   const [pdfModalTab, setPdfModalTab] = useState<
     'sales' | 'inventory' | 'khata' | 'expenses' | 'activity' | 'dailyClosing'
   >('sales');
+  const [pdfModalCategory, setPdfModalCategory] = useState<string>('all');
 
   const [expenseModalOpen, setExpenseModalOpen] = useState(false);
   const [expenseCategoryModalOpen, setExpenseCategoryModalOpen] = useState(false);
@@ -312,9 +313,11 @@ function AppContent() {
   }, []);
 
   const handleOpenPdfReport = (
-    tab: 'sales' | 'inventory' | 'khata' | 'expenses' | 'activity' | 'dailyClosing'
+    tab: 'sales' | 'inventory' | 'khata' | 'expenses' | 'activity' | 'dailyClosing',
+    initialCat?: string
   ) => {
     setPdfModalTab(tab);
+    setPdfModalCategory(initialCat || 'all');
     setPdfModalOpen(true);
   };
 
@@ -991,7 +994,7 @@ function AppContent() {
                 onRestoreItem={handleRestoreInventory}
                 onAddCategory={handleAddCategory}
                 onDeleteCategory={handleDeleteCategory}
-                onOpenPdfReport={() => handleOpenPdfReport('inventory')}
+                onOpenPdfReport={(cat?: string) => handleOpenPdfReport('inventory', cat)}
               />
             )}
 
@@ -1224,6 +1227,7 @@ function AppContent() {
         onClose={() => setPdfModalOpen(false)}
         data={data}
         tab={pdfModalTab}
+        initialCategory={pdfModalCategory}
       />
     </div>
   );

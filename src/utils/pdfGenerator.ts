@@ -55,29 +55,159 @@ export interface GeneratePdfOptions {
   tab: 'sales' | 'inventory' | 'khata' | 'expenses' | 'activity' | 'dailyClosing' | 'purchases' | 'pnl' | 'top_products';
   dateFilter: DateFilterRange;
   data: AppData;
+  categoryFilter?: string; // 'all' or specific category name
+  stockStatusFilter?: 'all' | 'in_stock' | 'low_stock' | 'out_of_stock';
+  includePartyDetails?: boolean;
+  includeCostValuation?: boolean;
+}
+
+/**
+ * Deduplicate and clean IMEIs across single item and variants
+ */
+function extractUniqueImeis(item: InventoryItem): string[] {
+  const rawList: string[] = [];
+
+  // Check variants
+  if (Array.isArray(item.variants) && item.variants.length > 0) {
+    for (const v of item.variants) {
+      if (Array.isArray(v.imeis)) {
+        rawList.push(...v.imeis);
+      }
+    }
+  }
+
+  // Check item.imeis array
+  if (Array.isArray(item.imeis)) {
+    rawList.push(...item.imeis);
+  }
+
+  // Check item.imei string
+  if (item.imei) {
+    rawList.push(item.imei);
+  }
+
+  // Deduplicate case-insensitively and clean whitespace
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const imei of rawList) {
+    if (!imei) continue;
+    const clean = String(imei).trim();
+    if (!clean) continue;
+    const key = clean.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      unique.push(clean);
+    }
+  }
+
+  return unique;
+}
+
+/**
+ * Intelligent lookup to identify supplier / purchase party for any inventory item or IMEI
+ */
+function resolveItemSupplier(
+  item: InventoryItem,
+  data: AppData,
+  imeis: string[]
+): { partyName: string; billNo?: string } {
+  const anyItem = item as any;
+  if (anyItem.supplier) return { partyName: String(anyItem.supplier) };
+  if (anyItem.partyName) return { partyName: String(anyItem.partyName) };
+  if (anyItem.purchaseParty) return { partyName: String(anyItem.purchaseParty), billNo: anyItem.purchaseBillNo };
+
+  // 1. Check permanent imeiRecords
+  const imeiRecords = (data as any).imeiRecords as Array<{ imei: string; purchaseParty?: string; purchaseBillNo?: string }> | undefined;
+  if (imeiRecords && Array.isArray(imeiRecords) && imeis.length > 0) {
+    for (const imei of imeis) {
+      const match = imeiRecords.find(r => r.imei === imei && r.purchaseParty);
+      if (match?.purchaseParty) {
+        return { partyName: match.purchaseParty, billNo: match.purchaseBillNo };
+      }
+    }
+  }
+
+  // 2. Check supplierPurchases stock inward bills
+  const purchases = data.supplierPurchases || [];
+  if (purchases.length > 0) {
+    // Check by IMEI in purchases
+    if (imeis.length > 0) {
+      for (const p of purchases) {
+        if (p.status === 'REVERSED') continue;
+        for (const pi of (p.items || [])) {
+          const piImeis = [pi.imei, ...(pi.imeis || [])].filter(Boolean);
+          if (imeis.some(uImei => piImeis.includes(uImei))) {
+            return { partyName: p.partyName, billNo: p.billNo };
+          }
+        }
+      }
+    }
+
+    // Check by Item ID or Item Name
+    for (const p of purchases) {
+      if (p.status === 'REVERSED') continue;
+      const found = (p.items || []).find(pi =>
+        (pi.id && pi.id === item.id) ||
+        (pi.name && pi.name.trim().toLowerCase() === item.name.trim().toLowerCase()) ||
+        (pi.barcode && item.barcode && pi.barcode === item.barcode)
+      );
+      if (found) {
+        return { partyName: p.partyName, billNo: p.billNo };
+      }
+    }
+  }
+
+  // 3. Check purchasesLedger entries
+  const ledger = data.purchasesLedger || [];
+  for (const pl of ledger) {
+    if (pl.isReversed) continue;
+    if (pl.itemTitle && pl.itemTitle.toLowerCase().includes(item.name.toLowerCase())) {
+      const match = pl.itemTitle.match(/\(([^)]+)\)$/);
+      if (match && match[1]) {
+        return { partyName: match[1] };
+      }
+    }
+  }
+
+  return { partyName: 'Direct Stock / Opening' };
 }
 
 /**
  * Universal PDF Report Generator
  */
-export async function generatePdfReport({ tab, dateFilter, data }: GeneratePdfOptions): Promise<void> {
+export async function generatePdfReport({
+  tab,
+  dateFilter,
+  data,
+  categoryFilter = 'all',
+  stockStatusFilter = 'all',
+  includePartyDetails = true,
+  includeCostValuation = true,
+}: GeneratePdfOptions): Promise<void> {
   const { start, end, label: filterLabel } = getDateFilterBounds(dateFilter);
+  const isLandscape = tab === 'inventory';
   const doc = new jsPDF({
-    orientation: 'portrait',
+    orientation: isLandscape ? 'landscape' : 'portrait',
     unit: 'mm',
     format: 'a4',
   });
 
   const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
   const currency = data.settings.currency || 'Rs.';
-  const shopName = (data.settings.shopName || 'Mobile Shop Pro').toUpperCase();
-  const address = data.settings.address || 'Mobile Market';
+  const shopName = (data.settings.shopName || 'FMZ FRIENDS MOBILE ZONE').toUpperCase();
+  const address = data.settings.address || 'Mobile Market, Main Bazar';
   const phone = data.settings.phone || '';
-  const tagline = data.settings.tagline || 'Mobile POS & Shop Management Suite';
+  const tagline = data.settings.tagline || 'Mobile Sales, Accessories & Complete Stock Audit Suite';
 
   // --- HEADER SECTION ---
-  doc.setFillColor(30, 58, 138); // Deep Navy #1e3a8a
+  // Deep Royal Navy Header Background
+  doc.setFillColor(15, 23, 42); // #0f172a
   doc.rect(0, 0, pageWidth, 28, 'F');
+
+  // Gold / Amber Accent Stripe
+  doc.setFillColor(245, 158, 11); // #f59e0b
+  doc.rect(0, 27, pageWidth, 1.5, 'F');
 
   // Shop Name & Subtitle
   doc.setTextColor(255, 255, 255);
@@ -87,16 +217,38 @@ export async function generatePdfReport({ tab, dateFilter, data }: GeneratePdfOp
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
-  doc.text(tagline, 14, 16);
-  doc.text(`Address: ${address}  |  Ph: ${phone}`, 14, 21);
+  doc.setTextColor(203, 213, 225); // Slate 300
+  doc.text(tagline, 14, 16.5);
+  doc.text(`Address: ${address}  |  Ph: ${phone}`, 14, 21.5);
 
   // Report Tag Pill in Top Right
-  const generatedAt = new Date().toLocaleString();
+  const generatedAt = new Date().toLocaleString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
   doc.setFontSize(7.5);
-  doc.text(`Generated: ${generatedAt}`, pageWidth - 14, 12, { align: 'right' });
-  doc.text(`Period: ${filterLabel}`, pageWidth - 14, 18, { align: 'right' });
+  doc.setTextColor(226, 232, 240);
+  doc.text(`Generated: ${generatedAt}`, pageWidth - 14, 11, { align: 'right' });
 
-  let yCursor = 35;
+  const scopeLabel = tab === 'inventory'
+    ? (categoryFilter && categoryFilter !== 'all' ? `Category: ${categoryFilter.toUpperCase()}` : 'Scope: All Categories')
+    : `Period: ${filterLabel}`;
+  doc.text(scopeLabel, pageWidth - 14, 17, { align: 'right' });
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(245, 158, 11); // Gold
+  doc.text(
+    tab === 'inventory' ? 'OFFICIAL INVENTORY & PARTY AUDIT' : 'CERTIFIED FINANCIAL REPORT',
+    pageWidth - 14,
+    23,
+    { align: 'right' }
+  );
+
+  let yCursor = 36;
 
   // --- TAB SPECIFIC CONTENT BUILDER ---
   if (tab === 'sales') {
@@ -219,104 +371,281 @@ export async function generatePdfReport({ tab, dateFilter, data }: GeneratePdfOp
     });
 
   } else if (tab === 'inventory') {
-    // 2. Inventory Stock Valuation & Health Report
-    const totalItemsCount = data.inventory.reduce((acc, i) => acc + i.qty, 0);
-    const totalCostValue = data.inventory.reduce((acc, i) => acc + (i.costPrice * i.qty), 0);
-    const totalRetailValue = data.inventory.reduce((acc, i) => acc + (i.salePrice * i.qty), 0);
-    const expectedMargin = totalRetailValue - totalCostValue;
+    // 2. Advanced Professional Inventory & Stock Audit Report
+    let targetInventory = data.inventory || [];
+
+    // Filter by Category if specified
+    if (categoryFilter && categoryFilter !== 'all') {
+      targetInventory = targetInventory.filter(
+        i => (i.category || '').trim().toLowerCase() === categoryFilter.trim().toLowerCase()
+      );
+    }
+
+    // Filter by Stock Status if specified
     const lowStockThreshold = data.settings.lowStockThreshold || 2;
-    const lowStockItems = data.inventory.filter(i => i.qty > 0 && i.qty <= lowStockThreshold);
-    const outOfStockItems = data.inventory.filter(i => i.qty <= 0);
+    if (stockStatusFilter === 'in_stock') {
+      targetInventory = targetInventory.filter(i => (i.qty || 0) > 0);
+    } else if (stockStatusFilter === 'low_stock') {
+      targetInventory = targetInventory.filter(i => (i.qty || 0) > 0 && (i.qty || 0) <= lowStockThreshold);
+    } else if (stockStatusFilter === 'out_of_stock') {
+      targetInventory = targetInventory.filter(i => (i.qty || 0) <= 0);
+    }
 
+    const totalItemsCount = targetInventory.reduce((acc, i) => acc + (Number(i.qty) || 0), 0);
+    const totalCostValue = targetInventory.reduce((acc, i) => acc + ((Number(i.costPrice) || 0) * (Number(i.qty) || 0)), 0);
+    const totalRetailValue = targetInventory.reduce((acc, i) => acc + ((Number(i.salePrice) || 0) * (Number(i.qty) || 0)), 0);
+    const expectedMargin = totalRetailValue - totalCostValue;
+    const marginPercent = totalCostValue > 0 ? ((expectedMargin / totalCostValue) * 100).toFixed(1) : '0';
+
+    const inStockItems = targetInventory.filter(i => (i.qty || 0) > lowStockThreshold);
+    const lowStockItems = targetInventory.filter(i => (i.qty || 0) > 0 && (i.qty || 0) <= lowStockThreshold);
+    const outOfStockItems = targetInventory.filter(i => (i.qty || 0) <= 0);
+
+    // Title & Scope Row
     doc.setTextColor(15, 23, 42);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(13);
-    doc.text('INVENTORY VALUATION & STOCK AUDIT REPORT', 14, yCursor);
-    yCursor += 6;
+    doc.setFontSize(12);
+    const titleText = categoryFilter && categoryFilter !== 'all'
+      ? `INVENTORY AUDIT: ${categoryFilter.toUpperCase()} CATEGORY`
+      : 'ALL CATEGORIES INVENTORY VALUATION & STOCK AUDIT';
+    doc.text(titleText, 14, yCursor);
 
-    // KPI Summary Box
-    doc.setDrawColor(226, 232, 240);
-    doc.setFillColor(248, 250, 252);
-    doc.roundedRect(14, yCursor, pageWidth - 28, 22, 2, 2, 'FD');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    const filterDesc = `Filter Status: ${stockStatusFilter.toUpperCase()} | Valuation Method: FIFO / Cost Basis | Total Products: ${targetInventory.length}`;
+    doc.text(filterDesc, 14, yCursor + 4.5);
+    yCursor += 8;
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    doc.setTextColor(71, 85, 105);
-    doc.text('TOTAL ASSET VALUE (COST)', 20, yCursor + 7);
-    doc.text('TOTAL RETAIL VALUE', 80, yCursor + 7);
-    doc.text('PROJECTED PROFIT', 135, yCursor + 7);
-    doc.text('STOCK ALERTS', pageWidth - 20, yCursor + 7, { align: 'right' });
+    // --- KPI SUMMARY CARDS (5 Balanced Executive Cards across landscape 269mm width) ---
+    const cardGap = 3.5;
+    const totalAvailWidth = pageWidth - 28;
+    const cardWidth = (totalAvailWidth - (cardGap * 4)) / 5;
+    const cardHeight = 18;
 
-    doc.setFontSize(11);
-    doc.setTextColor(37, 99, 235);
-    doc.text(`${currency} ${totalCostValue.toLocaleString()}`, 20, yCursor + 15);
-    doc.setTextColor(15, 23, 42);
-    doc.text(`${currency} ${totalRetailValue.toLocaleString()}`, 80, yCursor + 15);
-    doc.setTextColor(16, 185, 129);
-    doc.text(`${currency} ${expectedMargin.toLocaleString()}`, 135, yCursor + 15);
-    doc.setTextColor(225, 29, 72);
-    doc.text(`${lowStockItems.length} Low | ${outOfStockItems.length} Out`, pageWidth - 20, yCursor + 15, { align: 'right' });
+    const kpiCards = [
+      {
+        title: 'MODELS & TOTAL UNITS',
+        val: `${targetInventory.length} Items • ${totalItemsCount} Pcs`,
+        sub: `In Stock: ${totalItemsCount} Units`,
+        color: [30, 58, 138], // Navy
+        bg: [239, 246, 255],  // Blue 50
+        border: [191, 219, 254],
+      },
+      {
+        title: 'TOTAL ASSET COST',
+        val: `${currency} ${totalCostValue.toLocaleString()}`,
+        sub: 'Shop Capital Invested',
+        color: [15, 23, 42],  // Slate 900
+        bg: [248, 250, 252],  // Slate 50
+        border: [226, 232, 240],
+      },
+      {
+        title: 'TOTAL RETAIL VALUE',
+        val: `${currency} ${totalRetailValue.toLocaleString()}`,
+        sub: 'Projected Gross Revenue',
+        color: [14, 116, 144], // Cyan 700
+        bg: [236, 254, 255],  // Cyan 50
+        border: [165, 243, 252],
+      },
+      {
+        title: 'PROJECTED MARGIN',
+        val: `${currency} ${expectedMargin.toLocaleString()}`,
+        sub: `Margin Ratio: +${marginPercent}%`,
+        color: [16, 122, 60], // Green 700
+        bg: [240, 253, 244],  // Green 50
+        border: [187, 247, 208],
+      },
+      {
+        title: 'STOCK AUDIT ALERTS',
+        val: `${inStockItems.length} OK | ${lowStockItems.length} Low`,
+        sub: `${outOfStockItems.length} Out of Stock Items`,
+        color: outOfStockItems.length > 0 ? [190, 18, 60] : [180, 83, 9],
+        bg: [255, 241, 242],  // Rose 50
+        border: [254, 205, 211],
+      },
+    ];
 
-    yCursor += 28;
+    kpiCards.forEach((c, idx) => {
+      const x = 14 + idx * (cardWidth + cardGap);
+      doc.setDrawColor(c.border[0], c.border[1], c.border[2]);
+      doc.setFillColor(c.bg[0], c.bg[1], c.bg[2]);
+      doc.roundedRect(x, yCursor, cardWidth, cardHeight, 1.8, 1.8, 'FD');
 
-    const tableRows = data.inventory.map((item, idx) => {
-      const stockCost = item.costPrice * item.qty;
-      const stockRetail = item.salePrice * item.qty;
-      const imeis = [item.imei || '', ...(item.imeis || [])].filter(Boolean).join(', ');
-      const status = item.qty <= 0 ? 'OUT OF STOCK' : item.qty <= lowStockThreshold ? 'LOW STOCK' : 'IN STOCK';
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(71, 85, 105);
+      doc.text(c.title, x + 3.5, yCursor + 4.5);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(c.color[0], c.color[1], c.color[2]);
+      doc.text(c.val, x + 3.5, yCursor + 10.5);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6);
+      doc.setTextColor(100, 116, 139);
+      doc.text(c.sub, x + 3.5, yCursor + 15);
+    });
+
+    yCursor += cardHeight + 5;
+
+    // Build Table Rows
+    const tableRows = targetInventory.map((item, idx) => {
+      const stockCost = (Number(item.costPrice) || 0) * (Number(item.qty) || 0);
+      const stockRetail = (Number(item.salePrice) || 0) * (Number(item.qty) || 0);
+
+      // Extract deduplicated unique IMEIs
+      const uniqueImeis = extractUniqueImeis(item);
+      let imeiDisplay = '-';
+      if (uniqueImeis.length === 1) {
+        imeiDisplay = uniqueImeis[0];
+      } else if (uniqueImeis.length > 1) {
+        imeiDisplay = uniqueImeis.map((im, iIdx) => `${iIdx + 1}) ${im}`).join('\n');
+      }
+
+      // Resolve Supplier / Party Name
+      const supplierInfo = resolveItemSupplier(item, data, uniqueImeis);
+      const partyText = supplierInfo.billNo
+        ? `${supplierInfo.partyName} (Bill #${supplierInfo.billNo})`
+        : supplierInfo.partyName;
+
+      // Status
+      const statusText = (item.qty || 0) <= 0
+        ? 'OUT OF STOCK'
+        : (item.qty || 0) <= lowStockThreshold
+          ? 'LOW STOCK'
+          : 'IN STOCK';
+
+      // Specifications
+      const specs = [
+        item.ram && item.storage ? `${item.ram}/${item.storage}` : (item.storage || item.ram || ''),
+        item.color || '',
+      ].filter(Boolean).join(' • ');
+
+      const itemNameWithSpecs = specs ? `${item.name}\n[${specs}]` : item.name;
 
       return [
         (idx + 1).toString(),
-        item.name,
-        item.category,
-        item.qty.toString(),
-        `${currency} ${item.costPrice.toLocaleString()}`,
-        `${currency} ${item.salePrice.toLocaleString()}`,
+        itemNameWithSpecs,
+        item.category || 'General',
+        partyText,
+        (item.qty || 0).toString(),
+        `${currency} ${(item.costPrice || 0).toLocaleString()}`,
+        `${currency} ${(item.salePrice || 0).toLocaleString()}`,
         `${currency} ${stockCost.toLocaleString()}`,
         `${currency} ${stockRetail.toLocaleString()}`,
-        imeis || 'None',
-        status,
+        imeiDisplay,
+        statusText,
       ];
     });
 
     autoTable(doc, {
       startY: yCursor,
-      head: [['#', 'Item Name', 'Category', 'Qty', 'Cost', 'Sale', 'Stock Cost', 'Retail Value', 'Serial / IMEIs', 'Status']],
+      head: [[
+        '#',
+        'Model Name & Specifications',
+        'Category',
+        'Supplier / Purchase Party',
+        'Qty',
+        'Cost Rate',
+        'Sale Rate',
+        'Stock Cost',
+        'Retail Value',
+        'Dedicated IMEIs / Serials',
+        'Status',
+      ]],
       body: tableRows,
-      theme: 'striped',
+      theme: 'grid',
       headStyles: {
-        fillColor: [30, 58, 138],
-        textColor: 255,
+        fillColor: [15, 23, 42], // Deep Slate 900
+        textColor: [255, 255, 255],
         fontStyle: 'bold',
-        fontSize: 7.5,
+        fontSize: 7.2,
+        halign: 'left',
+        cellPadding: 2.2,
       },
       styles: {
-        fontSize: 6.5,
-        cellPadding: 1.8,
+        fontSize: 6.8,
+        cellPadding: 2,
         valign: 'middle',
+        lineColor: [226, 232, 240],
+        lineWidth: 0.15,
+      },
+      alternateRowStyles: {
+        fillColor: [248, 250, 252], // Slate 50
       },
       columnStyles: {
-        0: { cellWidth: 7 },
-        1: { cellWidth: 32 },
-        2: { cellWidth: 22 },
-        3: { cellWidth: 10, halign: 'center' },
-        4: { cellWidth: 16, halign: 'right' },
-        5: { cellWidth: 16, halign: 'right' },
-        6: { cellWidth: 18, halign: 'right' },
-        7: { cellWidth: 18, halign: 'right' },
-        8: { cellWidth: 28 },
-        9: { cellWidth: 15, halign: 'center' },
+        0: { cellWidth: 7, halign: 'center' },
+        1: { cellWidth: 44, fontStyle: 'bold' },
+        2: { cellWidth: 23 },
+        3: { cellWidth: 32 },
+        4: { cellWidth: 12, halign: 'center', fontStyle: 'bold' },
+        5: { cellWidth: 20, halign: 'right' },
+        6: { cellWidth: 20, halign: 'right' },
+        7: { cellWidth: 26, halign: 'right', fontStyle: 'bold' },
+        8: { cellWidth: 26, halign: 'right' },
+        9: { cellWidth: 38 },
+        10: { cellWidth: 21, halign: 'center', fontStyle: 'bold' },
       },
-      foot: [
-        ['', 'TOTALS', `${data.inventory.length} Products`, `${totalItemsCount} Pcs`, '', '', `${currency} ${totalCostValue.toLocaleString()}`, `${currency} ${totalRetailValue.toLocaleString()}`, '', '']
-      ],
+      foot: [[
+        '',
+        'TOTAL AUDITED VALUATION',
+        `${targetInventory.length} Products`,
+        'All Parties Recorded',
+        `${totalItemsCount} Pcs`,
+        '',
+        '',
+        `${currency} ${totalCostValue.toLocaleString()}`,
+        `${currency} ${totalRetailValue.toLocaleString()}`,
+        '',
+        `${inStockItems.length} In Stock`,
+      ]],
       footStyles: {
         fillColor: [241, 245, 249],
         textColor: [15, 23, 42],
         fontStyle: 'bold',
-        fontSize: 7.5,
+        fontSize: 7.2,
+        lineColor: [203, 213, 225],
+        lineWidth: 0.2,
+      },
+      didParseCell: (hookData) => {
+        // Highlight Status column
+        if (hookData.section === 'body' && hookData.column.index === 10) {
+          const val = hookData.cell.raw;
+          if (val === 'IN STOCK') {
+            hookData.cell.styles.textColor = [16, 122, 60]; // Green
+          } else if (val === 'LOW STOCK') {
+            hookData.cell.styles.textColor = [194, 65, 12]; // Amber
+          } else if (val === 'OUT OF STOCK') {
+            hookData.cell.styles.textColor = [225, 29, 72]; // Red
+          }
+        }
       },
     });
+
+    // Signatures and Auditor Stamping
+    let finalY = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 8 : yCursor + 20;
+    if (finalY > pageHeight - 35) {
+      doc.addPage();
+      finalY = 25;
+    }
+
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.3);
+    doc.line(14, finalY, 90, finalY);
+    doc.line(pageWidth - 90, finalY, pageWidth - 14, finalY);
+
+    doc.setFontSize(7.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(71, 85, 105);
+    doc.text('Inventory Auditor & Physical Count By', 14, finalY + 4.5);
+    doc.text('Store Owner / Authorized Stamp & Sign', pageWidth - 14, finalY + 4.5, { align: 'right' });
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text('FMZ Friends Mobile Zone • Computer Generated Certified Stock Record', 14, finalY + 9);
 
   } else if (tab === 'khata') {
     // 3. Khata Customer Credit Ledger Report
@@ -945,13 +1274,15 @@ export async function generatePdfReport({ tab, dateFilter, data }: GeneratePdfOp
   const pageCount = (doc.internal as any).getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
+    const footerY = pageHeight - 8;
     doc.setDrawColor(226, 232, 240);
-    doc.line(14, 285, pageWidth - 14, 285);
+    doc.setLineWidth(0.3);
+    doc.line(14, footerY - 3, pageWidth - 14, footerY - 3);
 
     doc.setFontSize(7.5);
     doc.setTextColor(148, 163, 184);
-    doc.text(`Mobile POS Pro  •  Confidential Business Report  •  ${shopName}`, 14, 290);
-    doc.text(`Page ${i} of ${pageCount}`, pageWidth - 14, 290, { align: 'right' });
+    doc.text(`FMZ Friends Mobile Zone  •  Official Certified Report  •  ${shopName}`, 14, footerY);
+    doc.text(`Page ${i} of ${pageCount}`, pageWidth - 14, footerY, { align: 'right' });
   }
 
   // Robust universal download trigger (Works smoothly in iframes and all browsers)

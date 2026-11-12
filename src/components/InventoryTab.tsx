@@ -47,7 +47,7 @@ interface InventoryTabProps {
   onRestoreItem?: (id: string) => void;
   onAddCategory: (category: string) => void;
   onDeleteCategory: (category: string) => boolean;
-  onOpenPdfReport?: () => void;
+  onOpenPdfReport?: (category?: string) => void;
 }
 
 const InventoryTabComponent: React.FC<InventoryTabProps> = ({
@@ -150,12 +150,10 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
           imeisStr
         ]);
       });
-    } else if (item.imeis && item.imeis.length > 0) {
-      rows.push(['Standard', 'Default', `${item.qty} Units`, item.imeis.join(', ')]);
-    } else if (item.imei) {
-      rows.push(['Standard', 'Default', `${item.qty} Units`, item.imei]);
     } else {
-      rows.push(['Standard', 'Default', `${item.qty} Units`, 'N/A']);
+      const rawImeis = [...(item.imeis || []), item.imei || ''].filter(Boolean);
+      const uniqueImeis = Array.from(new Set(rawImeis.map(i => i.trim()).filter(Boolean)));
+      rows.push(['Standard', 'Default', `${item.qty} Units`, uniqueImeis.join(', ') || 'N/A']);
     }
 
     autoTable(doc, {
@@ -404,7 +402,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
             {onOpenPdfReport && (
               <button
                 type="button"
-                onClick={onOpenPdfReport}
+                onClick={() => onOpenPdfReport(categoryFilter !== 'ALL' ? categoryFilter : 'all')}
                 className="flex-1 sm:flex-initial px-2.5 sm:px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200/80 transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs h-8.5 sm:h-9.5"
                 title="Export Stock Valuation & Low Stock PDF Report"
               >

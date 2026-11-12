@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { AppData } from '../types';
 import {
   FileText,
@@ -15,7 +15,11 @@ import {
   Receipt,
   Activity,
   Calculator,
-  ChevronRight
+  ChevronRight,
+  Tag,
+  Check,
+  Truck,
+  ShieldCheck,
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { generatePdfReport, DateFilterRange, getDateFilterBounds } from '../utils/pdfGenerator';
@@ -25,6 +29,7 @@ export interface PdfExportModalProps {
   onClose: () => void;
   tab: 'sales' | 'inventory' | 'khata' | 'expenses' | 'activity' | 'dailyClosing';
   data: AppData;
+  initialCategory?: string;
 }
 
 export const PdfExportModal: React.FC<PdfExportModalProps> = ({
@@ -32,6 +37,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
   onClose,
   tab,
   data,
+  initialCategory,
 }) => {
   const { showToast } = useToast();
   const [filterType, setFilterType] = useState<DateFilterRange['type']>('monthly');
@@ -42,6 +48,22 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
   });
   const [endDate, setEndDate] = useState(() => new Date().toISOString().substring(0, 10));
   const [isGenerating, setIsGenerating] = useState(false);
+
+  // Inventory-specific interactive options
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [stockStatusFilter, setStockStatusFilter] = useState<'all' | 'in_stock' | 'low_stock' | 'out_of_stock'>('all');
+  const [includePartyDetails, setIncludePartyDetails] = useState<boolean>(true);
+
+  // Sync category when opening modal
+  useEffect(() => {
+    if (isOpen) {
+      if (initialCategory && initialCategory !== 'ALL') {
+        setSelectedCategory(initialCategory);
+      } else {
+        setSelectedCategory('all');
+      }
+    }
+  }, [isOpen, initialCategory]);
 
   const dateFilter: DateFilterRange = useMemo(
     () => ({
@@ -66,8 +88,8 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
         };
       case 'inventory':
         return {
-          title: 'Inventory Valuation Report',
-          subtitle: 'Stock counts, cost vs selling prices, low-stock alerts & serial IMEIs',
+          title: 'Inventory & Stock Audit Report',
+          subtitle: 'Select category, party inward details & download enterprise audit PDF',
           icon: <Boxes className="w-5 h-5 text-blue-600" />,
           accent: 'blue',
         };
@@ -102,7 +124,29 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
     }
   }, [tab]);
 
-  // Preview Count
+  // Category counts and list
+  const availableCategories = useMemo(() => {
+    const set = new Set<string>();
+    (data.categories || []).forEach(c => set.add(c));
+    (data.inventory || []).forEach(i => {
+      if (i.category) set.add(i.category);
+    });
+    return Array.from(set).sort();
+  }, [data.categories, data.inventory]);
+
+  const categoryStatsMap = useMemo(() => {
+    const map = new Map<string, { count: number; units: number }>();
+    (data.inventory || []).forEach(item => {
+      const cat = item.category || 'General';
+      const cur = map.get(cat) || { count: 0, units: 0 };
+      cur.count += 1;
+      cur.units += Number(item.qty) || 0;
+      map.set(cat, cur);
+    });
+    return map;
+  }, [data.inventory]);
+
+  // Preview Count & Stats
   const previewStats = useMemo(() => {
     const currency = data.settings.currency || 'Rs.';
     if (tab === 'sales') {
@@ -114,14 +158,32 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
       return {
         count: `${items.length} Invoices`,
         detail: `Total Revenue: ${currency} ${rev.toLocaleString()}`,
+        scope: label,
       };
     }
     if (tab === 'inventory') {
-      const totalUnits = data.inventory.reduce((a, b) => a + b.qty, 0);
-      const totalValue = data.inventory.reduce((a, b) => a + b.costPrice * b.qty, 0);
+      let filtered = data.inventory || [];
+      if (selectedCategory !== 'all') {
+        filtered = filtered.filter(i => (i.category || '').toLowerCase() === selectedCategory.toLowerCase());
+      }
+      const lowThresh = data.settings.lowStockThreshold || 2;
+      if (stockStatusFilter === 'in_stock') {
+        filtered = filtered.filter(i => (i.qty || 0) > 0);
+      } else if (stockStatusFilter === 'low_stock') {
+        filtered = filtered.filter(i => (i.qty || 0) > 0 && (i.qty || 0) <= lowThresh);
+      } else if (stockStatusFilter === 'out_of_stock') {
+        filtered = filtered.filter(i => (i.qty || 0) <= 0);
+      }
+
+      const totalUnits = filtered.reduce((a, b) => a + (Number(b.qty) || 0), 0);
+      const totalCost = filtered.reduce((a, b) => a + ((Number(b.costPrice) || 0) * (Number(b.qty) || 0)), 0);
+      const totalRetail = filtered.reduce((a, b) => a + ((Number(b.salePrice) || 0) * (Number(b.qty) || 0)), 0);
+      const margin = totalRetail - totalCost;
+
       return {
-        count: `${data.inventory.length} Products`,
-        detail: `${totalUnits} Units | Stock Cost: ${currency} ${totalValue.toLocaleString()}`,
+        count: `${filtered.length} Products (${totalUnits} Units)`,
+        detail: `Stock Cost: ${currency} ${totalCost.toLocaleString()} | Retail: ${currency} ${totalRetail.toLocaleString()} | Margin: ${currency} ${margin.toLocaleString()}`,
+        scope: selectedCategory === 'all' ? 'All Categories (Entire Store)' : `Category: ${selectedCategory}`,
       };
     }
     if (tab === 'khata') {
@@ -129,6 +191,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
       return {
         count: `${data.khata.length} Customers`,
         detail: `Total Receivables: ${currency} ${due.toLocaleString()}`,
+        scope: label,
       };
     }
     if (tab === 'expenses') {
@@ -140,6 +203,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
       return {
         count: `${items.length} Expenses`,
         detail: `Total: ${currency} ${total.toLocaleString()}`,
+        scope: label,
       };
     }
     if (tab === 'activity') {
@@ -150,6 +214,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
       return {
         count: `${items.length} Logs`,
         detail: `Filter Period: ${label}`,
+        scope: label,
       };
     }
     if (tab === 'dailyClosing') {
@@ -162,10 +227,11 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
       return {
         count: `${items.length} Closings Logged`,
         detail: `Physical Cash: ${currency} ${cashSum.toLocaleString()} | Total: ${currency} ${grandSum.toLocaleString()}`,
+        scope: label,
       };
     }
-    return { count: '0 items', detail: '' };
-  }, [tab, data, start, end, label]);
+    return { count: '0 items', detail: '', scope: label };
+  }, [tab, data, start, end, label, selectedCategory, stockStatusFilter]);
 
   if (!isOpen) return null;
 
@@ -176,6 +242,9 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
         tab,
         dateFilter,
         data,
+        categoryFilter: selectedCategory,
+        stockStatusFilter,
+        includePartyDetails,
       });
       showToast('PDF Report generated and downloaded successfully!', 'success');
       onClose();
@@ -187,9 +256,11 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
     }
   };
 
+  const totalStoreUnits = (data.inventory || []).reduce((acc, i) => acc + (Number(i.qty) || 0), 0);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-lg w-full max-w-full overflow-x-hidden p-3.5 sm:p-6 shadow-2xl space-y-4 sm:space-y-5 border border-slate-100 animate-in zoom-in-95 my-auto">
+      <div className="bg-white rounded-2xl max-w-lg w-full max-w-full overflow-x-hidden p-3.5 sm:p-6 shadow-2xl space-y-4 sm:space-y-5 border border-slate-100 animate-in zoom-in-95 my-auto max-h-[92vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
@@ -210,64 +281,176 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
           </button>
         </div>
 
-        {/* Date Range Options */}
-        <div className="space-y-3">
-          <label className="block text-xs font-bold text-slate-700">
-            Select Report Date Range:
-          </label>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {[
-              { id: 'today', label: '📅 Today' },
-              { id: 'weekly', label: '🗓️ Last 7 Days' },
-              { id: 'monthly', label: '📆 This Month' },
-              { id: 'yearly', label: '📈 Full Year' },
-              { id: 'custom', label: '🎯 Custom Range' },
-            ].map(btn => (
+        {/* Tab Specific Content */}
+        {tab === 'inventory' ? (
+          <div className="space-y-4">
+            {/* Category Selection Prompt */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Kis Category Ki PDF Nikalni Hai?</span>
+                </label>
+                <span className="text-[11px] font-bold text-blue-600">
+                  {selectedCategory === 'all' ? 'All Categories' : selectedCategory}
+                </span>
+              </div>
+
+              {/* All Categories Button */}
               <button
-                key={btn.id}
                 type="button"
-                onClick={() => setFilterType(btn.id as any)}
-                className={`py-2 px-3 rounded-xl text-xs font-bold transition cursor-pointer border text-center ${
-                  filterType === btn.id
-                    ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                    : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                onClick={() => setSelectedCategory('all')}
+                className={`w-full py-2.5 px-3 rounded-xl text-xs font-extrabold transition cursor-pointer border flex items-center justify-between ${
+                  selectedCategory === 'all'
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                    : 'bg-blue-50/60 hover:bg-blue-100/70 text-blue-900 border-blue-200'
                 }`}
               >
-                {btn.label}
+                <div className="flex items-center gap-2">
+                  <Layers className="w-4 h-4 shrink-0" />
+                  <span>Tamam Categories (All Categories • Pura Stock)</span>
+                </div>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  selectedCategory === 'all' ? 'bg-white/20 text-white' : 'bg-blue-200/70 text-blue-900'
+                }`}>
+                  {data.inventory?.length || 0} Models • {totalStoreUnits} Units
+                </span>
               </button>
-            ))}
-          </div>
 
-          {/* Custom Date Pickers */}
-          {filterType === 'custom' && (
-            <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-100 grid grid-cols-2 gap-3 animate-in fade-in">
-              <div>
-                <label className="block text-[11px] font-bold text-blue-900 mb-1">From Date</label>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={e => setStartDate(e.target.value)}
-                  className="w-full bg-white border border-blue-200 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:border-blue-600"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-bold text-blue-900 mb-1">To Date</label>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={e => setEndDate(e.target.value)}
-                  className="w-full bg-white border border-blue-200 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:border-blue-600"
-                />
+              {/* Specific Categories Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-36 overflow-y-auto p-1 bg-slate-50/70 rounded-xl border border-slate-200/70">
+                {availableCategories.map(cat => {
+                  const stats = categoryStatsMap.get(cat) || { count: 0, units: 0 };
+                  const isSelected = selectedCategory.toLowerCase() === cat.toLowerCase();
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setSelectedCategory(cat)}
+                      className={`p-2 rounded-lg text-left text-xs font-bold transition cursor-pointer border flex flex-col justify-between ${
+                        isSelected
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                          : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <span className="truncate">{cat}</span>
+                        {isSelected && <Check className="w-3 h-3 shrink-0 ml-1" />}
+                      </div>
+                      <span className={`text-[10px] mt-0.5 truncate ${
+                        isSelected ? 'text-blue-100' : 'text-slate-400'
+                      }`}>
+                        {stats.count} models ({stats.units} pcs)
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
-          )}
-        </div>
 
-        {/* Selected Period & Live Match Summary */}
-        <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80 space-y-1">
+            {/* Stock Health Filter */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-slate-600">Stock Status Filter:</label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                {[
+                  { id: 'all', label: 'All Items' },
+                  { id: 'in_stock', label: 'In Stock (>0)' },
+                  { id: 'low_stock', label: 'Low Stock' },
+                  { id: 'out_of_stock', label: 'Out of Stock' },
+                ].map(item => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setStockStatusFilter(item.id as any)}
+                    className={`py-1.5 px-2 rounded-lg text-[11px] font-bold text-center border transition cursor-pointer ${
+                      stockStatusFilter === item.id
+                        ? 'bg-slate-900 text-white border-slate-900'
+                        : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Inward Details & Party Checkbox */}
+            <div className="p-2.5 bg-emerald-50/60 rounded-xl border border-emerald-200/70 space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-emerald-950">
+                <input
+                  type="checkbox"
+                  checked={includePartyDetails}
+                  onChange={e => setIncludePartyDetails(e.target.checked)}
+                  className="w-4 h-4 text-emerald-600 rounded-md border-emerald-300 focus:ring-emerald-500"
+                />
+                <Truck className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                <span>Har mobile ki supplier / purchase party ka naam include karein</span>
+              </label>
+              <p className="text-[10px] text-emerald-800/80 pl-6">
+                PDF report mein har product ke sath bill number aur party ka naam (jaise Khan Telecom, Haider Mobile ya Direct Stock) likha aayega.
+              </p>
+            </div>
+          </div>
+        ) : (
+          /* Standard Date Range for other tabs */
+          <div className="space-y-3">
+            <label className="block text-xs font-bold text-slate-700">
+              Select Report Date Range:
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {[
+                { id: 'today', label: '📅 Today' },
+                { id: 'weekly', label: '🗓️ Last 7 Days' },
+                { id: 'monthly', label: '📆 This Month' },
+                { id: 'yearly', label: '📈 Full Year' },
+                { id: 'custom', label: '🎯 Custom Range' },
+              ].map(btn => (
+                <button
+                  key={btn.id}
+                  type="button"
+                  onClick={() => setFilterType(btn.id as any)}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition cursor-pointer border text-center ${
+                    filterType === btn.id
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                      : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                  }`}
+                >
+                  {btn.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Custom Date Pickers */}
+            {filterType === 'custom' && (
+              <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-100 grid grid-cols-2 gap-3 animate-in fade-in">
+                <div>
+                  <label className="block text-[11px] font-bold text-blue-900 mb-1">From Date</label>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={e => setStartDate(e.target.value)}
+                    className="w-full bg-white border border-blue-200 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:border-blue-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-blue-900 mb-1">To Date</label>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={e => setEndDate(e.target.value)}
+                    className="w-full bg-white border border-blue-200 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:border-blue-600"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Selected Scope & Live Match Summary */}
+        <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80 space-y-1.5">
           <div className="flex items-center justify-between text-xs">
             <span className="font-semibold text-slate-500">Report Scope:</span>
-            <span className="font-bold text-slate-800">{label}</span>
+            <span className="font-bold text-slate-800">{previewStats.scope}</span>
           </div>
           <div className="flex items-center justify-between text-xs">
             <span className="font-semibold text-slate-500">Matched Records:</span>
@@ -276,18 +459,19 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
           {previewStats.detail && (
             <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200/60">
               <span className="font-semibold text-slate-500">Financial Summary:</span>
-              <span className="font-bold text-emerald-700">{previewStats.detail}</span>
+              <span className="font-bold text-emerald-700 text-right">{previewStats.detail}</span>
             </div>
           )}
         </div>
 
         {/* Features Preview List */}
         <div className="text-[11px] text-slate-500 space-y-1">
-          <p className="font-bold text-slate-700">What's included in this PDF:</p>
+          <p className="font-bold text-slate-700">What's included in this Professional PDF:</p>
           <ul className="list-disc pl-4 space-y-0.5">
-            <li>Shop Business Header (Name, Phone, Address & Generation Timestamp)</li>
-            <li>Summary KPI metrics block with profit / asset totals</li>
-            <li>Clean tabular layout with auto-pagination & page numbers</li>
+            <li>Shop Business Header (Name, Tagline, Phone, Address & Timestamp)</li>
+            <li>No duplicate IMEIs (Unique deduplicated serial numbers per handset)</li>
+            <li>Supplier & Party identification (konsi party se mobile aya tha)</li>
+            <li>A4 Landscape layout with KPI metrics cards and signature lines</li>
           </ul>
         </div>
 
@@ -316,3 +500,4 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
 };
 
 export default PdfExportModal;
+
