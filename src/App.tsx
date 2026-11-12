@@ -31,6 +31,7 @@ import {
   subscribeToStoreRootConfig,
   subscribeToStoreFullData,
   saveInventoryItemToFirestore,
+  DEFAULT_STORE_ID,
 } from './utils/storage';
 import { recordImeisReversed, recordImeisAvailable } from './utils/imeiManager';
 import { generateEntityId } from './utils/id';
@@ -177,10 +178,7 @@ function AppContent() {
   useEffect(() => {
     // Check if an active authenticated user session exists (e.g., across refreshes)
     const sessionUser = getSavedSessionUser();
-    const targetStoreId = sessionUser ? (sessionUser.storeId || sessionUser.id) : undefined;
-    if (targetStoreId) {
-      setActiveStoreId(targetStoreId);
-    }
+    setActiveStoreId(DEFAULT_STORE_ID);
 
     migrateAndInitializeData(updatedData => {
       if (sessionUser) {
@@ -193,7 +191,7 @@ function AppContent() {
         setData(updatedData);
       }
       isInitialSyncDoneRef.current = true;
-    }, targetStoreId);
+    }, DEFAULT_STORE_ID);
   }, []);
 
   // Safeguard: Ensure salesman role is never on admin-only tabs
@@ -217,19 +215,16 @@ function AppContent() {
     }
   }, [data.settings?.theme]);
 
-  // Sync to local storage mirror on state updates (strictly partitioned per store)
+  // Sync to local storage mirror on state updates (offline-first IndexedDB + localStorage mirror)
   useEffect(() => {
     if (isInitialSyncDoneRef.current || (data.users && data.users.length > 0) || data.inventory.length > 0) {
-      const activeSid = data.currentUser?.storeId || data.currentUser?.id;
-      saveStoredData(data, activeSid);
+      saveStoredData(data, DEFAULT_STORE_ID);
     }
   }, [data]);
 
-  // Live Real-Time Multi-Device Firestore Synchronization (Laptop <-> Mobile PWA <-> Tablet)
+  // Live Real-Time Multi-Device Firestore Synchronization (Laptop <-> Mobile PWA <-> Tablet <-> All Devices)
   useEffect(() => {
-    const activeSid = data.currentUser?.storeId || data.currentUser?.id || getActiveStoreId();
-    if (!activeSid) return;
-
+    const activeSid = DEFAULT_STORE_ID;
     const unsubscribe = subscribeToStoreFullData(activeSid, (incomingPatch) => {
       setData(prev => {
         let hasChanges = false;
@@ -890,8 +885,8 @@ function AppContent() {
               users: syncedUsers,
             }));
           }}
-          onAuthSuccess={(user, rememberMe = true) => {
-            const userStoreId = user.storeId || user.id;
+          onAuthSuccess={async (user, rememberMe = true) => {
+            const userStoreId = user.storeId || DEFAULT_STORE_ID;
             setActiveStoreId(userStoreId);
             if (rememberMe) {
               saveCurrentSession(user);
@@ -903,44 +898,17 @@ function AppContent() {
               setActiveTab('pos');
             }
 
-            // Immediately load the isolated store's local cached data (with fallback for instant product rendering)
-            const localStoreData = loadStoredData(userStoreId);
-            const currentUsers = (localStoreData.users || []).filter(
-              u => u && u.id && (u.role !== 'admin' || u.id === user.id)
-            );
-            const updatedUsers = currentUsers.some(u => u.id === user.id) ? currentUsers : [user, ...currentUsers];
-
-            // Retain existing active inventory if localStoreData inventory is empty so products NEVER disappear
-            const currentInventory = data.inventory && data.inventory.length > 0 ? data.inventory : [];
-            const finalLocalInventory = (localStoreData.inventory && localStoreData.inventory.length > 0)
-              ? localStoreData.inventory
-              : currentInventory;
-
-            const initialMergedData: AppData = {
-              ...localStoreData,
-              inventory: finalLocalInventory,
-              users: updatedUsers,
-              currentUser: user,
-              currentRole: user.role,
-            };
-
-            setData(initialMergedData);
-
-            // Sync live remote data for this isolated store from Firestore in background
-            loadAppDataFromFirestore(userStoreId).then(remoteData => {
+            // 1. Fetch latest source-of-truth from Cloud Firestore first
+            try {
+              const remoteData = await loadAppDataFromFirestore(userStoreId);
               if (remoteData) {
                 const rUsers = (remoteData.users || []).filter(
                   u => u && u.id && (u.role !== 'admin' || u.id === user.id)
                 );
                 const rUpdatedUsers = rUsers.some(u => u.id === user.id) ? rUsers : [user, ...rUsers];
 
-                const finalInventory = (remoteData.inventory && remoteData.inventory.length > 0)
-                  ? remoteData.inventory
-                  : finalLocalInventory;
-
                 const finalData: AppData = {
                   ...remoteData,
-                  inventory: finalInventory,
                   users: rUpdatedUsers,
                   currentUser: user,
                   currentRole: user.role,
@@ -948,13 +916,30 @@ function AppContent() {
 
                 setData(finalData);
                 saveStoredData(finalData, userStoreId);
-              }
-            });
 
-            // Immediately sync this user to Cloud Firestore global registry & store
-            saveUserToFirestore(user, userStoreId).catch(err => {
-              console.warn('Failed to sync authenticated user to Firestore:', err);
-            });
+                saveUserToFirestore(user, userStoreId).catch(() => {});
+                return;
+              }
+            } catch (err) {
+              console.warn('Remote load on auth notice:', err);
+            }
+
+            // 2. Offline fallback to local cached data only if Firestore is unreachable
+            const localStoreData = loadStoredData(userStoreId);
+            const currentUsers = (localStoreData.users || []).filter(
+              u => u && u.id && (u.role !== 'admin' || u.id === user.id)
+            );
+            const updatedUsers = currentUsers.some(u => u.id === user.id) ? currentUsers : [user, ...currentUsers];
+
+            const fallbackData: AppData = {
+              ...localStoreData,
+              users: updatedUsers,
+              currentUser: user,
+              currentRole: user.role,
+            };
+
+            setData(fallbackData);
+            saveUserToFirestore(user, userStoreId).catch(() => {});
           }}
           settings={data.settings}
         />

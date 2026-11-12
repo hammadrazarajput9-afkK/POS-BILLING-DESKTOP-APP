@@ -314,11 +314,11 @@ export function validateBackupData(parsed: unknown): BackupValidationResult {
     purchasesLedger: Array.isArray(raw.purchasesLedger) ? (raw.purchasesLedger as PurchaseLedgerEntry[]) : [],
     supplierPurchases: Array.isArray(raw.supplierPurchases) ? (raw.supplierPurchases as SupplierPurchase[]) : [],
     settings: mergedSettings,
-    categories: Array.isArray(raw.categories) && raw.categories.length > 0 ? (raw.categories as string[]) : defaultCategories,
-    expenseCategories: Array.isArray(raw.expenseCategories) && raw.expenseCategories.length > 0 ? (raw.expenseCategories as string[]) : defaultExpenseCategories,
+    categories: Array.isArray(raw.categories) ? (raw.categories as string[]) : defaultCategories,
+    expenseCategories: Array.isArray(raw.expenseCategories) ? (raw.expenseCategories as string[]) : defaultExpenseCategories,
     activities: Array.isArray(raw.activities) ? (raw.activities as ActivityLog[]) : [],
     dailyClosings: Array.isArray(raw.dailyClosings) ? raw.dailyClosings : [],
-    onlineAccounts: Array.isArray(raw.onlineAccounts) && raw.onlineAccounts.length > 0 ? (raw.onlineAccounts as OnlineAccount[]) : defaultOnlineAccounts,
+    onlineAccounts: Array.isArray(raw.onlineAccounts) ? (raw.onlineAccounts as OnlineAccount[]) : defaultOnlineAccounts,
     imeiRecords: Array.isArray(raw.imeiRecords) ? (raw.imeiRecords as ImeiRecord[]) : [],
     stockAdjustments: Array.isArray(raw.stockAdjustments) ? (raw.stockAdjustments as StockAdjustment[]) : [],
     tabPreferences: raw.tabPreferences && typeof raw.tabPreferences === 'object' ? (raw.tabPreferences as TabPreferences) : {},
@@ -637,18 +637,18 @@ export function subscribeToStoreRootConfig(
         const rootData = docSnap.data() as Record<string, unknown>;
         const patch: Partial<AppData> = {};
 
-        if (rootData.settings) patch.settings = rootData.settings as ShopSettings;
-        if (rootData.categories) patch.categories = rootData.categories as string[];
-        if (rootData.expenseCategories) patch.expenseCategories = rootData.expenseCategories as string[];
-        if (rootData.onlineAccounts) patch.onlineAccounts = rootData.onlineAccounts as OnlineAccount[];
-        if (rootData.dailyClosings) patch.dailyClosings = rootData.dailyClosings as DailyClosingRecord[];
-        if (rootData.imeiRecords) patch.imeiRecords = rootData.imeiRecords as ImeiRecord[];
-        if (rootData.stockAdjustments) patch.stockAdjustments = rootData.stockAdjustments as StockAdjustment[];
-        if (rootData.purchasesLedger) patch.purchasesLedger = rootData.purchasesLedger as PurchaseLedgerEntry[];
-        if (rootData.supplierPurchases) patch.supplierPurchases = rootData.supplierPurchases as SupplierPurchase[];
-        if (rootData.salesReturns) patch.salesReturns = rootData.salesReturns as SalesReturnRecord[];
-        if (rootData.tabPreferences) patch.tabPreferences = rootData.tabPreferences as TabPreferences;
-        if (rootData.users) patch.users = rootData.users as UserAccount[];
+        if (rootData.settings !== undefined) patch.settings = rootData.settings as ShopSettings;
+        if (rootData.categories !== undefined) patch.categories = rootData.categories as string[];
+        if (rootData.expenseCategories !== undefined) patch.expenseCategories = rootData.expenseCategories as string[];
+        if (rootData.onlineAccounts !== undefined) patch.onlineAccounts = rootData.onlineAccounts as OnlineAccount[];
+        if (rootData.dailyClosings !== undefined) patch.dailyClosings = rootData.dailyClosings as DailyClosingRecord[];
+        if (rootData.imeiRecords !== undefined) patch.imeiRecords = rootData.imeiRecords as ImeiRecord[];
+        if (rootData.stockAdjustments !== undefined) patch.stockAdjustments = rootData.stockAdjustments as StockAdjustment[];
+        if (rootData.purchasesLedger !== undefined) patch.purchasesLedger = rootData.purchasesLedger as PurchaseLedgerEntry[];
+        if (rootData.supplierPurchases !== undefined) patch.supplierPurchases = rootData.supplierPurchases as SupplierPurchase[];
+        if (rootData.salesReturns !== undefined) patch.salesReturns = rootData.salesReturns as SalesReturnRecord[];
+        if (rootData.tabPreferences !== undefined) patch.tabPreferences = rootData.tabPreferences as TabPreferences;
+        if (rootData.users !== undefined) patch.users = rootData.users as UserAccount[];
 
         onUpdate(patch);
       }
@@ -1063,38 +1063,47 @@ export async function loadAppDataFromFirestore(targetStoreId?: string): Promise<
     const sales: SaleRecord[] = [];
     salesSnap.forEach(docSnap => sales.push(docSnap.data() as SaleRecord));
 
-    if (sales.length === 0 && storeId !== DEFAULT_STORE_ID) {
-      try {
-        const mainSalesSnap = await getDocs(collection(db, STORES_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.SALES));
-        mainSalesSnap.forEach(docSnap => sales.push(docSnap.data() as SaleRecord));
-      } catch {
-        // ignore
+    if (sales.length === 0) {
+      const storesToCheck = ['USR-ADM-1793988681742', 'USR-ADM-1793966178251'];
+      for (const altSid of storesToCheck) {
+        if (sales.length > 0) break;
+        try {
+          const altSales = await getDocs(collection(db, STORES_COLLECTION, altSid, SUB_COLLECTIONS.SALES));
+          altSales.forEach(docSnap => sales.push(docSnap.data() as SaleRecord));
+        } catch {
+          // ignore
+        }
       }
     }
 
     const inventory: InventoryItem[] = [];
     invSnap.forEach(docSnap => inventory.push(docSnap.data() as InventoryItem));
 
-    // Fallback migration: If this tenant store has 0 inventory items, check if main_store or legacy has products
-    if (inventory.length === 0 && storeId !== DEFAULT_STORE_ID) {
-      try {
-        const mainStoreInvSnap = await getDocs(collection(db, STORES_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.INVENTORY));
-        mainStoreInvSnap.forEach(docSnap => inventory.push(docSnap.data() as InventoryItem));
-
-        if (inventory.length === 0) {
+    // Fallback migration: If main_store has 0 inventory items, check previous admin stores or legacy
+    if (inventory.length === 0) {
+      const storesToCheck = ['USR-ADM-1793988681742', 'USR-ADM-1793966178251'];
+      for (const altSid of storesToCheck) {
+        if (inventory.length > 0) break;
+        try {
+          const altSnap = await getDocs(collection(db, STORES_COLLECTION, altSid, SUB_COLLECTIONS.INVENTORY));
+          altSnap.forEach(docSnap => inventory.push(docSnap.data() as InventoryItem));
+        } catch {
+          // ignore
+        }
+      }
+      if (inventory.length === 0) {
+        try {
           const legacyInvSnap = await getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.INVENTORY));
           legacyInvSnap.forEach(docSnap => inventory.push(docSnap.data() as InventoryItem));
+        } catch {
+          // ignore
         }
-
-        // If we found fallback inventory, auto-save them into this store so they persist!
-        if (inventory.length > 0) {
-          console.info(`Auto-migrated ${inventory.length} products from main_store to active store [${storeId}]`);
-          for (const item of inventory) {
-            await saveInventoryItemToFirestore(item, storeId);
-          }
+      }
+      // If found in fallback, migrate to main_store immediately
+      if (inventory.length > 0 && storeId === DEFAULT_STORE_ID) {
+        for (const item of inventory) {
+          await saveInventoryItemToFirestore(item, DEFAULT_STORE_ID);
         }
-      } catch (fallbackErr) {
-        console.warn('Fallback inventory check warning:', fallbackErr);
       }
     }
 
@@ -1137,9 +1146,9 @@ export async function loadAppDataFromFirestore(targetStoreId?: string): Promise<
       backupVersion: CURRENT_BACKUP_VERSION,
       lastModified: typeof rootData.lastModified === 'string' ? rootData.lastModified : new Date().toISOString(),
       settings: (rootData.settings as ShopSettings) || defaultSettings,
-      categories: (rootData.categories as string[]) || defaultCategories,
-      expenseCategories: (rootData.expenseCategories as string[]) || defaultExpenseCategories,
-      onlineAccounts: (rootData.onlineAccounts as OnlineAccount[]) || defaultOnlineAccounts,
+      categories: Array.isArray(rootData.categories) ? (rootData.categories as string[]) : defaultCategories,
+      expenseCategories: Array.isArray(rootData.expenseCategories) ? (rootData.expenseCategories as string[]) : defaultExpenseCategories,
+      onlineAccounts: Array.isArray(rootData.onlineAccounts) ? (rootData.onlineAccounts as OnlineAccount[]) : defaultOnlineAccounts,
       dailyClosings: (rootData.dailyClosings as DailyClosingRecord[]) || [],
       imeiRecords: (rootData.imeiRecords as ImeiRecord[]) || [],
       stockAdjustments: (rootData.stockAdjustments as StockAdjustment[]) || [],
@@ -1219,9 +1228,9 @@ async function loadAppDataFromLegacyFirestore(): Promise<AppData | null> {
       backupVersion: CURRENT_BACKUP_VERSION,
       lastModified: new Date().toISOString(),
       settings: (rootData.settings as ShopSettings) || defaultSettings,
-      categories: (rootData.categories as string[]) || defaultCategories,
-      expenseCategories: (rootData.expenseCategories as string[]) || defaultExpenseCategories,
-      onlineAccounts: (rootData.onlineAccounts as OnlineAccount[]) || defaultOnlineAccounts,
+      categories: Array.isArray(rootData.categories) ? (rootData.categories as string[]) : defaultCategories,
+      expenseCategories: Array.isArray(rootData.expenseCategories) ? (rootData.expenseCategories as string[]) : defaultExpenseCategories,
+      onlineAccounts: Array.isArray(rootData.onlineAccounts) ? (rootData.onlineAccounts as OnlineAccount[]) : defaultOnlineAccounts,
       dailyClosings: (rootData.dailyClosings as DailyClosingRecord[]) || [],
       imeiRecords: (rootData.imeiRecords as ImeiRecord[]) || [],
       stockAdjustments: (rootData.stockAdjustments as StockAdjustment[]) || [],
@@ -1453,16 +1462,6 @@ export function saveStoredData(data: AppData, targetStoreId?: string): void {
   saveToIndexedDB(storeId, dataWithMeta).catch(err => {
     console.warn(`IndexedDB save error for store [${storeId}]:`, err);
   });
-
-  // 3. Debounced save for store root config
-  if (saveTimeout) {
-    clearTimeout(saveTimeout);
-  }
-  saveTimeout = setTimeout(() => {
-    saveRootConfigToFirestore(dataWithMeta, storeId).catch(err => {
-      console.warn(`Firebase Firestore remote save warning for store [${storeId}]:`, err);
-    });
-  }, 400);
 }
 
 /**
@@ -1508,16 +1507,9 @@ export async function migrateAndInitializeData(
       safeSetLocalStorage(getLocalStorageKey(storeId), remoteData);
 
       onDataLoaded(remoteData);
-    } else if (currentBestData.inventory.length > 0 || currentBestData.sales.length > 0 || currentBestData.khata.length > 0) {
-      await saveAppDataToFirestore(currentBestData, storeId);
-      await saveToIndexedDB(storeId, currentBestData);
-      safeSetLocalStorage(getLocalStorageKey(storeId), currentBestData);
-      onDataLoaded(currentBestData);
     } else {
-      await saveAppDataToFirestore(initialCleanData, storeId);
-      await saveToIndexedDB(storeId, initialCleanData);
-      safeSetLocalStorage(getLocalStorageKey(storeId), initialCleanData);
-      onDataLoaded(initialCleanData);
+      // If remote store data could not be reached, preserve current best local data without overwriting cloud Firestore
+      onDataLoaded(currentBestData);
     }
   } catch (err) {
     console.error(`Error in safe data migration/sync with Firestore for store [${storeId}]:`, err);
