@@ -641,6 +641,12 @@ export function subscribeToStoreRootConfig(
         if (rootData.categories) patch.categories = rootData.categories as string[];
         if (rootData.expenseCategories) patch.expenseCategories = rootData.expenseCategories as string[];
         if (rootData.onlineAccounts) patch.onlineAccounts = rootData.onlineAccounts as OnlineAccount[];
+        if (rootData.dailyClosings) patch.dailyClosings = rootData.dailyClosings as DailyClosingRecord[];
+        if (rootData.imeiRecords) patch.imeiRecords = rootData.imeiRecords as ImeiRecord[];
+        if (rootData.stockAdjustments) patch.stockAdjustments = rootData.stockAdjustments as StockAdjustment[];
+        if (rootData.purchasesLedger) patch.purchasesLedger = rootData.purchasesLedger as PurchaseLedgerEntry[];
+        if (rootData.supplierPurchases) patch.supplierPurchases = rootData.supplierPurchases as SupplierPurchase[];
+        if (rootData.salesReturns) patch.salesReturns = rootData.salesReturns as SalesReturnRecord[];
         if (rootData.tabPreferences) patch.tabPreferences = rootData.tabPreferences as TabPreferences;
         if (rootData.users) patch.users = rootData.users as UserAccount[];
 
@@ -651,6 +657,113 @@ export function subscribeToStoreRootConfig(
       console.warn(`Real-time root config subscription warning for store [${storeId}]:`, err);
     }
   );
+}
+
+/**
+ * Universal Real-Time Multi-Device Store Synchronization Listener.
+ * Listens to root document AND sub-collections (Inventory, Sales, Khata, Expenses).
+ */
+export function subscribeToStoreFullData(
+  targetStoreId: string,
+  onUpdate: (patch: Partial<AppData>) => void
+): () => void {
+  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
+  const unsubs: (() => void)[] = [];
+
+  // 1. Root Config & Root Arrays Listener
+  unsubs.push(subscribeToStoreRootConfig(storeId, onUpdate));
+
+  // 2. Inventory Subcollection Real-time Listener
+  try {
+    const invColRef = collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.INVENTORY);
+    unsubs.push(
+      onSnapshot(
+        invColRef,
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const items: InventoryItem[] = [];
+            snapshot.forEach(d => items.push(d.data() as InventoryItem));
+            onUpdate({ inventory: items });
+          }
+        },
+        (err) => console.warn(`Inventory real-time sync notice [${storeId}]:`, err)
+      )
+    );
+  } catch (err) {
+    console.warn(`Inventory listener initialization error [${storeId}]:`, err);
+  }
+
+  // 3. Sales Subcollection Real-time Listener
+  try {
+    const salesColRef = collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.SALES);
+    unsubs.push(
+      onSnapshot(
+        salesColRef,
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const sales: SaleRecord[] = [];
+            snapshot.forEach(d => sales.push(d.data() as SaleRecord));
+            sales.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            onUpdate({ sales });
+          }
+        },
+        (err) => console.warn(`Sales real-time sync notice [${storeId}]:`, err)
+      )
+    );
+  } catch (err) {
+    console.warn(`Sales listener initialization error [${storeId}]:`, err);
+  }
+
+  // 4. Khata Subcollection Real-time Listener
+  try {
+    const khataColRef = collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.KHATA);
+    unsubs.push(
+      onSnapshot(
+        khataColRef,
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const khata: KhataCustomer[] = [];
+            snapshot.forEach(d => khata.push(d.data() as KhataCustomer));
+            onUpdate({ khata });
+          }
+        },
+        (err) => console.warn(`Khata real-time sync notice [${storeId}]:`, err)
+      )
+    );
+  } catch (err) {
+    console.warn(`Khata listener initialization error [${storeId}]:`, err);
+  }
+
+  // 5. Expenses Subcollection Real-time Listener
+  try {
+    const expColRef = collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.EXPENSES);
+    unsubs.push(
+      onSnapshot(
+        expColRef,
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const expenses: ExpenseItem[] = [];
+            snapshot.forEach(d => expenses.push(d.data() as ExpenseItem));
+            expenses.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            onUpdate({ expenses });
+          }
+        },
+        (err) => console.warn(`Expenses real-time sync notice [${storeId}]:`, err)
+      )
+    );
+  } catch (err) {
+    console.warn(`Expenses listener initialization error [${storeId}]:`, err);
+  }
+
+  return () => {
+    unsubs.forEach(unsub => {
+      try {
+        unsub();
+      } catch {
+        // ignore
+      }
+    });
+  };
 }
 
 /**

@@ -31,6 +31,7 @@ interface HeaderProps {
   currentRole?: UserRole;
   currentUser?: UserAccount;
   onLogout?: () => void;
+  onRefreshData?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -46,6 +47,7 @@ export const Header: React.FC<HeaderProps> = ({
   currentRole = 'admin',
   currentUser,
   onLogout,
+  onRefreshData,
 }) => {
   const titles: Record<string, { title: string; subtitle: string }> = {
     dashboard: { title: 'Dashboard Overview', subtitle: 'Live business metrics & real-time cash drawer' },
@@ -134,9 +136,9 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         )}
 
-        {/* Global Online/Offline Status Indicator Pill */}
-        <div className="hidden xs:block sm:block">
-          <OnlineStatusBadge />
+        {/* Global Online/Offline Status Indicator Pill with Manual Refresh */}
+        <div className="block">
+          <OnlineStatusBadge onRefreshData={onRefreshData} />
         </div>
 
         {/* Desktop / Mobile PWA One-Click Install Button */}

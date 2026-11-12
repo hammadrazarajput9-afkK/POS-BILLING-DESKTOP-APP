@@ -29,6 +29,8 @@ import {
   clearCurrentSession,
   loadAppDataFromFirestore,
   subscribeToStoreRootConfig,
+  subscribeToStoreFullData,
+  saveInventoryItemToFirestore,
 } from './utils/storage';
 import { recordImeisReversed, recordImeisAvailable } from './utils/imeiManager';
 import { generateEntityId } from './utils/id';
@@ -223,62 +225,43 @@ function AppContent() {
     }
   }, [data]);
 
-  // Live Real-Time Firestore Synchronization for Store Settings, Categories & Config across devices
+  // Live Real-Time Multi-Device Firestore Synchronization (Laptop <-> Mobile PWA <-> Tablet)
   useEffect(() => {
     const activeSid = data.currentUser?.storeId || data.currentUser?.id || getActiveStoreId();
     if (!activeSid) return;
 
-    const unsubscribe = subscribeToStoreRootConfig(activeSid, (incomingPatch) => {
+    const unsubscribe = subscribeToStoreFullData(activeSid, (incomingPatch) => {
       setData(prev => {
         let hasChanges = false;
         const patchToApply: Partial<AppData> = {};
 
-        if (
-          incomingPatch.settings &&
-          JSON.stringify(prev.settings) !== JSON.stringify(incomingPatch.settings)
-        ) {
-          patchToApply.settings = incomingPatch.settings;
-          hasChanges = true;
-        }
+        const keysToCheck = [
+          'settings',
+          'categories',
+          'expenseCategories',
+          'onlineAccounts',
+          'tabPreferences',
+          'users',
+          'supplierPurchases',
+          'purchasesLedger',
+          'dailyClosings',
+          'imeiRecords',
+          'stockAdjustments',
+          'salesReturns',
+          'inventory',
+          'sales',
+          'khata',
+          'expenses',
+        ] as const;
 
-        if (
-          incomingPatch.categories &&
-          JSON.stringify(prev.categories) !== JSON.stringify(incomingPatch.categories)
-        ) {
-          patchToApply.categories = incomingPatch.categories;
-          hasChanges = true;
-        }
-
-        if (
-          incomingPatch.expenseCategories &&
-          JSON.stringify(prev.expenseCategories) !== JSON.stringify(incomingPatch.expenseCategories)
-        ) {
-          patchToApply.expenseCategories = incomingPatch.expenseCategories;
-          hasChanges = true;
-        }
-
-        if (
-          incomingPatch.onlineAccounts &&
-          JSON.stringify(prev.onlineAccounts) !== JSON.stringify(incomingPatch.onlineAccounts)
-        ) {
-          patchToApply.onlineAccounts = incomingPatch.onlineAccounts;
-          hasChanges = true;
-        }
-
-        if (
-          incomingPatch.tabPreferences &&
-          JSON.stringify(prev.tabPreferences) !== JSON.stringify(incomingPatch.tabPreferences)
-        ) {
-          patchToApply.tabPreferences = incomingPatch.tabPreferences;
-          hasChanges = true;
-        }
-
-        if (
-          incomingPatch.users &&
-          JSON.stringify(prev.users) !== JSON.stringify(incomingPatch.users)
-        ) {
-          patchToApply.users = incomingPatch.users;
-          hasChanges = true;
+        for (const key of keysToCheck) {
+          if (
+            incomingPatch[key] !== undefined &&
+            JSON.stringify(prev[key]) !== JSON.stringify(incomingPatch[key])
+          ) {
+            (patchToApply as any)[key] = incomingPatch[key];
+            hasChanges = true;
+          }
         }
 
         if (hasChanges) {
@@ -320,6 +303,22 @@ function AppContent() {
     setPdfModalCategory(initialCat || 'all');
     setPdfModalOpen(true);
   };
+
+  // Manual Force Refresh & Multi-Device Sync Handler
+  const handleManualSyncData = useCallback(async () => {
+    const activeSid = data.currentUser?.storeId || data.currentUser?.id || getActiveStoreId();
+    if (!activeSid) return;
+    try {
+      showToast('Syncing latest data from Cloud Firestore...', 'info');
+      await migrateAndInitializeData((reloadedData) => {
+        setData(reloadedData);
+      }, activeSid);
+      showToast('All shop data synchronized across devices!', 'success');
+    } catch (err) {
+      console.warn('Manual sync warning:', err);
+      showToast('Data sync complete with offline cache', 'info');
+    }
+  }, [data.currentUser?.storeId, data.currentUser?.id, showToast]);
 
   // Expenses Handlers
   const handleSaveExpense = (expenseData: {
@@ -636,6 +635,16 @@ function AppContent() {
     );
 
     showToast(`Purchase bill #${newPurchase.billNo} registered!`, 'success');
+
+    // Immediately push updated inventory items to Firestore sub-collection
+    const activeSid = data.currentUser?.storeId || data.currentUser?.id || getActiveStoreId();
+    if (autoAddToInventory && activeSid) {
+      setTimeout(() => {
+        data.inventory.forEach(item => {
+          saveInventoryItemToFirestore(item, activeSid).catch(() => {});
+        });
+      }, 50);
+    }
   };
 
   const handleDeletePurchase = () => {
@@ -925,6 +934,7 @@ function AppContent() {
           currentRole={data.currentRole || 'admin'}
           currentUser={data.currentUser}
           onLogout={handleLogout}
+          onRefreshData={handleManualSyncData}
         />
 
         {/* Scrollable Tab Content - Optimized with Conditional Rendering (Unmounts Inactive Tabs) */}
