@@ -289,7 +289,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
               <div className="flex items-center justify-between">
                 <label className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
                   <Tag className="w-3.5 h-3.5 text-blue-600" />
-                  <span>Kis Category Ki PDF Nikalni Hai?</span>
+                  <span>Select Category for PDF Export:</span>
                 </label>
                 <span className="text-[11px] font-bold text-blue-600">
                   {selectedCategory === 'all' ? 'All Categories' : selectedCategory}
@@ -308,7 +308,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
               >
                 <div className="flex items-center gap-2">
                   <Layers className="w-4 h-4 shrink-0" />
-                  <span>Tamam Categories (All Categories • Pura Stock)</span>
+                  <span>All Categories (Complete Inventory Stock)</span>
                 </div>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                   selectedCategory === 'all' ? 'bg-white/20 text-white' : 'bg-blue-200/70 text-blue-900'
@@ -384,10 +384,10 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
                   className="w-4 h-4 text-emerald-600 rounded-md border-emerald-300 focus:ring-emerald-500"
                 />
                 <Truck className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-                <span>Har mobile ki supplier / purchase party ka naam include karein</span>
+                <span>Include Supplier / Purchase Party Name for Each Device</span>
               </label>
               <p className="text-[10px] text-emerald-800/80 pl-6">
-                PDF report mein har product ke sath bill number aur party ka naam (jaise Khan Telecom, Haider Mobile ya Direct Stock) likha aayega.
+                PDF report will include invoice bill number and supplier party name (e.g. Khan Telecom, Direct Stock) on each record.
               </p>
             </div>
           </div>
@@ -470,7 +470,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
           <ul className="list-disc pl-4 space-y-0.5">
             <li>Shop Business Header (Name, Tagline, Phone, Address & Timestamp)</li>
             <li>No duplicate IMEIs (Unique deduplicated serial numbers per handset)</li>
-            <li>Supplier & Party identification (konsi party se mobile aya tha)</li>
+            <li>Supplier & Party identification (Vendor bill number and supplier name)</li>
             <li>A4 Landscape layout with KPI metrics cards and signature lines</li>
           </ul>
         </div>

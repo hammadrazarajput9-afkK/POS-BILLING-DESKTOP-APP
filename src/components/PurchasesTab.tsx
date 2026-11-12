@@ -24,7 +24,8 @@ import {
   RotateCcw,
   Sparkles,
   Barcode,
-  Smartphone
+  Smartphone,
+  CreditCard
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { ConfirmModal } from './ConfirmModal';
@@ -54,6 +55,7 @@ interface PurchasesTabProps {
   onOpenAddInventoryProduct?: () => void;
   onAddInventoryProduct?: (item: Omit<InventoryItem, 'id' | 'createdAt'>) => InventoryItem | void;
   onAddCategory?: (category: string) => void;
+  onSettlePurchaseDue?: (params: { purchaseId: string; paymentAmount: number; paymentMethod: string; notes?: string }) => void;
 }
 
 export interface InwardDraftItem {
@@ -82,6 +84,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
   onOpenAddInventoryProduct,
   onAddInventoryProduct,
   onAddCategory,
+  onSettlePurchaseDue,
 }) => {
   const { showToast } = useToast();
   const [search, setSearch] = useState('');
@@ -92,6 +95,10 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isStockModalOpen, setIsStockModalOpen] = useState(false);
   const [selectedPurchaseForView, setSelectedPurchaseForView] = useState<SupplierPurchase | null>(null);
+  const [selectedPurchaseForSettlement, setSelectedPurchaseForSettlement] = useState<SupplierPurchase | null>(null);
+  const [settlementAmount, setSettlementAmount] = useState<number | ''>('');
+  const [settlementMethod, setSettlementMethod] = useState<string>('Cash');
+  const [settlementNotes, setSettlementNotes] = useState<string>('');
   const [purchaseToDelete, setPurchaseToDelete] = useState<SupplierPurchase | null>(null);
   const [purchaseToReverse, setPurchaseToReverse] = useState<SupplierPurchase | null>(null);
   const [reversalReason, setReversalReason] = useState<string>('Goods Returned to Supplier');
@@ -157,11 +164,6 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
         return copy;
       }
 
-      const initImeis = inv.imeis && inv.imeis.length > 0
-        ? [...inv.imeis]
-        : (inv.imei ? inv.imei.split(',').map(s => s.trim()).filter(Boolean) : ['']);
-      if (initImeis.length === 0) initImeis.push('');
-
       showToast(`Added "${inv.name}" to inward stock list`, 'success');
       return [
         ...prev,
@@ -171,8 +173,8 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
           qty: 1,
           costPrice: inv.costPrice || 0,
           salePrice: inv.salePrice || 0,
-          imei: initImeis.filter(Boolean).join(', '),
-          imeis: initImeis,
+          imei: '',
+          imeis: [''],
           barcode: inv.barcode || '',
         },
       ];
@@ -923,6 +925,23 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                             >
                               <Eye className="w-4 h-4" />
                             </button>
+
+                            {!isReversed && p.balanceDue > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedPurchaseForSettlement(p);
+                                  setSettlementAmount(p.balanceDue);
+                                  setSettlementMethod('Cash');
+                                  setSettlementNotes('');
+                                }}
+                                className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-extrabold flex items-center gap-1 shadow-xs transition cursor-pointer"
+                                title="Settle Outstanding Supplier Due Balance"
+                              >
+                                <CreditCard className="w-3 h-3" />
+                                <span>Pay Due</span>
+                              </button>
+                            )}
 
                             {!isReversed && (
                               <button
@@ -1740,7 +1759,23 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex items-center justify-end gap-2 pt-2">
+              {selectedPurchaseForView.balanceDue > 0 && selectedPurchaseForView.status !== 'REVERSED' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPurchaseForSettlement(selectedPurchaseForView);
+                    setSettlementAmount(selectedPurchaseForView.balanceDue);
+                    setSettlementMethod('Cash');
+                    setSettlementNotes('');
+                    setSelectedPurchaseForView(null);
+                  }}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm"
+                >
+                  <CreditCard className="w-4 h-4" />
+                  <span>Pay Due Balance ({currency} {selectedPurchaseForView.balanceDue.toLocaleString()})</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setSelectedPurchaseForView(null)}
@@ -2032,6 +2067,117 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
           sales={sales}
           onAddCategory={onAddCategory || (() => {})}
         />
+      )}
+      {/* ========================================================= */}
+      {/* SETTLE DUE PAYMENT MODAL */}
+      {/* ========================================================= */}
+      {selectedPurchaseForSettlement && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 shadow-2xl space-y-4 border border-slate-100 animate-in zoom-in-95 my-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 font-extrabold shrink-0">
+                  <CreditCard className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-sm">Settle Supplier Due Balance</h3>
+                  <p className="text-[11px] text-slate-400">
+                    Bill #{selectedPurchaseForSettlement.billNo} • {selectedPurchaseForSettlement.partyName}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedPurchaseForSettlement(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 space-y-1 text-xs">
+              <div className="flex items-center justify-between text-slate-600 font-bold">
+                <span>Total Bill Amount:</span>
+                <span className="font-mono text-slate-900">{currency} {selectedPurchaseForSettlement.totalAmount.toLocaleString()}</span>
+              </div>
+              <div className="flex items-center justify-between text-emerald-700 font-bold">
+                <span>Previously Paid:</span>
+                <span className="font-mono">{currency} {selectedPurchaseForSettlement.paidAmount.toLocaleString()}</span>
+              </div>
+              <div className="flex items-center justify-between text-rose-600 font-extrabold pt-1 border-t border-slate-200/60">
+                <span>Current Outstanding Due:</span>
+                <span className="font-mono text-sm">{currency} {selectedPurchaseForSettlement.balanceDue.toLocaleString()}</span>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Payment Amount ({currency}):</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={selectedPurchaseForSettlement.balanceDue}
+                  value={settlementAmount}
+                  onChange={e => setSettlementAmount(Number(e.target.value) || '')}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-emerald-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Payment Account / Method:</label>
+                <select
+                  value={settlementMethod}
+                  onChange={e => setSettlementMethod(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-emerald-600"
+                >
+                  <option value="Cash">💵 Cash in Hand</option>
+                  <option value="Bank">🏦 Bank Transfer</option>
+                  <option value="JazzCash">📱 JazzCash</option>
+                  <option value="Easypaisa">📱 Easypaisa</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Notes / Remarks (Optional):</label>
+                <input
+                  type="text"
+                  value={settlementNotes}
+                  onChange={e => setSettlementNotes(e.target.value)}
+                  placeholder="e.g. Paid via online bank transfer receipt #1234"
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:border-emerald-600"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setSelectedPurchaseForSettlement(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onSettlePurchaseDue && selectedPurchaseForSettlement && Number(settlementAmount) > 0) {
+                    onSettlePurchaseDue({
+                      purchaseId: selectedPurchaseForSettlement.id,
+                      paymentAmount: Number(settlementAmount),
+                      paymentMethod: settlementMethod,
+                      notes: settlementNotes,
+                    });
+                    setSelectedPurchaseForSettlement(null);
+                  }
+                }}
+                disabled={!settlementAmount || Number(settlementAmount) <= 0}
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-extrabold rounded-xl transition cursor-pointer shadow-md shadow-emerald-600/20"
+              >
+                Confirm Payment & Update Status
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

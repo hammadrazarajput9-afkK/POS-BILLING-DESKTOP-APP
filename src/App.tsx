@@ -311,7 +311,11 @@ function AppContent() {
     try {
       showToast('Syncing latest data from Cloud Firestore...', 'info');
       await migrateAndInitializeData((reloadedData) => {
-        setData(reloadedData);
+        setData(prev => ({
+          ...reloadedData,
+          currentUser: prev.currentUser, // CRITICAL: Preserve active session user to prevent logout!
+          currentRole: prev.currentRole || prev.currentUser?.role || 'admin',
+        }));
       }, activeSid);
       showToast('All shop data synchronized across devices!', 'success');
     } catch (err) {
@@ -757,6 +761,63 @@ function AppContent() {
     showToast(`Purchase #${purchase.billNo} has been safely reversed. Stock restored!`, 'success');
   };
 
+  const handleSettlePurchaseDue = ({
+    purchaseId,
+    paymentAmount,
+    paymentMethod,
+    notes,
+  }: {
+    purchaseId: string;
+    paymentAmount: number;
+    paymentMethod: string;
+    notes?: string;
+  }) => {
+    if (paymentAmount <= 0) {
+      showToast('Payment amount must be greater than 0', 'warning');
+      return;
+    }
+
+    const purchase = (data.supplierPurchases || []).find(p => p.id === purchaseId);
+    if (!purchase) return;
+
+    if ((purchase.balanceDue || 0) <= 0) {
+      showToast('This purchase bill is already fully paid', 'info');
+      return;
+    }
+
+    const newPaidAmount = (purchase.paidAmount || 0) + paymentAmount;
+    const newBalanceDue = Math.max(0, purchase.totalAmount - newPaidAmount);
+
+    setData(prev => {
+      const updatedPurchases = (prev.supplierPurchases || []).map(p => {
+        if (p.id === purchaseId) {
+          return {
+            ...p,
+            paidAmount: newPaidAmount,
+            balanceDue: newBalanceDue,
+            notes: notes ? `${p.notes || ''}\n[Payment ${paymentMethod}: ${data.settings.currency} ${paymentAmount.toLocaleString()} - ${notes}]`.trim() : p.notes,
+          };
+        }
+        return p;
+      });
+
+      return {
+        ...prev,
+        supplierPurchases: updatedPurchases,
+      };
+    });
+
+    logActivity(
+      'Purchase',
+      `Supplier Payment Settled: ${purchase.partyName} (Bill #${purchase.billNo})`,
+      `Paid: ${data.settings.currency} ${paymentAmount.toLocaleString()} via ${paymentMethod} | Remaining Due: ${data.settings.currency} ${newBalanceDue.toLocaleString()}`,
+      'update',
+      purchase.id
+    );
+
+    showToast(`Payment of ${data.settings.currency} ${paymentAmount.toLocaleString()} recorded for Bill #${purchase.billNo}!`, 'success');
+  };
+
   // Settings & Theme
   const handleSaveSettings = (newSettings: ShopSettings) => {
     if (!hasPermission(data.currentRole || 'admin', 'canChangeSettings')) {
@@ -1020,6 +1081,7 @@ function AppContent() {
                 onSavePurchase={handleSavePurchase}
                 onDeletePurchase={handleDeletePurchase}
                 onReversePurchase={handleReversePurchase}
+                onSettlePurchaseDue={handleSettlePurchaseDue}
                 onAddInventoryProduct={handleAddProductFromPurchases}
                 onAddCategory={handleAddCategory}
               />
