@@ -47,6 +47,7 @@ interface InventoryTabProps {
   onRestoreItem?: (id: string) => void;
   onAddCategory: (category: string) => void;
   onDeleteCategory: (category: string) => boolean;
+  onRenameCategory?: (oldName: string, newName: string) => boolean;
   onOpenPdfReport?: (category?: string) => void;
 }
 
@@ -64,6 +65,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
   onRestoreItem,
   onAddCategory,
   onDeleteCategory,
+  onRenameCategory,
   onOpenPdfReport,
 }) => {
   const { showToast } = useToast();
@@ -334,7 +336,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
           <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">
             Total Capital Invested
           </span>
-          <h3 className="text-sm sm:text-xl font-extrabold text-slate-900 font-mono tabular-nums mt-0.5 sm:mt-1 truncate">
+          <h3 className="text-sm sm:text-xl font-extrabold text-slate-900 tabular-nums mt-0.5 sm:mt-1 truncate">
             {isAdmin ? `${currency} ${totalCostValuation.toLocaleString()}` : '••••••'}
           </h3>
           <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">
@@ -346,7 +348,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
           <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">
             Expected Retail Revenue
           </span>
-          <h3 className="text-sm sm:text-xl font-extrabold text-emerald-600 font-mono tabular-nums mt-0.5 sm:mt-1 truncate">
+          <h3 className="text-sm sm:text-xl font-extrabold text-emerald-600 tabular-nums mt-0.5 sm:mt-1 truncate">
             {currency} {totalRetailValuation.toLocaleString()}
           </h3>
           <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">
@@ -358,7 +360,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
           <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">
             Total In-Stock Units
           </span>
-          <h3 className="text-sm sm:text-xl font-extrabold text-slate-900 font-mono tabular-nums mt-0.5 sm:mt-1 truncate">
+          <h3 className="text-sm sm:text-xl font-extrabold text-slate-900 tabular-nums mt-0.5 sm:mt-1 truncate">
             {totalUnits.toLocaleString()} Units
           </h3>
           <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">Across {inventory.length} items</p>
@@ -368,7 +370,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
           <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">
             Low Stock Alert
           </span>
-          <h3 className="text-sm sm:text-xl font-extrabold text-rose-600 font-mono tabular-nums mt-0.5 sm:mt-1 truncate">
+          <h3 className="text-sm sm:text-xl font-extrabold text-rose-600 tabular-nums mt-0.5 sm:mt-1 truncate">
             {lowStockCount} Items
           </h3>
           <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">≤ 1 unit remaining</p>
@@ -583,13 +585,13 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                       <div className="mt-3.5 pt-2.5 border-t border-slate-100 flex items-center justify-between">
                         <div>
                           <span className="text-[10px] text-slate-400 block uppercase font-semibold">Price</span>
-                          <span className="font-mono font-extrabold text-blue-600 text-xs sm:text-sm">
+                          <span className="tabular-nums font-extrabold text-blue-600 text-xs sm:text-sm">
                             {currency} {item.salePrice.toLocaleString()}
                           </span>
                         </div>
                         <div className="text-right">
                           <span className="text-[10px] text-slate-400 block uppercase font-semibold">Stock</span>
-                          <span className={`font-mono font-bold text-xs px-2 py-0.5 rounded-full ${
+                          <span className={`tabular-nums font-bold text-xs px-2 py-0.5 rounded-full ${
                             item.qty > 1 ? 'bg-emerald-50 text-emerald-700' : item.qty === 1 ? 'bg-amber-100 text-amber-800' : 'bg-rose-50 text-rose-700'
                           }`}>
                             {item.qty} left
@@ -675,7 +677,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                                   {item.imeis.slice(0, 2).map((im, idx) => (
                                     <div
                                       key={idx}
-                                      className="flex items-center gap-1.5 font-mono text-[11px] text-blue-700"
+                                      className="flex items-center gap-1.5 tabular-nums text-[11px] text-blue-700"
                                     >
                                       <span>{im}</span>
                                       <button
@@ -699,7 +701,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                                   )}
                                 </div>
                               ) : item.imei ? (
-                                <div className="flex items-center gap-1.5 font-mono text-[11px] text-blue-700">
+                                <div className="flex items-center gap-1.5 tabular-nums text-[11px] text-blue-700">
                                   <span>{item.imei}</span>
                                   <button
                                     type="button"
@@ -715,20 +717,20 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                                   </button>
                                 </div>
                               ) : item.barcode ? (
-                                <span className="font-mono text-[11px] text-slate-500">{item.barcode}</span>
+                                <span className="tabular-nums text-[11px] text-slate-500">{item.barcode}</span>
                               ) : (
                                 <span className="text-slate-400 text-[11px]">--</span>
                               )}
                             </td>
-                            <td className="p-3 text-right font-mono tabular-nums text-slate-600 font-medium">
+                            <td className="p-3 text-right tabular-nums text-slate-600 font-medium">
                               {isAdmin ? `${currency} ${item.costPrice.toLocaleString()}` : '••••'}
                             </td>
-                            <td className="p-3 text-right font-mono tabular-nums font-bold text-slate-900">
+                            <td className="p-3 text-right tabular-nums font-bold text-slate-900">
                               {currency} {item.salePrice.toLocaleString()}
                             </td>
                             <td className="p-3 text-center">
                               <span
-                                className={`font-mono font-bold text-xs px-2.5 py-0.5 rounded-full ${
+                                className={`tabular-nums font-bold text-xs px-2.5 py-0.5 rounded-full ${
                                   item.qty > 1
                                     ? 'bg-emerald-50 text-emerald-700'
                                     : item.qty === 1
@@ -852,13 +854,13 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                 <div className="grid grid-cols-2 gap-2 text-xs pt-1">
                   <div>
                     <span className="text-slate-400 block text-[10px] font-bold uppercase">Sale Price</span>
-                    <span className="font-mono font-black text-blue-600 text-sm sm:text-base">
+                    <span className="tabular-nums font-black text-blue-600 text-sm sm:text-base">
                       {currency} {selectedProductPopup.salePrice.toLocaleString()}
                     </span>
                   </div>
                   <div>
                     <span className="text-slate-400 block text-[10px] font-bold uppercase">In Stock</span>
-                    <span className="font-mono font-bold text-slate-800 text-sm sm:text-base">
+                    <span className="tabular-nums font-bold text-slate-800 text-sm sm:text-base">
                       {selectedProductPopup.qty} units
                     </span>
                   </div>
@@ -866,7 +868,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                 {selectedProductPopup.barcode && (
                   <div className="text-xs">
                     <span className="text-slate-400 text-[10px] font-bold uppercase">Barcode / SKU: </span>
-                    <span className="font-mono font-bold text-slate-700">{selectedProductPopup.barcode}</span>
+                    <span className="tabular-nums font-bold text-slate-700">{selectedProductPopup.barcode}</span>
                   </div>
                 )}
               </div>
@@ -885,12 +887,12 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                     <div key={v.id || vIdx} className="p-3 bg-white border border-slate-200 rounded-xl space-y-1.5 shadow-2xs">
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
-                          <span className="w-5 h-5 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center font-mono text-[10px]">
+                          <span className="w-5 h-5 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center tabular-nums text-[10px]">
                             #{vIdx + 1}
                           </span>
                           {v.color || `${v.ram || ''} ${v.storage || ''}`.trim() || 'Standard Variant'}
                         </span>
-                        <span className="font-mono text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                        <span className="tabular-nums text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
                           {v.qty || 1} units
                         </span>
                       </div>
@@ -901,7 +903,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                               key={imIdx}
                               type="button"
                               onClick={() => handleCopyImei(im)}
-                              className="font-mono text-[10px] bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer transition"
+                              className="tabular-nums text-[10px] bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer transition"
                               title="Click to copy IMEI"
                             >
                               <span>IMEI: {im}</span>
@@ -925,7 +927,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                           key={imIdx}
                           type="button"
                           onClick={() => handleCopyImei(im)}
-                          className="font-mono text-[10px] bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer transition"
+                          className="tabular-nums text-[10px] bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer transition"
                           title="Click to copy IMEI"
                         >
                           <span>{im}</span>
@@ -944,7 +946,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                     <button
                       type="button"
                       onClick={() => handleCopyImei(selectedProductPopup.imei!)}
-                      className="font-mono text-xs text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded flex items-center gap-1 cursor-pointer"
+                      className="tabular-nums text-xs text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded flex items-center gap-1 cursor-pointer"
                     >
                       <span>{selectedProductPopup.imei}</span>
                       {copiedImei === selectedProductPopup.imei ? (
@@ -1022,6 +1024,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
         inventory={inventory}
         onAddCategory={onAddCategory}
         onDeleteCategory={onDeleteCategory}
+        onRenameCategory={onRenameCategory}
       />
 
       {/* Stock Adjustments Audit History Modal */}
@@ -1069,7 +1072,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-slate-900">{adj.productName}</span>
                       <span
-                        className={`font-mono font-bold px-2 py-0.5 rounded text-[11px] ${
+                        className={`tabular-nums font-bold px-2 py-0.5 rounded text-[11px] ${
                           adj.difference > 0
                             ? 'bg-emerald-100 text-emerald-800'
                             : 'bg-rose-100 text-rose-800'

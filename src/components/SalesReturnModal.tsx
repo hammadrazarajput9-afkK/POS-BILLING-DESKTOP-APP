@@ -72,10 +72,10 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
 
   // Return Form State
   const [selectedItemIds, setSelectedItemIds] = useState<Record<string, boolean>>({});
-  const [returnQtys, setReturnQtys] = useState<Record<string, number>>({});
+  const [returnQtys, setReturnQtys] = useState<Record<string, number | ''>>({});
   const [selectedImeis, setSelectedImeis] = useState<Record<string, string[]>>({});
   const [itemReasons, setItemReasons] = useState<Record<string, string>>({});
-  const [itemRefundAmounts, setItemRefundAmounts] = useState<Record<string, number>>({});
+  const [itemRefundAmounts, setItemRefundAmounts] = useState<Record<string, number | ''>>({});
 
   const [overallReason, setOverallReason] = useState<string>('Defective / Faulty Product');
   const [refundPaymentMethod, setRefundPaymentMethod] = useState<PaymentMethod>('Cash');
@@ -169,7 +169,12 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
     }));
   };
 
-  const handleQtyChange = (key: string, qty: number, maxQty: number, unitSalePrice: number) => {
+  const handleQtyChange = (key: string, qty: number | '', maxQty: number, unitSalePrice: number) => {
+    if (qty === '') {
+      setReturnQtys(prev => ({ ...prev, [key]: '' }));
+      setItemRefundAmounts(prev => ({ ...prev, [key]: '' }));
+      return;
+    }
     const validQty = Math.max(1, Math.min(maxQty, qty));
     setReturnQtys(prev => ({
       ...prev,
@@ -226,17 +231,26 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
     const returnItems: SalesReturnItem[] = [];
     let totalCostReversed = 0;
 
+    let validationError: string | null = null;
     selectedSale.items.forEach((item, idx) => {
+      if (validationError) return;
       const key = `${item.id}_${idx}`;
       if (selectedItemIds[key]) {
-        const returnQty = returnQtys[key] || 1;
-        const refundAmt = itemRefundAmounts[key] !== undefined ? itemRefundAmounts[key] : returnQty * item.salePrice;
+        const rawQty = returnQtys[key];
+        const returnQty = rawQty === '' || rawQty === undefined ? 0 : Number(rawQty);
+        if (returnQty < 1) {
+          validationError = `Please enter a valid return quantity for "${item.name}"`;
+          return;
+        }
+        const refundAmt = itemRefundAmounts[key] !== undefined && itemRefundAmounts[key] !== ''
+          ? Number(itemRefundAmounts[key])
+          : returnQty * item.salePrice;
         const reason = itemReasons[key] || overallReason;
         const chosenImeis = selectedImeis[key] || [];
 
         const availableImeis = item.imeis || (item.imei ? item.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
         if (availableImeis.length > 0 && chosenImeis.length !== returnQty) {
-          showToast(`Please select exactly ${returnQty} IMEI(s) for "${item.name}"`, 'warning');
+          validationError = `Please select exactly ${returnQty} IMEI(s) for "${item.name}"`;
           return;
         }
 
@@ -257,6 +271,11 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
         totalCostReversed += item.costPrice * returnQty;
       }
     });
+
+    if (validationError) {
+      showToast(validationError, 'warning');
+      return;
+    }
 
     if (matchingAccounts.length > 1 && !accountId) {
       showToast(`Please select the specific ${refundPaymentMethod} account for refund.`, 'warning');
@@ -516,7 +535,8 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                                     min="1"
                                     max={remainingQty}
                                     value={curQty}
-                                    onChange={e => handleQtyChange(key, parseInt(e.target.value) || 1, remainingQty, item.salePrice)}
+                                    placeholder="Qty"
+                                    onChange={e => handleQtyChange(key, e.target.value === '' ? '' : parseInt(e.target.value, 10) || 1, remainingQty, item.salePrice)}
                                     className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-amber-500"
                                   />
                                 </div>
@@ -528,10 +548,11 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                                   </label>
                                   <input
                                     type="number"
-                                    value={itemRefundAmounts[key] !== undefined ? itemRefundAmounts[key] : curQty * item.salePrice}
+                                    value={itemRefundAmounts[key] !== undefined ? itemRefundAmounts[key] : (Number(curQty) || 0) * item.salePrice}
+                                    placeholder="Refund amount"
                                     onChange={e => setItemRefundAmounts(prev => ({
                                       ...prev,
-                                      [key]: Number(e.target.value) || 0,
+                                      [key]: e.target.value === '' ? '' : Number(e.target.value),
                                     }))}
                                     className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-emerald-700 focus:outline-none focus:border-amber-500"
                                   />
@@ -571,7 +592,7 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                                             key={im}
                                             type="button"
                                             onClick={() => handleImeiToggle(key, im, curQty)}
-                                            className={`px-2.5 py-1 rounded-md text-[11px] font-mono font-bold transition cursor-pointer border ${
+                                            className={`px-2.5 py-1 rounded-md text-[11px] tabular-nums font-bold transition cursor-pointer border ${
                                               isImChosen
                                                 ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
                                                 : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'

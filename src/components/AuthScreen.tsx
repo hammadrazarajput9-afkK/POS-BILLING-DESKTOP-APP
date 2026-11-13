@@ -188,24 +188,44 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
     const emailNorm = loginEmail.trim().toLowerCase();
 
-    // 1. Always fetch fresh live user registry from Firestore for cross-device authentication
-    setIsCheckingCloud(true);
-    const liveUsers = await fetchLiveUsersFromFirestore();
-    setIsCheckingCloud(false);
-    if (liveUsers.length > 0) {
-      setCloudUsers(liveUsers);
-      if (onSyncUsers) onSyncUsers(liveUsers);
+    const findSalesmanInPool = (pool: UserAccount[]) =>
+      pool.find(
+        (u) =>
+          u.email.toLowerCase() === emailNorm &&
+          u.password === loginPassword &&
+          u.role === 'salesman'
+      );
+
+    const findAdminInPool = (pool: UserAccount[]) => {
+      const matchingAdmins = pool.filter(
+        (u) => u.email.toLowerCase() === emailNorm && u.role === 'admin'
+      );
+      return (
+        matchingAdmins.find((u) => (u.is2faEnabled || u.totpSecret) && u.password === loginPassword) ||
+        matchingAdmins.find((u) => u.password === loginPassword)
+      );
+    };
+
+    // 1. Instant local/pre-fetched pool check (0ms delay if already fetched on mount)
+    let pool = allUsersPool;
+    let salesmanUser = findSalesmanInPool(pool);
+    let adminUser = findAdminInPool(pool);
+
+    // Only block on Firestore fetch if user wasn't matched in already-loaded pool
+    if ((activeTab === 'salesman' && !salesmanUser) || (activeTab !== 'salesman' && !adminUser)) {
+      setIsCheckingCloud(true);
+      const liveUsers = await fetchLiveUsersFromFirestore();
+      setIsCheckingCloud(false);
+      if (liveUsers.length > 0) {
+        setCloudUsers(liveUsers);
+        if (onSyncUsers) onSyncUsers(liveUsers);
+        pool = liveUsers;
+        salesmanUser = findSalesmanInPool(pool);
+        adminUser = findAdminInPool(pool);
+      }
     }
-    const pool = liveUsers.length > 0 ? liveUsers : allUsersPool;
 
     // 2. Check if credentials match a Salesman account
-    const salesmanUser = pool.find(
-      (u) =>
-        u.email.toLowerCase() === emailNorm &&
-        u.password === loginPassword &&
-        u.role === 'salesman'
-    );
-
     if (salesmanUser || activeTab === 'salesman') {
       if (salesmanUser) {
         const resolvedSalesman: UserAccount = {
@@ -221,15 +241,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       }
     }
 
-    // 3. Match admin account by email, prioritizing already 2FA-secured profiles
-    const matchingAdmins = pool.filter(
-      (u) => u.email.toLowerCase() === emailNorm && u.role === 'admin'
-    );
-
-    const adminUser =
-      matchingAdmins.find((u) => (u.is2faEnabled || u.totpSecret) && u.password === loginPassword) ||
-      matchingAdmins.find((u) => u.password === loginPassword);
-
+    // 3. Match admin account
     if (!adminUser) {
       showToast('Invalid Email address or Password.', 'error');
       return;
@@ -248,7 +260,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     // NEVER show QR code setup. Go straight to 6-digit TOTP code input!
     if (resolvedAdmin.is2faEnabled || resolvedAdmin.totpSecret) {
       setAdminLoginStep('totp');
-      showToast('Please enter the 6-digit passcode from your Google Authenticator app.', 'info');
     } else {
       // Only reached if an admin has genuinely never paired an Authenticator app
       setIsGeneratingSetup(true);
@@ -654,7 +665,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                         <p className="text-[11px] sm:text-xs text-slate-500 font-medium">
                           Enter 6-digit code from Google Authenticator for:
                         </p>
-                        <span className="inline-block px-3 py-0.5 bg-purple-50 text-purple-700 rounded-full text-xs font-mono font-bold">
+                        <span className="inline-block px-3 py-0.5 bg-purple-50 text-purple-700 rounded-full text-xs tabular-nums font-bold">
                           {pendingAdminUser?.email}
                         </span>
                       </div>
@@ -671,7 +682,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                             required
                             value={totpInputCode}
                             onChange={(e) => setTotpInputCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                            className="w-full text-center text-2xl sm:text-3xl font-mono font-black tracking-[0.4em] py-2.5 sm:py-3.5 bg-slate-50 border-2 border-purple-200 focus:border-purple-600 rounded-3xl text-slate-900 outline-none transition shadow-inner"
+                            className="w-full text-center text-2xl sm:text-3xl tabular-nums font-black tracking-[0.4em] py-2.5 sm:py-3.5 bg-slate-50 border-2 border-purple-200 focus:border-purple-600 rounded-3xl text-slate-900 outline-none transition shadow-inner"
                           />
                         </div>
 
@@ -729,7 +740,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                         ) : null}
 
                         <div className="w-full flex items-center justify-between gap-2 bg-white border border-purple-100 rounded-xl px-2 py-1">
-                          <code className="text-[10px] font-mono font-black text-purple-900 truncate">
+                          <code className="text-[10px] tabular-nums font-black text-purple-900 truncate">
                             {totpSetupData?.secret}
                           </code>
                           <button
@@ -753,7 +764,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                           required
                           value={totpInputCode}
                           onChange={(e) => setTotpInputCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                          className="w-full text-center text-lg font-mono font-black tracking-widest py-2 bg-slate-50 border border-purple-200 rounded-2xl text-slate-900 outline-none transition"
+                          className="w-full text-center text-lg tabular-nums font-black tracking-widest py-2 bg-slate-50 border border-purple-200 rounded-2xl text-slate-900 outline-none transition"
                         />
 
                         <button
@@ -932,7 +943,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                             required
                             value={forgotTotpCode}
                             onChange={(e) => setForgotTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                            className="w-full text-center text-base font-mono font-bold tracking-[0.4em] py-2 bg-slate-50 border border-purple-200 rounded-2xl text-slate-800 outline-none transition"
+                            className="w-full text-center text-base tabular-nums font-bold tracking-[0.4em] py-2 bg-slate-50 border border-purple-200 rounded-2xl text-slate-800 outline-none transition"
                           />
                         </div>
                       )}

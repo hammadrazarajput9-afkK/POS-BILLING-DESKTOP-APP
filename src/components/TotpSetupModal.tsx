@@ -183,7 +183,7 @@ export const TotpSetupModal: React.FC<TotpSetupModalProps> = ({
             </div>
 
             <div className="flex items-center gap-2 bg-indigo-50/70 border border-indigo-200 rounded-xl p-2.5">
-              <code className="text-xs font-mono font-black text-indigo-950 flex-1 tracking-widest break-all select-all px-1">
+              <code className="text-xs tabular-nums font-black text-indigo-950 flex-1 tracking-widest break-all select-all px-1">
                 {setupData?.secret || 'LOADING...'}
               </code>
               <button
@@ -221,7 +221,7 @@ export const TotpSetupModal: React.FC<TotpSetupModalProps> = ({
                   setErrorMsg(null);
                 }}
                 placeholder="e.g. 123456"
-                className="w-full text-center text-2xl font-mono font-black tracking-widest py-3 px-4 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-600 focus:border-indigo-600 focus:bg-white text-slate-900 transition"
+                className="w-full text-center text-2xl tabular-nums font-black tracking-widest py-3 px-4 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-600 focus:border-indigo-600 focus:bg-white text-slate-900 transition"
                 autoComplete="off"
               />
             </div>

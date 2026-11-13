@@ -34,7 +34,21 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
     phone: string;
     phone2?: string;
     address?: string;
+    lat?: number;
+    lng?: number;
+    placeId?: string;
+    mapUrl?: string;
     image?: string;
+    customerType?: 'retail' | 'retailer' | 'wholesaler';
+    shopName?: string;
+    city?: string;
+    ntnNumber?: string;
+    cnic?: string;
+    creditLimit?: number;
+    dueDate?: string;
+    guarantorName?: string;
+    guarantorPhone?: string;
+    notes?: string;
     openingBalance?: number;
     initialBalanceType?: 'payable' | 'receivable';
   }) => {
@@ -49,12 +63,27 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
       phone,
       phone2,
       address,
+      lat,
+      lng,
+      placeId,
+      mapUrl,
       image,
+      customerType,
+      shopName,
+      city,
+      ntnNumber,
+      cnic,
+      creditLimit,
+      dueDate,
+      guarantorName,
+      guarantorPhone,
+      notes,
       openingBalance = 0,
       initialBalanceType = 'receivable',
     } = customerData;
 
-    const actualOpeningBalance = initialBalanceType === 'payable' ? -Math.abs(openingBalance) : Math.abs(openingBalance);
+    const actualOpeningBalance =
+      initialBalanceType === 'payable' ? -Math.abs(openingBalance) : Math.abs(openingBalance);
 
     if (id) {
       // Editing existing customer
@@ -70,7 +99,21 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
               phone: phone.trim(),
               phone2: phone2?.trim() || undefined,
               address: address?.trim() || undefined,
-              image: image || c.image,
+              lat: typeof lat === 'number' && Number.isFinite(lat) ? lat : undefined,
+              lng: typeof lng === 'number' && Number.isFinite(lng) ? lng : undefined,
+              placeId: placeId?.trim() || undefined,
+              mapUrl: mapUrl?.trim() || undefined,
+              image: image === '' ? undefined : image || c.image,
+              customerType: customerType || c.customerType || 'retail',
+              shopName: shopName?.trim() || undefined,
+              city: city?.trim() || undefined,
+              ntnNumber: ntnNumber?.trim() || undefined,
+              cnic: cnic?.trim() || undefined,
+              creditLimit: typeof creditLimit === 'number' && creditLimit > 0 ? creditLimit : undefined,
+              dueDate: dueDate?.trim() || undefined,
+              guarantorName: guarantorName?.trim() || undefined,
+              guarantorPhone: guarantorPhone?.trim() || undefined,
+              notes: notes?.trim() || undefined,
               lastUpdated: new Date().toISOString(),
             };
             return updatedCustomer;
@@ -98,7 +141,21 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
         phone: phone.trim(),
         phone2: phone2?.trim() || undefined,
         address: address?.trim() || undefined,
+        lat: typeof lat === 'number' && Number.isFinite(lat) ? lat : undefined,
+        lng: typeof lng === 'number' && Number.isFinite(lng) ? lng : undefined,
+        placeId: placeId?.trim() || undefined,
+        mapUrl: mapUrl?.trim() || undefined,
         image: image || undefined,
+        customerType: customerType || 'retail',
+        shopName: shopName?.trim() || undefined,
+        city: city?.trim() || undefined,
+        ntnNumber: ntnNumber?.trim() || undefined,
+        cnic: cnic?.trim() || undefined,
+        creditLimit: typeof creditLimit === 'number' && creditLimit > 0 ? creditLimit : undefined,
+        dueDate: dueDate?.trim() || undefined,
+        guarantorName: guarantorName?.trim() || undefined,
+        guarantorPhone: guarantorPhone?.trim() || undefined,
+        notes: notes?.trim() || undefined,
         balance: actualOpeningBalance,
         lastUpdated: now,
         history:
@@ -133,6 +190,7 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
       );
 
       showToast(`Account created for ${newCustomer.name}`, 'success');
+      setSelectedKhataCustomerId(newCustomer.id);
     }
   };
 
@@ -250,6 +308,55 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
   };
 
   /**
+   * Delete a single mistaken transaction entry and recalculate balance (Admin only)
+   */
+  const handleDeleteKhataTransaction = (customerId: string, txId: string) => {
+    if (!hasPermission(data.currentRole || 'admin', 'canDeleteKhata')) {
+      showToast('Permission Denied: Only Administrators can delete ledger entries', 'error');
+      return;
+    }
+
+    let updatedCustomer: KhataCustomer | undefined;
+    let removedAmount = 0;
+
+    setData(prev => ({
+      ...prev,
+      khata: prev.khata.map(c => {
+        if (c.id !== customerId) return c;
+        const target = c.history.find(t => t.id === txId);
+        if (!target) return c;
+        removedAmount = target.amount;
+        const nextHistory = c.history.filter(t => t.id !== txId);
+        const recalculatedBalance = nextHistory.reduce((acc, t) => {
+          return t.type === 'credit' ? acc + t.amount : acc - t.amount;
+        }, 0);
+
+        updatedCustomer = {
+          ...c,
+          balance: recalculatedBalance,
+          lastUpdated: new Date().toISOString(),
+          history: nextHistory,
+        };
+        return updatedCustomer;
+      }),
+    }));
+
+    if (updatedCustomer) {
+      saveKhataCustomerToFirestore(updatedCustomer).catch(err => {
+        console.warn('Firestore Khata tx delete warning:', err);
+      });
+      logActivity(
+        'Khata',
+        `Removed Ledger Entry: ${updatedCustomer.name}`,
+        `Removed ${data.settings.currency} ${removedAmount.toLocaleString()} entry`,
+        'delete',
+        customerId
+      );
+      showToast('Ledger entry removed and balance updated', 'info');
+    }
+  };
+
+  /**
    * Delete customer account from ledger
    */
   const handleDeleteKhataCustomer = (customerId: string) => {
@@ -285,6 +392,7 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
     handleSaveKhataCustomer,
     handleSettleKhataBalance,
     handleUpdateKhataBalance,
+    handleDeleteKhataTransaction,
     handleDeleteKhataCustomer,
     addKhataModalOpen,
     setAddKhataModalOpen,

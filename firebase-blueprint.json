@@ -67,7 +67,7 @@
     },
     "KhataCustomer": {
       "title": "KhataCustomer",
-      "description": "Customer credit ledger record",
+      "description": "Customer credit ledger record with location and credit limit controls",
       "type": "object",
       "properties": {
         "id": {
@@ -81,6 +81,30 @@
         "phone": {
           "type": "string",
           "description": "Primary contact number"
+        },
+        "address": {
+          "type": "string",
+          "description": "Customer street address or shop location"
+        },
+        "lat": {
+          "type": "number",
+          "description": "Pinned Google Maps latitude coordinate"
+        },
+        "lng": {
+          "type": "number",
+          "description": "Pinned Google Maps longitude coordinate"
+        },
+        "placeId": {
+          "type": "string",
+          "description": "Google Maps Place ID reference"
+        },
+        "creditLimit": {
+          "type": "number",
+          "description": "Optional credit cap for account alerts"
+        },
+        "dueDate": {
+          "type": "string",
+          "description": "Promised payment or recovery due date"
         },
         "balance": {
           "type": "number",

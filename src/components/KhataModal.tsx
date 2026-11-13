@@ -1,23 +1,52 @@
 import React, { useState, useRef } from 'react';
 import { KhataCustomer } from '../types';
-import { X, UserPlus, CreditCard, DollarSign, Camera, Image as ImageIcon, Trash2, Phone, MapPin, User, RotateCcw, Upload } from 'lucide-react';
+import {
+  X,
+  UserPlus,
+  CreditCard,
+  DollarSign,
+  Camera,
+  Image as ImageIcon,
+  Trash2,
+  Phone,
+  MapPin,
+  User,
+  Upload,
+  ShieldCheck,
+  Calendar,
+  FileText,
+} from 'lucide-react';
 import { useToast } from './Toast';
 import { useFormDraft } from '../hooks/useFormDraft';
 import { CameraCaptureModal } from './CameraCaptureModal';
+import { CustomerLocationPicker } from './CustomerLocationPicker';
 
 interface AddKhataModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (customer: {
+    id?: string;
     name: string;
     phone: string;
     phone2?: string;
     address?: string;
+    lat?: number;
+    lng?: number;
+    placeId?: string;
+    mapUrl?: string;
     image?: string;
     customerType?: 'retail' | 'retailer' | 'wholesaler';
     shopName?: string;
     city?: string;
     ntnNumber?: string;
+    cnic?: string;
+    creditLimit?: number;
+    dueDate?: string;
+    guarantorName?: string;
+    guarantorPhone?: string;
+    notes?: string;
+    openingBalance?: number;
+    initialBalanceType?: 'payable' | 'receivable';
   }) => void;
   currency: string;
 }
@@ -27,11 +56,23 @@ interface KhataDraftState {
   phone: string;
   phone2: string;
   address: string;
+  lat?: number;
+  lng?: number;
+  placeId?: string;
+  mapUrl?: string;
   image: string;
   customerType: 'retail' | 'retailer';
   shopName: string;
   city: string;
   ntnNumber: string;
+  cnic: string;
+  creditLimit: string;
+  dueDate: string;
+  guarantorName: string;
+  guarantorPhone: string;
+  notes: string;
+  openingBalance: string;
+  initialBalanceType: 'receivable' | 'payable';
 }
 
 const initialKhataDraft: KhataDraftState = {
@@ -39,11 +80,23 @@ const initialKhataDraft: KhataDraftState = {
   phone: '',
   phone2: '',
   address: '',
+  lat: undefined,
+  lng: undefined,
+  placeId: undefined,
+  mapUrl: undefined,
   image: '',
   customerType: 'retail',
   shopName: '',
   city: '',
   ntnNumber: '',
+  cnic: '',
+  creditLimit: '',
+  dueDate: '',
+  guarantorName: '',
+  guarantorPhone: '',
+  notes: '',
+  openingBalance: '',
+  initialBalanceType: 'receivable',
 };
 
 export const AddKhataModal: React.FC<AddKhataModalProps> = ({
@@ -55,33 +108,43 @@ export const AddKhataModal: React.FC<AddKhataModalProps> = ({
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [formData, setFormData, resetDraft, hasActiveDraft] = useFormDraft<KhataDraftState>(
+  const [formData, setFormData, resetDraft] = useFormDraft<KhataDraftState>(
     'khata_add_form',
     initialKhataDraft
   );
-
-  const name = formData.name;
-  const phone = formData.phone;
-  const phone2 = formData.phone2;
-  const address = formData.address;
-  const image = formData.image;
-  const customerType = formData.customerType || 'retail';
-  const shopName = formData.shopName || '';
-  const city = formData.city || '';
-  const ntnNumber = formData.ntnNumber || '';
-
-  const setName = (val: string) => setFormData(p => ({ ...p, name: val }));
-  const setPhone = (val: string) => setFormData(p => ({ ...p, phone: val }));
-  const setPhone2 = (val: string) => setFormData(p => ({ ...p, phone2: val }));
-  const setAddress = (val: string) => setFormData(p => ({ ...p, address: val }));
-  const setImage = (val: string) => setFormData(p => ({ ...p, image: val }));
-  const setCustomerType = (val: 'retail' | 'retailer') => setFormData(p => ({ ...p, customerType: val }));
-  const setShopName = (val: string) => setFormData(p => ({ ...p, shopName: val }));
-  const setCity = (val: string) => setFormData(p => ({ ...p, city: val }));
-  const setNtnNumber = (val: string) => setFormData(p => ({ ...p, ntnNumber: val }));
   const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [showMapPicker, setShowMapPicker] = useState(true);
+  const [showGuarantor, setShowGuarantor] = useState(false);
 
   if (!isOpen) return null;
+
+  const {
+    name,
+    phone,
+    phone2,
+    address,
+    lat,
+    lng,
+    placeId,
+    mapUrl,
+    image,
+    customerType = 'retail',
+    shopName = '',
+    city = '',
+    ntnNumber = '',
+    cnic = '',
+    creditLimit = '',
+    dueDate = '',
+    guarantorName = '',
+    guarantorPhone = '',
+    notes = '',
+    openingBalance = '',
+    initialBalanceType = 'receivable',
+  } = formData;
+
+  const updateField = <K extends keyof KhataDraftState>(key: K, val: KhataDraftState[K]) => {
+    setFormData(p => ({ ...p, [key]: val }));
+  };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -92,7 +155,7 @@ export const AddKhataModal: React.FC<AddKhataModalProps> = ({
       }
       const reader = new FileReader();
       reader.onloadend = () => {
-        setImage(reader.result as string);
+        updateField('image', reader.result as string);
       };
       reader.readAsDataURL(file);
     }
@@ -109,16 +172,31 @@ export const AddKhataModal: React.FC<AddKhataModalProps> = ({
       return;
     }
 
+    const parsedOpening = openingBalance.trim() ? Number(openingBalance) : 0;
+    const parsedLimit = creditLimit.trim() ? Number(creditLimit) : undefined;
+
     onSave({
       name: name.trim(),
       phone: phone.trim(),
       phone2: phone2.trim() || undefined,
       address: address.trim() || undefined,
+      lat,
+      lng,
+      placeId,
+      mapUrl,
       image: image || undefined,
       customerType,
       shopName: customerType === 'retailer' ? shopName.trim() || undefined : undefined,
-      city: customerType === 'retailer' ? city.trim() || undefined : undefined,
+      city: city.trim() || undefined,
       ntnNumber: customerType === 'retailer' ? ntnNumber.trim() || undefined : undefined,
+      cnic: cnic.trim() || undefined,
+      creditLimit: parsedLimit && Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : undefined,
+      dueDate: dueDate.trim() || undefined,
+      guarantorName: guarantorName.trim() || undefined,
+      guarantorPhone: guarantorPhone.trim() || undefined,
+      notes: notes.trim() || undefined,
+      openingBalance: Number.isFinite(parsedOpening) && parsedOpening > 0 ? parsedOpening : 0,
+      initialBalanceType,
     });
 
     resetDraft();
@@ -126,161 +204,185 @@ export const AddKhataModal: React.FC<AddKhataModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-md w-full max-w-full overflow-x-hidden p-4 sm:p-6 shadow-2xl space-y-4 border border-slate-100 animate-in zoom-in-95 my-auto">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center font-bold shrink-0">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/65 backdrop-blur-xs animate-in fade-in overflow-y-auto">
+      <div className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl border border-slate-200 animate-in zoom-in-95 my-auto max-h-[94vh] flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5 bg-slate-50/70 shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold shrink-0 shadow-xs">
               <UserPlus className="w-4 h-4" />
             </div>
             <div className="min-w-0">
-              <h3 className="font-bold text-slate-900 text-sm truncate">New Khata Customer Account</h3>
+              <h3 className="font-extrabold text-slate-900 text-sm sm:text-base truncate">
+                New Customer Khata Account
+              </h3>
+              <p className="text-[11px] text-slate-500 truncate">
+                Add profile, credit limits, due date & pin exact house/shop location on Google Maps
+              </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer shrink-0 ml-1"
+            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-200/70 transition cursor-pointer shrink-0 ml-2"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-3.5 text-xs">
-          {/* Customer Picture Upload */}
-          <div>
-            <label className="block font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
-              <span>Customer Picture (Optional)</span>
-              {image && (
-                <button
-                  type="button"
-                  onClick={() => setImage('')}
-                  className="text-rose-600 hover:text-rose-700 text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
-                >
-                  <Trash2 className="w-3 h-3" /> Remove
-                </button>
-              )}
-            </label>
-
-            <div className="flex items-center gap-3">
-              <div className="w-14 h-14 rounded-2xl border-2 border-dashed border-slate-200 overflow-hidden bg-slate-50 flex items-center justify-center shrink-0">
-                {image ? (
-                  <img src={image} alt="Customer Preview" className="w-full h-full object-cover" />
-                ) : (
-                  <User className="w-6 h-6 text-slate-300" />
+        {/* Form Body */}
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 text-xs">
+          {/* Row 1: Photo + Account Type + Core Name/CNIC */}
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
+            {/* Photo Card */}
+            <div className="md:col-span-4 bg-slate-50/80 border border-slate-200 rounded-xl p-3 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-700 text-[11px]">Customer / CNIC Photo</span>
+                {image && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      updateField('image', '');
+                      if (fileInputRef.current) fileInputRef.current.value = '';
+                    }}
+                    className="text-rose-600 hover:text-rose-700 text-[10px] font-bold flex items-center gap-0.5 cursor-pointer"
+                  >
+                    <Trash2 className="w-3 h-3" /> Clear
+                  </button>
                 )}
               </div>
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleImageChange}
-                className="hidden"
-              />
-
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
-              >
-                <Camera className="w-3.5 h-3.5 text-purple-600" />
-                <span>{image ? 'Change Photo' : 'Upload Customer Photo'}</span>
-              </button>
+              <div className="flex items-center gap-3">
+                <div className="w-14 h-14 rounded-xl border border-slate-200 overflow-hidden bg-white flex items-center justify-center shrink-0">
+                  {image ? (
+                    <img src={image} alt="Customer Preview" className="w-full h-full object-cover" />
+                  ) : (
+                    <User className="w-6 h-6 text-slate-300" />
+                  )}
+                </div>
+                <div className="flex flex-col gap-1.5 flex-1">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    className="hidden"
+                    id="khata-photo-file"
+                  />
+                  <label
+                    htmlFor="khata-photo-file"
+                    className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-lg text-[11px] cursor-pointer transition border border-slate-200"
+                  >
+                    <Upload className="w-3 h-3 text-purple-600" />
+                    <span>Gallery</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setIsCameraOpen(true)}
+                    className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg text-[11px] cursor-pointer transition"
+                  >
+                    <Camera className="w-3 h-3" />
+                    <span>Camera</span>
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
 
-          {/* Customer Type Selector: Retail vs Retailer/Wholesaler */}
-          <div className="space-y-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-            <label className="block font-bold text-slate-700 text-[11px] uppercase tracking-wider">
-              Account Type
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setCustomerType('retail')}
-                className={`py-2 px-3 rounded-lg text-xs font-bold transition cursor-pointer min-h-[38px] ${
-                  customerType === 'retail'
-                    ? 'bg-blue-600 text-white shadow-2xs'
-                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
-                }`}
-              >
-                Retail Customer
-              </button>
-              <button
-                type="button"
-                onClick={() => setCustomerType('retailer')}
-                className={`py-2 px-3 rounded-lg text-xs font-bold transition cursor-pointer min-h-[38px] ${
-                  customerType === 'retailer'
-                    ? 'bg-purple-600 text-white shadow-2xs'
-                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
-                }`}
-              >
-                Retailer / Wholesaler
-              </button>
+            {/* Name + Type + CNIC */}
+            <div className="md:col-span-8 space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => updateField('customerType', 'retail')}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition cursor-pointer border ${
+                    customerType === 'retail'
+                      ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  Retail Customer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateField('customerType', 'retailer')}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition cursor-pointer border ${
+                    customerType === 'retailer'
+                      ? 'bg-purple-600 text-white border-purple-600 shadow-2xs'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  Retailer / Wholesaler
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    {customerType === 'retailer' ? 'Contact Person Name' : 'Customer Name'} <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={name}
+                    onChange={e => updateField('name', e.target.value)}
+                    placeholder="Full Name"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium focus:outline-none focus:border-purple-600 focus:bg-white transition"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">CNIC / ID Number</label>
+                  <input
+                    type="text"
+                    value={cnic}
+                    onChange={e => updateField('cnic', e.target.value)}
+                    placeholder="e.g. 35202-1234567-1"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs tabular-nums focus:outline-none focus:border-purple-600 focus:bg-white transition"
+                  />
+                </div>
+              </div>
             </div>
-          </div>
-
-          {/* Customer Name */}
-          <div>
-            <label className="block font-semibold text-slate-700 mb-1">
-              {customerType === 'retailer' ? 'Retailer / Contact Person Name' : 'Customer / Business Name'} <span className="text-rose-500 font-bold">*</span>
-            </label>
-            <input
-              type="text"
-              required
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder={customerType === 'retailer' ? "e.g. Shopkeeper Name" : "Customer Name"}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-medium focus:outline-none focus:border-purple-600 focus:bg-white transition min-h-[44px]"
-            />
           </div>
 
           {/* Retailer / Shop Extra Fields */}
           {customerType === 'retailer' && (
-            <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl space-y-2.5 animate-in fade-in">
-              <span className="text-[11px] font-black uppercase text-purple-900 tracking-wider">
-                Retailer Shop Details
-              </span>
+            <div className="p-3 bg-purple-50/70 border border-purple-200 rounded-xl grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               <div>
                 <label className="block font-bold text-purple-950 mb-1">Shop / Firm Name</label>
                 <input
                   type="text"
                   value={shopName}
-                  onChange={e => setShopName(e.target.value)}
-                  placeholder="e.g. Mobile Planet & Accessories"
-                  className="w-full bg-white border border-purple-200 rounded-lg px-3 py-2 text-xs font-medium focus:outline-none focus:border-purple-600 min-h-[40px]"
+                  onChange={e => updateField('shopName', e.target.value)}
+                  placeholder="Shop Name"
+                  className="w-full bg-white border border-purple-200 rounded-lg px-3 py-2 text-xs font-medium focus:outline-none focus:border-purple-600"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block font-bold text-purple-950 mb-1">City</label>
-                  <input
-                    type="text"
-                    value={city}
-                    onChange={e => setCity(e.target.value)}
-                    placeholder="e.g. Lahore"
-                    className="w-full bg-white border border-purple-200 rounded-lg px-3 py-2 text-xs font-medium focus:outline-none focus:border-purple-600 min-h-[40px]"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-purple-950 mb-1">NTN / GST No</label>
-                  <input
-                    type="text"
-                    value={ntnNumber}
-                    onChange={e => setNtnNumber(e.target.value)}
-                    placeholder="Optional"
-                    className="w-full bg-white border border-purple-200 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:border-purple-600 min-h-[40px]"
-                  />
-                </div>
+              <div>
+                <label className="block font-bold text-purple-950 mb-1">City / Bazaar</label>
+                <input
+                  type="text"
+                  value={city}
+                  onChange={e => updateField('city', e.target.value)}
+                  placeholder="City"
+                  className="w-full bg-white border border-purple-200 rounded-lg px-3 py-2 text-xs font-medium focus:outline-none focus:border-purple-600"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-purple-950 mb-1">NTN / GST No</label>
+                <input
+                  type="text"
+                  value={ntnNumber}
+                  onChange={e => updateField('ntnNumber', e.target.value)}
+                  placeholder="Optional"
+                  className="w-full bg-white border border-purple-200 rounded-lg px-3 py-2 text-xs tabular-nums focus:outline-none focus:border-purple-600"
+                />
               </div>
             </div>
           )}
 
-          {/* 2 Phone Numbers: 1 Compulsory, 1 Optional */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          {/* Row 2: Phones + Credit Limit + Due Date */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
             <div>
               <label className="block font-semibold text-slate-700 mb-1">
-                Phone Number 1 <span className="text-rose-500 font-bold">* (Compulsory)</span>
+                Primary Phone <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
                 <Phone className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -288,106 +390,198 @@ export const AddKhataModal: React.FC<AddKhataModalProps> = ({
                   type="text"
                   required
                   value={phone}
-                  onChange={e => setPhone(e.target.value)}
-                  placeholder="Primary Phone Number"
-                  className="w-full pl-8 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:outline-none focus:border-purple-600 focus:bg-white transition min-h-[44px]"
+                  onChange={e => updateField('phone', e.target.value)}
+                  placeholder="03XX-XXXXXXX"
+                  className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs tabular-nums focus:outline-none focus:border-purple-600 focus:bg-white"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">
-                Phone Number 2 <span className="text-slate-400 font-normal">(Optional)</span>
-              </label>
+              <label className="block font-semibold text-slate-700 mb-1">Secondary Phone</label>
               <div className="relative">
                 <Phone className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
                   value={phone2}
-                  onChange={e => setPhone2(e.target.value)}
-                  placeholder="Secondary Phone Number"
-                  className="w-full pl-8 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:outline-none focus:border-purple-600 focus:bg-white transition min-h-[44px]"
+                  onChange={e => updateField('phone2', e.target.value)}
+                  placeholder="Optional"
+                  className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs tabular-nums focus:outline-none focus:border-purple-600 focus:bg-white"
                 />
               </div>
             </div>
+
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">Credit Limit ({currency})</label>
+              <input
+                type="number"
+                min="0"
+                value={creditLimit}
+                onChange={e => updateField('creditLimit', e.target.value)}
+                placeholder="No Limit"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs tabular-nums focus:outline-none focus:border-purple-600 focus:bg-white"
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-purple-600" /> Promise Due Date
+              </label>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={e => updateField('dueDate', e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs tabular-nums focus:outline-none focus:border-purple-600 focus:bg-white"
+              />
+            </div>
           </div>
 
-          {/* Address */}
-          <div>
-            <label className="block font-semibold text-slate-700 mb-1 flex items-center gap-1">
-              <MapPin className="w-3.5 h-3.5 text-purple-600" />
-              <span>Customer Address / Shop Location</span>
-            </label>
-            <input
-              type="text"
-              value={address}
-              onChange={e => setAddress(e.target.value)}
-              placeholder="Address / Location"
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-medium focus:outline-none focus:border-purple-600 focus:bg-white transition min-h-[44px]"
-            />
-          </div>
-
-          {/* Customer / CNIC Photo Upload */}
-          <div className="p-3 bg-purple-50/60 rounded-xl border border-purple-200/80 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              {image ? (
-                <div className="relative w-12 h-12 rounded-xl border border-purple-200 overflow-hidden bg-white shrink-0 shadow-2xs">
-                  <img src={image} alt="Customer" className="w-full h-full object-cover" />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setImage('');
-                      if (fileInputRef.current) fileInputRef.current.value = '';
-                    }}
-                    className="absolute top-0.5 right-0.5 bg-rose-600 text-white rounded-full p-0.5 hover:bg-rose-700 cursor-pointer"
-                    title="Remove Photo"
-                  >
-                    <X className="w-2.5 h-2.5" />
-                  </button>
-                </div>
-              ) : (
-                <div className="w-12 h-12 rounded-xl border border-dashed border-purple-300 bg-white flex items-center justify-center text-purple-400 shrink-0">
-                  <ImageIcon className="w-5 h-5 text-purple-300" />
-                </div>
-              )}
-              <div>
-                <span className="block font-bold text-slate-800 text-[11px]">Customer / CNIC Photo</span>
-                <span className="text-[10px] text-slate-400 block">Optional image record</span>
+          {/* Row 3: Opening Balance + Notes */}
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+            <div className="sm:col-span-4">
+              <label className="block font-semibold text-slate-700 mb-1">Opening Balance ({currency})</label>
+              <input
+                type="number"
+                min="0"
+                value={openingBalance}
+                onChange={e => updateField('openingBalance', e.target.value)}
+                placeholder="Optional amount"
+                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs tabular-nums font-bold focus:outline-none focus:border-purple-600"
+              />
+            </div>
+            <div className="sm:col-span-4">
+              <label className="block font-semibold text-slate-700 mb-1">Balance Type</label>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => updateField('initialBalanceType', 'receivable')}
+                  className={`py-2 px-2 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                    initialBalanceType === 'receivable'
+                      ? 'bg-rose-50 border-rose-500 text-rose-700'
+                      : 'bg-white border-slate-200 text-slate-600'
+                  }`}
+                >
+                  Due (+)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateField('initialBalanceType', 'payable')}
+                  className={`py-2 px-2 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                    initialBalanceType === 'payable'
+                      ? 'bg-emerald-50 border-emerald-500 text-emerald-700'
+                      : 'bg-white border-slate-200 text-slate-600'
+                  }`}
+                >
+                  Advance (-)
+                </button>
               </div>
             </div>
-
-            <div className="flex items-center gap-1.5">
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleImageChange}
-                accept="image/*"
-                className="hidden"
-                id="khata-photo-file"
-              />
-              <label
-                htmlFor="khata-photo-file"
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-lg text-[11px] cursor-pointer transition border border-slate-200 shadow-2xs"
-              >
-                <Upload className="w-3 h-3 text-purple-600" />
-                <span>Gallery</span>
+            <div className="sm:col-span-4">
+              <label className="block font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                <FileText className="w-3 h-3 text-slate-400" /> Account Notes
               </label>
-              <button
-                type="button"
-                onClick={() => setIsCameraOpen(true)}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg text-[11px] cursor-pointer transition shadow-2xs"
-              >
-                <Camera className="w-3 h-3 text-white" />
-                <span>Camera</span>
-              </button>
+              <input
+                type="text"
+                value={notes}
+                onChange={e => updateField('notes', e.target.value)}
+                placeholder="Agreement / Installment notes"
+                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-purple-600"
+              />
             </div>
           </div>
 
+          {/* Optional Guarantor Toggle */}
+          <div className="border border-slate-200 rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowGuarantor(prev => !prev)}
+              className="w-full px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 flex items-center justify-between text-xs font-bold text-slate-700 transition cursor-pointer"
+            >
+              <span className="flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-purple-600" />
+                Guarantor / Reference Details (Optional)
+              </span>
+              <span className="text-[11px] text-purple-600">{showGuarantor ? 'Hide' : 'Add Guarantor'}</span>
+            </button>
+            {showGuarantor && (
+              <div className="p-3 bg-white grid grid-cols-1 sm:grid-cols-2 gap-2.5 border-t border-slate-100">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Guarantor / Witness Name</label>
+                  <input
+                    type="text"
+                    value={guarantorName}
+                    onChange={e => updateField('guarantorName', e.target.value)}
+                    placeholder="Reference person name"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-purple-600 focus:bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Guarantor Phone</label>
+                  <input
+                    type="text"
+                    value={guarantorPhone}
+                    onChange={e => updateField('guarantorPhone', e.target.value)}
+                    placeholder="03XX-XXXXXXX"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs tabular-nums focus:outline-none focus:border-purple-600 focus:bg-white"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Google Maps Customer Location Picker */}
+          <div className="border border-purple-200/80 rounded-xl p-3.5 bg-purple-50/30 space-y-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <MapPin className="w-4 h-4 text-purple-600" />
+                <span className="font-extrabold text-slate-900 text-xs">
+                  Customer Location & Google Maps Pin
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMapPicker(prev => !prev)}
+                className="text-[11px] font-bold text-purple-700 hover:underline cursor-pointer"
+              >
+                {showMapPicker ? 'Hide Map Picker' : 'Show Google Maps Picker'}
+              </button>
+            </div>
+
+            {showMapPicker ? (
+              <CustomerLocationPicker
+                value={{ address, lat, lng, placeId, mapUrl }}
+                onChange={loc => {
+                  setFormData(p => ({
+                    ...p,
+                    address: loc.address,
+                    lat: loc.lat,
+                    lng: loc.lng,
+                    placeId: loc.placeId,
+                    mapUrl: loc.mapUrl,
+                  }));
+                }}
+                customerName={name || 'New Customer'}
+                heightClass="h-52 sm:h-60"
+                showAddressInput={true}
+                showTrackActions={false}
+              />
+            ) : (
+              <input
+                type="text"
+                value={address}
+                onChange={e => updateField('address', e.target.value)}
+                placeholder="House / Shop Address or Landmark"
+                className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-medium focus:outline-none focus:border-purple-600"
+              />
+            )}
+          </div>
+
+          {/* Footer Buttons */}
           <div className="pt-3 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 border-t border-slate-100">
             <button
               type="button"
               onClick={onClose}
-              className="w-full sm:w-auto px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium text-xs transition cursor-pointer text-center"
+              className="w-full sm:w-auto px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-xs transition cursor-pointer text-center"
             >
               Cancel
             </button>
@@ -407,7 +601,7 @@ export const AddKhataModal: React.FC<AddKhataModalProps> = ({
         onClose={() => setIsCameraOpen(false)}
         title="Capture Customer / CNIC Photo"
         onCapture={dataUrl => {
-          setImage(dataUrl);
+          updateField('image', dataUrl);
           showToast('Customer photo captured with camera!', 'success');
         }}
       />
@@ -492,7 +686,7 @@ export const SettleKhataModal: React.FC<SettleKhataModalProps> = ({
         {/* Current Balance Notice */}
         <div className="p-3 bg-purple-50/70 border border-purple-100 rounded-xl flex items-center justify-between">
           <span className="text-xs text-purple-900 font-medium">Outstanding Balance:</span>
-          <span className="text-base font-extrabold text-purple-700 font-mono tabular-nums">
+          <span className="text-base font-extrabold text-purple-700 tabular-nums">
             {currency} {customer.balance.toLocaleString()}
           </span>
         </div>
@@ -546,8 +740,8 @@ export const SettleKhataModal: React.FC<SettleKhataModalProps> = ({
               min="1"
               value={amount}
               onChange={e => setAmount(e.target.value === '' ? '' : Number(e.target.value))}
-              placeholder="0"
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-mono tabular-nums font-semibold focus:outline-none focus:border-purple-600 focus:bg-white transition"
+              placeholder="Enter amount"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs tabular-nums font-semibold focus:outline-none focus:border-purple-600 focus:bg-white transition"
             />
           </div>
 

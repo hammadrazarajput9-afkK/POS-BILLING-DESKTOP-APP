@@ -1,8 +1,8 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { AppData, SaleRecord, InventoryItem, KhataCustomer, ExpenseItem, ActivityLog } from '../types';
+import { AppData, SaleRecord, InventoryItem, KhataCustomer, ExpenseItem, ActivityLog, SupplierPurchase } from '../types';
 
-export type DateFilterType = 'today' | 'weekly' | 'monthly' | 'yearly' | 'custom';
+export type DateFilterType = 'today' | 'weekly' | 'monthly' | 'sixMonths' | 'yearly' | 'custom';
 
 export interface DateFilterRange {
   type: DateFilterType;
@@ -28,6 +28,10 @@ export function getDateFilterBounds(range: DateFilterRange): { start: Date; end:
     case 'monthly':
       start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
       label = `This Month (${start.toLocaleDateString()} - ${end.toLocaleDateString()})`;
+      break;
+    case 'sixMonths':
+      start = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate(), 0, 0, 0, 0);
+      label = `Last 6 Months (${start.toLocaleDateString()} - ${end.toLocaleDateString()})`;
       break;
     case 'yearly':
       start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
@@ -1100,25 +1104,31 @@ export async function generatePdfReport({
     const tableRows = filteredPurchases.map((p, idx) => {
       const isReversed = p.status === 'REVERSED';
       const itemSummaries = (p.items || [])
-        .map(i => `${i.name} (x${i.qty}) @ ${currency} ${i.costPrice}`)
-        .join(', ');
+        .map(i => {
+          const specs = [i.ram, i.storage, i.color].filter(Boolean).join('/');
+          const imeiStr = i.imeis && i.imeis.length > 0 ? i.imeis.filter(Boolean).join(', ') : i.imei;
+          let line = `${i.name}${specs ? ` [${specs}]` : ''} (x${i.qty} @ ${currency} ${i.costPrice.toLocaleString()})`;
+          if (imeiStr) line += `\nIMEI: ${imeiStr}`;
+          return line;
+        })
+        .join('\n');
 
       return [
         (idx + 1).toString(),
-        p.date,
-        isReversed ? `[REVERSED] ${p.billNo || '-'}` : (p.billNo || '-'),
-        `${p.partyName}\n${p.partyPhone || ''}`,
+        new Date(p.date).toLocaleDateString(),
+        isReversed ? `[REV] ${p.billNo || '-'}` : (p.billNo || '-'),
+        `${p.partyName}${p.partyPhone ? `\n${p.partyPhone}` : ''}`,
         itemSummaries || 'Direct Stock Inward',
         p.paymentMethod || 'Cash',
         `${currency} ${(p.totalAmount || 0).toLocaleString()}`,
         `${currency} ${(p.paidAmount || 0).toLocaleString()}`,
-        isReversed ? 'REVERSED' : (p.balanceDue > 0 ? `${currency} ${p.balanceDue.toLocaleString()}` : 'Cleared'),
+        isReversed ? 'REVERSED' : (p.balanceDue > 0 ? `${currency} ${p.balanceDue.toLocaleString()}` : 'Paid'),
       ];
     });
 
     autoTable(doc, {
       startY: yCursor,
-      head: [['#', 'Date', 'Bill #', 'Vendor / Supplier', 'Inward Products List', 'Payment', 'Bill Total', 'Amount Paid', 'Balance Due']],
+      head: [['#', 'Date', 'Bill #', 'Vendor / Party', 'Inward Products & IMEIs', 'Method', 'Bill Total', 'Paid', 'Balance Due']],
       body: tableRows,
       theme: 'striped',
       headStyles: {
@@ -1128,20 +1138,20 @@ export async function generatePdfReport({
         fontSize: 7.5,
       },
       styles: {
-        fontSize: 7,
+        fontSize: 6.8,
         cellPadding: 2,
         valign: 'middle',
       },
       columnStyles: {
         0: { cellWidth: 7 },
         1: { cellWidth: 18 },
-        2: { cellWidth: 18 },
+        2: { cellWidth: 20 },
         3: { cellWidth: 26 },
-        4: { cellWidth: 46 },
-        5: { cellWidth: 16 },
-        6: { cellWidth: 20, halign: 'right' },
-        7: { cellWidth: 18, halign: 'right' },
-        8: { cellWidth: 18, halign: 'center' },
+        4: { cellWidth: 50 },
+        5: { cellWidth: 14 },
+        6: { cellWidth: 18, halign: 'right' },
+        7: { cellWidth: 17, halign: 'right' },
+        8: { cellWidth: 17, halign: 'center' },
       },
       foot: [
         ['', 'TOTALS', `${filteredPurchases.length} Bills`, '', '', '', `${currency} ${totalPurchasesCost.toLocaleString()}`, `${currency} ${totalPaidSum.toLocaleString()}`, `${currency} ${totalBalanceDue.toLocaleString()}`]
@@ -1307,6 +1317,200 @@ export async function generatePdfReport({
     }, 2000);
   } catch (err) {
     console.warn('Blob download fallback to direct doc.save:', err);
+    doc.save(fileName);
+  }
+}
+
+/**
+ * Generates & downloads a single branded PDF bill for a Stock Inward / Supplier Purchase
+ */
+export async function generateSinglePurchasePdf(purchase: SupplierPurchase, data: AppData): Promise<void> {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const shopName = data.settings.shopName || 'FMZ Friends Mobile Zone';
+  const currency = data.settings.currency || 'Rs.';
+
+  // Header Banner
+  doc.setFillColor(15, 23, 42);
+  doc.rect(0, 0, pageWidth, 34, 'F');
+  doc.setFillColor(37, 99, 235);
+  doc.rect(0, 34, pageWidth, 2, 'F');
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(17);
+  doc.text(shopName.toUpperCase(), 14, 14);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(203, 213, 225);
+  const subParts = [data.settings.address, data.settings.phone ? `Tel: ${data.settings.phone}` : ''].filter(Boolean);
+  doc.text(subParts.join('  |  ') || 'Stock Inward Purchase Voucher', 14, 21);
+  doc.text(`Printed: ${new Date().toLocaleString()}`, 14, 27);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.setTextColor(255, 255, 255);
+  doc.text('STOCK INWARD BILL', pageWidth - 14, 14, { align: 'right' });
+  doc.setFontSize(10);
+  doc.setTextColor(147, 197, 253);
+  doc.text(`#${purchase.billNo}`, pageWidth - 14, 21, { align: 'right' });
+
+  let yCursor = 44;
+
+  // Supplier & Bill Metadata Box
+  const isReversed = purchase.status === 'REVERSED';
+  const statusLabel = isReversed ? 'REVERSED' : (purchase.balanceDue || 0) <= 0 ? 'FULLY PAID' : 'PENDING DUE';
+
+  doc.setDrawColor(226, 232, 240);
+  doc.setFillColor(248, 250, 252);
+  doc.roundedRect(14, yCursor, pageWidth - 28, 26, 2, 2, 'FD');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(100, 116, 139);
+  doc.text('SUPPLIER / PARTY', 19, yCursor + 7);
+  doc.text('PURCHASE DATE', 95, yCursor + 7);
+  doc.text('PAYMENT METHOD', 135, yCursor + 7);
+  doc.text('STATUS', pageWidth - 19, yCursor + 7, { align: 'right' });
+
+  doc.setFontSize(10);
+  doc.setTextColor(15, 23, 42);
+  doc.text(purchase.partyName || '-', 19, yCursor + 14);
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+  doc.text(purchase.partyPhone || 'No phone provided', 19, yCursor + 20);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text(new Date(purchase.date).toLocaleDateString(), 95, yCursor + 14);
+  doc.text(purchase.paymentMethod || 'Cash', 135, yCursor + 14);
+
+  if (isReversed) {
+    doc.setTextColor(225, 29, 72);
+  } else if ((purchase.balanceDue || 0) <= 0) {
+    doc.setTextColor(5, 150, 105);
+  } else {
+    doc.setTextColor(217, 119, 6);
+  }
+  doc.text(statusLabel, pageWidth - 19, yCursor + 14, { align: 'right' });
+
+  yCursor += 34;
+
+  const itemRows = (purchase.items || []).map((item, idx) => {
+    const specs = [item.ram, item.storage, item.color].filter(Boolean).join(' / ');
+    const imeiStr = item.imeis && item.imeis.length > 0 ? item.imeis.filter(Boolean).join(', ') : item.imei;
+    let desc = item.name;
+    if (item.category) desc += `\nCategory: ${item.category}`;
+    if (specs) desc += `  •  Specs: ${specs}`;
+    if (imeiStr) desc += `\nIMEI: ${imeiStr}`;
+    if (item.barcode) desc += `\nBarcode: ${item.barcode}`;
+
+    return [
+      (idx + 1).toString(),
+      desc,
+      String(item.qty || 0),
+      `${currency} ${(item.costPrice || 0).toLocaleString()}`,
+      `${currency} ${((item.costPrice || 0) * (item.qty || 0)).toLocaleString()}`,
+    ];
+  });
+
+  autoTable(doc, {
+    startY: yCursor,
+    head: [['#', 'Product Description, Specs & IMEIs', 'Qty', 'Unit Cost', 'Subtotal']],
+    body: itemRows,
+    theme: 'striped',
+    headStyles: {
+      fillColor: [30, 58, 138],
+      textColor: 255,
+      fontStyle: 'bold',
+      fontSize: 8.5,
+    },
+    styles: {
+      fontSize: 8,
+      cellPadding: 3,
+      valign: 'middle',
+    },
+    columnStyles: {
+      0: { cellWidth: 10 },
+      1: { cellWidth: 98 },
+      2: { cellWidth: 16, halign: 'center', fontStyle: 'bold' },
+      3: { cellWidth: 28, halign: 'right' },
+      4: { cellWidth: 30, halign: 'right', fontStyle: 'bold' },
+    },
+  });
+
+  const afterTableY = ((doc as any).lastAutoTable?.finalY || yCursor + 30) + 8;
+  const summaryWidth = 78;
+  const summaryX = pageWidth - 14 - summaryWidth;
+
+  doc.setDrawColor(203, 213, 225);
+  doc.setFillColor(248, 250, 252);
+  doc.roundedRect(summaryX, afterTableY, summaryWidth, 28, 2, 2, 'FD');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(51, 65, 85);
+  doc.text('Grand Total:', summaryX + 4, afterTableY + 8);
+  doc.setTextColor(15, 23, 42);
+  doc.text(`${currency} ${(purchase.totalAmount || 0).toLocaleString()}`, summaryX + summaryWidth - 4, afterTableY + 8, { align: 'right' });
+
+  doc.setTextColor(5, 150, 105);
+  doc.text('Amount Paid:', summaryX + 4, afterTableY + 16);
+  doc.text(`${currency} ${(purchase.paidAmount || 0).toLocaleString()}`, summaryX + summaryWidth - 4, afterTableY + 16, { align: 'right' });
+
+  doc.setTextColor((purchase.balanceDue || 0) > 0 && !isReversed ? 225 : 71, (purchase.balanceDue || 0) > 0 && !isReversed ? 29 : 85, (purchase.balanceDue || 0) > 0 && !isReversed ? 72 : 105);
+  doc.text('Balance Due:', summaryX + 4, afterTableY + 24);
+  doc.text(
+    isReversed ? 'REVERSED' : `${currency} ${(purchase.balanceDue || 0).toLocaleString()}`,
+    summaryX + summaryWidth - 4,
+    afterTableY + 24,
+    { align: 'right' }
+  );
+
+  if (purchase.notes) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text('Notes:', 14, afterTableY + 6);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.text(purchase.notes, 14, afterTableY + 12, { maxWidth: summaryX - 20 });
+  }
+
+  // Footer
+  const pageCount = (doc.internal as any).getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    const footerY = pageHeight - 8;
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.3);
+    doc.line(14, footerY - 3, pageWidth - 14, footerY - 3);
+    doc.setFontSize(7.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`${shopName}  •  Stock Inward Purchase Bill #${purchase.billNo}`, 14, footerY);
+    doc.text(`Page ${i} of ${pageCount}`, pageWidth - 14, footerY, { align: 'right' });
+  }
+
+  const safeBill = (purchase.billNo || purchase.id).replace(/[^a-zA-Z0-9_-]/g, '_');
+  const fileName = `inward_bill_${safeBill}.pdf`;
+  try {
+    const pdfBlob = doc.output('blob');
+    const blobUrl = URL.createObjectURL(pdfBlob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = fileName;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      if (document.body.contains(link)) document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+    }, 2000);
+  } catch {
     doc.save(fileName);
   }
 }

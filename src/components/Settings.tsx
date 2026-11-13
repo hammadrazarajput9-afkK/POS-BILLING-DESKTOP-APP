@@ -233,7 +233,11 @@ export const Settings: React.FC<SettingsProps> = ({
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    onSaveSettings(formData);
+    const cleanedSettings: ShopSettings = {
+      ...formData,
+      lowStockThreshold: Number(formData.lowStockThreshold) >= 1 ? Number(formData.lowStockThreshold) : 2,
+    };
+    onSaveSettings(cleanedSettings);
     const selectedTheme = formData.theme || 'blue-white';
     document.documentElement.setAttribute('data-theme', selectedTheme);
     if (selectedTheme === 'dark') {
@@ -893,7 +897,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     required
                     value={formData.currency}
                     onChange={e => setFormData({ ...formData, currency: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold focus:outline-none focus:border-blue-500 focus:bg-white"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs tabular-nums font-bold focus:outline-none focus:border-blue-500 focus:bg-white"
                   />
                 </div>
 
@@ -917,8 +921,9 @@ export const Settings: React.FC<SettingsProps> = ({
                     type="number"
                     min="1"
                     max="100"
-                    value={formData.lowStockThreshold}
-                    onChange={e => setFormData({ ...formData, lowStockThreshold: parseInt(e.target.value) || 2 })}
+                    placeholder="Qty"
+                    value={(formData.lowStockThreshold as any) ?? ''}
+                    onChange={e => setFormData({ ...formData, lowStockThreshold: (e.target.value === '' ? '' : parseInt(e.target.value, 10) || 1) as any })}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white"
                   />
                   <p className="text-[10px] text-slate-400 mt-1">
@@ -1187,7 +1192,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     </span>
                   </div>
                   <p className="text-slate-600 font-medium">
-                    Connected to Firebase project: <strong className="font-mono text-emerald-700">{firebaseConfig.projectId || 'fmz-shop-pos'}</strong> (Store Partition: <strong className="font-mono text-emerald-700">stores/{currentStoreId || 'main_store'}</strong>). All inventory, sales invoices, customer credit ledgers, and expenses automatically sync in your private isolated store.
+                    Connected to Firebase project: <strong className="tabular-nums text-emerald-700">{firebaseConfig.projectId || 'fmz-shop-pos'}</strong> (Store Partition: <strong className="tabular-nums text-emerald-700">stores/{currentStoreId || 'main_store'}</strong>). All inventory, sales invoices, customer credit ledgers, and expenses automatically sync in your private isolated store.
                   </p>
                 </div>
               </div>
@@ -1347,7 +1352,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                 {usr.role}
                               </span>
                             </div>
-                            <p className="text-[10px] text-slate-400 font-semibold font-mono truncate">{usr.email}</p>
+                            <p className="text-[10px] text-slate-400 font-semibold tabular-nums truncate">{usr.email}</p>
                           </div>
 
                           <div className="flex items-center gap-1.5 shrink-0">
@@ -1416,7 +1421,7 @@ export const Settings: React.FC<SettingsProps> = ({
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-2 border-t border-indigo-100">
                   <div className="text-xs text-slate-600 space-y-0.5">
                     <p className="font-semibold text-slate-800">
-                      Admin Email: <span className="font-mono font-bold text-indigo-900">{currentAdminUser?.email || 'admin@fmzpos.com'}</span>
+                      Admin Email: <span className="tabular-nums font-bold text-indigo-900">{currentAdminUser?.email || 'admin@fmzpos.com'}</span>
                     </p>
                     <p className="text-[11px] text-slate-500">
                       {currentAdminUser?.is2faEnabled 
@@ -1649,7 +1654,7 @@ export const Settings: React.FC<SettingsProps> = ({
                   <Check className="w-4 h-4 text-emerald-600 shrink-0" />
                   <span className="font-bold">Backup file format validated successfully!</span>
                 </div>
-                <span className="text-[10px] font-mono px-2 py-0.5 bg-emerald-100 text-emerald-900 rounded font-bold">
+                <span className="text-[10px] tabular-nums px-2 py-0.5 bg-emerald-100 text-emerald-900 rounded font-bold">
                   Format v{pendingRestoreSummary?.backupVersion || 1}
                 </span>
               </div>
@@ -1662,37 +1667,37 @@ export const Settings: React.FC<SettingsProps> = ({
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 text-[11px]">
                   <div className="p-2 bg-white rounded-lg border border-slate-200">
                     <span className="text-slate-400 block text-[10px]">Inventory Items</span>
-                    <span className="font-extrabold text-slate-900 font-mono text-sm">
+                    <span className="font-extrabold text-slate-900 tabular-nums text-sm">
                       {pendingRestoreSummary?.inventoryCount ?? 0}
                     </span>
                   </div>
                   <div className="p-2 bg-white rounded-lg border border-slate-200">
                     <span className="text-slate-400 block text-[10px]">Sales Invoices</span>
-                    <span className="font-extrabold text-blue-600 font-mono text-sm">
+                    <span className="font-extrabold text-blue-600 tabular-nums text-sm">
                       {pendingRestoreSummary?.salesCount ?? 0}
                     </span>
                   </div>
                   <div className="p-2 bg-white rounded-lg border border-slate-200">
                     <span className="text-slate-400 block text-[10px]">Customer Khata</span>
-                    <span className="font-extrabold text-purple-600 font-mono text-sm">
+                    <span className="font-extrabold text-purple-600 tabular-nums text-sm">
                       {pendingRestoreSummary?.khataCount ?? 0}
                     </span>
                   </div>
                   <div className="p-2 bg-white rounded-lg border border-slate-200">
                     <span className="text-slate-400 block text-[10px]">Expense Records</span>
-                    <span className="font-extrabold text-rose-600 font-mono text-sm">
+                    <span className="font-extrabold text-rose-600 tabular-nums text-sm">
                       {pendingRestoreSummary?.expensesCount ?? 0}
                     </span>
                   </div>
                   <div className="p-2 bg-white rounded-lg border border-slate-200">
                     <span className="text-slate-400 block text-[10px]">Supplier Bills</span>
-                    <span className="font-extrabold text-amber-600 font-mono text-sm">
+                    <span className="font-extrabold text-amber-600 tabular-nums text-sm">
                       {pendingRestoreSummary?.purchasesCount ?? 0}
                     </span>
                   </div>
                   <div className="p-2 bg-white rounded-lg border border-slate-200">
                     <span className="text-slate-400 block text-[10px]">Sales Returns</span>
-                    <span className="font-extrabold text-indigo-600 font-mono text-sm">
+                    <span className="font-extrabold text-indigo-600 tabular-nums text-sm">
                       {pendingRestoreSummary?.returnsCount ?? 0}
                     </span>
                   </div>
@@ -1806,7 +1811,7 @@ export const Settings: React.FC<SettingsProps> = ({
             <div className="p-3 bg-amber-50/70 border border-amber-200/70 rounded-xl text-xs space-y-0.5">
               <span className="text-[10px] uppercase font-bold text-amber-700 tracking-wider">Staff Account</span>
               <p className="font-extrabold text-slate-800">{salesmanForPasswordChange.name}</p>
-              <p className="text-[11px] font-mono text-slate-500">{salesmanForPasswordChange.email}</p>
+              <p className="text-[11px] tabular-nums text-slate-500">{salesmanForPasswordChange.email}</p>
             </div>
 
             <form onSubmit={handleUpdateSalesmanPassword} className="space-y-3 pt-1">

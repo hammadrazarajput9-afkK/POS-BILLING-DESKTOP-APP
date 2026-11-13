@@ -174,7 +174,7 @@ const ActivityCenterTabComponent: React.FC<ActivityCenterTabProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-mono bg-white/20 px-3 py-1.5 rounded-xl font-bold">
+          <span className="text-[11px] tabular-nums bg-white/20 px-3 py-1.5 rounded-xl font-bold">
             {recent24hActivities.length} Actions Recorded in 24h
           </span>
         </div>
@@ -184,25 +184,25 @@ const ActivityCenterTabComponent: React.FC<ActivityCenterTabProps> = ({
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3.5">
         <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs flex flex-col justify-between">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 line-clamp-1">24h Total</span>
-          <h3 className="text-sm sm:text-2xl font-extrabold font-mono text-slate-900 tabular-nums mt-0.5 sm:mt-1 truncate">{stats.total}</h3>
+          <h3 className="text-sm sm:text-2xl font-extrabold tabular-nums text-slate-900 tabular-nums mt-0.5 sm:mt-1 truncate">{stats.total}</h3>
           <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Live activities</p>
         </div>
 
         <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs flex flex-col justify-between">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 line-clamp-1">Sales Done</span>
-          <h3 className="text-sm sm:text-2xl font-extrabold font-mono text-emerald-600 tabular-nums mt-0.5 sm:mt-1 truncate">{stats.sales}</h3>
+          <h3 className="text-sm sm:text-2xl font-extrabold tabular-nums text-emerald-600 tabular-nums mt-0.5 sm:mt-1 truncate">{stats.sales}</h3>
           <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Invoices made</p>
         </div>
 
         <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs flex flex-col justify-between">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 line-clamp-1">Stock Updates</span>
-          <h3 className="text-sm sm:text-2xl font-extrabold font-mono text-blue-600 tabular-nums mt-0.5 sm:mt-1 truncate">{stats.inventory}</h3>
+          <h3 className="text-sm sm:text-2xl font-extrabold tabular-nums text-blue-600 tabular-nums mt-0.5 sm:mt-1 truncate">{stats.inventory}</h3>
           <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Stock modified</p>
         </div>
 
         <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs flex flex-col justify-between">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 line-clamp-1">Expenses Logged</span>
-          <h3 className="text-sm sm:text-2xl font-extrabold font-mono text-rose-600 tabular-nums mt-0.5 sm:mt-1 truncate">{stats.expense}</h3>
+          <h3 className="text-sm sm:text-2xl font-extrabold tabular-nums text-rose-600 tabular-nums mt-0.5 sm:mt-1 truncate">{stats.expense}</h3>
           <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Disbursements</p>
         </div>
       </div>
@@ -314,7 +314,7 @@ const ActivityCenterTabComponent: React.FC<ActivityCenterTabProps> = ({
                     <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
                       {diff}
                     </span>
-                    <p className="text-[10px] text-slate-400 font-mono mt-1">
+                    <p className="text-[10px] text-slate-400 tabular-nums mt-1">
                       {time}
                     </p>
                   </div>

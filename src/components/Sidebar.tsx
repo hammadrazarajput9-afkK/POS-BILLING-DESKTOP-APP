@@ -144,7 +144,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </div>
 
                   {item.badge !== undefined && item.badge > 0 && (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-mono">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 tabular-nums">
                       {item.badge}
                     </span>
                   )}

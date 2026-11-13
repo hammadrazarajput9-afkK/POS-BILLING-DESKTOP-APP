@@ -247,7 +247,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
                 className="group cursor-pointer flex items-baseline gap-2.5"
                 title="Click to view Cash Ledger Drilldown"
               >
-                <h2 className={`text-2xl sm:text-4xl lg:text-5xl font-black font-mono tracking-tight tabular-nums transition truncate max-w-full ${
+                <h2 className={`text-2xl sm:text-4xl lg:text-5xl font-black tabular-nums tracking-tight tabular-nums transition truncate max-w-full ${
                   cashVal < 0 ? 'text-rose-400' : 'text-white group-hover:text-emerald-400'
                 }`}>
                   {data.settings.currency} {showBalance ? cashVal.toLocaleString() : '••••••'}
@@ -267,7 +267,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
               {cashDrawer.bankBalance !== 0 && (
                 <div className="flex items-baseline gap-1.5 text-slate-300 text-sm font-semibold ml-2">
                   <span className="text-slate-400 text-xs">Digital / Bank:</span>
-                  <span className="font-mono font-bold text-sky-400">
+                  <span className="tabular-nums font-bold text-sky-400">
                     {data.settings.currency} {showBalance ? bankVal.toLocaleString() : '••••••'}
                   </span>
                 </div>
@@ -293,28 +293,28 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 mt-5 pt-4 border-t border-white/10 text-xs">
           <div className="bg-white/5 rounded-xl p-2.5">
             <span className="text-[10px] text-slate-400 block font-semibold">(+) Cash Sales</span>
-            <p className="font-mono font-bold text-emerald-400 mt-0.5">
+            <p className="tabular-nums font-bold text-emerald-400 mt-0.5">
               +{data.settings.currency} {showBalance ? cashDrawer.cashSales.toLocaleString() : '••••••'}
             </p>
           </div>
 
           <div className="bg-white/5 rounded-xl p-2.5">
             <span className="text-[10px] text-slate-400 block font-semibold">(+) Khata Recoveries</span>
-            <p className="font-mono font-bold text-sky-400 mt-0.5">
+            <p className="tabular-nums font-bold text-sky-400 mt-0.5">
               +{data.settings.currency} {showBalance ? cashDrawer.khataRecoveriesCash.toLocaleString() : '••••••'}
             </p>
           </div>
 
           <div className="bg-white/5 rounded-xl p-2.5">
             <span className="text-[10px] text-slate-400 block font-semibold">(-) Cash Expenses</span>
-            <p className="font-mono font-bold text-rose-400 mt-0.5">
+            <p className="tabular-nums font-bold text-rose-400 mt-0.5">
               -{data.settings.currency} {showBalance ? cashDrawer.cashExpenses.toLocaleString() : '••••••'}
             </p>
           </div>
 
           <div className="bg-white/5 rounded-xl p-2.5">
             <span className="text-[10px] text-slate-400 block font-semibold">(-) Supplier Paid</span>
-            <p className="font-mono font-bold text-amber-400 mt-0.5">
+            <p className="tabular-nums font-bold text-amber-400 mt-0.5">
               -{data.settings.currency} {showBalance ? cashDrawer.supplierPaidCash.toLocaleString() : '••••••'}
             </p>
           </div>
@@ -327,7 +327,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
               <span>(=) Drawer Cash</span>
               <ArrowRight className="w-3 h-3 text-emerald-400" />
             </span>
-            <p className={`font-mono font-black mt-0.5 ${cashVal < 0 ? 'text-rose-400' : 'text-white'}`}>
+            <p className={`tabular-nums font-black mt-0.5 ${cashVal < 0 ? 'text-rose-400' : 'text-white'}`}>
               {data.settings.currency} {showBalance ? cashVal.toLocaleString() : '••••••'}
             </p>
           </div>
@@ -387,7 +387,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
                 </span>
               ) : (
                 <h3
-                  className={`text-sm sm:text-2xl font-black font-mono tabular-nums tracking-tight truncate ${
+                  className={`text-sm sm:text-2xl font-black tabular-nums tracking-tight truncate ${
                     profitVal >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
                   }`}
                 >
@@ -414,7 +414,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
                   <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" /> Restricted
                 </span>
               ) : (
-                <h3 className="text-sm sm:text-2xl font-black text-slate-900 dark:text-white font-mono tabular-nums tracking-tight truncate">
+                <h3 className="text-sm sm:text-2xl font-black text-slate-900 dark:text-white tabular-nums tracking-tight truncate">
                   {data.settings.currency} {showBottomMetrics ? expensesVal.toLocaleString() : '••••••'}
                 </h3>
               )}
@@ -438,7 +438,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
                   <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" /> Restricted
                 </span>
               ) : (
-                <h3 className="text-sm sm:text-2xl font-black text-slate-900 dark:text-white font-mono tabular-nums tracking-tight truncate">
+                <h3 className="text-sm sm:text-2xl font-black text-slate-900 dark:text-white tabular-nums tracking-tight truncate">
                   {data.settings.currency} {showBottomMetrics ? purchasesVal.toLocaleString() : '••••••'}
                 </h3>
               )}
@@ -462,7 +462,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
                   <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" /> Restricted
                 </span>
               ) : (
-                <h3 className="text-sm sm:text-2xl font-black text-slate-900 dark:text-white font-mono tabular-nums tracking-tight truncate">
+                <h3 className="text-sm sm:text-2xl font-black text-slate-900 dark:text-white tabular-nums tracking-tight truncate">
                   {data.settings.currency} {showBottomMetrics ? stockCostVal.toLocaleString() : '••••••'}
                 </h3>
               )}
@@ -484,7 +484,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
               </div>
             </div>
             <div>
-              <h3 className="text-sm sm:text-2xl font-black text-slate-900 dark:text-white font-mono tabular-nums tracking-tight truncate">
+              <h3 className="text-sm sm:text-2xl font-black text-slate-900 dark:text-white tabular-nums tracking-tight truncate">
                 {data.settings.currency} {showBottomMetrics ? todayUdharGiven.toLocaleString() : '••••••'}
               </h3>
               <p className="text-[10px] text-slate-400 dark:text-neutral-500 mt-0.5 sm:mt-1 font-semibold truncate">
@@ -556,7 +556,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
                       {item.category} {item.imei && `• IMEI: ${item.imei}`}
                     </p>
                   </div>
-                  <span className="font-black text-rose-700 dark:text-rose-400 bg-white dark:bg-black border border-rose-200 dark:border-neutral-800 px-2 py-0.5 rounded-lg text-xs font-mono shrink-0 shadow-none">
+                  <span className="font-black text-rose-700 dark:text-rose-400 bg-white dark:bg-black border border-rose-200 dark:border-neutral-800 px-2 py-0.5 rounded-lg text-xs tabular-nums shrink-0 shadow-none">
                     {item.qty} Left
                   </span>
                 </div>
@@ -601,25 +601,25 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs shrink-0">
               <div>
                 <span className="text-[10px] text-slate-400 block font-bold">Cash In Hand</span>
-                <span className="text-lg font-black font-mono text-emerald-700">
+                <span className="text-lg font-black tabular-nums text-emerald-700">
                   {data.settings.currency} {cashDrawer.cashInHand.toLocaleString()}
                 </span>
               </div>
               <div>
                 <span className="text-[10px] text-slate-400 block font-bold">Bank / Online</span>
-                <span className="text-lg font-black font-mono text-sky-700">
+                <span className="text-lg font-black tabular-nums text-sky-700">
                   {data.settings.currency} {cashDrawer.bankBalance.toLocaleString()}
                 </span>
               </div>
               <div>
                 <span className="text-[10px] text-slate-400 block font-bold">Total Liquid Funds</span>
-                <span className="text-lg font-black font-mono text-slate-900">
+                <span className="text-lg font-black tabular-nums text-slate-900">
                   {data.settings.currency} {cashDrawer.totalLiquidFunds.toLocaleString()}
                 </span>
               </div>
               <div>
                 <span className="text-[10px] text-slate-400 block font-bold">Stock Cost Asset</span>
-                <span className="text-lg font-black font-mono text-blue-700">
+                <span className="text-lg font-black tabular-nums text-blue-700">
                   {data.settings.currency} {cashDrawer.totalStockCostValue.toLocaleString()}
                 </span>
               </div>
@@ -736,7 +736,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
                               ? `-${data.settings.currency} ${item.bankOut.toLocaleString()} (Bank)`
                               : '-'}
                           </td>
-                          <td className="py-2 px-3 text-right font-black font-mono text-slate-900">
+                          <td className="py-2 px-3 text-right font-black tabular-nums text-slate-900">
                             {data.settings.currency} {item.runningCashBalance.toLocaleString()}
                           </td>
                         </tr>

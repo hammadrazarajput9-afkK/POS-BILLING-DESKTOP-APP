@@ -39,9 +39,9 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
   // Single Product custom input state
   const [productTitle, setProductTitle] = useState('Samsung Galaxy A15');
   const [barcodeValue, setBarcodeValue] = useState('890123456781');
-  const [sellingPrice, setSellingPrice] = useState<number | ''>(42000);
+  const [sellingPrice, setSellingPrice] = useState<number | ''>('');
   const [customSubtitle, setCustomSubtitle] = useState('Black • 6GB/128GB');
-  const [labelQuantity, setLabelQuantity] = useState<number>(12);
+  const [labelQuantity, setLabelQuantity] = useState<number | ''>('');
   const [sheetColumns, setSheetColumns] = useState<number>(3); // 2, 3, or 4 columns
   const [labelSize, setLabelSize] = useState<'standard' | 'compact' | 'jewelry'>('compact');
 
@@ -91,7 +91,8 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
   const printableItemsList = useMemo(() => {
     if (printMode === 'single') {
       const pr = typeof sellingPrice === 'number' ? sellingPrice : 0;
-      return Array.from({ length: Math.max(1, labelQuantity) }).map(() => ({
+      const copies = labelQuantity === '' ? 1 : Math.max(1, Number(labelQuantity) || 1);
+      return Array.from({ length: copies }).map(() => ({
         id: 'single',
         title: productTitle || 'Custom Product',
         subtitle: customSubtitle,
@@ -224,7 +225,7 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
           height: labelSize === 'compact' ? 36 : labelSize === 'jewelry' ? 24 : 48,
           displayValue: showCodeText,
           fontSize: 11,
-          font: 'monospace',
+          font: 'Plus Jakarta Sans, sans-serif',
           margin: 4,
           background: 'transparent',
         });
@@ -322,7 +323,7 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
               </div>
 
               {showPrice && (
-                <div className="text-[12px] font-black text-slate-950 mt-0.5 border-t border-slate-300 w-full pt-0.5 font-mono">
+                <div className="text-[12px] font-black text-slate-950 mt-0.5 border-t border-slate-300 w-full pt-0.5 tabular-nums">
                   {settings.currency} {item.price.toLocaleString()}
                 </div>
               )}
@@ -470,7 +471,7 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
                         className="p-3.5 bg-slate-50/70 border border-slate-200 rounded-xl space-y-2.5 hover:border-blue-300 transition"
                       >
                         <div className="flex items-center justify-between">
-                          <span className="w-6 h-6 rounded-lg bg-blue-600 text-white font-mono font-bold text-xs flex items-center justify-center">
+                          <span className="w-6 h-6 rounded-lg bg-blue-600 text-white tabular-nums font-bold text-xs flex items-center justify-center">
                             #{idx + 1}
                           </span>
                           <div className="flex items-center gap-2">
@@ -485,7 +486,7 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
                               >
                                 <Minus className="w-3 h-3" />
                               </button>
-                              <span className="w-7 text-center font-mono font-bold text-xs text-blue-700">
+                              <span className="w-7 text-center tabular-nums font-bold text-xs text-blue-700">
                                 {item.count}
                               </span>
                               <button
@@ -552,8 +553,8 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
                                   e.target.value === '' ? '' : Number(e.target.value)
                                 )
                               }
-                              placeholder="0"
-                              className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold text-emerald-700 focus:outline-none focus:border-blue-500"
+                              placeholder="Price"
+                              className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs tabular-nums font-bold text-emerald-700 focus:outline-none focus:border-blue-500"
                             />
                           </div>
 
@@ -573,7 +574,7 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
                               value={item.barcode}
                               onChange={e => handleUpdateBatchItem(item.id, 'barcode', e.target.value)}
                               placeholder="Barcode number / code"
-                              className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold text-blue-700 focus:outline-none focus:border-blue-500"
+                              className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs tabular-nums font-bold text-blue-700 focus:outline-none focus:border-blue-500"
                             />
                           </div>
                         </div>
@@ -601,7 +602,7 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
                   </div>
 
                   <span className="font-semibold text-slate-600">
-                    Total Stickers on Sheet: <strong className="text-blue-700 font-mono text-sm">{printableItemsList.length}</strong> (~{Math.ceil(printableItemsList.length / (sheetColumns * 8))} A4 Pages)
+                    Total Stickers on Sheet: <strong className="text-blue-700 tabular-nums text-sm">{printableItemsList.length}</strong> (~{Math.ceil(printableItemsList.length / (sheetColumns * 8))} A4 Pages)
                   </span>
                 </div>
               </div>
@@ -646,7 +647,7 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
                       value={barcodeValue}
                       onChange={e => setBarcodeValue(e.target.value)}
                       placeholder="e.g. 890123456789"
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-blue-700 focus:outline-none focus:border-blue-500 focus:bg-white"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs tabular-nums font-bold text-blue-700 focus:outline-none focus:border-blue-500 focus:bg-white"
                     />
                   </div>
 
@@ -659,7 +660,7 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
                       min="0"
                       value={sellingPrice}
                       onChange={e => setSellingPrice(e.target.value === '' ? '' : Number(e.target.value))}
-                      placeholder="0"
+                      placeholder="Price"
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-emerald-700 focus:outline-none focus:border-blue-500 focus:bg-white"
                     />
                   </div>
@@ -686,8 +687,9 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
                       min="1"
                       max="100"
                       value={labelQuantity}
-                      onChange={e => setLabelQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-blue-700 focus:outline-none focus:border-blue-500 focus:bg-white"
+                      placeholder="Qty"
+                      onChange={e => setLabelQuantity(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value, 10) || 1))}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs tabular-nums font-bold text-blue-700 focus:outline-none focus:border-blue-500 focus:bg-white"
                     />
                   </div>
                 </div>
@@ -726,7 +728,8 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
                     min="1"
                     max="100"
                     value={labelQuantity}
-                    onChange={e => setLabelQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                    placeholder="Qty"
+                    onChange={e => setLabelQuantity(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value, 10) || 1))}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-center focus:outline-none focus:border-blue-500"
                   />
                 </div>
@@ -907,7 +910,7 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
                             <BarcodeLabelItem code={item.barcode} size={labelSize} showText={showCodeText} />
                           </div>
                           {showPrice && (
-                            <span className="font-mono font-black text-slate-900 border-t border-slate-100 w-full pt-0.5">
+                            <span className="tabular-nums font-black text-slate-900 border-t border-slate-100 w-full pt-0.5">
                               {settings.currency} {item.price.toLocaleString()}
                             </span>
                           )}
@@ -948,7 +951,7 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
                     </div>
 
                     {showPrice && (
-                      <div className="text-sm font-black text-slate-900 border-t border-slate-200 w-full pt-1 font-mono">
+                      <div className="text-sm font-black text-slate-900 border-t border-slate-200 w-full pt-1 tabular-nums">
                         {settings.currency} {sellingPrice.toLocaleString()}
                       </div>
                     )}
@@ -1000,7 +1003,7 @@ const BarcodeLabelItem: React.FC<{
           height: size === 'compact' ? 30 : size === 'jewelry' ? 22 : 40,
           displayValue: showText,
           fontSize: 10,
-          font: 'monospace',
+          font: 'Plus Jakarta Sans, sans-serif',
           margin: 2,
           background: 'transparent',
         });

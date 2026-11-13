@@ -75,7 +75,7 @@ function AppContent() {
   // PDF Export Modal state
   const [pdfModalOpen, setPdfModalOpen] = useState(false);
   const [pdfModalTab, setPdfModalTab] = useState<
-    'sales' | 'inventory' | 'khata' | 'expenses' | 'activity' | 'dailyClosing'
+    'sales' | 'inventory' | 'khata' | 'expenses' | 'activity' | 'dailyClosing' | 'purchases'
   >('sales');
   const [pdfModalCategory, setPdfModalCategory] = useState<string>('all');
 
@@ -83,6 +83,13 @@ function AppContent() {
   const [expenseCategoryModalOpen, setExpenseCategoryModalOpen] = useState(false);
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [tabSettingsModalOpen, setTabSettingsModalOpen] = useState(false);
+  const [gmpQuotaExceeded, setGmpQuotaExceeded] = useState(false);
+
+  useEffect(() => {
+    const handleGmpQuota = () => setGmpQuotaExceeded(true);
+    window.addEventListener('gmp-quota-exceeded', handleGmpQuota);
+    return () => window.removeEventListener('gmp-quota-exceeded', handleGmpQuota);
+  }, []);
 
   // Centralized Activity Logger
   const logActivity = useCallback(
@@ -150,6 +157,7 @@ function AppContent() {
     handleStockAdjustment,
     handleAddCategory,
     handleDeleteCategory,
+    handleRenameCategory,
     handleAddProductFromPurchases,
     stockModalOpen,
     setStockModalOpen,
@@ -161,6 +169,7 @@ function AppContent() {
     handleSaveKhataCustomer,
     handleSettleKhataBalance,
     handleUpdateKhataBalance,
+    handleDeleteKhataTransaction,
     handleDeleteKhataCustomer,
     addKhataModalOpen,
     setAddKhataModalOpen,
@@ -291,7 +300,7 @@ function AppContent() {
   }, []);
 
   const handleOpenPdfReport = (
-    tab: 'sales' | 'inventory' | 'khata' | 'expenses' | 'activity' | 'dailyClosing',
+    tab: 'sales' | 'inventory' | 'khata' | 'expenses' | 'activity' | 'dailyClosing' | 'purchases',
     initialCat?: string
   ) => {
     setPdfModalTab(tab);
@@ -420,6 +429,68 @@ function AppContent() {
     return true;
   };
 
+  const handleRenameExpenseCategory = (oldName: string, newName: string): boolean => {
+    const cleanOld = oldName.trim();
+    const cleanNew = newName.trim();
+    if (!cleanOld || !cleanNew) {
+      showToast('Category name cannot be empty', 'warning');
+      return false;
+    }
+    if (cleanOld === cleanNew) return true;
+
+    const currentCats = data.expenseCategories || defaultExpenseCategories;
+    if (currentCats.some(c => c.toLowerCase() === cleanNew.toLowerCase() && c.toLowerCase() !== cleanOld.toLowerCase())) {
+      showToast(`Category "${cleanNew}" already exists`, 'warning');
+      return false;
+    }
+
+    let updatedCats: string[] = [];
+    const updatedExpensesToSync: ExpenseItem[] = [];
+
+    setData(prev => {
+      const prevCats = prev.expenseCategories || defaultExpenseCategories;
+      updatedCats = prevCats.map(c => (c.toLowerCase() === cleanOld.toLowerCase() ? cleanNew : c));
+      if (!updatedCats.some(c => c.toLowerCase() === cleanNew.toLowerCase())) {
+        updatedCats.push(cleanNew);
+      }
+
+      const updatedExpenses = (prev.expenses || []).map(exp => {
+        if ((exp.category || '').trim().toLowerCase() === cleanOld.toLowerCase()) {
+          const nextExp = { ...exp, category: cleanNew };
+          updatedExpensesToSync.push(nextExp);
+          return nextExp;
+        }
+        return exp;
+      });
+
+      return {
+        ...prev,
+        expenseCategories: updatedCats,
+        expenses: updatedExpenses,
+      };
+    });
+
+    queueMicrotask(() => {
+      saveRootConfigToFirestore({ expenseCategories: updatedCats }).catch(err => {
+        console.warn('Firestore expense category rename sync warning:', err);
+      });
+      updatedExpensesToSync.forEach(exp => {
+        saveExpenseItemToFirestore(exp).catch(err => {
+          console.warn('Firestore expense item rename sync warning:', err);
+        });
+      });
+    });
+
+    logActivity(
+      'Expense',
+      `Renamed Expense Category: ${cleanOld} → ${cleanNew}`,
+      `Updated across ${updatedExpensesToSync.length} expense record(s)`,
+      'update'
+    );
+    showToast(`Expense category renamed to "${cleanNew}"`, 'success');
+    return true;
+  };
+
   // Daily Closing Handlers
   const handleSaveDailyClosing = (record: Omit<DailyClosingRecord, 'id'>) => {
     if (!hasPermission(data.currentRole || 'admin', 'canManageDailyClosing')) {
@@ -534,9 +605,15 @@ function AppContent() {
       id: newPurchaseId,
     };
 
+    let affectedInventoryItems: InventoryItem[] = [];
+    let syncedPurchases: SupplierPurchase[] = [];
+    let syncedLedger: typeof data.purchasesLedger = [];
+    let syncedImeis: typeof data.imeiRecords = [];
+
     setData(prev => {
       let updatedInventory = [...prev.inventory];
       const itemsToRegisterImeis: { id: string; name: string; category?: string; imei?: string; imeis?: string[] }[] = [];
+      const changedMap = new Map<string, InventoryItem>();
 
       if (autoAddToInventory) {
         newPurchase.items.forEach(purchaseItem => {
@@ -552,35 +629,101 @@ function AppContent() {
             const newImeis = purchaseItem.imeis || (purchaseItem.imei ? [purchaseItem.imei] : []);
             const combinedImeis = Array.from(new Set([...existingImeis, ...newImeis]));
 
-            updatedInventory[matchIndex] = {
+            let updatedVariants = existing.variants ? [...existing.variants] : undefined;
+            if (updatedVariants && (purchaseItem.ram || purchaseItem.storage || purchaseItem.color || newImeis.length > 0)) {
+              const vIdx = updatedVariants.findIndex(
+                v =>
+                  (v.ram || '').toLowerCase() === (purchaseItem.ram || '').toLowerCase() &&
+                  (v.storage || '').toLowerCase() === (purchaseItem.storage || '').toLowerCase() &&
+                  (v.color || '').toLowerCase() === (purchaseItem.color || '').toLowerCase()
+              );
+              if (vIdx >= 0) {
+                const targetV = updatedVariants[vIdx];
+                updatedVariants[vIdx] = {
+                  ...targetV,
+                  qty: (Number(targetV.qty) || 0) + purchaseItem.qty,
+                  costPrice: purchaseItem.costPrice > 0 ? purchaseItem.costPrice : targetV.costPrice,
+                  salePrice: purchaseItem.salePrice && purchaseItem.salePrice > 0 ? purchaseItem.salePrice : targetV.salePrice,
+                  wholesalePrice: purchaseItem.wholesalePrice !== undefined ? purchaseItem.wholesalePrice : targetV.wholesalePrice,
+                  imeis: Array.from(new Set([...(targetV.imeis || []), ...newImeis])),
+                };
+              } else {
+                updatedVariants.push({
+                  id: generateEntityId('VAR'),
+                  ram: purchaseItem.ram || '',
+                  storage: purchaseItem.storage || '',
+                  color: purchaseItem.color || '',
+                  costPrice: purchaseItem.costPrice,
+                  salePrice: purchaseItem.salePrice || existing.salePrice,
+                  wholesalePrice: purchaseItem.wholesalePrice !== undefined ? purchaseItem.wholesalePrice : existing.wholesalePrice,
+                  qty: purchaseItem.qty,
+                  imeis: newImeis,
+                });
+              }
+            }
+
+            const updatedItem: InventoryItem = {
               ...existing,
+              category: purchaseItem.category || existing.category,
               qty: existing.qty + purchaseItem.qty,
               costPrice: purchaseItem.costPrice > 0 ? purchaseItem.costPrice : existing.costPrice,
               salePrice:
                 purchaseItem.salePrice && purchaseItem.salePrice > 0
                   ? purchaseItem.salePrice
                   : existing.salePrice,
+              wholesalePrice:
+                purchaseItem.wholesalePrice !== undefined
+                  ? purchaseItem.wholesalePrice
+                  : existing.wholesalePrice,
+              ram: purchaseItem.ram || existing.ram,
+              storage: purchaseItem.storage || existing.storage,
+              color: purchaseItem.color || existing.color,
+              variants: updatedVariants,
               barcode: purchaseItem.barcode || existing.barcode,
               imei: combinedImeis[0] || existing.imei,
               imeis: combinedImeis.length > 0 ? combinedImeis : undefined,
               status: existing.status || 'ACTIVE',
             };
 
+            updatedInventory[matchIndex] = updatedItem;
+            changedMap.set(updatedItem.id, updatedItem);
+
             itemsToRegisterImeis.push({
               id: existing.id,
-              name: existing.name,
-              category: existing.category,
+              name: updatedItem.name,
+              category: updatedItem.category,
               imeis: newImeis,
             });
           } else {
             const newItemId = generateEntityId('STK');
+            const newImeis = purchaseItem.imeis || (purchaseItem.imei ? [purchaseItem.imei] : []);
+            const hasMobileSpecs = Boolean(purchaseItem.ram || purchaseItem.storage || purchaseItem.color || newImeis.length > 0);
             const newItem: InventoryItem = {
               id: newItemId,
               name: purchaseItem.name,
               category: purchaseItem.category || prev.categories?.[0] || 'Android Mobile',
               costPrice: purchaseItem.costPrice,
               salePrice: purchaseItem.salePrice || Math.round(purchaseItem.costPrice * 1.15),
+              wholesalePrice: purchaseItem.wholesalePrice,
               qty: purchaseItem.qty,
+              ram: purchaseItem.ram,
+              storage: purchaseItem.storage,
+              color: purchaseItem.color,
+              variants: hasMobileSpecs
+                ? [
+                    {
+                      id: generateEntityId('VAR'),
+                      ram: purchaseItem.ram || '',
+                      storage: purchaseItem.storage || '',
+                      color: purchaseItem.color || '',
+                      costPrice: purchaseItem.costPrice,
+                      salePrice: purchaseItem.salePrice || Math.round(purchaseItem.costPrice * 1.15),
+                      wholesalePrice: purchaseItem.wholesalePrice,
+                      qty: purchaseItem.qty,
+                      imeis: newImeis,
+                    },
+                  ]
+                : undefined,
               barcode: purchaseItem.barcode,
               imei: purchaseItem.imei,
               imeis: purchaseItem.imeis,
@@ -588,16 +731,19 @@ function AppContent() {
               createdAt: new Date().toISOString(),
             };
             updatedInventory = [newItem, ...updatedInventory];
+            changedMap.set(newItem.id, newItem);
 
             itemsToRegisterImeis.push({
               id: newItem.id,
               name: newItem.name,
               category: newItem.category,
-              imeis: purchaseItem.imeis || (purchaseItem.imei ? [purchaseItem.imei] : []),
+              imeis: newImeis,
             });
           }
         });
       }
+
+      affectedInventoryItems = Array.from(changedMap.values());
 
       const newLedgerEntries = newPurchase.items.map(item => ({
         id: generateEntityId('PL'),
@@ -616,12 +762,16 @@ function AppContent() {
         purchaseParty: newPurchase.partyName,
       });
 
+      syncedPurchases = [newPurchase, ...(prev.supplierPurchases || [])];
+      syncedLedger = [...newLedgerEntries, ...(prev.purchasesLedger || [])];
+      syncedImeis = updatedImeiRecords;
+
       return {
         ...prev,
         inventory: updatedInventory,
-        supplierPurchases: [newPurchase, ...(prev.supplierPurchases || [])],
-        purchasesLedger: [...newLedgerEntries, ...(prev.purchasesLedger || [])],
-        imeiRecords: updatedImeiRecords,
+        supplierPurchases: syncedPurchases,
+        purchasesLedger: syncedLedger,
+        imeiRecords: syncedImeis,
       };
     });
 
@@ -635,15 +785,302 @@ function AppContent() {
 
     showToast(`Purchase bill #${newPurchase.billNo} registered!`, 'success');
 
-    // Immediately push updated inventory items to Firestore sub-collection
-    const activeSid = data.currentUser?.storeId || data.currentUser?.id || getActiveStoreId();
-    if (autoAddToInventory && activeSid) {
-      setTimeout(() => {
-        data.inventory.forEach(item => {
-          saveInventoryItemToFirestore(item, activeSid).catch(() => {});
+    // Immediately push updated/new inventory items & purchase bill to Cloud Firestore
+    queueMicrotask(() => {
+      if (autoAddToInventory && affectedInventoryItems.length > 0) {
+        affectedInventoryItems.forEach(item => {
+          saveInventoryItemToFirestore(item, DEFAULT_STORE_ID).catch(() => {});
         });
-      }, 50);
-    }
+      }
+      if (syncedPurchases.length > 0) {
+        saveRootConfigToFirestore(
+          {
+            supplierPurchases: syncedPurchases,
+            purchasesLedger: syncedLedger,
+            imeiRecords: syncedImeis,
+          },
+          DEFAULT_STORE_ID
+        ).catch(() => {});
+      }
+    });
+  };
+
+  const handleUpdatePurchase = (
+    purchaseId: string,
+    updatedPurchaseData: Omit<SupplierPurchase, 'id'>,
+    autoAddToInventory: boolean
+  ) => {
+    const oldPurchase = (data.supplierPurchases || []).find(p => p.id === purchaseId);
+    if (!oldPurchase) return;
+
+    const updatedPurchase: SupplierPurchase = {
+      ...updatedPurchaseData,
+      id: purchaseId,
+      status: oldPurchase.status,
+    };
+
+    const changedInventoryMap = new Map<string, InventoryItem>();
+    let syncedPurchases: SupplierPurchase[] = [];
+    let syncedLedger: typeof data.purchasesLedger = [];
+    let syncedImeis: typeof data.imeiRecords = [];
+
+    setData(prev => {
+      let updatedInventory = [...prev.inventory];
+      const oldAllImeis: string[] = [];
+
+      // 1. Roll back previous purchase items & IMEIs from inventory
+      oldPurchase.items.forEach(oldItem => {
+        const oldItemImeis = oldItem.imeis || (oldItem.imei ? oldItem.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
+        oldAllImeis.push(...oldItemImeis);
+
+        const matchIndex = updatedInventory.findIndex(
+          inv =>
+            inv.name.trim().toLowerCase() === oldItem.name.trim().toLowerCase() ||
+            (oldItem.barcode && inv.barcode === oldItem.barcode)
+        );
+
+        if (matchIndex >= 0) {
+          const existing = updatedInventory[matchIndex];
+          const existingImeis =
+            existing.imeis || (existing.imei ? existing.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
+          const remainingImeis = existingImeis.filter(
+            im => !oldItemImeis.some(oIm => oIm.toLowerCase().trim() === im.toLowerCase().trim())
+          );
+
+          let updatedVariants = existing.variants ? [...existing.variants] : undefined;
+          if (updatedVariants) {
+            updatedVariants = updatedVariants
+              .map(v => {
+                const vImeis = (v.imeis || []).filter(
+                  im => !oldItemImeis.some(oIm => oIm.toLowerCase().trim() === im.toLowerCase().trim())
+                );
+                const matchesSpecs =
+                  (v.ram || '').toLowerCase() === (oldItem.ram || '').toLowerCase() &&
+                  (v.storage || '').toLowerCase() === (oldItem.storage || '').toLowerCase() &&
+                  (v.color || '').toLowerCase() === (oldItem.color || '').toLowerCase();
+                if (matchesSpecs || (oldItemImeis.length > 0 && vImeis.length !== (v.imeis || []).length)) {
+                  const newVQty = Math.max(0, (Number(v.qty) || 0) - oldItem.qty);
+                  return {
+                    ...v,
+                    qty: newVQty,
+                    imeis: vImeis,
+                  };
+                }
+                return v;
+              })
+              .filter(v => (Number(v.qty) || 0) > 0 || (v.imeis && v.imeis.length > 0));
+          }
+
+          const rolledBackItem: InventoryItem = {
+            ...existing,
+            qty: Math.max(0, existing.qty - oldItem.qty),
+            variants: updatedVariants && updatedVariants.length > 0 ? updatedVariants : existing.variants,
+            imei: remainingImeis[0] || undefined,
+            imeis: remainingImeis.length > 0 ? remainingImeis : undefined,
+          };
+
+          updatedInventory[matchIndex] = rolledBackItem;
+          changedInventoryMap.set(rolledBackItem.id, rolledBackItem);
+        }
+      });
+
+      // Remove old purchase's available IMEIs from imeiRecords
+      let nextImeiRecords = recordImeisReversed({
+        purchaseBillNo: oldPurchase.billNo,
+        reversedImeis: oldAllImeis,
+        existingImeiRecords: prev.imeiRecords || [],
+      });
+
+      // 2. Apply updated purchase items into inventory if autoAddToInventory is enabled
+      const itemsToRegisterImeis: { id: string; name: string; category?: string; imei?: string; imeis?: string[] }[] = [];
+
+      if (autoAddToInventory) {
+        updatedPurchase.items.forEach(purchaseItem => {
+          const matchIndex = updatedInventory.findIndex(
+            inv =>
+              inv.name.trim().toLowerCase() === purchaseItem.name.trim().toLowerCase() ||
+              (purchaseItem.barcode && inv.barcode === purchaseItem.barcode)
+          );
+
+          if (matchIndex >= 0) {
+            const existing = updatedInventory[matchIndex];
+            const existingImeis = existing.imeis || (existing.imei ? [existing.imei] : []);
+            const newImeis = purchaseItem.imeis || (purchaseItem.imei ? [purchaseItem.imei] : []);
+            const combinedImeis = Array.from(new Set([...existingImeis, ...newImeis]));
+
+            let updatedVariants = existing.variants ? [...existing.variants] : undefined;
+            if (updatedVariants && (purchaseItem.ram || purchaseItem.storage || purchaseItem.color || newImeis.length > 0)) {
+              const vIdx = updatedVariants.findIndex(
+                v =>
+                  (v.ram || '').toLowerCase() === (purchaseItem.ram || '').toLowerCase() &&
+                  (v.storage || '').toLowerCase() === (purchaseItem.storage || '').toLowerCase() &&
+                  (v.color || '').toLowerCase() === (purchaseItem.color || '').toLowerCase()
+              );
+              if (vIdx >= 0) {
+                const targetV = updatedVariants[vIdx];
+                updatedVariants[vIdx] = {
+                  ...targetV,
+                  qty: (Number(targetV.qty) || 0) + purchaseItem.qty,
+                  costPrice: purchaseItem.costPrice > 0 ? purchaseItem.costPrice : targetV.costPrice,
+                  salePrice: purchaseItem.salePrice && purchaseItem.salePrice > 0 ? purchaseItem.salePrice : targetV.salePrice,
+                  wholesalePrice: purchaseItem.wholesalePrice !== undefined ? purchaseItem.wholesalePrice : targetV.wholesalePrice,
+                  imeis: Array.from(new Set([...(targetV.imeis || []), ...newImeis])),
+                };
+              } else {
+                updatedVariants.push({
+                  id: generateEntityId('VAR'),
+                  ram: purchaseItem.ram || '',
+                  storage: purchaseItem.storage || '',
+                  color: purchaseItem.color || '',
+                  costPrice: purchaseItem.costPrice,
+                  salePrice: purchaseItem.salePrice || existing.salePrice,
+                  wholesalePrice: purchaseItem.wholesalePrice !== undefined ? purchaseItem.wholesalePrice : existing.wholesalePrice,
+                  qty: purchaseItem.qty,
+                  imeis: newImeis,
+                });
+              }
+            }
+
+            const updatedItem: InventoryItem = {
+              ...existing,
+              category: purchaseItem.category || existing.category,
+              qty: existing.qty + purchaseItem.qty,
+              costPrice: purchaseItem.costPrice > 0 ? purchaseItem.costPrice : existing.costPrice,
+              salePrice:
+                purchaseItem.salePrice && purchaseItem.salePrice > 0
+                  ? purchaseItem.salePrice
+                  : existing.salePrice,
+              wholesalePrice:
+                purchaseItem.wholesalePrice !== undefined
+                  ? purchaseItem.wholesalePrice
+                  : existing.wholesalePrice,
+              ram: purchaseItem.ram || existing.ram,
+              storage: purchaseItem.storage || existing.storage,
+              color: purchaseItem.color || existing.color,
+              variants: updatedVariants,
+              barcode: purchaseItem.barcode || existing.barcode,
+              imei: combinedImeis[0] || existing.imei,
+              imeis: combinedImeis.length > 0 ? combinedImeis : undefined,
+              status: existing.status || 'ACTIVE',
+            };
+
+            updatedInventory[matchIndex] = updatedItem;
+            changedInventoryMap.set(updatedItem.id, updatedItem);
+
+            itemsToRegisterImeis.push({
+              id: existing.id,
+              name: updatedItem.name,
+              category: updatedItem.category,
+              imeis: newImeis,
+            });
+          } else {
+            const newItemId = generateEntityId('STK');
+            const newImeis = purchaseItem.imeis || (purchaseItem.imei ? [purchaseItem.imei] : []);
+            const hasMobileSpecs = Boolean(purchaseItem.ram || purchaseItem.storage || purchaseItem.color || newImeis.length > 0);
+            const newItem: InventoryItem = {
+              id: newItemId,
+              name: purchaseItem.name,
+              category: purchaseItem.category || prev.categories?.[0] || 'Android Mobile',
+              costPrice: purchaseItem.costPrice,
+              salePrice: purchaseItem.salePrice || Math.round(purchaseItem.costPrice * 1.15),
+              wholesalePrice: purchaseItem.wholesalePrice,
+              qty: purchaseItem.qty,
+              ram: purchaseItem.ram,
+              storage: purchaseItem.storage,
+              color: purchaseItem.color,
+              variants: hasMobileSpecs
+                ? [
+                    {
+                      id: generateEntityId('VAR'),
+                      ram: purchaseItem.ram || '',
+                      storage: purchaseItem.storage || '',
+                      color: purchaseItem.color || '',
+                      costPrice: purchaseItem.costPrice,
+                      salePrice: purchaseItem.salePrice || Math.round(purchaseItem.costPrice * 1.15),
+                      wholesalePrice: purchaseItem.wholesalePrice,
+                      qty: purchaseItem.qty,
+                      imeis: newImeis,
+                    },
+                  ]
+                : undefined,
+              barcode: purchaseItem.barcode,
+              imei: purchaseItem.imei,
+              imeis: purchaseItem.imeis,
+              status: 'ACTIVE',
+              createdAt: new Date().toISOString(),
+            };
+            updatedInventory = [newItem, ...updatedInventory];
+            changedInventoryMap.set(newItem.id, newItem);
+
+            itemsToRegisterImeis.push({
+              id: newItem.id,
+              name: newItem.name,
+              category: newItem.category,
+              imeis: newImeis,
+            });
+          }
+        });
+      }
+
+      nextImeiRecords = recordImeisAvailable({
+        items: itemsToRegisterImeis,
+        existingImeiRecords: nextImeiRecords,
+        purchaseBillNo: updatedPurchase.billNo,
+        purchaseParty: updatedPurchase.partyName,
+      });
+
+      // Replace ledger entries matching the old purchase if possible, prepending fresh entries
+      const oldSignatures = new Set(
+        oldPurchase.items.map(it => `${oldPurchase.date}|${it.name} (${oldPurchase.partyName})|${it.qty}|${it.costPrice}`)
+      );
+      const filteredOldLedger = (prev.purchasesLedger || []).filter(
+        entry => !oldSignatures.has(`${entry.date}|${entry.itemTitle}|${entry.qty}|${entry.costPrice}`)
+      );
+      const newLedgerEntries = updatedPurchase.items.map(item => ({
+        id: generateEntityId('PL'),
+        date: updatedPurchase.date,
+        itemTitle: `${item.name} (${updatedPurchase.partyName})`,
+        qty: item.qty,
+        costPrice: item.costPrice,
+        total: item.costPrice * item.qty,
+      }));
+
+      syncedPurchases = (prev.supplierPurchases || []).map(p => (p.id === purchaseId ? updatedPurchase : p));
+      syncedLedger = [...newLedgerEntries, ...filteredOldLedger];
+      syncedImeis = nextImeiRecords;
+
+      return {
+        ...prev,
+        inventory: updatedInventory,
+        supplierPurchases: syncedPurchases,
+        purchasesLedger: syncedLedger,
+        imeiRecords: syncedImeis,
+      };
+    });
+
+    logActivity(
+      'Purchase',
+      `Updated Stock Inward: ${updatedPurchase.partyName} (Bill #${updatedPurchase.billNo})`,
+      `Total: ${data.settings.currency} ${updatedPurchase.totalAmount.toLocaleString()} | Paid: ${data.settings.currency} ${updatedPurchase.paidAmount.toLocaleString()} | Items: ${updatedPurchase.items.length}`,
+      'update',
+      updatedPurchase.id
+    );
+
+    showToast(`Purchase bill #${updatedPurchase.billNo} updated & synced!`, 'success');
+
+    queueMicrotask(() => {
+      Array.from(changedInventoryMap.values()).forEach(item => {
+        saveInventoryItemToFirestore(item, DEFAULT_STORE_ID).catch(() => {});
+      });
+      saveRootConfigToFirestore(
+        {
+          supplierPurchases: syncedPurchases,
+          purchasesLedger: syncedLedger,
+          imeiRecords: syncedImeis,
+        },
+        DEFAULT_STORE_ID
+      ).catch(() => {});
+    });
   };
 
   const handleDeletePurchase = () => {
@@ -674,6 +1111,11 @@ function AppContent() {
       return;
     }
 
+    const changedInventory: InventoryItem[] = [];
+    let syncedPurchases: SupplierPurchase[] = [];
+    let syncedLedger: typeof data.purchasesLedger = [];
+    let syncedImeis: typeof data.imeiRecords = [];
+
     setData(prev => {
       // 1. Reverse stock in inventory
       const updatedInventory = [...prev.inventory];
@@ -697,12 +1139,14 @@ function AppContent() {
             im => !itemImeis.some(pIm => pIm.toLowerCase().trim() === im.toLowerCase().trim())
           );
 
-          updatedInventory[matchIndex] = {
+          const updatedItem: InventoryItem = {
             ...existing,
             qty: Math.max(0, existing.qty - purchaseItem.qty),
             imei: remainingImeis.length > 0 ? remainingImeis.join(', ') : undefined,
             imeis: remainingImeis.length > 0 ? remainingImeis : undefined,
           };
+          updatedInventory[matchIndex] = updatedItem;
+          changedInventory.push(updatedItem);
         }
       });
 
@@ -736,6 +1180,10 @@ function AppContent() {
         return p;
       });
 
+      syncedPurchases = updatedPurchases;
+      syncedLedger = updatedLedger;
+      syncedImeis = updatedImeiRecords;
+
       return {
         ...prev,
         inventory: updatedInventory,
@@ -743,6 +1191,20 @@ function AppContent() {
         purchasesLedger: updatedLedger,
         supplierPurchases: updatedPurchases,
       };
+    });
+
+    queueMicrotask(() => {
+      changedInventory.forEach(item => {
+        saveInventoryItemToFirestore(item, DEFAULT_STORE_ID).catch(() => {});
+      });
+      saveRootConfigToFirestore(
+        {
+          supplierPurchases: syncedPurchases,
+          purchasesLedger: syncedLedger,
+          imeiRecords: syncedImeis,
+        },
+        DEFAULT_STORE_ID
+      ).catch(() => {});
     });
 
     logActivity(
@@ -782,6 +1244,7 @@ function AppContent() {
 
     const newPaidAmount = (purchase.paidAmount || 0) + paymentAmount;
     const newBalanceDue = Math.max(0, purchase.totalAmount - newPaidAmount);
+    let syncedPurchases: SupplierPurchase[] = [];
 
     setData(prev => {
       const updatedPurchases = (prev.supplierPurchases || []).map(p => {
@@ -796,10 +1259,15 @@ function AppContent() {
         return p;
       });
 
+      syncedPurchases = updatedPurchases;
       return {
         ...prev,
         supplierPurchases: updatedPurchases,
       };
+    });
+
+    queueMicrotask(() => {
+      saveRootConfigToFirestore({ supplierPurchases: syncedPurchases }, DEFAULT_STORE_ID).catch(() => {});
     });
 
     logActivity(
@@ -885,9 +1353,9 @@ function AppContent() {
               users: syncedUsers,
             }));
           }}
-          onAuthSuccess={async (user, rememberMe = true) => {
-            const userStoreId = user.storeId || DEFAULT_STORE_ID;
-            setActiveStoreId(userStoreId);
+          onAuthSuccess={(user, rememberMe = true) => {
+            const activeStoreId = DEFAULT_STORE_ID;
+            setActiveStoreId(activeStoreId);
             if (rememberMe) {
               saveCurrentSession(user);
             } else {
@@ -898,48 +1366,51 @@ function AppContent() {
               setActiveTab('pos');
             }
 
-            // 1. Fetch latest source-of-truth from Cloud Firestore first
-            try {
-              const remoteData = await loadAppDataFromFirestore(userStoreId);
-              if (remoteData) {
-                const rUsers = (remoteData.users || []).filter(
-                  u => u && u.id && (u.role !== 'admin' || u.id === user.id)
-                );
-                const rUpdatedUsers = rUsers.some(u => u.id === user.id) ? rUsers : [user, ...rUsers];
+            // 1. Open app IMMEDIATELY (<50ms) using already-mounted / local cached store data
+            const localStoreData = loadStoredData(activeStoreId);
+            setData(prev => {
+              const base = (prev.inventory && prev.inventory.length > 0) || (prev.sales && prev.sales.length > 0)
+                ? prev
+                : localStoreData;
+              const currentUsers = (base.users || []).filter(
+                u => u && u.id && (u.role !== 'admin' || u.id === user.id)
+              );
+              const updatedUsers = currentUsers.some(u => u.id === user.id) ? currentUsers : [user, ...currentUsers];
 
-                const finalData: AppData = {
-                  ...remoteData,
-                  users: rUpdatedUsers,
-                  currentUser: user,
-                  currentRole: user.role,
-                };
+              return {
+                ...base,
+                users: updatedUsers,
+                currentUser: user,
+                currentRole: user.role,
+              };
+            });
 
-                setData(finalData);
-                saveStoredData(finalData, userStoreId);
+            // 2. Non-blocking background refresh from Cloud Firestore
+            loadAppDataFromFirestore(activeStoreId)
+              .then(remoteData => {
+                if (remoteData) {
+                  setData(prev => {
+                    const rUsers = (remoteData.users || []).filter(
+                      u => u && u.id && (u.role !== 'admin' || u.id === user.id)
+                    );
+                    const rUpdatedUsers = rUsers.some(u => u.id === user.id) ? rUsers : [user, ...rUsers];
 
-                saveUserToFirestore(user, userStoreId).catch(() => {});
-                return;
-              }
-            } catch (err) {
-              console.warn('Remote load on auth notice:', err);
-            }
+                    const finalData: AppData = {
+                      ...remoteData,
+                      users: rUpdatedUsers,
+                      currentUser: prev.currentUser || user,
+                      currentRole: prev.currentRole || user.role,
+                    };
+                    saveStoredData(finalData, activeStoreId);
+                    return finalData;
+                  });
+                }
+              })
+              .catch(err => {
+                console.warn('Background remote load on auth notice:', err);
+              });
 
-            // 2. Offline fallback to local cached data only if Firestore is unreachable
-            const localStoreData = loadStoredData(userStoreId);
-            const currentUsers = (localStoreData.users || []).filter(
-              u => u && u.id && (u.role !== 'admin' || u.id === user.id)
-            );
-            const updatedUsers = currentUsers.some(u => u.id === user.id) ? currentUsers : [user, ...currentUsers];
-
-            const fallbackData: AppData = {
-              ...localStoreData,
-              users: updatedUsers,
-              currentUser: user,
-              currentRole: user.role,
-            };
-
-            setData(fallbackData);
-            saveUserToFirestore(user, userStoreId).catch(() => {});
+            saveUserToFirestore(user, activeStoreId).catch(() => {});
           }}
           settings={data.settings}
         />
@@ -966,6 +1437,22 @@ function AppContent() {
 
       {/* Main Viewport Container */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {gmpQuotaExceeded && (
+          <div className="bg-amber-50 border-b border-amber-200 text-amber-900 px-4 py-2.5 text-xs md:text-sm text-center sticky top-0 z-50 shadow-sm">
+            <span>
+              Google Maps Platform quota reached. If you are the app owner, visit{' '}
+              <a
+                href="https://developers.google.com/maps/ai/ai-studio?utm_campaign=gmp_mcp_codeassist_v1_aistudio#quota_exceeded_errors"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline font-semibold text-amber-950 hover:text-amber-800"
+              >
+                maps developer site
+              </a>{' '}
+              for instructions to update your account.
+            </span>
+          </div>
+        )}
         {/* Top Header with Menu Toggle */}
         <Header
           activeTab={activeTab}
@@ -1050,6 +1537,7 @@ function AppContent() {
                 onRestoreItem={handleRestoreInventory}
                 onAddCategory={handleAddCategory}
                 onDeleteCategory={handleDeleteCategory}
+                onRenameCategory={handleRenameCategory}
                 onOpenPdfReport={(cat?: string) => handleOpenPdfReport('inventory', cat)}
               />
             )}
@@ -1063,12 +1551,16 @@ function AppContent() {
                 imeiRecords={data.imeiRecords || []}
                 sales={data.sales || []}
                 onlineAccounts={data.onlineAccounts || []}
+                appData={data}
                 onSavePurchase={handleSavePurchase}
+                onUpdatePurchase={handleUpdatePurchase}
                 onDeletePurchase={handleDeletePurchase}
                 onReversePurchase={handleReversePurchase}
                 onSettlePurchaseDue={handleSettlePurchaseDue}
                 onAddInventoryProduct={handleAddProductFromPurchases}
                 onAddCategory={handleAddCategory}
+                onRenameCategory={handleRenameCategory}
+                onOpenPdfReport={() => handleOpenPdfReport('purchases')}
               />
             )}
 
@@ -1080,6 +1572,8 @@ function AppContent() {
               <KhataTab
                 khata={data.khata}
                 settings={data.settings}
+                sales={data.sales || []}
+                isAdmin={(data.currentRole || 'admin') === 'admin'}
                 onOpenAddModal={() => setAddKhataModalOpen(true)}
                 onOpenSettleModal={cust => {
                   setSettleCustomer(cust);
@@ -1087,6 +1581,8 @@ function AppContent() {
                 }}
                 onDeleteCustomer={handleDeleteKhataCustomer}
                 onAddTransaction={handleUpdateKhataBalance}
+                onUpdateCustomer={handleSaveKhataCustomer}
+                onDeleteTransaction={handleDeleteKhataTransaction}
                 selectedCustomerId={selectedKhataCustomerId}
                 onClearSelectedCustomer={() => setSelectedKhataCustomerId(null)}
                 onOpenPdfReport={() => handleOpenPdfReport('khata')}
@@ -1161,6 +1657,7 @@ function AppContent() {
         sales={data.sales || []}
         salesReturns={data.salesReturns || []}
         onAddCategory={handleAddCategory}
+        onRenameCategory={handleRenameCategory}
         onStockAdjustment={handleStockAdjustment}
       />
 
@@ -1202,6 +1699,7 @@ function AppContent() {
         expenses={data.expenses}
         onAddCategory={handleAddExpenseCategory}
         onDeleteCategory={handleDeleteExpenseCategory}
+        onRenameCategory={handleRenameExpenseCategory}
       />
 
       <SettingsModal

@@ -391,7 +391,7 @@ export const FinancialChart: React.FC<FinancialChartProps> = ({ data }) => {
 
         <div className="flex items-center gap-2 self-end sm:self-auto">
           <span className="text-slate-500 dark:text-neutral-400">Period Total:</span>
-          <span className="font-mono tabular-nums font-bold text-slate-900 dark:text-white text-sm">
+          <span className="tabular-nums font-bold text-slate-900 dark:text-white text-sm">
             {data.settings.currency} {totalPeriod.toLocaleString()}
           </span>
         </div>
@@ -445,7 +445,7 @@ export const FinancialChart: React.FC<FinancialChartProps> = ({ data }) => {
                   x={paddingX - 8}
                   y={y + 3}
                   textAnchor="end"
-                  className="text-[9px] fill-slate-400 font-mono"
+                  className="text-[9px] fill-slate-400 tabular-nums"
                 >
                   {Math.round(maxVal * 1.15 * ratio).toLocaleString()}
                 </text>
@@ -537,7 +537,7 @@ export const FinancialChart: React.FC<FinancialChartProps> = ({ data }) => {
             }}
           >
             <p className="text-[10px] text-slate-400 font-medium">{hoveredPoint.label}</p>
-            <p className="font-mono tabular-nums font-bold text-white text-xs">
+            <p className="tabular-nums font-bold text-white text-xs">
               {data.settings.currency} {hoveredPoint.value.toLocaleString()}
             </p>
           </div>

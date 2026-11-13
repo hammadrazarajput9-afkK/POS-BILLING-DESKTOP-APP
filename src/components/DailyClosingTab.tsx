@@ -80,7 +80,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
     '20': 0,
     '10': 0,
   });
-  const [coins, setCoins] = useState<number | ''>(0);
+  const [coins, setCoins] = useState<number | ''>('');
   const [onlineBalances, setOnlineBalances] = useState<Record<string, number | ''>>({});
   const [closedBy, setClosedBy] = useState('Counter Cashier');
   const [closingNotes, setClosingNotes] = useState('');
@@ -161,16 +161,16 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
         '10': 0,
         ...(existingClosingForActiveDate.denominations || {}),
       });
-      setCoins(existingClosingForActiveDate.coins || 0);
+      setCoins(existingClosingForActiveDate.coins ? existingClosingForActiveDate.coins : '');
       const map: Record<string, number | ''> = {};
       (existingClosingForActiveDate.onlineBalances || []).forEach(b => {
-        map[b.accountId] = b.balance;
+        map[b.accountId] = b.balance ? b.balance : '';
       });
       setOnlineBalances(map);
       setClosedBy(existingClosingForActiveDate.closedBy || 'Counter Cashier');
       setClosingNotes(existingClosingForActiveDate.notes || '');
     } else {
-      // New / Unclosed day: reset physical counts and prepopulate digital accounts with expected balances
+      // New / Unclosed day: reset physical counts and only prepopulate digital accounts with non-zero expected balances
       setDenominations({
         '5000': 0,
         '1000': 0,
@@ -180,11 +180,11 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
         '20': 0,
         '10': 0,
       });
-      setCoins(0);
+      setCoins('');
 
       const prepopulatedOnline: Record<string, number | ''> = {};
       accounting.onlineAccounts.forEach(acc => {
-        prepopulatedOnline[acc.accountId] = acc.expectedClosing;
+        prepopulatedOnline[acc.accountId] = acc.expectedClosing > 0 ? acc.expectedClosing : '';
       });
       setOnlineBalances(prepopulatedOnline);
       setClosingNotes('');
@@ -205,7 +205,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
       cleared[d.toString()] = 0;
     });
     setDenominations(cleared);
-    setCoins(0);
+    setCoins('');
     showToast('Cash count reset', 'info');
   };
 
@@ -491,148 +491,216 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
       )}
 
       {/* ACCOUNTING LEDGER BREAKDOWN STRIP (OPENING -> INFLOWS -> OUTFLOWS -> EXPECTED) */}
-      <div className="bg-slate-900 text-white rounded-2xl p-4.5 space-y-3.5 border border-slate-800 shadow-lg">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-emerald-400" />
-            <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-200">
-              Period Accounting Ledger (After Prev Closing: {accounting.previousClosing ? `${accounting.previousClosing.date} (${accounting.previousClosing.time || ''})` : 'Initial Inception'})
-            </h3>
+      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
+        {/* Clean Ledger Header Bar */}
+        <div className="bg-slate-50/90 border-b border-slate-200/80 px-4 sm:px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-blue-50 border border-blue-200/70 text-blue-600 flex items-center justify-center shrink-0">
+              <TrendingUp className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-xs sm:text-sm font-extrabold text-slate-900 tracking-tight truncate">
+                Period Accounting Ledger
+              </h3>
+              <p className="text-[11px] font-medium text-slate-500 truncate">
+                Since {accounting.previousClosing ? `${accounting.previousClosing.date}${accounting.previousClosing.time ? ` · ${accounting.previousClosing.time}` : ''}` : 'Initial Inception'} · Isolated Channels
+              </p>
+            </div>
           </div>
-          <span className="text-[10px] font-bold text-slate-400">
-            Isolated Accounts (Cash ≠ Bank ≠ JazzCash ≠ Easypaisa)
-          </span>
+
+          <div className="flex items-center justify-between sm:justify-end gap-3 pt-1.5 sm:pt-0 border-t sm:border-t-0 border-slate-200/60 shrink-0">
+            <span className="text-[11px] font-semibold text-slate-500">Expected Total</span>
+            <span className="text-sm sm:text-base font-extrabold text-slate-900 tabular-nums">
+              {currency} {accounting.totalExpectedGrand.toLocaleString()}
+            </span>
+          </div>
         </div>
 
-        {/* Ledger Grid: Cash vs Digital Channels */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+        {/* Hairline-Divided 4-Column Channel Ledger Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-200/80 text-xs">
           {/* Cash Drawer Channel */}
-          <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700/80 space-y-1.5">
-            <div className="flex justify-between items-center pb-1 border-b border-slate-700">
-              <span className="font-bold text-emerald-400 flex items-center gap-1">
-                <Wallet className="w-3.5 h-3.5" /> Cash Drawer
-              </span>
-              <span className="font-mono text-[10px] text-slate-400">
-                Op: {currency} {accounting.cash.opening.toLocaleString()}
-              </span>
+          <div className="p-4 flex flex-col justify-between gap-3 hover:bg-slate-50/50 transition-colors">
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
+                <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                  <span className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                    <Wallet className="w-3.5 h-3.5" />
+                  </span>
+                  <span>Cash Drawer</span>
+                </span>
+                <span className="text-[11px] font-semibold text-slate-500 tabular-nums">
+                  Op: {currency} {accounting.cash.opening.toLocaleString()}
+                </span>
+              </div>
+
+              <div className="space-y-1.5 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-600 font-medium">
+                    + Cash Sales ({accounting.periodSales.filter(s => normalizePaymentChannel(s.paymentMethod) === 'Cash').length})
+                  </span>
+                  <span className="font-bold text-emerald-600 tabular-nums">
+                    +{accounting.cash.sales.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-600 font-medium">+ Khata Recoveries</span>
+                  <span className="font-bold text-emerald-600 tabular-nums">
+                    +{accounting.cash.khataRecoveries.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-600 font-medium">- Cash Expenses</span>
+                  <span className="font-bold text-rose-600 tabular-nums">
+                    -{accounting.cash.expenses.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-600 font-medium">- Supplier Payments</span>
+                  <span className="font-bold text-rose-600 tabular-nums">
+                    -{accounting.cash.supplierPayments.toLocaleString()}
+                  </span>
+                </div>
+              </div>
             </div>
-            <div className="space-y-0.5 text-[11px] text-slate-300 font-mono">
-              <div className="flex justify-between text-emerald-300">
-                <span>+ Cash Sales ({accounting.periodSales.filter(s => normalizePaymentChannel(s.paymentMethod) === 'Cash').length}):</span>
-                <span>+{accounting.cash.sales.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between text-emerald-300">
-                <span>+ Khata Recoveries:</span>
-                <span>+{accounting.cash.khataRecoveries.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between text-rose-300">
-                <span>- Cash Expenses:</span>
-                <span>-{accounting.cash.expenses.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between text-rose-300">
-                <span>- Supplier Payments:</span>
-                <span>-{accounting.cash.supplierPayments.toLocaleString()}</span>
-              </div>
-            </div>
-            <div className="pt-1.5 border-t border-slate-700 flex justify-between items-center font-bold">
-              <span className="text-slate-400 text-[10px]">Expected Cash:</span>
-              <span className="font-mono text-emerald-400 text-sm">
+
+            <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-[11px] font-bold text-slate-500">Expected Cash</span>
+              <span className="text-sm sm:text-base font-extrabold text-emerald-700 tabular-nums">
                 {currency} {accounting.cash.expectedClosing.toLocaleString()}
               </span>
             </div>
           </div>
 
           {/* Bank Accounts Channel */}
-          <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700/80 space-y-1.5">
-            <div className="flex justify-between items-center pb-1 border-b border-slate-700">
-              <span className="font-bold text-blue-400 flex items-center gap-1">
-                <Building2 className="w-3.5 h-3.5" /> Bank Account
-              </span>
-              <span className="font-mono text-[10px] text-slate-400">
-                Op: {currency} {accounting.bank.opening.toLocaleString()}
-              </span>
+          <div className="p-4 flex flex-col justify-between gap-3 hover:bg-slate-50/50 transition-colors">
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
+                <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                  <span className="w-6 h-6 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                    <Building2 className="w-3.5 h-3.5" />
+                  </span>
+                  <span>Bank Account</span>
+                </span>
+                <span className="text-[11px] font-semibold text-slate-500 tabular-nums">
+                  Op: {currency} {accounting.bank.opening.toLocaleString()}
+                </span>
+              </div>
+
+              <div className="space-y-1.5 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-600 font-medium">+ Bank Sales</span>
+                  <span className="font-bold text-blue-600 tabular-nums">
+                    +{accounting.bank.sales.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-600 font-medium">+ Khata Recoveries</span>
+                  <span className="font-bold text-blue-600 tabular-nums">
+                    +{accounting.bank.khataRecoveries.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-600 font-medium">- Expenses / Pur</span>
+                  <span className="font-bold text-rose-600 tabular-nums">
+                    -{(accounting.bank.expenses + accounting.bank.supplierPayments).toLocaleString()}
+                  </span>
+                </div>
+              </div>
             </div>
-            <div className="space-y-0.5 text-[11px] text-slate-300 font-mono">
-              <div className="flex justify-between text-blue-300">
-                <span>+ Bank Sales:</span>
-                <span>+{accounting.bank.sales.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between text-blue-300">
-                <span>+ Khata Bank Recoveries:</span>
-                <span>+{accounting.bank.khataRecoveries.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between text-rose-300">
-                <span>- Bank Expenses / Pur:</span>
-                <span>-{(accounting.bank.expenses + accounting.bank.supplierPayments).toLocaleString()}</span>
-              </div>
-            </div>
-            <div className="pt-1.5 border-t border-slate-700 flex justify-between items-center font-bold">
-              <span className="text-slate-400 text-[10px]">Expected Bank:</span>
-              <span className="font-mono text-blue-400 text-sm">
+
+            <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-[11px] font-bold text-slate-500">Expected Bank</span>
+              <span className="text-sm sm:text-base font-extrabold text-blue-700 tabular-nums">
                 {currency} {accounting.bank.expectedClosing.toLocaleString()}
               </span>
             </div>
           </div>
 
           {/* JazzCash Channel */}
-          <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700/80 space-y-1.5">
-            <div className="flex justify-between items-center pb-1 border-b border-slate-700">
-              <span className="font-bold text-amber-400 flex items-center gap-1">
-                <Smartphone className="w-3.5 h-3.5" /> JazzCash
-              </span>
-              <span className="font-mono text-[10px] text-slate-400">
-                Op: {currency} {accounting.jazzCash.opening.toLocaleString()}
-              </span>
+          <div className="p-4 flex flex-col justify-between gap-3 hover:bg-slate-50/50 transition-colors">
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
+                <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                  <span className="w-6 h-6 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                    <Smartphone className="w-3.5 h-3.5" />
+                  </span>
+                  <span>JazzCash</span>
+                </span>
+                <span className="text-[11px] font-semibold text-slate-500 tabular-nums">
+                  Op: {currency} {accounting.jazzCash.opening.toLocaleString()}
+                </span>
+              </div>
+
+              <div className="space-y-1.5 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-600 font-medium">+ JazzCash Sales</span>
+                  <span className="font-bold text-amber-600 tabular-nums">
+                    +{accounting.jazzCash.sales.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-600 font-medium">+ Khata Recoveries</span>
+                  <span className="font-bold text-amber-600 tabular-nums">
+                    +{accounting.jazzCash.khataRecoveries.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-600 font-medium">- Expenses / Outflows</span>
+                  <span className="font-bold text-rose-600 tabular-nums">
+                    -{(accounting.jazzCash.expenses + accounting.jazzCash.supplierPayments).toLocaleString()}
+                  </span>
+                </div>
+              </div>
             </div>
-            <div className="space-y-0.5 text-[11px] text-slate-300 font-mono">
-              <div className="flex justify-between text-amber-300">
-                <span>+ JazzCash Sales:</span>
-                <span>+{accounting.jazzCash.sales.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between text-amber-300">
-                <span>+ Khata Recoveries:</span>
-                <span>+{accounting.jazzCash.khataRecoveries.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between text-rose-300">
-                <span>- Expenses / Outflows:</span>
-                <span>-{(accounting.jazzCash.expenses + accounting.jazzCash.supplierPayments).toLocaleString()}</span>
-              </div>
-            </div>
-            <div className="pt-1.5 border-t border-slate-700 flex justify-between items-center font-bold">
-              <span className="text-slate-400 text-[10px]">Expected JazzCash:</span>
-              <span className="font-mono text-amber-400 text-sm">
+
+            <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-[11px] font-bold text-slate-500">Expected JazzCash</span>
+              <span className="text-sm sm:text-base font-extrabold text-amber-700 tabular-nums">
                 {currency} {accounting.jazzCash.expectedClosing.toLocaleString()}
               </span>
             </div>
           </div>
 
           {/* Easypaisa Channel */}
-          <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700/80 space-y-1.5">
-            <div className="flex justify-between items-center pb-1 border-b border-slate-700">
-              <span className="font-bold text-emerald-400 flex items-center gap-1">
-                <CreditCard className="w-3.5 h-3.5" /> Easypaisa
-              </span>
-              <span className="font-mono text-[10px] text-slate-400">
-                Op: {currency} {accounting.easypaisa.opening.toLocaleString()}
-              </span>
+          <div className="p-4 flex flex-col justify-between gap-3 hover:bg-slate-50/50 transition-colors">
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
+                <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                  <span className="w-6 h-6 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center shrink-0">
+                    <CreditCard className="w-3.5 h-3.5" />
+                  </span>
+                  <span>Easypaisa</span>
+                </span>
+                <span className="text-[11px] font-semibold text-slate-500 tabular-nums">
+                  Op: {currency} {accounting.easypaisa.opening.toLocaleString()}
+                </span>
+              </div>
+
+              <div className="space-y-1.5 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-600 font-medium">+ Easypaisa Sales</span>
+                  <span className="font-bold text-teal-600 tabular-nums">
+                    +{accounting.easypaisa.sales.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-600 font-medium">+ Khata Recoveries</span>
+                  <span className="font-bold text-teal-600 tabular-nums">
+                    +{accounting.easypaisa.khataRecoveries.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-600 font-medium">- Expenses / Outflows</span>
+                  <span className="font-bold text-rose-600 tabular-nums">
+                    -{(accounting.easypaisa.expenses + accounting.easypaisa.supplierPayments).toLocaleString()}
+                  </span>
+                </div>
+              </div>
             </div>
-            <div className="space-y-0.5 text-[11px] text-slate-300 font-mono">
-              <div className="flex justify-between text-emerald-300">
-                <span>+ Easypaisa Sales:</span>
-                <span>+{accounting.easypaisa.sales.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between text-emerald-300">
-                <span>+ Khata Recoveries:</span>
-                <span>+{accounting.easypaisa.khataRecoveries.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between text-rose-300">
-                <span>- Expenses / Outflows:</span>
-                <span>-{(accounting.easypaisa.expenses + accounting.easypaisa.supplierPayments).toLocaleString()}</span>
-              </div>
-            </div>
-            <div className="pt-1.5 border-t border-slate-700 flex justify-between items-center font-bold">
-              <span className="text-slate-400 text-[10px]">Expected Easypaisa:</span>
-              <span className="font-mono text-emerald-400 text-sm">
+
+            <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-[11px] font-bold text-slate-500">Expected Easypaisa</span>
+              <span className="text-sm sm:text-base font-extrabold text-teal-700 tabular-nums">
                 {currency} {accounting.easypaisa.expectedClosing.toLocaleString()}
               </span>
             </div>
@@ -653,12 +721,12 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
               Counted
             </span>
           </div>
-          <h3 className="text-sm sm:text-2xl font-extrabold font-mono text-emerald-600 tabular-nums truncate">
+          <h3 className="text-sm sm:text-2xl font-black text-emerald-600 tabular-nums truncate">
             {currency} {totalPhysicalCash.toLocaleString()}
           </h3>
           <div className="flex justify-between text-[10px] sm:text-xs text-slate-500 mt-1 truncate">
-            <span className="truncate">Exp: {currency} {accounting.totalExpectedCash.toLocaleString()}</span>
-            <span className={`font-bold font-mono shrink-0 ml-1 ${cashDifference === 0 ? 'text-emerald-600' : cashDifference > 0 ? 'text-blue-600' : 'text-rose-600'}`}>
+            <span className="truncate tabular-nums">Exp: {currency} {accounting.totalExpectedCash.toLocaleString()}</span>
+            <span className={`font-bold tabular-nums shrink-0 ml-1 ${cashDifference === 0 ? 'text-emerald-600' : cashDifference > 0 ? 'text-blue-600' : 'text-rose-600'}`}>
               {cashDifference === 0 ? '0' : `${cashDifference > 0 ? '+' : ''}${currency} ${cashDifference.toLocaleString()}`}
             </span>
           </div>
@@ -675,12 +743,12 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
               {(data.onlineAccounts || []).length} A/C
             </span>
           </div>
-          <h3 className="text-sm sm:text-2xl font-extrabold font-mono text-blue-600 tabular-nums truncate">
+          <h3 className="text-sm sm:text-2xl font-black text-blue-600 tabular-nums truncate">
             {currency} {totalOnlineBalance.toLocaleString()}
           </h3>
           <div className="flex justify-between text-[10px] sm:text-xs text-slate-500 mt-1 truncate">
-            <span className="truncate">Exp: {currency} {accounting.totalExpectedOnline.toLocaleString()}</span>
-            <span className={`font-bold font-mono shrink-0 ml-1 ${onlineDifference === 0 ? 'text-emerald-600' : onlineDifference > 0 ? 'text-blue-600' : 'text-rose-600'}`}>
+            <span className="truncate tabular-nums">Exp: {currency} {accounting.totalExpectedOnline.toLocaleString()}</span>
+            <span className={`font-bold tabular-nums shrink-0 ml-1 ${onlineDifference === 0 ? 'text-emerald-600' : onlineDifference > 0 ? 'text-blue-600' : 'text-rose-600'}`}>
               {onlineDifference === 0 ? '0' : `${onlineDifference > 0 ? '+' : ''}${currency} ${onlineDifference.toLocaleString()}`}
             </span>
           </div>
@@ -697,21 +765,21 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
               Cash + Digital
             </span>
           </div>
-          <h3 className="text-sm sm:text-2xl font-extrabold font-mono text-white tabular-nums truncate">
+          <h3 className="text-sm sm:text-2xl font-black text-white tabular-nums truncate">
             {currency} {grandTotal.toLocaleString()}
           </h3>
           <div className="mt-1 flex items-center justify-between text-[10px] sm:text-[11px] text-slate-300 truncate">
-            <span className="truncate">Exp: {currency} {accounting.totalExpectedGrand.toLocaleString()}</span>
+            <span className="truncate tabular-nums">Exp: {currency} {accounting.totalExpectedGrand.toLocaleString()}</span>
             {totalDifference === 0 ? (
               <span className="text-emerald-400 font-bold flex items-center gap-1 shrink-0 ml-1">
                 <CheckCircle2 className="w-3 h-3" /> Matched
               </span>
             ) : totalDifference > 0 ? (
-              <span className="text-blue-300 font-bold font-mono shrink-0 ml-1">
+              <span className="text-blue-300 font-bold tabular-nums shrink-0 ml-1">
                 +{currency} {totalDifference.toLocaleString()}
               </span>
             ) : (
-              <span className="text-rose-400 font-bold font-mono shrink-0 ml-1">
+              <span className="text-rose-400 font-bold tabular-nums shrink-0 ml-1">
                 {currency} {totalDifference.toLocaleString()}
               </span>
             )}
@@ -760,7 +828,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
 
                   return (
                     <tr key={denom} className="hover:bg-slate-50/70 transition">
-                      <td className="p-2.5 font-bold text-slate-900 font-mono">
+                      <td className="p-2.5 font-bold text-slate-900 tabular-nums">
                         <span className="inline-block px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200/60 text-xs">
                           Rs. {denom.toLocaleString()}
                         </span>
@@ -778,12 +846,12 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                               e.target.value === '' ? 0 : Number(e.target.value)
                             )
                           }
-                          placeholder="0"
-                          className="w-24 text-center font-mono font-bold text-xs bg-slate-50 border border-slate-200 rounded-lg py-1 px-2 focus:outline-none focus:border-emerald-600 focus:bg-white disabled:opacity-75 disabled:cursor-not-allowed"
+                          placeholder="Qty"
+                          className="w-24 text-center tabular-nums font-bold text-xs bg-slate-50 border border-slate-200 rounded-lg py-1 px-2 focus:outline-none focus:border-emerald-600 focus:bg-white disabled:opacity-75 disabled:cursor-not-allowed"
                         />
                       </td>
 
-                      <td className="p-2.5 text-right font-mono font-extrabold text-slate-900 tabular-nums">
+                      <td className="p-2.5 text-right font-extrabold text-slate-900 tabular-nums">
                         {rowSubtotal.toLocaleString()}
                       </td>
                     </tr>
@@ -809,8 +877,8 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                       onChange={e =>
                         setCoins(e.target.value === '' ? '' : Number(e.target.value))
                       }
-                      placeholder="0"
-                      className="w-24 text-right font-mono font-bold text-xs bg-white border border-slate-200 rounded-lg py-1 px-2 focus:outline-none focus:border-emerald-600 disabled:opacity-75 disabled:cursor-not-allowed"
+                      placeholder="Amount"
+                      className="w-24 text-right tabular-nums font-bold text-xs bg-white border border-slate-200 rounded-lg py-1 px-2 focus:outline-none focus:border-emerald-600 disabled:opacity-75 disabled:cursor-not-allowed"
                     />
                   </td>
                 </tr>
@@ -820,7 +888,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                   <td colSpan={2} className="p-3 font-extrabold text-slate-900 text-xs">
                     Total Physical Counted Cash:
                   </td>
-                  <td className="p-3 text-right font-mono font-extrabold text-emerald-700 text-sm tabular-nums">
+                  <td className="p-3 text-right font-extrabold text-emerald-700 text-sm tabular-nums">
                     {currency} {totalPhysicalCash.toLocaleString()}
                   </td>
                 </tr>
@@ -841,7 +909,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                     className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 flex flex-col justify-between space-y-2 shadow-2xs"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-extrabold text-xs font-mono bg-emerald-100/80 text-emerald-800 px-2 py-0.5 rounded-lg border border-emerald-200">
+                      <span className="font-extrabold text-xs tabular-nums bg-emerald-100/80 text-emerald-800 px-2 py-0.5 rounded-lg border border-emerald-200">
                         Rs. {denom.toLocaleString()}
                       </span>
                       <span className="text-[10px] text-slate-400 font-bold">Note</span>
@@ -859,12 +927,12 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                             e.target.value === '' ? 0 : Number(e.target.value)
                           )
                         }
-                        placeholder="Qty (0)"
-                        className="w-full text-center font-mono font-bold text-sm bg-white border border-slate-300 rounded-xl py-2 px-2 focus:outline-none focus:border-emerald-600 min-h-[44px] shadow-2xs"
+                        placeholder="Qty"
+                        className="w-full text-center tabular-nums font-bold text-sm bg-white border border-slate-300 rounded-xl py-2 px-2 focus:outline-none focus:border-emerald-600 min-h-[44px] shadow-2xs"
                       />
                     </div>
 
-                    <div className="flex justify-between items-center text-[11px] pt-1.5 border-t border-slate-200/60 font-mono">
+                    <div className="flex justify-between items-center text-[11px] pt-1.5 border-t border-slate-200/60 tabular-nums">
                       <span className="text-slate-400 text-[10px]">Total:</span>
                       <span className="font-extrabold text-slate-800 tabular-nums">
                         {currency} {rowSubtotal.toLocaleString()}
@@ -889,15 +957,15 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                 onChange={e =>
                   setCoins(e.target.value === '' ? '' : Number(e.target.value))
                 }
-                placeholder="0"
-                className="w-28 text-right font-mono font-bold text-xs bg-white border border-amber-300 rounded-xl p-2.5 focus:outline-none focus:border-amber-600 min-h-[44px]"
+                placeholder="Amount"
+                className="w-28 text-right tabular-nums font-bold text-xs bg-white border border-amber-300 rounded-xl p-2.5 focus:outline-none focus:border-amber-600 min-h-[44px]"
               />
             </div>
 
             {/* Mobile Total Physical Cash Banner */}
             <div className="bg-emerald-600 text-white rounded-2xl p-3.5 flex items-center justify-between shadow-md shadow-emerald-600/20">
               <span className="font-black text-xs">Total Physical Counted Cash:</span>
-              <span className="font-mono font-black text-base tabular-nums">
+              <span className="font-black text-base tabular-nums">
                 {currency} {totalPhysicalCash.toLocaleString()}
               </span>
             </div>
@@ -956,7 +1024,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                             </span>
                           </div>
                           {acc.accountNumber && (
-                            <p className="text-[10px] text-slate-400 font-mono truncate">
+                            <p className="text-[10px] text-slate-400 tabular-nums truncate">
                               {acc.accountNumber}
                             </p>
                           )}
@@ -974,8 +1042,8 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                                 [acc.id]: e.target.value === '' ? '' : Number(e.target.value),
                               }))
                             }
-                            placeholder="0"
-                            className="w-28 text-right font-mono font-bold text-xs bg-white border border-slate-200 rounded-lg py-1 px-2 focus:outline-none focus:border-blue-600 disabled:opacity-75 disabled:cursor-not-allowed"
+                            placeholder="Balance"
+                            className="w-28 text-right tabular-nums font-bold text-xs bg-white border border-slate-200 rounded-lg py-1 px-2 focus:outline-none focus:border-blue-600 disabled:opacity-75 disabled:cursor-not-allowed"
                           />
 
                           {isAdmin && !isDayFinalized && (
@@ -991,7 +1059,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                         </div>
                       </div>
 
-                      <div className="flex justify-between items-center text-[10px] text-slate-400 font-mono pt-0.5 border-t border-slate-200/50">
+                      <div className="flex justify-between items-center text-[10px] text-slate-400 tabular-nums pt-0.5 border-t border-slate-200/50">
                         <span>Expected: {currency} {expectedAcc.toLocaleString()}</span>
                         {val !== '' && (
                           <span className={Number(val) - expectedAcc === 0 ? 'text-emerald-600' : 'text-amber-600'}>
@@ -1008,7 +1076,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
             {/* Total Online Balances */}
             <div className="pt-2 border-t border-slate-100 flex justify-between items-center text-xs">
               <span className="font-semibold text-slate-600">Total Counted Digital:</span>
-              <span className="font-mono font-bold text-blue-600 text-sm tabular-nums">
+              <span className="font-bold text-blue-600 text-sm tabular-nums">
                 {currency} {totalOnlineBalance.toLocaleString()}
               </span>
             </div>
@@ -1061,20 +1129,20 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
               <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/70 space-y-1 text-[11px]">
                 <div className="flex justify-between">
                   <span className="text-slate-500">System Expected Total:</span>
-                  <span className="font-mono font-bold text-slate-700">
+                  <span className="tabular-nums font-bold text-slate-700">
                     {currency} {accounting.totalExpectedGrand.toLocaleString()}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Counted Grand Total:</span>
-                  <span className="font-mono font-bold text-slate-900">
+                  <span className="tabular-nums font-bold text-slate-900">
                     {currency} {grandTotal.toLocaleString()}
                   </span>
                 </div>
                 <div className="flex justify-between pt-1 border-t border-slate-200">
                   <span className="font-bold text-slate-700">Net Difference:</span>
                   <span
-                    className={`font-mono font-bold ${
+                    className={`tabular-nums font-bold ${
                       totalDifference === 0
                         ? 'text-emerald-600'
                         : totalDifference > 0
@@ -1239,13 +1307,13 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                       title="Click to view full opening and reconciliation details"
                     >
                       <td className="p-3">
-                        <div className="font-bold text-slate-900 font-mono group-hover:text-emerald-700 flex items-center gap-1.5">
+                        <div className="font-bold text-slate-900 tabular-nums group-hover:text-emerald-700 flex items-center gap-1.5">
                           <span>{record.date}</span>
-                          <span className="opacity-0 max-lg:opacity-100 group-hover:opacity-100 text-[10px] text-emerald-600 bg-emerald-100/70 px-1.5 py-0.2 rounded font-sans transition">
+                          <span className="opacity-0 max-lg:opacity-100 group-hover:opacity-100 text-[10px] text-emerald-600 bg-emerald-100/70 px-1.5 py-0.2 rounded transition">
                             Inspect →
                           </span>
                         </div>
-                        <div className="text-[10px] text-slate-400 font-mono">
+                        <div className="text-[10px] text-slate-400 tabular-nums">
                           {record.time}
                         </div>
                       </td>
@@ -1254,23 +1322,23 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                         {record.closedBy || 'Cashier'}
                       </td>
 
-                      <td className="p-3 text-right font-mono text-slate-500">
+                      <td className="p-3 text-right tabular-nums text-slate-500">
                         {currency} {(record.openingCash || 0).toLocaleString()}
                       </td>
 
-                      <td className="p-3 text-right font-mono font-bold text-emerald-600 tabular-nums">
+                      <td className="p-3 text-right font-bold text-emerald-600 tabular-nums">
                         {currency} {record.totalCash.toLocaleString()}
                       </td>
 
-                      <td className="p-3 text-right font-mono font-bold text-blue-600 tabular-nums">
+                      <td className="p-3 text-right font-bold text-blue-600 tabular-nums">
                         {currency} {record.totalOnline.toLocaleString()}
                       </td>
 
-                      <td className="p-3 text-right font-mono font-extrabold text-slate-900 text-sm tabular-nums">
+                      <td className="p-3 text-right font-extrabold text-slate-900 text-sm tabular-nums">
                         {currency} {record.grandTotal.toLocaleString()}
                       </td>
 
-                      <td className="p-3 text-right font-mono font-bold">
+                      <td className="p-3 text-right tabular-nums font-bold">
                         {record.difference === undefined || record.difference === 0 ? (
                           <span className="text-emerald-600 text-[11px]">Matched</span>
                         ) : record.difference > 0 ? (
@@ -1354,19 +1422,19 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 text-xs">
               <div className="p-2.5 sm:p-3 bg-slate-50 rounded-xl border border-slate-200">
                 <span className="text-[10px] uppercase font-bold text-slate-400">Opening Cash</span>
-                <p className="text-sm sm:text-base font-extrabold font-mono text-slate-800 mt-0.5 truncate">
+                <p className="text-sm sm:text-base font-extrabold tabular-nums text-slate-800 mt-0.5 truncate">
                   {currency} {(selectedHistoryRecord.openingCash || 0).toLocaleString()}
                 </p>
               </div>
               <div className="p-2.5 sm:p-3 bg-emerald-50 rounded-xl border border-emerald-200">
                 <span className="text-[10px] uppercase font-bold text-emerald-700">Counted Cash</span>
-                <p className="text-sm sm:text-base font-extrabold font-mono text-emerald-700 mt-0.5 truncate">
+                <p className="text-sm sm:text-base font-extrabold tabular-nums text-emerald-700 mt-0.5 truncate">
                   {currency} {selectedHistoryRecord.totalCash.toLocaleString()}
                 </p>
               </div>
               <div className="col-span-2 sm:col-span-1 p-2.5 sm:p-3 bg-blue-50 rounded-xl border border-blue-200">
                 <span className="text-[10px] uppercase font-bold text-blue-700">Counted Digital</span>
-                <p className="text-sm sm:text-base font-extrabold font-mono text-blue-700 mt-0.5 truncate">
+                <p className="text-sm sm:text-base font-extrabold tabular-nums text-blue-700 mt-0.5 truncate">
                   {currency} {selectedHistoryRecord.totalOnline.toLocaleString()}
                 </p>
               </div>
@@ -1375,7 +1443,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
             {/* Notes Breakdown */}
             <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-200 space-y-2 text-xs">
               <h4 className="font-bold text-slate-700 text-xs">Physical Notes Breakdown:</h4>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] tabular-nums">
                 {PAK_DENOMINATIONS.map(denom => {
                   const count = selectedHistoryRecord.denominations[denom.toString()] || 0;
                   if (count === 0) return null;
@@ -1401,7 +1469,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                   {selectedHistoryRecord.onlineBalances.map(acc => (
                     <div key={acc.accountId} className="p-2 bg-white rounded-lg border border-slate-200">
                       <span className="text-slate-500 font-semibold block">{acc.accountName}</span>
-                      <strong className="font-mono text-blue-600 text-xs">{currency} {acc.balance.toLocaleString()}</strong>
+                      <strong className="tabular-nums text-blue-600 text-xs">{currency} {acc.balance.toLocaleString()}</strong>
                     </div>
                   ))}
                 </div>
@@ -1437,7 +1505,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
 
       {/* Hidden Printable Thermal/PDF Receipt Slip */}
       {selectedClosingForPrint && (
-        <div id="printable-receipt-area" className="hidden font-mono text-xs">
+        <div id="printable-receipt-area" className="hidden tabular-nums text-xs">
           <div className="text-center border-b border-dashed border-black pb-2 mb-2">
             <h2 className="font-extrabold text-sm uppercase">{data.settings.shopName}</h2>
             <p className="text-[10px]">{data.settings.address}</p>
@@ -1586,7 +1654,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                   value={newAccountNumber}
                   onChange={e => setNewAccountNumber(e.target.value)}
                   placeholder="0300-1234567 or IBAN"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono focus:outline-none focus:border-blue-600"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 tabular-nums font-medium focus:outline-none focus:border-blue-600"
                 />
               </div>
 

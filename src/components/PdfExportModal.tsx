@@ -27,7 +27,7 @@ import { generatePdfReport, DateFilterRange, getDateFilterBounds } from '../util
 export interface PdfExportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  tab: 'sales' | 'inventory' | 'khata' | 'expenses' | 'activity' | 'dailyClosing';
+  tab: 'sales' | 'inventory' | 'khata' | 'expenses' | 'activity' | 'dailyClosing' | 'purchases';
   data: AppData;
   initialCategory?: string;
 }
@@ -120,6 +120,13 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
           subtitle: 'End-of-day roznamcha, physical cash notes count, digital balances, surplus/shortages',
           icon: <Calculator className="w-5 h-5 text-emerald-600" />,
           accent: 'emerald',
+        };
+      case 'purchases':
+        return {
+          title: 'Stock Inward & Supplier Purchases PDF',
+          subtitle: 'Supplier bills, inward units, IMEIs, paid amounts & payable balances',
+          icon: <Truck className="w-5 h-5 text-blue-600" />,
+          accent: 'blue',
         };
     }
   }, [tab]);
@@ -227,6 +234,21 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
       return {
         count: `${items.length} Closings Logged`,
         detail: `Physical Cash: ${currency} ${cashSum.toLocaleString()} | Total: ${currency} ${grandSum.toLocaleString()}`,
+        scope: label,
+      };
+    }
+    if (tab === 'purchases') {
+      const items = (data.supplierPurchases || []).filter(p => {
+        const t = new Date(p.date).getTime();
+        return t >= start.getTime() && t <= end.getTime();
+      });
+      const active = items.filter(p => p.status !== 'REVERSED');
+      const total = active.reduce((a, b) => a + (b.totalAmount || 0), 0);
+      const paid = active.reduce((a, b) => a + (b.paidAmount || 0), 0);
+      const due = active.reduce((a, b) => a + (b.balanceDue || 0), 0);
+      return {
+        count: `${items.length} Inward Bills`,
+        detail: `Total: ${currency} ${total.toLocaleString()} | Paid: ${currency} ${paid.toLocaleString()} | Due: ${currency} ${due.toLocaleString()}`,
         scope: label,
       };
     }
@@ -392,24 +414,25 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
             </div>
           </div>
         ) : (
-          /* Standard Date Range for other tabs */
+          /* Date Range for reports including Stock Inward */
           <div className="space-y-3">
             <label className="block text-xs font-bold text-slate-700">
               Select Report Date Range:
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {[
-                { id: 'today', label: '📅 Today' },
-                { id: 'weekly', label: '🗓️ Last 7 Days' },
-                { id: 'monthly', label: '📆 This Month' },
-                { id: 'yearly', label: '📈 Full Year' },
-                { id: 'custom', label: '🎯 Custom Range' },
+                { id: 'today', label: 'Today' },
+                { id: 'weekly', label: 'This Week' },
+                { id: 'monthly', label: 'This Month' },
+                { id: 'sixMonths', label: '6 Months' },
+                { id: 'yearly', label: '1 Year' },
+                { id: 'custom', label: 'Specific Date Range' },
               ].map(btn => (
                 <button
                   key={btn.id}
                   type="button"
                   onClick={() => setFilterType(btn.id as any)}
-                  className={`py-2 px-3 rounded-xl text-xs font-bold transition cursor-pointer border text-center ${
+                  className={`py-2.5 px-3 rounded-xl text-xs font-bold transition cursor-pointer border text-center ${
                     filterType === btn.id
                       ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                       : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
@@ -420,7 +443,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
               ))}
             </div>
 
-            {/* Custom Date Pickers */}
+            {/* Specific Date-to-Date Pickers */}
             {filterType === 'custom' && (
               <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-100 grid grid-cols-2 gap-3 animate-in fade-in">
                 <div>
@@ -429,7 +452,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
                     type="date"
                     value={startDate}
                     onChange={e => setStartDate(e.target.value)}
-                    className="w-full bg-white border border-blue-200 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:border-blue-600"
+                    className="w-full bg-white border border-blue-200 rounded-lg px-2.5 py-1.5 text-xs tabular-nums font-medium focus:outline-none focus:border-blue-600"
                   />
                 </div>
                 <div>
@@ -438,7 +461,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
                     type="date"
                     value={endDate}
                     onChange={e => setEndDate(e.target.value)}
-                    className="w-full bg-white border border-blue-200 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:border-blue-600"
+                    className="w-full bg-white border border-blue-200 rounded-lg px-2.5 py-1.5 text-xs tabular-nums font-medium focus:outline-none focus:border-blue-600"
                   />
                 </div>
               </div>

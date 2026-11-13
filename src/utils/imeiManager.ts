@@ -1,5 +1,167 @@
 import { InventoryItem, ImeiRecord, SaleRecord, SupplierPurchase, SalesReturnRecord } from '../types';
 
+export const MAX_SINGLE_IMEI_LENGTH = 17;
+
+/**
+ * Sanitizes a single IMEI box value so it strictly contains at most 1 IMEI.
+ * Removes spaces, commas, newlines, tabs, semicolons, and caps length.
+ */
+export function sanitizeSingleImei(raw: string): string {
+  const cleaned = (raw || '').toString().replace(/[^0-9a-zA-Z]/g, '');
+  if (!cleaned) return '';
+  if (/^\d+$/.test(cleaned) && cleaned.length > 16) {
+    return cleaned.slice(0, 15);
+  }
+  return cleaned.slice(0, MAX_SINGLE_IMEI_LENGTH);
+}
+
+/**
+ * Extracts individual IMEI tokens from pasted/scanned input.
+ * Splits by commas, whitespace, newlines, semicolons, AND chunks back-to-back
+ * continuous 15-digit numeric barcode scanner streams into separate 15-digit IMEIs.
+ */
+export function extractScannedImeiTokens(raw: string): string[] {
+  const roughParts = (raw || '')
+    .toString()
+    .split(/[\r\n\t,;|/\s]+/)
+    .map(p => p.replace(/[^0-9a-zA-Z]/g, ''))
+    .filter(Boolean);
+
+  const tokens: string[] = [];
+  for (const part of roughParts) {
+    if (/^\d{16,}$/.test(part)) {
+      // Scanner concatenated multiple 15-digit IMEIs without separator
+      for (let i = 0; i < part.length; i += 15) {
+        const chunk = part.slice(i, i + 15);
+        if (chunk) tokens.push(chunk);
+      }
+    } else if (part.length > MAX_SINGLE_IMEI_LENGTH) {
+      // Long alphanumeric scan burst: take standard 15-char chunk if starts with 15 digits, else 17-char chunks
+      if (/^\d{15}/.test(part)) {
+        tokens.push(part.slice(0, 15));
+        const rest = part.slice(15);
+        if (rest) tokens.push(...extractScannedImeiTokens(rest));
+      } else {
+        for (let i = 0; i < part.length; i += MAX_SINGLE_IMEI_LENGTH) {
+          const chunk = part.slice(i, i + MAX_SINGLE_IMEI_LENGTH);
+          if (chunk) tokens.push(chunk);
+        }
+      }
+    } else {
+      tokens.push(part);
+    }
+  }
+  return tokens;
+}
+
+/**
+ * Enforces strict "1 Box = 1 IMEI" across all IMEI input boxes.
+ * If a scanner or user enters/pastes a second IMEI (via delimiter or >15 digits),
+ * keeps only 1 IMEI in `targetIndex` and overflows extra IMEIs into subsequent boxes.
+ */
+export function distributeImeiInput({
+  rawValue,
+  currentImeis,
+  targetIndex,
+}: {
+  rawValue: string;
+  currentImeis: string[];
+  targetIndex: number;
+}): {
+  nextImeis: string[];
+  focusIndex: number | null;
+  overflowCount: number;
+  multipleDetected: boolean;
+  singleTruncated: boolean;
+} {
+  const prevVal = (currentImeis[targetIndex] || '').trim();
+  const nextImeis = [...currentImeis];
+  while (nextImeis.length <= targetIndex) nextImeis.push('');
+
+  const cleanedRaw = (rawValue || '').replace(/[\r\n\t]/g, '');
+
+  // Case 1: Box already held a full 15-digit IMEI and new characters were appended at the end (no Enter from scanner)
+  if (
+    /^\d{15}$/.test(prevVal) &&
+    cleanedRaw.length > 15 &&
+    cleanedRaw.startsWith(prevVal)
+  ) {
+    const trailingRaw = cleanedRaw.slice(15);
+    const trailingTokens = extractScannedImeiTokens(trailingRaw);
+    nextImeis[targetIndex] = prevVal;
+
+    if (trailingTokens.length === 0) {
+      return {
+        nextImeis,
+        focusIndex: targetIndex + 1 < nextImeis.length ? targetIndex + 1 : null,
+        overflowCount: 0,
+        multipleDetected: false,
+        singleTruncated: true,
+      };
+    }
+
+    let overflowCount = 0;
+    let lastFilled = targetIndex;
+    for (let i = 0; i < trailingTokens.length; i++) {
+      const destIdx = targetIndex + 1 + i;
+      if (destIdx < nextImeis.length) {
+        nextImeis[destIdx] = sanitizeSingleImei(trailingTokens[i]);
+        lastFilled = destIdx;
+      } else {
+        overflowCount += 1;
+      }
+    }
+
+    return {
+      nextImeis,
+      focusIndex: lastFilled < nextImeis.length ? lastFilled : null,
+      overflowCount,
+      multipleDetected: trailingTokens.length > 0 && overflowCount === 0,
+      singleTruncated: overflowCount > 0,
+    };
+  }
+
+  // Case 2: Multiple tokens separated by space/comma/newline OR continuous 16+ digit scan
+  const hasDelimiter = /[\r\n\t,;|/\s]/.test(cleanedRaw.trim());
+  const tokens = extractScannedImeiTokens(cleanedRaw);
+
+  if (tokens.length > 1) {
+    let overflowCount = 0;
+    let lastFilled = targetIndex;
+    for (let i = 0; i < tokens.length; i++) {
+      const destIdx = targetIndex + i;
+      if (destIdx < nextImeis.length) {
+        nextImeis[destIdx] = sanitizeSingleImei(tokens[i]);
+        lastFilled = destIdx;
+      } else {
+        overflowCount += 1;
+      }
+    }
+    const nextFocus = lastFilled + 1 < nextImeis.length ? lastFilled + 1 : null;
+    return {
+      nextImeis,
+      focusIndex: nextFocus,
+      overflowCount,
+      multipleDetected: true,
+      singleTruncated: overflowCount > 0,
+    };
+  }
+
+  // Case 3: Single IMEI entry — strip invalid/separator chars & cap strictly to 1 IMEI
+  const single = sanitizeSingleImei(tokens[0] || '');
+  const rawAlnum = cleanedRaw.replace(/[^0-9a-zA-Z]/g, '');
+  const wasTruncated = rawAlnum.length > single.length || (hasDelimiter && single.length > 0);
+  nextImeis[targetIndex] = single;
+
+  return {
+    nextImeis,
+    focusIndex: null,
+    overflowCount: wasTruncated && rawAlnum.length > single.length ? 1 : 0,
+    multipleDetected: false,
+    singleTruncated: wasTruncated && rawAlnum.length > single.length,
+  };
+}
+
 /**
  * Extracts and sanitizes all IMEIs from an item (both .imeis array and .imei string).
  */
@@ -33,15 +195,17 @@ export interface ImeiValidationResult {
  * Validates IMEIs before adding, editing, purchasing, or importing.
  * 
  * Rules:
- * 1. An IMEI must not exist as available stock in multiple products.
+ * 1. An IMEI box must hold strictly 1 IMEI (no multiple IMEIs or >17 chars in a single box).
+ * 2. An IMEI must not exist as available stock in multiple products.
  *    If it already exists in inventory: "This IMEI already exists in inventory."
- * 2. If it was already sold: "This IMEI has already been sold."
- * 3. Duplicate IMEIs within the same form/input list are blocked.
- * 4. Cross-checks sales returns to prevent re-entering returned stock as new items.
+ * 3. If it was already sold: "This IMEI has already been sold."
+ * 4. Duplicate IMEIs within the same form/input list are blocked.
+ * 5. Cross-checks sales returns to prevent re-entering returned stock as new items.
  */
 export function validateImeis({
   imeisToCheck,
   currentProductId,
+  allowedExistingImeis = [],
   inventory = [],
   imeiRecords = [],
   sales = [],
@@ -49,6 +213,7 @@ export function validateImeis({
 }: {
   imeisToCheck: string[];
   currentProductId?: string;
+  allowedExistingImeis?: string[];
   inventory?: InventoryItem[];
   imeiRecords?: ImeiRecord[];
   sales?: SaleRecord[];
@@ -57,6 +222,19 @@ export function validateImeis({
   const cleanedList = imeisToCheck.map(i => (i || '').toString().trim()).filter(Boolean);
   if (cleanedList.length === 0) {
     return { valid: true };
+  }
+
+  const allowedSet = new Set(allowedExistingImeis.map(i => (i || '').toString().trim().toLowerCase()).filter(Boolean));
+
+  // 0. Enforce strictly 1 IMEI per entry box (no embedded delimiters or concatenated IMEIs)
+  for (const imei of cleanedList) {
+    if (/[\s,;|]/.test(imei) || imei.length > MAX_SINGLE_IMEI_LENGTH) {
+      return {
+        valid: false,
+        error: `Each box can only hold 1 IMEI (invalid/multiple IMEI detected: "${imei.slice(0, 20)}...").`,
+        duplicateImei: imei,
+      };
+    }
   }
 
   // 1. Check for duplicates within the entered input list
@@ -85,7 +263,11 @@ export function validateImeis({
     }
     const itemImeis = extractItemImeis(item);
     for (const imei of itemImeis) {
-      availableInventoryImeis.set(imei.toLowerCase(), {
+      const lowerImei = imei.toLowerCase();
+      if (allowedSet.has(lowerImei)) {
+        continue;
+      }
+      availableInventoryImeis.set(lowerImei, {
         productId: item.id,
         productName: item.name,
       });

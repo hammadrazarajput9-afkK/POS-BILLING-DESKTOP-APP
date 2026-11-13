@@ -300,8 +300,8 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
                     amount: e.target.value === '' ? '' : Number(e.target.value),
                   }))
                 }
-                placeholder="0"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-mono font-bold focus:outline-none focus:border-rose-600 focus:bg-white transition"
+                placeholder="Enter amount"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs tabular-nums font-bold focus:outline-none focus:border-rose-600 focus:bg-white transition"
               />
             </div>
             <div>

@@ -87,7 +87,7 @@ const initialPosDraft: PosDraftState = {
   retailerShopName: '',
   retailerCity: '',
   retailerNtn: '',
-  discount: 0,
+  discount: '',
   paymentMethod: 'Cash',
   accountId: '',
   amountPaid: '',
@@ -370,11 +370,12 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       <html>
         <head>
           <title>Sales Report - ${historyRange.toUpperCase()}</title>
+          <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
           <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 30px; color: #333; }
+            body { font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif; padding: 30px; color: #1e293b; font-variant-numeric: tabular-nums; }
             .header-banner { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px; }
             .header-banner img { width: 55px; height: 55px; border-radius: 50%; object-fit: contain; margin-bottom: 6px; }
-            h1 { font-size: 20px; color: #1e3a8a; margin: 4px 0; }
+            h1 { font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif; font-size: 20px; color: #1e3a8a; margin: 4px 0; }
             p { font-size: 11px; color: #666; margin: 2px 0; }
             table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 11px; }
             th { background-color: #f3f4f6; padding: 10px; border: 1px solid #ddd; text-align: left; }
@@ -461,7 +462,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   const retailerShopName = draft.retailerShopName || '';
   const retailerCity = draft.retailerCity || '';
   const retailerNtn = draft.retailerNtn || '';
-  const discount = draft.discount !== undefined ? draft.discount : 0;
+  const discount = draft.discount !== undefined ? draft.discount : '';
   const paymentMethod = draft.paymentMethod || 'Cash';
   const accountId = draft.accountId || '';
   const amountPaid = draft.amountPaid !== undefined ? draft.amountPaid : '';
@@ -899,7 +900,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                 value={retailerNtn}
                 onChange={e => setRetailerNtn(e.target.value)}
                 placeholder="NTN / GST No (Optional)"
-                className="bg-white border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs font-mono font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[38px]"
+                className="bg-white border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs tabular-nums font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[38px]"
               />
             </div>
           </div>
@@ -943,7 +944,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                               const curVal = item.selectedImeis?.[unitIdx] || availableItemImeis[unitIdx] || '';
                               return (
                                 <div key={unitIdx} className="flex items-center gap-1">
-                                  <span className="text-[9px] font-mono text-slate-400 font-bold">
+                                  <span className="text-[9px] tabular-nums text-slate-400 font-bold">
                                     #{unitIdx + 1}:
                                   </span>
                                   {availableItemImeis.length > 1 ? (
@@ -952,7 +953,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                                       onChange={e =>
                                         handleSelectImeiForCartItem(item.id, unitIdx, e.target.value)
                                       }
-                                      className="text-[10px] font-mono text-blue-700 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5 max-w-[170px] outline-none"
+                                      className="text-[10px] tabular-nums text-blue-700 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5 max-w-[170px] outline-none"
                                     >
                                       {availableItemImeis.map(im => (
                                         <option key={im} value={im}>
@@ -961,7 +962,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                                       ))}
                                     </select>
                                   ) : (
-                                    <span className="text-[9px] font-mono text-blue-700 bg-blue-50 px-1 py-0.5 rounded border border-blue-100">
+                                    <span className="text-[9px] tabular-nums text-blue-700 bg-blue-50 px-1 py-0.5 rounded border border-blue-100">
                                       IMEI: {curVal}
                                     </span>
                                   )}
@@ -970,7 +971,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                             })}
                           </div>
                         ) : item.barcode ? (
-                          <p className="text-[9px] font-mono text-slate-400">
+                          <p className="text-[9px] tabular-nums text-slate-400">
                             Code: {item.barcode}
                           </p>
                         ) : null}
@@ -984,7 +985,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                           >
                             <Minus className="w-3.5 h-3.5" />
                           </button>
-                          <span className="font-mono tabular-nums font-bold text-xs px-1.5 min-w-[20px] text-center">
+                          <span className="tabular-nums font-bold text-xs px-1.5 min-w-[20px] text-center">
                             {item.cartQty}
                           </span>
                           <button
@@ -996,7 +997,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                           </button>
                         </div>
                       </td>
-                      <td className="p-2.5 text-right font-mono tabular-nums font-bold text-slate-900">
+                      <td className="p-2.5 text-right tabular-nums font-bold text-slate-900">
                         {currency} {(getItemUnitPrice(item) * item.cartQty).toLocaleString()}
                         {saleMode === 'wholesale' && (
                           <div className="text-[9px] text-purple-700 font-sans">
@@ -1027,7 +1028,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
         <div className="space-y-1.5 text-slate-600">
           <div className="flex justify-between">
             <span>Subtotal ({saleMode === 'wholesale' ? 'B2B Wholesale' : 'Retail'}):</span>
-            <span className="font-mono tabular-nums font-bold text-slate-800">
+            <span className="tabular-nums font-bold text-slate-800">
               {currency} {subtotal.toLocaleString()}
             </span>
           </div>
@@ -1038,7 +1039,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
               <span className="flex items-center gap-1">
                 <Sparkles className="w-3.5 h-3.5 text-purple-600" /> B2B Wholesale Savings:
               </span>
-              <span className="font-mono tabular-nums">
+              <span className="tabular-nums">
                 {currency} {wholesaleSavings.toLocaleString()}
               </span>
             </div>
@@ -1051,14 +1052,14 @@ const PosTabComponent: React.FC<PosTabProps> = ({
               min="0"
               value={discount}
               onChange={e => setDiscount(e.target.value === '' ? '' : Number(e.target.value))}
-              placeholder="0"
-              className="w-24 text-right bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono tabular-nums font-bold text-xs focus:outline-none focus:border-blue-600 focus:bg-white"
+              placeholder="Discount"
+              className="w-24 text-right bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 tabular-nums font-bold text-xs focus:outline-none focus:border-blue-600 focus:bg-white"
             />
           </div>
 
           <div className="flex justify-between text-base font-extrabold text-slate-900 pt-1.5 border-t border-slate-100">
             <span>Grand Total:</span>
-            <span className={`font-mono tabular-nums text-lg ${saleMode === 'wholesale' ? 'text-purple-700' : 'text-blue-600'}`}>
+            <span className={`tabular-nums text-lg ${saleMode === 'wholesale' ? 'text-purple-700' : 'text-blue-600'}`}>
               {currency} {grandTotal.toLocaleString()}
             </span>
           </div>
@@ -1074,13 +1075,13 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                   max={grandTotal}
                   value={amountPaid}
                   onChange={e => setAmountPaid(e.target.value === '' ? '' : Number(e.target.value))}
-                  placeholder="0"
-                  className="w-28 text-right bg-white border border-purple-300 rounded-lg px-2.5 py-1.5 font-mono tabular-nums font-bold text-xs focus:outline-none focus:border-purple-600"
+                  placeholder="Paid amount"
+                  className="w-28 text-right bg-white border border-purple-300 rounded-lg px-2.5 py-1.5 tabular-nums font-bold text-xs focus:outline-none focus:border-purple-600"
                 />
               </div>
               <div className="flex justify-between items-center pt-1 border-t border-purple-200 text-purple-900">
                 <span className="font-extrabold">Remaining Due (Khata Balance):</span>
-                <span className="font-mono font-extrabold text-sm tabular-nums text-rose-600">
+                <span className="tabular-nums font-extrabold text-sm tabular-nums text-rose-600">
                   {currency} {actualDue.toLocaleString()}
                 </span>
               </div>
@@ -1293,7 +1294,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
         {/* Developer Tag - Hidden on tiny screens to avoid wrapping */}
         <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 border border-slate-200/80 rounded-xl shrink-0">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span className="text-[9px] font-extrabold text-slate-500 tracking-wider font-mono">
+          <span className="text-[9px] font-extrabold text-slate-500 tracking-wider tabular-nums">
             HAMMAD DEVELOPER
           </span>
         </div>
@@ -1497,7 +1498,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
                             {/* Remaining Stock Badge */}
                             <span
-                              className={`absolute top-1.5 right-1.5 text-[8px] sm:text-[9px] font-extrabold px-1.5 py-0.2 rounded-full font-mono shadow-xs backdrop-blur-xs ${
+                              className={`absolute top-1.5 right-1.5 text-[8px] sm:text-[9px] font-extrabold px-1.5 py-0.2 rounded-full tabular-nums shadow-xs backdrop-blur-xs ${
                                 remainingStock > 2
                                   ? 'bg-emerald-500/90 text-white'
                                   : remainingStock > 0
@@ -1539,7 +1540,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                               {saleMode === 'wholesale' ? 'W/S' : 'Price'}
                             </span>
                             <span
-                              className={`font-mono font-extrabold text-[11px] sm:text-xs tabular-nums truncate block ${
+                              className={`tabular-nums font-extrabold text-[11px] sm:text-xs tabular-nums truncate block ${
                                 saleMode === 'wholesale' ? 'text-purple-700' : 'text-blue-600'
                               }`}
                             >
@@ -1597,7 +1598,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                     <p className="text-[10px] sm:text-[11px] font-bold text-slate-300">
                       {cart.reduce((a, b) => a + b.cartQty, 0)} items in Cart
                     </p>
-                    <p className="text-xs sm:text-sm font-extrabold font-mono text-emerald-400 tabular-nums">
+                    <p className="text-xs sm:text-sm font-extrabold tabular-nums text-emerald-400 tabular-nums">
                       {currency} {grandTotal.toLocaleString()}
                     </p>
                   </div>
@@ -1751,7 +1752,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
             <div className="bg-white border border-slate-200/80 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-2xs flex flex-col justify-between">
               <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider line-clamp-1">Net Sales Volume</p>
-              <p className="text-sm sm:text-xl font-extrabold font-mono text-blue-600 mt-0.5 sm:mt-1 truncate">
+              <p className="text-sm sm:text-xl font-extrabold tabular-nums text-blue-600 mt-0.5 sm:mt-1 truncate">
                 {currency} {stats.netRevenue.toLocaleString()}
               </p>
               <p className="text-[10px] text-slate-500 mt-0.5 sm:mt-1 font-semibold truncate">{stats.totalInvoices} active bills</p>
@@ -1759,7 +1760,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
             <div className="bg-white border border-slate-200/80 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-2xs flex flex-col justify-between">
               <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider line-clamp-1">Credit Receivables</p>
-              <p className="text-sm sm:text-xl font-extrabold font-mono text-purple-600 mt-0.5 sm:mt-1 truncate">
+              <p className="text-sm sm:text-xl font-extrabold tabular-nums text-purple-600 mt-0.5 sm:mt-1 truncate">
                 {currency} {stats.totalCredit.toLocaleString()}
               </p>
               <p className="text-[10px] text-slate-500 mt-0.5 sm:mt-1 font-semibold truncate">balance due</p>
@@ -1767,7 +1768,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
             <div className="bg-white border border-slate-200/80 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-2xs flex flex-col justify-between">
               <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider line-clamp-1">Cancelled Bills</p>
-              <p className="text-sm sm:text-xl font-extrabold font-mono text-rose-600 mt-0.5 sm:mt-1 truncate">
+              <p className="text-sm sm:text-xl font-extrabold tabular-nums text-rose-600 mt-0.5 sm:mt-1 truncate">
                 {stats.cancelledCount} Bills
               </p>
               <p className="text-[10px] text-slate-500 mt-0.5 sm:mt-1 font-semibold truncate">Void: {currency} {stats.cancelledSum.toLocaleString()}</p>
@@ -1775,7 +1776,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
             <div className="bg-white border border-slate-200/80 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-2xs flex flex-col justify-between">
               <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider line-clamp-1">Total Invoices</p>
-              <p className="text-sm sm:text-xl font-extrabold font-mono text-slate-900 mt-0.5 sm:mt-1 truncate">
+              <p className="text-sm sm:text-xl font-extrabold tabular-nums text-slate-900 mt-0.5 sm:mt-1 truncate">
                 {filteredSales.length} Bills
               </p>
               <p className="text-[10px] text-slate-500 mt-0.5 sm:mt-1 font-semibold truncate">all records</p>
@@ -1807,7 +1808,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                     {/* Left Info Column */}
                     <div className="space-y-2.5 min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-black text-slate-900 text-sm font-mono tracking-wider">
+                        <span className="font-black text-slate-900 text-sm tabular-nums tracking-wider">
                           #{sale.invNo}
                         </span>
                         
@@ -1826,7 +1827,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                           </span>
                         )}
 
-                        <span className="text-[11px] font-semibold text-slate-400 font-mono">
+                        <span className="text-[11px] font-semibold text-slate-400 tabular-nums">
                           {new Date(sale.date).toLocaleString()}
                         </span>
                       </div>
@@ -1837,7 +1838,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                           Customer: <span className="font-extrabold text-blue-600">{sale.custName}</span>
                         </p>
                         {sale.custPhone && (
-                          <p className="text-slate-500 font-mono">
+                          <p className="text-slate-500 tabular-nums">
                             Phone: <span className="font-bold text-slate-700">{sale.custPhone}</span>
                           </p>
                         )}
@@ -1859,18 +1860,18 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                               </div>
                               <div className="flex flex-wrap items-center gap-1">
                                 {it.barcode && (
-                                  <span className="text-[9px] font-mono font-bold bg-slate-200/70 text-slate-600 px-1.5 py-0.5 rounded border border-slate-300/30">
+                                  <span className="text-[9px] tabular-nums font-bold bg-slate-200/70 text-slate-600 px-1.5 py-0.5 rounded border border-slate-300/30">
                                     Barcode: {it.barcode}
                                   </span>
                                 )}
                                 {it.imeis && it.imeis.length > 0 ? (
                                   it.imeis.map((im, uIdx) => (
-                                    <span key={uIdx} className="text-[9px] font-mono font-bold bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200">
+                                    <span key={uIdx} className="text-[9px] tabular-nums font-bold bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200">
                                       IMEI: {im}
                                     </span>
                                   ))
                                 ) : it.imei ? (
-                                  <span className="text-[9px] font-mono font-bold bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200">
+                                  <span className="text-[9px] tabular-nums font-bold bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200">
                                     IMEI: {it.imei}
                                   </span>
                                 ) : null}
@@ -1892,16 +1893,16 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                     <div className="flex flex-col items-end gap-3 shrink-0 self-start md:self-center">
                       <div className="text-right">
                         <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Grand Total</p>
-                        <p className="text-xl font-black font-mono text-slate-900 leading-none mt-1">
+                        <p className="text-xl font-black tabular-nums text-slate-900 leading-none mt-1">
                           {currency} {sale.grandTotal.toLocaleString()}
                         </p>
                         {sale.invoiceType === 'credit' && (
                           <div className="mt-1 flex flex-col text-right">
-                            <span className="text-[10px] text-emerald-600 font-bold font-mono">
+                            <span className="text-[10px] text-emerald-600 font-bold tabular-nums">
                               Paid: {currency} {(sale.amountPaid || 0).toLocaleString()}
                             </span>
                             {sale.amountDue && sale.amountDue > 0 ? (
-                              <span className="text-[10px] text-rose-600 font-bold font-mono">
+                              <span className="text-[10px] text-rose-600 font-bold tabular-nums">
                                 Due: {currency} {sale.amountDue.toLocaleString()}
                               </span>
                             ) : null}
@@ -1976,7 +1977,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                   <h3 className="font-extrabold text-slate-900 text-base leading-tight">
                     {deleteModalSale.status === 'CANCELLED' ? 'Delete Cancelled Invoice' : 'Delete / Void Invoice'}
                   </h3>
-                  <p className="text-xs text-slate-500 font-mono">
+                  <p className="text-xs text-slate-500 tabular-nums">
                     Invoice #{deleteModalSale.invNo} • {new Date(deleteModalSale.date).toLocaleDateString()}
                   </p>
                 </div>
@@ -2004,7 +2005,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
               </div>
               <div className="flex justify-between items-center pt-1 border-t border-slate-200">
                 <span className="font-bold text-slate-700">Total Amount:</span>
-                <span className="font-mono font-black text-sm text-slate-900">
+                <span className="tabular-nums font-black text-sm text-slate-900">
                   {currency} {deleteModalSale.grandTotal.toLocaleString()}
                 </span>
               </div>
@@ -2116,7 +2117,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                   <h3 className="font-extrabold text-slate-900 text-base leading-tight">
                     Edit Invoice #{editModalSale.invNo}
                   </h3>
-                  <p className="text-xs text-slate-500 font-mono">
+                  <p className="text-xs text-slate-500 tabular-nums">
                     Total: {currency} {editModalSale.grandTotal.toLocaleString()} • {editModalSale.items.length} items
                   </p>
                 </div>
@@ -2181,7 +2182,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                       {editModalSale.items.map((it, idx) => (
                         <div key={idx} className="flex justify-between items-center text-[11px] border-b border-slate-200 pb-1">
                           <span className="font-medium text-slate-800">{it.name} (x{it.qty})</span>
-                          <span className="font-mono font-bold text-slate-900">
+                          <span className="tabular-nums font-bold text-slate-900">
                             {currency} {(it.salePrice * it.qty).toLocaleString()}
                           </span>
                         </div>
@@ -2333,21 +2334,21 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs pt-1">
                   <div>
                     <span className="text-slate-400 block text-[10px] font-bold uppercase">Retail Price</span>
-                    <span className="font-mono font-black text-blue-600 text-sm sm:text-base">
+                    <span className="tabular-nums font-black text-blue-600 text-sm sm:text-base">
                       {currency} {selectedProductDetails.salePrice.toLocaleString()}
                     </span>
                   </div>
                   {selectedProductDetails.wholesalePrice ? (
                     <div>
                       <span className="text-purple-600 block text-[10px] font-bold uppercase">Wholesale Price</span>
-                      <span className="font-mono font-black text-purple-700 text-sm sm:text-base">
+                      <span className="tabular-nums font-black text-purple-700 text-sm sm:text-base">
                         {currency} {selectedProductDetails.wholesalePrice.toLocaleString()}
                       </span>
                     </div>
                   ) : null}
                   <div>
                     <span className="text-slate-400 block text-[10px] font-bold uppercase">In Stock</span>
-                    <span className={`font-mono font-bold text-sm sm:text-base ${
+                    <span className={`tabular-nums font-bold text-sm sm:text-base ${
                       selectedProductDetails.qty > 0 ? 'text-emerald-700' : 'text-rose-600'
                     }`}>
                       {selectedProductDetails.qty} units
@@ -2358,7 +2359,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                 {selectedProductDetails.barcode && (
                   <div className="text-xs pt-0.5">
                     <span className="text-slate-400 text-[10px] font-bold uppercase">Barcode / SKU: </span>
-                    <span className="font-mono font-bold text-slate-700">{selectedProductDetails.barcode}</span>
+                    <span className="tabular-nums font-bold text-slate-700">{selectedProductDetails.barcode}</span>
                   </div>
                 )}
               </div>
@@ -2377,12 +2378,12 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                     <div key={v.id || vIdx} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 shadow-2xs">
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
-                          <span className="w-5 h-5 rounded-md bg-blue-100 text-blue-700 flex items-center justify-center font-mono text-[10px]">
+                          <span className="w-5 h-5 rounded-md bg-blue-100 text-blue-700 flex items-center justify-center tabular-nums text-[10px]">
                             #{vIdx + 1}
                           </span>
                           {v.color || `${v.ram || ''} ${v.storage || ''}`.trim() || 'Standard Variant'}
                         </span>
-                        <span className="font-mono text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                        <span className="tabular-nums text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
                           {v.qty || 1} units
                         </span>
                       </div>
@@ -2393,7 +2394,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                               key={imIdx}
                               type="button"
                               onClick={() => handleCopyImei(im)}
-                              className="font-mono text-[10px] bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer transition shadow-2xs"
+                              className="tabular-nums text-[10px] bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer transition shadow-2xs"
                               title="Click to copy IMEI"
                             >
                               <span>IMEI: {im}</span>
@@ -2417,7 +2418,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                           key={imIdx}
                           type="button"
                           onClick={() => handleCopyImei(im)}
-                          className="font-mono text-[10px] bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer transition shadow-2xs"
+                          className="tabular-nums text-[10px] bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer transition shadow-2xs"
                           title="Click to copy IMEI"
                         >
                           <span>{im}</span>
@@ -2436,7 +2437,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                     <button
                       type="button"
                       onClick={() => handleCopyImei(selectedProductDetails.imei!)}
-                      className="font-mono text-xs text-blue-700 bg-white hover:bg-blue-50 border border-blue-200 px-2 py-1 rounded flex items-center gap-1 cursor-pointer shadow-2xs"
+                      className="tabular-nums text-xs text-blue-700 bg-white hover:bg-blue-50 border border-blue-200 px-2 py-1 rounded flex items-center gap-1 cursor-pointer shadow-2xs"
                     >
                       <span>{selectedProductDetails.imei}</span>
                       {copiedImei === selectedProductDetails.imei ? (

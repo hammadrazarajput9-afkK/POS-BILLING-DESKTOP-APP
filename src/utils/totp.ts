@@ -74,7 +74,7 @@ export function verifyTotpCode(secretBase32: string, token: string, alternateSec
         secret: secret,
       });
 
-      const delta = totp.validate({ token: cleanCode, window: 1 });
+      const delta = totp.validate({ token: cleanCode, window: 3 });
       if (delta !== null) return true;
     } catch {
       // try next secret in pool

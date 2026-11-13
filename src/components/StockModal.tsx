@@ -19,13 +19,19 @@ import {
   Cpu,
   HardDrive,
   Palette,
-  AlertTriangle
+  AlertTriangle,
+  Edit2
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { useFormDraft } from '../hooks/useFormDraft';
 import { CameraCaptureModal } from './CameraCaptureModal';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
-import { validateImeis, extractItemImeis } from '../utils/imeiManager';
+import {
+  validateImeis,
+  extractItemImeis,
+  distributeImeiInput,
+  MAX_SINGLE_IMEI_LENGTH,
+} from '../utils/imeiManager';
 
 export interface StockModalProps {
   isOpen: boolean;
@@ -46,6 +52,7 @@ export interface StockModalProps {
   sales?: SaleRecord[];
   salesReturns?: import('../types').SalesReturnRecord[];
   onAddCategory: (categoryName: string) => void;
+  onRenameCategory?: (oldName: string, newName: string) => boolean;
   onStockAdjustment?: (
     adjustment: Omit<StockAdjustment, 'id' | 'adjustedAt'>
   ) => void;
@@ -74,7 +81,7 @@ const createDefaultVariant = (id: string, ram = '4GB', storage = '64GB'): Mobile
   costPrice: '',
   wholesalePrice: '',
   salePrice: '',
-  qty: 1,
+  qty: '',
   imeis: [''],
 });
 
@@ -85,7 +92,7 @@ const initialStockDraft: StockDraftState = {
   barcode: '',
   costPrice: '',
   salePrice: '',
-  qty: 1,
+  qty: '',
   imeis: [''],
   variants: [createDefaultVariant('var-1', '4GB', '64GB')],
 };
@@ -171,6 +178,7 @@ export const StockModal: React.FC<StockModalProps> = ({
   sales = [],
   salesReturns = [],
   onAddCategory,
+  onRenameCategory,
   onStockAdjustment,
 }) => {
   const { showToast } = useToast();
@@ -201,7 +209,7 @@ export const StockModal: React.FC<StockModalProps> = ({
   const [salePrice, setSalePrice] = useState<number | ''>('');
   const [wholesalePrice, setWholesalePrice] = useState<number | ''>('');
   const [boxSize, setBoxSize] = useState<number | ''>(10);
-  const [qty, setQty] = useState<number | ''>(1);
+  const [qty, setQty] = useState<number | ''>('');
   const [color, setColor] = useState('');
   const [imeis, setImeis] = useState<string[]>(['']);
 
@@ -214,9 +222,11 @@ export const StockModal: React.FC<StockModalProps> = ({
     createDefaultVariant('var-1', '4GB', '64GB'),
   ]);
 
-  // Category creation inline state
+  // Category creation / rename inline state
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [isEditingCategory, setIsEditingCategory] = useState(false);
+  const [editCategoryName, setEditCategoryName] = useState('');
 
   // Track initial mount / modal open to prevent circular draft sync loops
   const prevIsOpenRef = useRef(false);
@@ -235,7 +245,16 @@ export const StockModal: React.FC<StockModalProps> = ({
         // Clean base name without parenthetical specs or color (e.g. "Infinix Note 40 (Black)" -> "Infinix Note 40")
         const cleanBaseName = editItem.name.replace(/\s*\([^)]*\)\s*$/, '').trim();
         setName(cleanBaseName || editItem.name);
-        setCategory(editItem.category || (categories[0] || ''));
+        const cleanCat = (editItem.category || '').trim();
+        const resolvedEditCategory =
+          !cleanCat
+            ? categories[0] || ''
+            : categories.find(c => c === cleanCat) ||
+              categories.find(c => c.trim().toLowerCase() === cleanCat.toLowerCase()) ||
+              (isKeypadCategory(cleanCat) ? categories.find(c => isKeypadCategory(c)) : undefined) ||
+              (isAndroidCategory(cleanCat) ? categories.find(c => isAndroidCategory(c)) : undefined) ||
+              cleanCat;
+        setCategory(resolvedEditCategory);
         setImage(editItem.image || '');
         setBarcode(editItem.barcode || '');
         setCostPrice(editItem.costPrice);
@@ -283,6 +302,11 @@ export const StockModal: React.FC<StockModalProps> = ({
         isEditingRef.current = false;
         // Pre-select last chosen category so adding multiple items in the same category is sticky & fast
         const lastCategory = getLastSelectedCategory(categories);
+        const hasMeaningfulDraft = Boolean(
+          (draftData.name && draftData.name.trim()) ||
+          draftData.costPrice !== '' ||
+          draftData.salePrice !== ''
+        );
         setName(draftData.name || '');
         setCategory(lastCategory);
         setImage(draftData.image || '');
@@ -291,11 +315,11 @@ export const StockModal: React.FC<StockModalProps> = ({
         setSalePrice(draftData.salePrice !== undefined ? draftData.salePrice : '');
         setWholesalePrice('');
         setBoxSize(10);
-        setQty(draftData.qty !== undefined ? draftData.qty : 1);
+        setQty(hasMeaningfulDraft && draftData.qty !== undefined ? draftData.qty : '');
         setColor('');
         setImeis(draftData.imeis && draftData.imeis.length > 0 ? [...draftData.imeis] : ['']);
 
-        if (draftData.variants && draftData.variants.length > 0 && isAndroidCategory(lastCategory)) {
+        if (hasMeaningfulDraft && draftData.variants && draftData.variants.length > 0 && isAndroidCategory(lastCategory)) {
           setVariants(draftData.variants.map(v => ({ ...v, imeis: [...(v.imeis || [''])] })));
         } else {
           const isAndroidLast = isAndroidCategory(lastCategory);
@@ -471,7 +495,7 @@ export const StockModal: React.FC<StockModalProps> = ({
       costPrice: lastVar?.costPrice !== undefined ? lastVar.costPrice : '',
       wholesalePrice: lastVar?.wholesalePrice !== undefined ? lastVar.wholesalePrice : '',
       salePrice: lastVar?.salePrice !== undefined ? lastVar.salePrice : '',
-      qty: 1,
+      qty: '',
       imeis: [''],
     };
 
@@ -535,18 +559,38 @@ export const StockModal: React.FC<StockModalProps> = ({
     });
   };
 
+  const focusElementSafely = (id: string) => {
+    setTimeout(() => {
+      const el = document.getElementById(id) as HTMLInputElement | null;
+      if (el) el.focus();
+    }, 0);
+  };
+
   const handleVariantImeiChange = (variantIdx: number, imeiIdx: number, rawValue: string) => {
-    // Sanitize any carriage return/newline injected by barcode scanner
-    const value = rawValue.replace(/[\r\n\t]/g, '').trimStart();
+    const curVariantImeis = variants[variantIdx]?.imeis || [''];
+    const result = distributeImeiInput({
+      rawValue,
+      currentImeis: curVariantImeis,
+      targetIndex: imeiIdx,
+    });
+
     setVariants(prev => {
       const copy = [...prev];
       const target = { ...copy[variantIdx] };
-      const imeisCopy = [...(target.imeis || [])];
-      imeisCopy[imeiIdx] = value;
-      target.imeis = imeisCopy;
+      target.imeis = result.nextImeis;
       copy[variantIdx] = target;
       return copy;
     });
+
+    if (result.overflowCount > 0) {
+      showToast('1 box = 1 IMEI only! Increase Qty to add more IMEI boxes.', 'warning');
+    } else if (result.multipleDetected) {
+      showToast('1 IMEI per box enforced — extra IMEIs moved to next boxes.', 'info');
+    }
+
+    if (result.focusIndex !== null) {
+      focusElementSafely(`variant-imei-${variantIdx}-${result.focusIndex}`);
+    }
   };
 
   const handleVariantImeiKeyDown = (
@@ -554,23 +598,41 @@ export const StockModal: React.FC<StockModalProps> = ({
     variantIdx: number,
     imeiIdx: number
   ) => {
+    const currentVal = variants[variantIdx]?.imeis?.[imeiIdx]?.trim() || '';
+
+    // Prevent typing space/comma/semicolon inside an IMEI box; advance to next box if populated
+    if (e.key === ' ' || e.key === ',' || e.key === ';') {
+      e.preventDefault();
+      if (currentVal) {
+        const nextSame = document.getElementById(`variant-imei-${variantIdx}-${imeiIdx + 1}`);
+        if (nextSame) {
+          nextSame.focus();
+          return;
+        }
+        const nextVar = document.getElementById(`variant-imei-${variantIdx + 1}-0`);
+        if (nextVar) {
+          nextVar.focus();
+          return;
+        }
+        showToast('1 box = 1 IMEI only! Increase Qty for more IMEIs.', 'warning');
+      }
+      return;
+    }
+
     if (e.key === 'Enter') {
       e.preventDefault();
       e.stopPropagation();
 
-      const currentVal = variants[variantIdx]?.imeis?.[imeiIdx]?.trim();
       if (currentVal) {
-        showToast(`IMEI #${imeiIdx + 1} scanned!`, 'info');
+        showToast(`IMEI #${imeiIdx + 1} captured`, 'info');
       }
 
-      // Try focusing next IMEI in the same variant
       const nextSameVariant = document.getElementById(`variant-imei-${variantIdx}-${imeiIdx + 1}`);
       if (nextSameVariant) {
         nextSameVariant.focus();
         return;
       }
 
-      // Try focusing first IMEI in the next variant
       const nextVariantFirst = document.getElementById(`variant-imei-${variantIdx + 1}-0`);
       if (nextVariantFirst) {
         nextVariantFirst.focus();
@@ -587,31 +649,59 @@ export const StockModal: React.FC<StockModalProps> = ({
     const pasted = e.clipboardData.getData('text');
     if (!pasted) return;
 
-    // Check if multiple IMEIs are in pasted text (split by newlines, commas, or spaces)
-    const tokens = pasted
-      .split(/[\r\n,]+/)
-      .map(t => t.trim())
-      .filter(Boolean);
+    const inputEl = e.currentTarget;
+    const isAllSelected =
+      inputEl.selectionStart === 0 && inputEl.selectionEnd === inputEl.value.length;
+    const curVariantImeis = variants[variantIdx]?.imeis || [''];
+    const currentBoxVal = (curVariantImeis[imeiIdx] || '').trim();
 
-    if (tokens.length > 1) {
+    // If current box already has a full IMEI (not replacing via Select All), put pasted IMEI(s) into subsequent boxes
+    if (currentBoxVal.length >= 15 && !isAllSelected) {
       e.preventDefault();
+      const nextEmptyIdx = curVariantImeis.findIndex((im, idx) => idx > imeiIdx && !im.trim());
+      if (nextEmptyIdx === -1) {
+        showToast('This box already holds 1 IMEI! Increase Qty for more boxes.', 'warning');
+        return;
+      }
+      const res = distributeImeiInput({
+        rawValue: pasted,
+        currentImeis: curVariantImeis,
+        targetIndex: nextEmptyIdx,
+      });
       setVariants(prev => {
         const copy = [...prev];
-        const target = { ...copy[variantIdx] };
-        const imeisCopy = [...(target.imeis || [])];
-
-        for (let i = 0; i < tokens.length; i++) {
-          const targetIndex = imeiIdx + i;
-          if (targetIndex < imeisCopy.length) {
-            imeisCopy[targetIndex] = tokens[i].replace(/[^0-9a-zA-Z]/g, '');
-          }
-        }
-
-        target.imeis = imeisCopy;
-        copy[variantIdx] = target;
+        copy[variantIdx] = { ...copy[variantIdx], imeis: res.nextImeis };
         return copy;
       });
-      showToast(`${tokens.length} IMEIs populated from scan/paste!`, 'success');
+      if (res.overflowCount > 0) {
+        showToast('1 box = 1 IMEI only! Extra IMEIs could not fit; increase Qty.', 'warning');
+      }
+      if (res.focusIndex !== null) {
+        focusElementSafely(`variant-imei-${variantIdx}-${res.focusIndex}`);
+      }
+      return;
+    }
+
+    e.preventDefault();
+    const res = distributeImeiInput({
+      rawValue: pasted,
+      currentImeis: curVariantImeis,
+      targetIndex: imeiIdx,
+    });
+    setVariants(prev => {
+      const copy = [...prev];
+      copy[variantIdx] = { ...copy[variantIdx], imeis: res.nextImeis };
+      return copy;
+    });
+
+    if (res.overflowCount > 0) {
+      showToast('1 box = 1 IMEI only! Extra IMEIs skipped — increase Qty for more boxes.', 'warning');
+    } else if (res.multipleDetected) {
+      showToast('IMEIs placed 1 per box cleanly!', 'success');
+    }
+
+    if (res.focusIndex !== null) {
+      focusElementSafely(`variant-imei-${variantIdx}-${res.focusIndex}`);
     }
   };
 
@@ -629,25 +719,49 @@ export const StockModal: React.FC<StockModalProps> = ({
   };
 
   const handleSingleImeiChange = (index: number, rawValue: string) => {
-    const value = rawValue.replace(/[\r\n\t]/g, '').trimStart();
-    setImeis(prev => {
-      const copy = [...prev];
-      copy[index] = value;
-      return copy;
+    const res = distributeImeiInput({
+      rawValue,
+      currentImeis: imeis,
+      targetIndex: index,
     });
+    setImeis(res.nextImeis);
+
+    if (res.overflowCount > 0) {
+      showToast('1 box = 1 IMEI only! Increase Qty to add more IMEI boxes.', 'warning');
+    } else if (res.multipleDetected) {
+      showToast('1 IMEI per box enforced — extra IMEIs moved to next boxes.', 'info');
+    }
+
+    if (res.focusIndex !== null) {
+      focusElementSafely(`single-imei-${res.focusIndex}`);
+    }
   };
 
   const handleSingleImeiKeyDown = (
     e: React.KeyboardEvent<HTMLInputElement>,
     index: number
   ) => {
+    const currentVal = imeis[index]?.trim() || '';
+
+    if (e.key === ' ' || e.key === ',' || e.key === ';') {
+      e.preventDefault();
+      if (currentVal) {
+        const nextEl = document.getElementById(`single-imei-${index + 1}`);
+        if (nextEl) {
+          nextEl.focus();
+        } else {
+          showToast('1 box = 1 IMEI only! Increase Qty for more IMEIs.', 'warning');
+        }
+      }
+      return;
+    }
+
     if (e.key === 'Enter') {
       e.preventDefault();
       e.stopPropagation();
 
-      const currentVal = imeis[index]?.trim();
       if (currentVal) {
-        showToast(`Device #${index + 1} IMEI scanned!`, 'info');
+        showToast(`Device #${index + 1} IMEI captured!`, 'info');
       }
 
       const nextEl = document.getElementById(`single-imei-${index + 1}`);
@@ -664,24 +778,49 @@ export const StockModal: React.FC<StockModalProps> = ({
     const pasted = e.clipboardData.getData('text');
     if (!pasted) return;
 
-    const tokens = pasted
-      .split(/[\r\n,]+/)
-      .map(t => t.trim())
-      .filter(Boolean);
+    const inputEl = e.currentTarget;
+    const isAllSelected =
+      inputEl.selectionStart === 0 && inputEl.selectionEnd === inputEl.value.length;
+    const currentBoxVal = (imeis[index] || '').trim();
 
-    if (tokens.length > 1) {
+    if (currentBoxVal.length >= 15 && !isAllSelected) {
       e.preventDefault();
-      setImeis(prev => {
-        const copy = [...prev];
-        for (let i = 0; i < tokens.length; i++) {
-          const targetIndex = index + i;
-          if (targetIndex < copy.length) {
-            copy[targetIndex] = tokens[i].replace(/[^0-9a-zA-Z]/g, '');
-          }
-        }
-        return copy;
+      const nextEmptyIdx = imeis.findIndex((im, idx) => idx > index && !im.trim());
+      if (nextEmptyIdx === -1) {
+        showToast('This box already holds 1 IMEI! Increase Qty for more boxes.', 'warning');
+        return;
+      }
+      const res = distributeImeiInput({
+        rawValue: pasted,
+        currentImeis: imeis,
+        targetIndex: nextEmptyIdx,
       });
-      showToast(`${tokens.length} IMEIs populated from scan/paste!`, 'success');
+      setImeis(res.nextImeis);
+      if (res.overflowCount > 0) {
+        showToast('1 box = 1 IMEI only! Increase Qty to add more IMEI boxes.', 'warning');
+      }
+      if (res.focusIndex !== null) {
+        focusElementSafely(`single-imei-${res.focusIndex}`);
+      }
+      return;
+    }
+
+    e.preventDefault();
+    const res = distributeImeiInput({
+      rawValue: pasted,
+      currentImeis: imeis,
+      targetIndex: index,
+    });
+    setImeis(res.nextImeis);
+
+    if (res.overflowCount > 0) {
+      showToast('1 box = 1 IMEI only! Extra IMEIs skipped — increase Qty for more boxes.', 'warning');
+    } else if (res.multipleDetected) {
+      showToast('IMEIs placed 1 per box cleanly!', 'success');
+    }
+
+    if (res.focusIndex !== null) {
+      focusElementSafely(`single-imei-${res.focusIndex}`);
     }
   };
 
@@ -743,6 +882,28 @@ export const StockModal: React.FC<StockModalProps> = ({
     showToast(`Category "${trimmed}" created!`, 'success');
   };
 
+  const handleSaveEditedCategory = (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.preventDefault();
+    const trimmed = editCategoryName.trim();
+    if (!trimmed) {
+      showToast('Category name cannot be empty', 'warning');
+      return;
+    }
+    if (trimmed === category) {
+      setIsEditingCategory(false);
+      return;
+    }
+    if (categories.some(c => c.toLowerCase() === trimmed.toLowerCase() && c.toLowerCase() !== category.toLowerCase())) {
+      showToast('Category already exists', 'info');
+      return;
+    }
+    if (onRenameCategory && onRenameCategory(category, trimmed)) {
+      handleSelectCategory(trimmed);
+      setIsEditingCategory(false);
+      setEditCategoryName('');
+    }
+  };
+
   // Totals calculations for mobile variants
   const totalVariantsCount = variants.length;
   const totalVariantsQty = variants.reduce((acc, v) => acc + (Number(v.qty) || 0), 0);
@@ -771,9 +932,16 @@ export const StockModal: React.FC<StockModalProps> = ({
         return;
       }
 
+      for (let i = 0; i < variants.length; i++) {
+        if (variants[i].qty === '' || Number(variants[i].qty) < 1) {
+          showToast(`Please enter quantity (at least 1) for Variant #${i + 1}`, 'warning');
+          return;
+        }
+      }
+
       // 1. Synchronize every variant's imeis array exactly with its quantity
       const synchronizedVariants = variants.map(v => {
-        const qty = Math.max(1, Number(v.qty) || 1);
+        const qty = Math.max(1, Number(v.qty));
         const curImeis = v.imeis || [];
         const nextImeis = [...curImeis];
         while (nextImeis.length < qty) nextImeis.push('');
@@ -903,10 +1071,15 @@ export const StockModal: React.FC<StockModalProps> = ({
       onClose();
     } else {
       // SINGLE PRODUCT / KEYPAD PHONE / ACCESSORIES / EDIT MODE FLOW
+      if (qty === '' || Number(qty) < 0 || (!editItem && Number(qty) < 1)) {
+        showToast(editItem ? 'Please enter a valid quantity' : 'Please enter quantity (at least 1)', 'warning');
+        return;
+      }
+
       const cost = Number(costPrice) || 0;
       const sale = Number(salePrice) || 0;
       const wholesale = wholesalePrice !== '' ? Number(wholesalePrice) : Math.round(sale * 0.9);
-      const quantity = Number(qty) || 0;
+      const quantity = Number(qty);
 
       if (sale < 0 || cost < 0 || quantity < 0) {
         showToast('Prices and quantity cannot be negative', 'error');
@@ -1005,41 +1178,39 @@ export const StockModal: React.FC<StockModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-3xl w-full max-w-full overflow-x-hidden p-3.5 sm:p-6 shadow-2xl space-y-4 border border-slate-100 animate-in fade-in zoom-in-95 max-h-[94dvh] lg:max-h-[94vh] overflow-y-auto flex flex-col my-auto">
-        {/* Header */}
-        <div className="flex items-start sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold shadow-2xs shrink-0">
-              {isMobile ? <Smartphone className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" /> : <Package className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />}
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-3 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+      <div className="bg-white rounded-2xl max-w-4xl w-full overflow-x-hidden p-3 sm:p-4 shadow-2xl space-y-2.5 border border-slate-100 animate-in fade-in zoom-in-95 max-h-[96dvh] lg:max-h-[96vh] overflow-y-auto flex flex-col my-auto">
+        {/* Compact Header */}
+        <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold shadow-2xs shrink-0">
+              {isMobile ? <Smartphone className="w-4 h-4 text-blue-600" /> : <Package className="w-4 h-4 text-blue-600" />}
             </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="font-extrabold text-slate-900 text-xs sm:text-base leading-tight truncate">
-                  {editItem
-                    ? 'Edit Product'
-                    : isAndroid
-                    ? 'Add Android Mobile (Variants)'
-                    : isKeypad
-                    ? 'Add Keypad Phone (IMEI & Color)'
-                    : 'Add New Product to Inventory'}
-                </h3>
-                {isAndroid && !editItem && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 flex items-center gap-1 shrink-0">
-                    <Sparkles className="w-3 h-3" /> Multi-Variant
-                  </span>
-                )}
-                {isKeypad && !editItem && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 flex items-center gap-1 shrink-0">
-                    📱 Keypad / Feature
-                  </span>
-                )}
-              </div>
+            <div className="flex items-center gap-2 flex-wrap min-w-0">
+              <h3 className="font-extrabold text-slate-900 text-xs sm:text-sm leading-tight truncate">
+                {editItem
+                  ? 'Edit Product'
+                  : isAndroid
+                  ? 'Add Android Mobile (Variants)'
+                  : isKeypad
+                  ? 'Add Keypad Phone (IMEI & Color)'
+                  : 'Add New Product to Inventory'}
+              </h3>
+              {isAndroid && !editItem && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 flex items-center gap-1 shrink-0">
+                  <Sparkles className="w-2.5 h-2.5" /> Multi-Variant
+                </span>
+              )}
+              {isKeypad && !editItem && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 shrink-0">
+                  Keypad / Feature
+                </span>
+              )}
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer shrink-0 ml-1"
+            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
@@ -1052,32 +1223,32 @@ export const StockModal: React.FC<StockModalProps> = ({
               e.preventDefault();
             }
           }}
-          className="space-y-4 text-xs"
+          className="space-y-2.5 text-xs"
         >
-          {/* Top Section: Photo + Base Model + Category */}
-          <div className="grid grid-cols-1 sm:grid-cols-12 gap-3.5 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80">
-            {/* Product Image / Camera Snapshot */}
-            <div className="sm:col-span-4 flex items-center gap-3">
+          {/* Compact Top Section: Photo + Model Name + Category all in 1 horizontal row */}
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 bg-slate-50/70 p-2.5 rounded-xl border border-slate-200/80 items-end">
+            {/* Compact Photo Picker */}
+            <div className="sm:col-span-3 flex items-center gap-2">
               {image ? (
-                <div className="relative w-16 h-16 rounded-xl border border-slate-200 overflow-hidden bg-white shrink-0 shadow-2xs">
+                <div className="relative w-11 h-11 rounded-lg border border-slate-200 overflow-hidden bg-white shrink-0 shadow-2xs">
                   <img src={image} alt="Preview" className="w-full h-full object-cover" />
                   <button
                     type="button"
                     onClick={handleRemoveImage}
-                    className="absolute top-0.5 right-0.5 bg-rose-600 text-white rounded-full p-0.5 hover:bg-rose-700 cursor-pointer"
+                    className="absolute top-0 right-0 bg-rose-600 text-white rounded-bl-md p-0.5 hover:bg-rose-700 cursor-pointer"
                     title="Remove Photo"
                   >
-                    <X className="w-3 h-3" />
+                    <X className="w-2.5 h-2.5" />
                   </button>
                 </div>
               ) : (
-                <div className="w-16 h-16 rounded-xl border border-dashed border-slate-300 bg-white flex items-center justify-center text-slate-400 shrink-0">
-                  <ImageIcon className="w-6 h-6 text-slate-300" />
+                <div className="w-11 h-11 rounded-lg border border-dashed border-slate-300 bg-white flex items-center justify-center text-slate-400 shrink-0">
+                  <ImageIcon className="w-4 h-4 text-slate-300" />
                 </div>
               )}
 
-              <div className="flex-1 space-y-1">
-                <span className="block font-bold text-slate-700 text-[11px]">Product Photo</span>
+              <div className="flex-1 min-w-0">
+                <span className="block font-bold text-slate-700 text-[10px] mb-1">Photo</span>
                 <input
                   type="file"
                   ref={fileInputRef}
@@ -1086,107 +1257,156 @@ export const StockModal: React.FC<StockModalProps> = ({
                   className="hidden"
                   id="stock-image-file"
                 />
-                <div className="flex flex-wrap items-center gap-1.5">
+                <div className="flex items-center gap-1">
                   <label
                     htmlFor="stock-image-file"
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-lg text-[11px] cursor-pointer transition border border-slate-200 shadow-2xs"
+                    className="inline-flex items-center gap-1 px-2 py-1 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-md text-[10px] cursor-pointer transition border border-slate-200"
                   >
                     <Upload className="w-3 h-3 text-blue-600" />
-                    <span>{image ? 'Change' : 'Upload'}</span>
+                    <span>{image ? 'Edit' : 'Upload'}</span>
                   </label>
                   <button
                     type="button"
                     onClick={() => setIsCameraOpen(true)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold rounded-lg text-[11px] cursor-pointer transition border border-emerald-200 shadow-2xs"
+                    className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold rounded-md text-[10px] cursor-pointer transition border border-emerald-200"
                   >
                     <Camera className="w-3 h-3 text-emerald-600" />
-                    <span>Camera</span>
+                    <span>Cam</span>
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* Model Name & Category */}
-            <div className="sm:col-span-8 space-y-2.5">
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  {isMobile ? 'Mobile Model Name / Base Title *' : 'Product Title / Name *'}
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  placeholder={
-                    isMobile
-                      ? 'e.g. Samsung Galaxy A15, Infinix Note 40, Redmi Note 13'
-                      : 'e.g. 20W Fast Charger Type-C, Handsfree PureBass'
-                  }
-                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-semibold focus:outline-none focus:border-blue-600 shadow-2xs min-h-[44px]"
-                />
-              </div>
+            {/* Model Name */}
+            <div className="sm:col-span-5">
+              <label className="block font-bold text-slate-700 mb-1 text-[11px]">
+                {isMobile ? 'Mobile Model Name *' : 'Product Title / Name *'}
+              </label>
+              <input
+                type="text"
+                required
+                value={name}
+                onChange={e => setName(e.target.value)}
+                placeholder={
+                  isMobile
+                    ? 'e.g. Samsung Galaxy A15, Infinix Note 40'
+                    : 'e.g. 20W Fast Charger Type-C'
+                }
+                className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:border-blue-600 shadow-2xs min-h-[36px] max-sm:min-h-[42px]"
+              />
+            </div>
 
-              {/* Category selector + Inline category creation */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="font-bold text-slate-700">Category</label>
-                  {!isCreatingCategory ? (
+            {/* Category selector + Inline category creation & rename */}
+            <div className="sm:col-span-4">
+              <div className="flex items-center justify-between mb-1 gap-1">
+                <label className="font-bold text-slate-700 text-[11px]">Category</label>
+                {!isCreatingCategory && !isEditingCategory ? (
+                  <div className="flex items-center gap-2">
+                    {onRenameCategory && category && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditCategoryName(category);
+                          setIsEditingCategory(true);
+                        }}
+                        className="text-purple-600 hover:text-purple-700 font-bold text-[10px] flex items-center gap-0.5 cursor-pointer"
+                        title="Rename selected category"
+                      >
+                        <Edit2 className="w-2.5 h-2.5" /> Edit
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => setIsCreatingCategory(true)}
-                      className="text-blue-600 hover:text-blue-700 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+                      className="text-blue-600 hover:text-blue-700 font-bold text-[10px] flex items-center gap-0.5 cursor-pointer"
                     >
-                      <Plus className="w-3 h-3" /> Create Category
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setIsCreatingCategory(false)}
-                      className="text-slate-400 hover:text-slate-600 text-[11px] cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                  )}
-                </div>
-
-                {isCreatingCategory ? (
-                  <div className="flex items-center gap-2 p-1.5 bg-blue-50/80 border border-blue-200 rounded-xl">
-                    <input
-                      type="text"
-                      value={newCategoryName}
-                      onChange={e => setNewCategoryName(e.target.value)}
-                      placeholder="Enter new category name..."
-                      className="flex-1 bg-white border border-blue-300 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:outline-none"
-                      autoFocus
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleSaveNewCategory(e as any);
-                        }
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={handleSaveNewCategory}
-                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition cursor-pointer flex items-center gap-1 shrink-0 shadow-2xs"
-                    >
-                      <Check className="w-3 h-3" /> Save
+                      <Plus className="w-2.5 h-2.5" /> New
                     </button>
                   </div>
                 ) : (
-                  <select
-                    value={category}
-                    onChange={e => handleSelectCategory(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:border-blue-600 shadow-2xs min-h-[44px]"
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCreatingCategory(false);
+                      setIsEditingCategory(false);
+                    }}
+                    className="text-slate-400 hover:text-slate-600 text-[10px] cursor-pointer"
                   >
-                    {categories.map(c => (
-                      <option key={c} value={c}>
-                        {c} {isMobileCategory(c) ? '📱 (Mobile Phone)' : ''}
-                      </option>
-                    ))}
-                  </select>
+                    Cancel
+                  </button>
                 )}
               </div>
+
+              {isCreatingCategory ? (
+                <div className="flex items-center gap-1 bg-blue-50/80 border border-blue-200 rounded-lg p-0.5">
+                  <input
+                    type="text"
+                    value={newCategoryName}
+                    onChange={e => setNewCategoryName(e.target.value)}
+                    placeholder="New category..."
+                    className="flex-1 min-w-0 bg-white border border-blue-300 rounded-md px-2 py-1 text-xs font-medium focus:outline-none"
+                    autoFocus
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleSaveNewCategory(e as any);
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveNewCategory}
+                    className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-md text-[10px] transition cursor-pointer shrink-0"
+                  >
+                    Save
+                  </button>
+                </div>
+              ) : isEditingCategory ? (
+                <div className="flex items-center gap-1 bg-purple-50/80 border border-purple-200 rounded-lg p-0.5">
+                  <input
+                    type="text"
+                    value={editCategoryName}
+                    onChange={e => setEditCategoryName(e.target.value)}
+                    placeholder="Edit category..."
+                    className="flex-1 min-w-0 bg-white border border-purple-300 rounded-md px-2 py-1 text-xs font-medium focus:outline-none"
+                    autoFocus
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        handleSaveEditedCategory(e);
+                      } else if (e.key === 'Escape') {
+                        setIsEditingCategory(false);
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveEditedCategory}
+                    className="px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-md text-[10px] transition cursor-pointer shrink-0"
+                  >
+                    Update
+                  </button>
+                </div>
+              ) : (
+                (() => {
+                  const modalCategories =
+                    category && !categories.includes(category)
+                      ? [category, ...categories]
+                      : categories;
+                  return (
+                    <select
+                      value={category}
+                      onChange={e => handleSelectCategory(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:border-blue-600 shadow-2xs min-h-[36px] max-sm:min-h-[42px]"
+                    >
+                      {modalCategories.map(c => (
+                        <option key={c} value={c}>
+                          {c} {isMobileCategory(c) ? '(Mobile)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  );
+                })()
+              )}
             </div>
           </div>
 
@@ -1194,26 +1414,26 @@ export const StockModal: React.FC<StockModalProps> = ({
           {/* MOBILE & KEYPAD MULTI-VARIANT / COLOR SYSTEM               */}
           {/* ========================================================= */}
           {(isAndroid || isKeypad) ? (
-            <div className="space-y-4">
+            <div className="space-y-2.5">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-blue-600" />
-                  <span className="font-bold text-slate-900 text-xs sm:text-sm">
+                <div className="flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-blue-600" />
+                  <span className="font-bold text-slate-900 text-xs">
                     {isKeypad ? `Color Variants (${variants.length})` : `Mobile Variants (${variants.length})`}
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={handleAddVariant}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm transition cursor-pointer"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] rounded-lg shadow-2xs transition cursor-pointer"
                 >
-                  <Plus className="w-3.5 h-3.5" />
+                  <Plus className="w-3 h-3" />
                   <span>{isKeypad ? 'Add Color Variant' : 'Add Variant'}</span>
                 </button>
               </div>
 
               {/* Variant Cards */}
-              <div className="space-y-3.5">
+              <div className={`space-y-2.5 ${variants.length > 1 ? 'max-h-[48vh] overflow-y-auto pr-0.5' : ''}`}>
                 {variants.map((v, vIdx) => {
                   const currentQty = Math.max(1, Number(v.qty) || 1);
                   const marginVal =
@@ -1228,39 +1448,45 @@ export const StockModal: React.FC<StockModalProps> = ({
                   return (
                     <div
                       key={v.id || vIdx}
-                      className="bg-white border-2 border-slate-200/90 rounded-2xl p-4 space-y-3 shadow-xs hover:border-blue-300 transition"
+                      className="bg-white border border-slate-200/90 rounded-xl p-2.5 sm:p-3 space-y-2 shadow-2xs hover:border-blue-300 transition"
                     >
-                      {/* Variant Card Header */}
-                      <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-                        <div className="flex items-center gap-2">
-                          <span className="w-6 h-6 rounded-lg bg-blue-600 text-white font-bold text-xs flex items-center justify-center">
+                      {/* Compact Variant Header + Inline Margin Badge */}
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 gap-2">
+                        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                          <span className="w-5 h-5 rounded-md bg-blue-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
                             #{vIdx + 1}
                           </span>
-                          <span className="font-extrabold text-slate-800 text-xs sm:text-sm">
+                          <span className="font-extrabold text-slate-800 text-xs truncate">
                             {isKeypad
-                              ? `Color Variant #${vIdx + 1}: ${v.color?.trim() || 'Specify Color'}`
-                              : `Variant ${vIdx + 1}: ${v.ram || 'RAM'} / ${v.storage || 'ROM'} ${v.color ? `- ${v.color}` : ''}`}
+                              ? `Color #${vIdx + 1}: ${v.color?.trim() || 'Specify Color'}`
+                              : `${v.ram || 'RAM'} / ${v.storage || 'ROM'}${v.color ? ` • ${v.color}` : ''}`}
                           </span>
-                          <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-slate-100 text-slate-600">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-slate-100 text-slate-600 tabular-nums">
                             {currentQty} {currentQty === 1 ? 'Unit' : 'Units'}
                           </span>
+                          {marginVal > 0 && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1 tabular-nums">
+                              <TrendingUp className="w-2.5 h-2.5 text-emerald-600" />
+                              +{currency} {marginVal.toLocaleString()} ({marginPct}%)
+                            </span>
+                          )}
                         </div>
 
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1 shrink-0">
                           <button
                             type="button"
                             onClick={() => handleDuplicateVariant(vIdx)}
-                            className="text-slate-500 hover:text-blue-600 p-1.5 rounded-lg hover:bg-slate-100 text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+                            className="text-slate-500 hover:text-blue-600 px-1.5 py-1 rounded-md hover:bg-slate-100 text-[10px] font-semibold flex items-center gap-1 transition cursor-pointer"
                             title="Duplicate this variant"
                           >
-                            <Copy className="w-3.5 h-3.5" />
+                            <Copy className="w-3 h-3" />
                             <span className="hidden sm:inline">Duplicate</span>
                           </button>
                           {variants.length > 1 && (
                             <button
                               type="button"
                               onClick={() => handleRemoveVariant(vIdx)}
-                              className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                              className="text-slate-400 hover:text-rose-600 p-1 rounded-md hover:bg-rose-50 transition cursor-pointer"
                               title="Delete variant"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -1269,11 +1495,11 @@ export const StockModal: React.FC<StockModalProps> = ({
                         </div>
                       </div>
 
-                      {/* Specs Row: RAM & Storage for Android OR Color for Keypad */}
+                      {/* Specs Row: Compact RAM, Storage & Color */}
                       {isKeypad ? (
-                        <div className="space-y-1.5 bg-purple-50/60 p-3 rounded-xl border border-purple-200/80">
-                          <label className="font-bold text-purple-900 flex items-center gap-1 text-xs">
-                            <Palette className="w-4 h-4 text-purple-600" /> Phone Color *
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 bg-purple-50/60 p-2 rounded-lg border border-purple-200/80">
+                          <label className="font-bold text-purple-900 flex items-center gap-1 text-[11px] shrink-0">
+                            <Palette className="w-3.5 h-3.5 text-purple-600" /> Phone Color *
                           </label>
                           <input
                             type="text"
@@ -1281,23 +1507,32 @@ export const StockModal: React.FC<StockModalProps> = ({
                             value={v.color || ''}
                             onChange={e => handleUpdateVariantField(vIdx, 'color', e.target.value)}
                             placeholder="e.g. Black, Blue, White, Gold, Red"
-                            className="w-full bg-white border border-purple-300 rounded-lg px-3 py-2 text-xs font-bold text-purple-950 focus:outline-none focus:border-purple-600 shadow-2xs min-h-[44px]"
+                            className="flex-1 bg-white border border-purple-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[34px] max-sm:min-h-[40px]"
                           />
                         </div>
                       ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                          {/* RAM Selector */}
-                          <div className="sm:col-span-5 space-y-1.5">
-                            <label className="font-bold text-slate-700 flex items-center gap-1 text-[11px]">
-                              <Cpu className="w-3.5 h-3.5 text-blue-600" /> RAM Memory
-                            </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-start">
+                          {/* RAM Selector + inline Custom box */}
+                          <div className="sm:col-span-5 space-y-1">
+                            <div className="flex items-center justify-between gap-1">
+                              <label className="font-bold text-slate-700 flex items-center gap-1 text-[10px]">
+                                <Cpu className="w-3 h-3 text-blue-600" /> RAM
+                              </label>
+                              <input
+                                type="text"
+                                value={v.ram}
+                                onChange={e => handleUpdateVariantField(vIdx, 'ram', e.target.value)}
+                                placeholder="Custom"
+                                className="w-20 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-[10px] font-semibold focus:outline-none focus:border-blue-600"
+                              />
+                            </div>
                             <div className="flex flex-wrap gap-1">
                               {RAM_OPTIONS.map(ramOption => (
                                 <button
                                   key={ramOption}
                                   type="button"
                                   onClick={() => handleUpdateVariantField(vIdx, 'ram', ramOption)}
-                                  className={`px-2 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
                                     v.ram === ramOption
                                       ? 'bg-blue-600 text-white shadow-2xs'
                                       : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
@@ -1307,20 +1542,22 @@ export const StockModal: React.FC<StockModalProps> = ({
                                 </button>
                               ))}
                             </div>
-                            <input
-                              type="text"
-                              value={v.ram}
-                              onChange={e => handleUpdateVariantField(vIdx, 'ram', e.target.value)}
-                              placeholder="Custom RAM (e.g. 8GB)"
-                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-[11px] font-semibold focus:outline-none focus:border-blue-600"
-                            />
                           </div>
 
-                          {/* Storage Selector */}
-                          <div className="sm:col-span-4 space-y-1.5">
-                            <label className="font-bold text-slate-700 flex items-center gap-1 text-[11px]">
-                              <HardDrive className="w-3.5 h-3.5 text-indigo-600" /> Storage (ROM)
-                            </label>
+                          {/* Storage Selector + inline Custom box */}
+                          <div className="sm:col-span-4 space-y-1">
+                            <div className="flex items-center justify-between gap-1">
+                              <label className="font-bold text-slate-700 flex items-center gap-1 text-[10px]">
+                                <HardDrive className="w-3 h-3 text-indigo-600" /> Storage
+                              </label>
+                              <input
+                                type="text"
+                                value={v.storage}
+                                onChange={e => handleUpdateVariantField(vIdx, 'storage', e.target.value)}
+                                placeholder="Custom"
+                                className="w-20 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-[10px] font-semibold focus:outline-none focus:border-indigo-600"
+                              />
+                            </div>
                             <div className="flex flex-wrap gap-1">
                               {STORAGE_OPTIONS.map(storageOption => (
                                 <button
@@ -1329,7 +1566,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                                   onClick={() =>
                                     handleUpdateVariantField(vIdx, 'storage', storageOption)
                                   }
-                                  className={`px-2 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
                                     v.storage === storageOption
                                       ? 'bg-indigo-600 text-white shadow-2xs'
                                       : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
@@ -1339,35 +1576,28 @@ export const StockModal: React.FC<StockModalProps> = ({
                                 </button>
                               ))}
                             </div>
-                            <input
-                              type="text"
-                              value={v.storage}
-                              onChange={e => handleUpdateVariantField(vIdx, 'storage', e.target.value)}
-                              placeholder="Custom ROM (e.g. 128GB)"
-                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-[11px] font-semibold focus:outline-none focus:border-indigo-600"
-                            />
                           </div>
 
                           {/* Color / Edition */}
-                          <div className="sm:col-span-3 space-y-1.5">
-                            <label className="font-bold text-slate-700 flex items-center gap-1 text-[11px]">
-                              <Palette className="w-3.5 h-3.5 text-purple-600" /> Color / Edition
+                          <div className="sm:col-span-3 space-y-1">
+                            <label className="font-bold text-slate-700 flex items-center gap-1 text-[10px]">
+                              <Palette className="w-3 h-3 text-purple-600" /> Color / Edition
                             </label>
                             <input
                               type="text"
                               value={v.color || ''}
                               onChange={e => handleUpdateVariantField(vIdx, 'color', e.target.value)}
                               placeholder="e.g. Black, Blue"
-                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-semibold focus:outline-none focus:border-purple-600"
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-semibold focus:outline-none focus:border-purple-600 min-h-[30px]"
                             />
                           </div>
                         </div>
                       )}
 
-                      {/* Pricing & Quantity Row */}
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5 bg-slate-50/80 p-2.5 sm:p-3 rounded-xl border border-slate-200/70 items-center">
+                      {/* Compact Pricing & Quantity Row */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50/80 p-2 rounded-lg border border-slate-200/70 items-center">
                         <div>
-                          <label className="block font-bold text-slate-700 mb-1 text-[10px] sm:text-[11px] truncate" title="Cost Price">
+                          <label className="block font-bold text-slate-700 mb-0.5 text-[10px] truncate" title="Cost Price">
                             1. Cost ({currency}) *
                           </label>
                           <input
@@ -1382,12 +1612,12 @@ export const StockModal: React.FC<StockModalProps> = ({
                               )
                             }
                             placeholder="Cost Price"
-                            className="w-full bg-white border border-slate-200 rounded-lg px-2 sm:px-2.5 py-2 text-xs font-mono font-bold focus:outline-none focus:border-blue-600 min-h-[44px]"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs tabular-nums font-bold focus:outline-none focus:border-blue-600 min-h-[34px] max-sm:min-h-[40px]"
                           />
                         </div>
 
                         <div>
-                          <label className="block font-bold text-purple-900 mb-1 text-[10px] sm:text-[11px] truncate" title="Wholesale Price">
+                          <label className="block font-bold text-purple-900 mb-0.5 text-[10px] truncate" title="Wholesale Price">
                             2. Wholesale ({currency})
                           </label>
                           <input
@@ -1402,12 +1632,12 @@ export const StockModal: React.FC<StockModalProps> = ({
                               )
                             }
                             placeholder="Wholesale"
-                            className="w-full bg-purple-50/70 border border-purple-200 rounded-lg px-2 sm:px-2.5 py-2 text-xs font-mono font-bold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[44px]"
+                            className="w-full bg-purple-50/70 border border-purple-200 rounded-lg px-2 py-1 text-xs tabular-nums font-bold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[34px] max-sm:min-h-[40px]"
                           />
                         </div>
 
                         <div>
-                          <label className="block font-bold text-slate-700 mb-1 text-[10px] sm:text-[11px] truncate" title="Sale Price">
+                          <label className="block font-bold text-slate-700 mb-0.5 text-[10px] truncate" title="Sale Price">
                             3. Sale ({currency}) *
                           </label>
                           <input
@@ -1422,12 +1652,12 @@ export const StockModal: React.FC<StockModalProps> = ({
                               )
                             }
                             placeholder="Sale Price"
-                            className="w-full bg-white border border-slate-200 rounded-lg px-2 sm:px-2.5 py-2 text-xs font-mono font-bold focus:outline-none focus:border-blue-600 min-h-[44px]"
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs tabular-nums font-bold focus:outline-none focus:border-blue-600 min-h-[34px] max-sm:min-h-[40px]"
                           />
                         </div>
 
                         <div>
-                          <label className="block font-bold text-slate-700 mb-1 text-[10px] sm:text-[11px] truncate" title="Quantity">
+                          <label className="block font-bold text-slate-700 mb-0.5 text-[10px] truncate" title="Quantity">
                             Qty (Units) *
                           </label>
                           <input
@@ -1441,90 +1671,81 @@ export const StockModal: React.FC<StockModalProps> = ({
                                 e.target.value === '' ? '' : Number(e.target.value)
                               )
                             }
-                            placeholder="1"
-                            className="w-full bg-white border border-blue-400 rounded-lg px-2 sm:px-2.5 py-2 text-xs font-mono font-extrabold text-blue-700 focus:outline-none focus:border-blue-600 min-h-[44px]"
+                            placeholder="Qty"
+                            className="w-full bg-white border border-blue-400 rounded-lg px-2 py-1 text-xs tabular-nums font-extrabold text-blue-700 focus:outline-none focus:border-blue-600 min-h-[34px] max-sm:min-h-[40px]"
                           />
                         </div>
                       </div>
 
-                      {/* Margin badge if both prices set */}
-                      {marginVal > 0 && (
-                        <div className="flex items-center gap-2 text-[11px] text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200/80 font-medium">
-                          <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>
-                            Estimated Margin: <strong>{currency} {marginVal.toLocaleString()}</strong> ({marginPct}%) per unit
+                      {/* STRICT 1-IMEI-PER-BOX DYNAMIC GRID */}
+                      <div className="p-2 bg-blue-50/60 border border-blue-200/80 rounded-lg space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-slate-900 text-[10px] sm:text-[11px] flex items-center gap-1">
+                            <Smartphone className="w-3 h-3 text-blue-600" />
+                            IMEI Boxes — Variant #{vIdx + 1} ({v.imeis.length} {v.imeis.length === 1 ? 'Box' : 'Boxes'} for {v.qty === '' ? 0 : v.qty} units)
                           </span>
-                        </div>
-                      )}
-
-                      {/* DYNAMIC IMEI BOXES: Exactly matches the Quantity entered for this variant! */}
-                      <div className="p-3 bg-blue-50/60 border border-blue-200/80 rounded-xl space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-slate-900 text-[11px] flex items-center gap-1.5">
-                            <Smartphone className="w-3.5 h-3.5 text-blue-600" />
-                            IMEI Numbers for Variant #{vIdx + 1} ({v.imeis.length} {v.imeis.length === 1 ? 'Box' : 'Boxes'} for {v.qty || 1} units)
-                          </span>
-                          <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
-                            1 IMEI per phone
+                          <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full shrink-0">
+                            1 Box = 1 IMEI Only
                           </span>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1.5 max-h-28 overflow-y-auto pr-0.5">
                           {v.imeis.map((imeiStr, imeiIdx) => {
                             const imeiErr = getVariantImeiError(imeiStr, vIdx);
                             return (
                               <div key={imeiIdx} className="flex flex-col">
                                 <div
-                                  className={`flex items-center gap-1.5 p-1.5 rounded-xl border transition min-h-[44px] ${
+                                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded-lg border transition min-h-[34px] max-sm:min-h-[40px] ${
                                     imeiErr
                                       ? 'bg-rose-50/90 border-rose-400 ring-1 ring-rose-300'
-                                      : 'bg-white border-slate-200'
+                                      : 'bg-white border-slate-200 focus-within:border-blue-500'
                                   }`}
                                 >
                                   <span
-                                    className={`font-mono text-[10px] font-bold w-14 shrink-0 ${
+                                    className={`tabular-nums text-[10px] font-bold w-6 shrink-0 ${
                                       imeiErr ? 'text-rose-600' : 'text-slate-500'
                                     }`}
                                   >
-                                    IMEI #{imeiIdx + 1}:
+                                    #{imeiIdx + 1}
                                   </span>
-                                  <div className="relative flex-1 flex items-center min-h-[40px]">
+                                  <div className="relative flex-1 flex items-center min-w-0">
                                     <Hash
-                                      className={`w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 ${
+                                      className={`w-3 h-3 absolute left-1 top-1/2 -translate-y-1/2 ${
                                         imeiErr ? 'text-rose-500' : 'text-slate-400'
                                       }`}
                                     />
                                     <input
                                       id={`variant-imei-${vIdx}-${imeiIdx}`}
                                       type="text"
+                                      maxLength={MAX_SINGLE_IMEI_LENGTH}
                                       value={imeiStr}
                                       onChange={e =>
                                         handleVariantImeiChange(vIdx, imeiIdx, e.target.value)
                                       }
                                       onKeyDown={e => handleVariantImeiKeyDown(e, vIdx, imeiIdx)}
                                       onPaste={e => handleVariantImeiPaste(e, vIdx, imeiIdx)}
-                                      placeholder={`Unit #${imeiIdx + 1} IMEI`}
-                                      className="w-full pl-6 pr-10 py-2 bg-transparent text-[11px] font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 rounded min-h-[40px]"
+                                      placeholder="1 IMEI (15 digits)"
+                                      className="w-full pl-4.5 pr-7 py-1 bg-transparent text-[11px] tabular-nums font-medium focus:outline-none rounded"
                                       autoComplete="off"
                                     />
                                     <button
                                       type="button"
                                       onClick={() =>
                                         openBarcodeScanner(
-                                          `Scan IMEI for Variant #${vIdx + 1} Unit #${imeiIdx + 1}`,
+                                          `Scan 1 IMEI for Variant #${vIdx + 1} Unit #${imeiIdx + 1}`,
                                           code => handleVariantImeiChange(vIdx, imeiIdx, code)
                                         )
                                       }
-                                      className="absolute right-0.5 p-2 text-blue-600 hover:bg-blue-50 rounded-lg cursor-pointer min-h-[40px] min-w-[40px] flex items-center justify-center"
-                                      title="Camera Scan IMEI"
+                                      className="absolute right-0 p-1 text-blue-600 hover:bg-blue-50 rounded cursor-pointer flex items-center justify-center"
+                                      title="Camera Scan 1 IMEI"
                                     >
-                                      <Camera className="w-4 h-4" />
+                                      <Camera className="w-3.5 h-3.5" />
                                     </button>
                                   </div>
                                 </div>
                                 {imeiErr && (
-                                  <div className="flex items-center gap-1 text-[10px] font-semibold text-rose-600 mt-1 px-1">
-                                    <AlertTriangle className="w-3 h-3 shrink-0" />
+                                  <div className="flex items-center gap-1 text-[10px] font-semibold text-rose-600 mt-0.5 px-1">
+                                    <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
                                     <span className="truncate">{imeiErr}</span>
                                   </div>
                                 )}
@@ -1538,46 +1759,43 @@ export const StockModal: React.FC<StockModalProps> = ({
                 })}
               </div>
 
-              {/* Add Variant Button */}
-              <button
-                type="button"
-                onClick={handleAddVariant}
-                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-dashed border-slate-300 transition flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Plus className="w-4 h-4 text-blue-600" />
-                <span>+ Add Another Mobile Variant (Different RAM / ROM / Color)</span>
-              </button>
-
-              {/* Multi-Variant Financial Summary Card */}
-              <div className="p-3.5 bg-slate-900 text-white rounded-2xl space-y-2 shadow-sm">
-                <div className="flex items-center justify-between text-xs font-bold text-slate-300 border-b border-slate-800 pb-2">
-                  <span className="flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    Overall Batch Summary
+              {/* Combined Compact Batch Summary & Action Bar */}
+              <div className="bg-slate-900 text-white rounded-xl px-3 py-2.5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 shadow-sm">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
+                  <span className="font-bold text-amber-400 flex items-center gap-1 tabular-nums">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    {totalVariantsCount} {totalVariantsCount === 1 ? 'Var' : 'Vars'} • {totalVariantsQty} Units
                   </span>
-                  <span className="text-amber-400 font-mono">
-                    {totalVariantsCount} {totalVariantsCount === 1 ? 'Variant' : 'Variants'} | {totalVariantsQty} Total Units
+                  <span className="text-slate-300 tabular-nums">
+                    Cost: <strong className="text-white">{currency} {totalVariantsCost.toLocaleString()}</strong>
+                  </span>
+                  <span className="text-slate-300 tabular-nums">
+                    Sale: <strong className="text-emerald-400">{currency} {totalVariantsSale.toLocaleString()}</strong>
+                  </span>
+                  <span className="text-slate-300 tabular-nums">
+                    Profit: <strong className="text-blue-400">+{currency} {totalVariantsProfit.toLocaleString()}</strong>
                   </span>
                 </div>
-                <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                  <div className="bg-slate-800/80 p-2 rounded-xl">
-                    <span className="text-[10px] text-slate-400 block">Total Investment</span>
-                    <span className="font-mono font-bold text-white text-xs sm:text-sm">
-                      {currency} {totalVariantsCost.toLocaleString()}
+                <div className="flex items-center gap-2 shrink-0 justify-end">
+                  <button
+                    type="button"
+                    onClick={handleExplicitCancel}
+                    className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSubmit()}
+                    className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>
+                      {editItem
+                        ? 'Save Changes'
+                        : `Add ${variants.length > 1 ? `${variants.length} Variants` : 'Mobile'} to Stock`}
                     </span>
-                  </div>
-                  <div className="bg-slate-800/80 p-2 rounded-xl">
-                    <span className="text-[10px] text-slate-400 block">Total Expected Sale</span>
-                    <span className="font-mono font-bold text-emerald-400 text-xs sm:text-sm">
-                      {currency} {totalVariantsSale.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="bg-slate-800/80 p-2 rounded-xl">
-                    <span className="text-[10px] text-slate-400 block">Projected Profit</span>
-                    <span className="font-mono font-bold text-blue-400 text-xs sm:text-sm">
-                      +{currency} {totalVariantsProfit.toLocaleString()}
-                    </span>
-                  </div>
+                  </button>
                 </div>
               </div>
             </div>
@@ -1585,11 +1803,11 @@ export const StockModal: React.FC<StockModalProps> = ({
             /* ========================================================= */
             /* SINGLE PRODUCT MODE / KEYPAD PHONE / ACCESSORIES / EDIT   */
             /* ========================================================= */
-            <div className="space-y-4">
+            <div className="space-y-2.5">
               {/* If Keypad Phone or editing mobile phone, show Color input */}
               {(isKeypad || (editItem && isMobile)) && (
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                  <label className="block font-bold text-slate-700 mb-1 text-[11px] flex items-center gap-1">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
+                  <label className="font-bold text-slate-700 text-[11px] flex items-center gap-1 shrink-0">
                     <Palette className="w-3.5 h-3.5 text-purple-600" /> Phone Color
                   </label>
                   <input
@@ -1597,16 +1815,15 @@ export const StockModal: React.FC<StockModalProps> = ({
                     value={color}
                     onChange={e => setColor(e.target.value)}
                     placeholder="e.g. Black, Blue, White, Gold, Red"
-                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:border-blue-600 min-h-[44px]"
+                    className="flex-1 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:border-blue-600 min-h-[34px] max-sm:min-h-[40px]"
                   />
                 </div>
               )}
 
-              {/* Pricing & Quantity Row: 1. Cost Price -> 2. Wholesale Price -> 3. Sale Price -> Quantity */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-                {/* 1. Cost Price */}
+              {/* Pricing & Quantity Row */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1 text-[10px] sm:text-xs truncate" title="Cost Price">
+                  <label className="block font-bold text-slate-700 mb-0.5 text-[10px] sm:text-[11px] truncate" title="Cost Price">
                     1. Cost Price ({currency}) *
                   </label>
                   <input
@@ -1616,13 +1833,12 @@ export const StockModal: React.FC<StockModalProps> = ({
                     value={costPrice}
                     onChange={e => setCostPrice(e.target.value === '' ? '' : Number(e.target.value))}
                     placeholder="Cost Price"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 sm:px-3 py-2 text-xs font-mono font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[44px]"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs tabular-nums font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[36px] max-sm:min-h-[42px]"
                   />
                 </div>
 
-                {/* 2. Wholesale Price */}
                 <div>
-                  <label className="block font-bold text-purple-900 mb-1 text-[10px] sm:text-xs truncate" title="Wholesale Price">
+                  <label className="block font-bold text-purple-900 mb-0.5 text-[10px] sm:text-[11px] truncate" title="Wholesale Price">
                     2. Wholesale ({currency})
                   </label>
                   <input
@@ -1631,13 +1847,12 @@ export const StockModal: React.FC<StockModalProps> = ({
                     value={wholesalePrice}
                     onChange={e => setWholesalePrice(e.target.value === '' ? '' : Number(e.target.value))}
                     placeholder="Wholesale Rate"
-                    className="w-full bg-purple-50/60 border border-purple-200 rounded-xl px-2.5 sm:px-3 py-2 text-xs font-mono font-semibold text-purple-950 focus:outline-none focus:border-purple-600 focus:bg-white transition min-h-[44px]"
+                    className="w-full bg-purple-50/60 border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs tabular-nums font-semibold text-purple-950 focus:outline-none focus:border-purple-600 focus:bg-white transition min-h-[36px] max-sm:min-h-[42px]"
                   />
                 </div>
 
-                {/* 3. Sale Price */}
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1 text-[10px] sm:text-xs truncate" title="Sale Price">
+                  <label className="block font-bold text-slate-700 mb-0.5 text-[10px] sm:text-[11px] truncate" title="Sale Price">
                     3. Sale Price ({currency}) *
                   </label>
                   <input
@@ -1647,13 +1862,12 @@ export const StockModal: React.FC<StockModalProps> = ({
                     value={salePrice}
                     onChange={e => setSalePrice(e.target.value === '' ? '' : Number(e.target.value))}
                     placeholder="Sale Price"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 sm:px-3 py-2 text-xs font-mono font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[44px]"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs tabular-nums font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[36px] max-sm:min-h-[42px]"
                   />
                 </div>
 
-                {/* 4. Quantity */}
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1 text-[10px] sm:text-xs truncate" title="Quantity">
+                  <label className="block font-bold text-slate-700 mb-0.5 text-[10px] sm:text-[11px] truncate" title="Quantity">
                     Quantity (Units) *
                   </label>
                   <input
@@ -1665,108 +1879,93 @@ export const StockModal: React.FC<StockModalProps> = ({
                     onChange={e =>
                       handleSingleQtyChange(e.target.value === '' ? '' : Number(e.target.value))
                     }
-                    placeholder="1"
-                    className="w-full bg-slate-50 border border-blue-400 rounded-xl px-2.5 sm:px-3 py-2 text-xs font-mono font-bold text-blue-700 focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[44px]"
+                    placeholder="Qty"
+                    className="w-full bg-slate-50 border border-blue-400 rounded-lg px-2.5 py-1.5 text-xs tabular-nums font-bold text-blue-700 focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[36px] max-sm:min-h-[42px]"
                   />
                 </div>
               </div>
 
               {/* If editing and stock quantity is modified, display structured Stock Adjustment audit selector */}
               {editItem && editItem.qty !== Number(qty) && (
-                <div className="p-3 bg-amber-50/80 border border-amber-300/80 rounded-2xl space-y-2 text-xs animate-in fade-in">
+                <div className="p-2.5 bg-amber-50/80 border border-amber-300/80 rounded-xl space-y-1.5 text-xs animate-in fade-in">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-amber-900 flex items-center gap-1.5">
+                    <span className="font-bold text-amber-900 flex items-center gap-1.5 text-[11px]">
                       <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                      Stock Adjustment Audit Log (Audit Trail)
+                      Stock Adjustment ({editItem.qty} → {Number(qty) || 0})
                     </span>
-                    <span className={`font-mono font-bold px-2 py-0.5 rounded text-[11px] ${
+                    <span className={`tabular-nums font-bold px-2 py-0.5 rounded text-[10px] ${
                       Number(qty) > editItem.qty ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
                     }`}>
                       {Number(qty) > editItem.qty ? `+${Number(qty) - editItem.qty}` : `${Number(qty) - editItem.qty}`} Units
                     </span>
                   </div>
-                  <p className="text-[11px] text-amber-800/80">
-                    Previous Stock: <strong>{editItem.qty}</strong> $\rightarrow$ New Stock: <strong>{Number(qty) || 0}</strong>. Please select the reason for this manual stock quantity change:
-                  </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[10px] font-bold text-amber-900 uppercase mb-1">
-                        Adjustment Reason *
-                      </label>
-                      <select
-                        value={adjustmentReason}
-                        onChange={e => setAdjustmentReason(e.target.value as StockAdjustmentReason)}
-                        className="w-full bg-white border border-amber-300 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800 focus:outline-none focus:border-amber-600"
-                      >
-                        <option value="Stock Correction">Stock Correction</option>
-                        <option value="Damaged">Damaged</option>
-                        <option value="Lost">Lost</option>
-                        <option value="Manual Adjustment">Manual Adjustment</option>
-                        <option value="Found Stock">Found Stock</option>
-                        <option value="Other">Other</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-amber-900 uppercase mb-1">
-                        Adjustment Note (Optional)
-                      </label>
-                      <input
-                        type="text"
-                        value={adjustmentNotes}
-                        onChange={e => setAdjustmentNotes(e.target.value)}
-                        placeholder="e.g. Physical inventory count verified"
-                        className="w-full bg-white border border-amber-300 rounded-xl px-3 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:border-amber-600"
-                      />
-                    </div>
+                    <select
+                      value={adjustmentReason}
+                      onChange={e => setAdjustmentReason(e.target.value as StockAdjustmentReason)}
+                      className="w-full bg-white border border-amber-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:outline-none focus:border-amber-600"
+                    >
+                      <option value="Stock Correction">Stock Correction</option>
+                      <option value="Damaged">Damaged</option>
+                      <option value="Lost">Lost</option>
+                      <option value="Manual Adjustment">Manual Adjustment</option>
+                      <option value="Found Stock">Found Stock</option>
+                      <option value="Other">Other</option>
+                    </select>
+                    <input
+                      type="text"
+                      value={adjustmentNotes}
+                      onChange={e => setAdjustmentNotes(e.target.value)}
+                      placeholder="Adjustment note (optional)"
+                      className="w-full bg-white border border-amber-300 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:border-amber-600"
+                    />
                   </div>
                 </div>
               )}
 
-              {/* Mobile IMEI list vs Non-Mobile Barcode */}
+              {/* Mobile IMEI list (strict 1-IMEI-per-box) vs Non-Mobile Barcode */}
               {isMobile ? (
-                <div className="p-3.5 bg-blue-50/60 border border-blue-200 rounded-2xl space-y-2.5">
+                <div className="p-2.5 bg-blue-50/60 border border-blue-200 rounded-xl space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                      <Smartphone className="w-4 h-4 text-blue-600" />
-                      Mobile IMEI Registration ({imeis.length} {imeis.length === 1 ? 'Unit' : 'Units'})
+                    <span className="font-bold text-slate-900 text-[11px] flex items-center gap-1.5">
+                      <Smartphone className="w-3.5 h-3.5 text-blue-600" />
+                      Mobile IMEI Boxes ({imeis.length} {imeis.length === 1 ? 'Unit' : 'Units'})
                     </span>
                     <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
-                      1 IMEI per device
+                      1 Box = 1 IMEI Only
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-500">
-                    Quantity is {qty}. Each device has its dedicated IMEI field below:
-                  </p>
 
-                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1.5 max-h-36 overflow-y-auto pr-0.5">
                     {imeis.map((imeiVal, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <span className="font-mono text-[11px] font-bold text-slate-600 w-16 shrink-0">
-                          IMEI #{idx + 1}:
+                      <div key={idx} className="flex items-center gap-1 px-1.5 py-0.5 bg-white border border-slate-200 focus-within:border-blue-500 rounded-lg min-h-[34px] max-sm:min-h-[40px]">
+                        <span className="tabular-nums text-[10px] font-bold text-slate-500 w-6 shrink-0">
+                          #{idx + 1}
                         </span>
-                        <div className="relative flex-1 flex items-center">
-                          <Hash className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <div className="relative flex-1 flex items-center min-w-0">
+                          <Hash className="w-3 h-3 absolute left-1 top-1/2 -translate-y-1/2 text-slate-400" />
                           <input
                             id={`single-imei-${idx}`}
                             type="text"
+                            maxLength={MAX_SINGLE_IMEI_LENGTH}
                             value={imeiVal}
                             onChange={e => handleSingleImeiChange(idx, e.target.value)}
                             onKeyDown={e => handleSingleImeiKeyDown(e, idx)}
                             onPaste={e => handleSingleImeiPaste(e, idx)}
-                            placeholder={`Device #${idx + 1} IMEI`}
-                            className="w-full pl-8 pr-12 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500 transition min-h-[42px]"
+                            placeholder="1 IMEI (15 digits)"
+                            className="w-full pl-4.5 pr-7 py-1 bg-transparent text-[11px] tabular-nums font-medium focus:outline-none rounded"
                             autoComplete="off"
                           />
                           <button
                             type="button"
                             onClick={() =>
                               openBarcodeScanner(
-                                `Scan IMEI for Device #${idx + 1}`,
+                                `Scan 1 IMEI for Device #${idx + 1}`,
                                 code => handleSingleImeiChange(idx, code)
                               )
                             }
-                            className="absolute right-1.5 p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg cursor-pointer"
-                            title="Camera Scan IMEI"
+                            className="absolute right-0 p-1 text-blue-600 hover:bg-blue-50 rounded cursor-pointer flex items-center justify-center"
+                            title="Camera Scan 1 IMEI"
                           >
                             <Camera className="w-3.5 h-3.5" />
                           </button>
@@ -1776,67 +1975,59 @@ export const StockModal: React.FC<StockModalProps> = ({
                   </div>
                 </div>
               ) : (
-                <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-1.5">
-                  <label className="block font-bold text-slate-700 text-xs">Barcode / Item Code</label>
+                <div className="p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="font-bold text-slate-700 text-[11px]">Barcode / Item Code</label>
+                    <span className="text-[10px] text-slate-400">Used for quick POS scanning</span>
+                  </div>
                   <div className="relative flex items-center">
-                    <Barcode className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <Barcode className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input
                       type="text"
                       value={barcode}
                       onChange={e => setBarcode(e.target.value)}
                       placeholder="Scan or type barcode..."
-                      className="w-full pl-8 pr-20 sm:pr-24 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono focus:outline-none focus:border-blue-600 min-h-[44px]"
+                      className="w-full pl-8 pr-20 py-1.5 bg-white border border-slate-200 rounded-lg text-xs tabular-nums focus:outline-none focus:border-blue-600 min-h-[36px] max-sm:min-h-[42px]"
                     />
                     <button
                       type="button"
                       onClick={() =>
                         openBarcodeScanner('Scan Product Barcode', code => setBarcode(code))
                       }
-                      className="absolute right-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-extrabold flex items-center gap-1 cursor-pointer transition min-h-[34px]"
+                      className="absolute right-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[10px] font-extrabold flex items-center gap-1 cursor-pointer transition"
                     >
-                      <Camera className="w-3.5 h-3.5" />
+                      <Camera className="w-3 h-3" />
                       <span>Scan</span>
                     </button>
                   </div>
-                  <p className="text-[10px] text-slate-400">
-                    Non-mobile items use barcode for rapid checkout scanning.
-                  </p>
                 </div>
               )}
+
+              {/* Compact Footer for Single / Non-Mobile / Edit Mode */}
+              <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 border-t border-slate-100">
+                <div className="text-[11px] text-slate-400">
+                  All changes sync automatically with activity logging
+                </div>
+                <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleExplicitCancel}
+                    className="px-4 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-xs transition cursor-pointer text-center"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSubmit()}
+                    className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm shadow-blue-500/20 transition cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>{editItem ? 'Save Changes' : 'Add to Inventory'}</span>
+                  </button>
+                </div>
+              </div>
             </div>
           )}
-
-          {/* Action Buttons Footer */}
-          <div className="pt-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-t border-slate-100">
-            <div className="text-[11px] text-slate-400">
-              {isMobile && !editItem
-                ? `Will save ${variants.length} variant ${variants.length === 1 ? 'item' : 'items'} to stock`
-                : 'All fields saved with automatic activity logging'}
-            </div>
-            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-              <button
-                type="button"
-                onClick={handleExplicitCancel}
-                className="w-full sm:w-auto px-4 py-2.5 sm:py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium text-xs transition cursor-pointer text-center"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSubmit()}
-                className="w-full sm:w-auto px-5 py-2.5 sm:py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                <Check className="w-4 h-4" />
-                <span>
-                  {editItem
-                    ? 'Save Changes'
-                    : isMobile
-                    ? `Add ${variants.length > 1 ? `${variants.length} Variants` : 'Mobile'} to Stock`
-                    : 'Add to Inventory'}
-                </span>
-              </button>
-            </div>
-          </div>
         </form>
       </div>
 

@@ -158,7 +158,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
       {/* ============================================================== */}
       <div
         id="printable-thermal-invoice"
-        className="hidden print:block print:w-full print:bg-white text-black p-4 font-mono"
+        className="hidden print:block print:w-full print:bg-white text-black p-4 tabular-nums"
         style={{
           maxWidth: printFormat === 'thermal-58' ? '58mm' : printFormat === 'thermal-80' ? '80mm' : '210mm',
           margin: '0 auto',
@@ -344,7 +344,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
         {/* Scrollable Receipt Preview */}
         <div className="overflow-y-auto overflow-x-hidden pr-1 flex-1">
           <div
-            className={`mx-auto bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 font-mono text-xs text-slate-800 space-y-4 shadow-inner w-full overflow-x-hidden ${
+            className={`mx-auto bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 tabular-nums text-xs text-slate-800 space-y-4 shadow-inner w-full overflow-x-hidden ${
               printFormat === 'thermal-58' ? 'max-w-xs' : 'max-w-md'
             }`}
           >
@@ -404,7 +404,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 <div>City: <span className="font-semibold text-slate-800">{sale.retailerCity}</span></div>
               )}
               {sale.retailerNtn && (
-                <div>NTN/GST: <span className="font-mono text-slate-800">{sale.retailerNtn}</span></div>
+                <div>NTN/GST: <span className="tabular-nums text-slate-800">{sale.retailerNtn}</span></div>
               )}
               {sale.custPhone && (
                 <div>Phone: <span className="font-semibold text-slate-800">{sale.custPhone}</span></div>
@@ -526,7 +526,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               {sale.returnStatus === 'FULL' ? '⚠️ This sale invoice has been fully returned & refunded.' : '⚠️ This sale invoice has items partially returned.'}
             </span>
             {sale.totalRefunded && sale.totalRefunded > 0 && (
-              <span className="font-mono">
+              <span className="tabular-nums">
                 Total Refunded: {settings.currency} {sale.totalRefunded.toLocaleString()}
               </span>
             )}
@@ -659,7 +659,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                     ? 'Delete Invoice Permanently'
                     : 'Void & Cancel Invoice'}
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5 font-mono">Invoice #{sale.invNo}</p>
+                <p className="text-xs text-slate-500 mt-0.5 tabular-nums">Invoice #{sale.invNo}</p>
               </div>
               <button
                 type="button"

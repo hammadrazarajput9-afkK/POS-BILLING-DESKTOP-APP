@@ -370,6 +370,95 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
     return true;
   };
 
+  const handleRenameCategory = (oldName: string, newName: string): boolean => {
+    const cleanOld = oldName.trim();
+    const cleanNew = newName.trim();
+    if (!cleanOld || !cleanNew) {
+      showToast('Category name cannot be empty', 'warning');
+      return false;
+    }
+    if (cleanOld === cleanNew) {
+      return true;
+    }
+    if (data.categories.some(c => c.toLowerCase() === cleanNew.toLowerCase() && c.toLowerCase() !== cleanOld.toLowerCase())) {
+      showToast(`Category "${cleanNew}" already exists`, 'warning');
+      return false;
+    }
+
+    let updatedCategories: string[] = [];
+    let updatedInventoryToSync: InventoryItem[] = [];
+    let updatedImeisToSync: typeof data.imeiRecords = [];
+    let updatedPurchasesToSync: typeof data.supplierPurchases = [];
+
+    setData(prev => {
+      updatedCategories = (prev.categories || []).map(c =>
+        c.toLowerCase() === cleanOld.toLowerCase() ? cleanNew : c
+      );
+      if (!updatedCategories.some(c => c.toLowerCase() === cleanNew.toLowerCase())) {
+        updatedCategories.push(cleanNew);
+      }
+
+      const updatedInventory = (prev.inventory || []).map(item => {
+        if ((item.category || '').trim().toLowerCase() === cleanOld.toLowerCase()) {
+          const nextItem = { ...item, category: cleanNew };
+          updatedInventoryToSync.push(nextItem);
+          return nextItem;
+        }
+        return item;
+      });
+
+      const updatedImeiRecords = (prev.imeiRecords || []).map(rec =>
+        (rec.category || '').trim().toLowerCase() === cleanOld.toLowerCase()
+          ? { ...rec, category: cleanNew }
+          : rec
+      );
+
+      const updatedPurchases = (prev.supplierPurchases || []).map(pur => ({
+        ...pur,
+        items: (pur.items || []).map(pi =>
+          (pi.category || '').trim().toLowerCase() === cleanOld.toLowerCase()
+            ? { ...pi, category: cleanNew }
+            : pi
+        ),
+      }));
+
+      updatedImeisToSync = updatedImeiRecords;
+      updatedPurchasesToSync = updatedPurchases;
+
+      return {
+        ...prev,
+        categories: updatedCategories,
+        inventory: updatedInventory,
+        imeiRecords: updatedImeiRecords,
+        supplierPurchases: updatedPurchases,
+      };
+    });
+
+    queueMicrotask(() => {
+      updatedInventoryToSync.forEach(item => {
+        saveInventoryItemToFirestore(item).catch(err => {
+          console.warn('Firestore category rename inventory sync warning:', err);
+        });
+      });
+      saveRootConfigToFirestore({
+        categories: updatedCategories,
+        imeiRecords: updatedImeisToSync,
+        supplierPurchases: updatedPurchasesToSync,
+      }).catch(err => {
+        console.warn('Firestore category rename config sync warning:', err);
+      });
+    });
+
+    logActivity(
+      'Category',
+      `Renamed Category: ${cleanOld} → ${cleanNew}`,
+      `Updated across ${updatedInventoryToSync.length} inventory item(s)`,
+      'update'
+    );
+    showToast(`Category renamed to "${cleanNew}"`, 'success');
+    return true;
+  };
+
   const handleAddProductFromPurchases = (item: Omit<InventoryItem, 'id' | 'createdAt'>): InventoryItem => {
     const newItem: InventoryItem = {
       ...item,
@@ -413,6 +502,7 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
     handleStockAdjustment,
     handleAddCategory,
     handleDeleteCategory,
+    handleRenameCategory,
     handleAddProductFromPurchases,
     stockModalOpen,
     setStockModalOpen,

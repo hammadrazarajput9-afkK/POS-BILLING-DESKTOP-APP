@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Tag, Plus, Trash2, X, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Tag, Plus, Trash2, X, Edit2, Check, Lock } from 'lucide-react';
 import { ExpenseItem } from '../types';
 import { useToast } from './Toast';
 
@@ -10,6 +10,7 @@ interface ExpenseCategoryModalProps {
   expenses: ExpenseItem[];
   onAddCategory: (category: string) => void;
   onDeleteCategory: (category: string) => boolean;
+  onRenameCategory?: (oldName: string, newName: string) => boolean;
 }
 
 export const ExpenseCategoryModal: React.FC<ExpenseCategoryModalProps> = ({
@@ -19,10 +20,13 @@ export const ExpenseCategoryModal: React.FC<ExpenseCategoryModalProps> = ({
   expenses,
   onAddCategory,
   onDeleteCategory,
+  onRenameCategory,
 }) => {
   const { showToast } = useToast();
   const [newCatName, setNewCatName] = useState('');
   const [catToDelete, setCatToDelete] = useState<string | null>(null);
+  const [editingCat, setEditingCat] = useState<string | null>(null);
+  const [editCatName, setEditCatName] = useState('');
 
   if (!isOpen) return null;
 
@@ -46,6 +50,29 @@ export const ExpenseCategoryModal: React.FC<ExpenseCategoryModalProps> = ({
     const success = onDeleteCategory(cat);
     if (success) {
       setCatToDelete(null);
+    }
+  };
+
+  const handleSaveRename = (oldCat: string) => {
+    const trimmed = editCatName.trim();
+    if (!trimmed) {
+      showToast('Category name cannot be empty', 'warning');
+      return;
+    }
+    if (trimmed === oldCat) {
+      setEditingCat(null);
+      return;
+    }
+    if (categories.some(c => c.toLowerCase() === trimmed.toLowerCase() && c.toLowerCase() !== oldCat.toLowerCase())) {
+      showToast('This category name already exists', 'info');
+      return;
+    }
+    if (onRenameCategory) {
+      const ok = onRenameCategory(oldCat, trimmed);
+      if (ok) {
+        setEditingCat(null);
+        setEditCatName('');
+      }
     }
   };
 
@@ -105,24 +132,71 @@ export const ExpenseCategoryModal: React.FC<ExpenseCategoryModalProps> = ({
               ).length;
               const hasRecords = count > 0;
               const isDeletingThis = catToDelete === cat;
+              const isEditingThis = editingCat === cat;
 
               return (
                 <div
                   key={cat}
-                  className="flex items-center justify-between p-3 rounded-xl border border-slate-100 hover:border-slate-200 bg-slate-50/60 hover:bg-slate-50 transition"
+                  className="flex items-center justify-between gap-2 p-3 rounded-xl border border-slate-100 hover:border-slate-200 bg-slate-50/60 hover:bg-slate-50 transition"
                 >
-                  <div className="flex items-center gap-2.5">
-                    <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-                    <div>
-                      <h4 className="font-bold text-slate-900 text-xs">{cat}</h4>
-                      <p className="text-[10px] text-slate-500">
-                        {hasRecords ? `${count} recorded expenses` : 'No expenses recorded'}
-                      </p>
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0"></span>
+                    <div className="min-w-0 flex-1">
+                      {isEditingThis ? (
+                        <input
+                          type="text"
+                          value={editCatName}
+                          onChange={e => setEditCatName(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleSaveRename(cat);
+                            } else if (e.key === 'Escape') {
+                              setEditingCat(null);
+                            }
+                          }}
+                          autoFocus
+                          className="w-full bg-white border border-rose-400 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                        />
+                      ) : (
+                        <>
+                          <h4 className="font-bold text-slate-900 text-xs truncate">{cat}</h4>
+                          <p className="text-[10px] text-slate-500 flex items-center gap-1">
+                            {hasRecords ? (
+                              <>
+                                <Lock className="w-2.5 h-2.5 text-amber-600" />
+                                <span>{count} recorded expenses (Locked • Name editable)</span>
+                              </>
+                            ) : (
+                              'No expenses recorded'
+                            )}
+                          </p>
+                        </>
+                      )}
                     </div>
                   </div>
 
-                  <div>
-                    {isDeletingThis ? (
+                  <div className="shrink-0">
+                    {isEditingThis ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleSaveRename(cat)}
+                          className="p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition cursor-pointer"
+                          title="Save Category Name"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingCat(null)}
+                          className="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg transition cursor-pointer"
+                          title="Cancel"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : isDeletingThis ? (
                       <div className="flex items-center gap-1.5">
                         <button
                           type="button"
@@ -140,31 +214,47 @@ export const ExpenseCategoryModal: React.FC<ExpenseCategoryModalProps> = ({
                         </button>
                       </div>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (hasRecords) {
-                            showToast(
-                              `Cannot delete "${cat}": It is used in ${count} expense records!`,
-                              'error'
-                            );
-                            return;
+                      <div className="flex items-center gap-1">
+                        {onRenameCategory && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingCat(cat);
+                              setEditCatName(cat);
+                              setCatToDelete(null);
+                            }}
+                            className="p-1.5 text-slate-500 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                            title="Edit Category Name"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (hasRecords) {
+                              showToast(
+                                `Cannot delete "${cat}": It is used in ${count} expense records! You can still edit its name.`,
+                                'error'
+                              );
+                              return;
+                            }
+                            setCatToDelete(cat);
+                          }}
+                          className={`p-1.5 rounded-lg transition ${
+                            hasRecords
+                              ? 'text-slate-400 hover:text-amber-600 hover:bg-amber-50 cursor-not-allowed'
+                              : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer'
+                          }`}
+                          title={
+                            hasRecords
+                              ? `Locked against deletion: active in ${count} expenses`
+                              : 'Delete category'
                           }
-                          setCatToDelete(cat);
-                        }}
-                        className={`p-1.5 rounded-lg transition cursor-pointer ${
-                          hasRecords
-                            ? 'text-slate-300 hover:text-slate-400'
-                            : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'
-                        }`}
-                        title={
-                          hasRecords
-                            ? `Category is active in ${count} expenses`
-                            : 'Delete category'
-                        }
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                        >
+                          {hasRecords ? <Lock className="w-3.5 h-3.5" /> : <Trash2 className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Tag, Plus, Trash2, ShieldAlert, CheckCircle2, X, Lock } from 'lucide-react';
+import { Tag, Plus, Trash2, ShieldAlert, CheckCircle2, X, Lock, Edit2, Check } from 'lucide-react';
 import { InventoryItem } from '../types';
 import { useToast } from './Toast';
 
@@ -10,6 +10,7 @@ interface CategoryModalProps {
   inventory: InventoryItem[];
   onAddCategory: (category: string) => void;
   onDeleteCategory: (category: string) => boolean;
+  onRenameCategory?: (oldName: string, newName: string) => boolean;
 }
 
 export const CategoryModal: React.FC<CategoryModalProps> = ({
@@ -19,10 +20,13 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
   inventory,
   onAddCategory,
   onDeleteCategory,
+  onRenameCategory,
 }) => {
   const { showToast } = useToast();
   const [newCatName, setNewCatName] = useState('');
   const [catToDelete, setCatToDelete] = useState<string | null>(null);
+  const [editingCat, setEditingCat] = useState<string | null>(null);
+  const [editCatName, setEditCatName] = useState('');
 
   if (!isOpen) return null;
 
@@ -46,6 +50,35 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
     const success = onDeleteCategory(cat);
     if (success) {
       setCatToDelete(null);
+    }
+  };
+
+  const startEditing = (cat: string) => {
+    setEditingCat(cat);
+    setEditCatName(cat);
+    setCatToDelete(null);
+  };
+
+  const handleSaveRename = (oldCat: string) => {
+    const trimmed = editCatName.trim();
+    if (!trimmed) {
+      showToast('Category name cannot be empty', 'warning');
+      return;
+    }
+    if (trimmed === oldCat) {
+      setEditingCat(null);
+      return;
+    }
+    if (categories.some(c => c.toLowerCase() === trimmed.toLowerCase() && c.toLowerCase() !== oldCat.toLowerCase())) {
+      showToast('This category name already exists', 'info');
+      return;
+    }
+    if (onRenameCategory) {
+      const ok = onRenameCategory(oldCat, trimmed);
+      if (ok) {
+        setEditingCat(null);
+        setEditCatName('');
+      }
     }
   };
 
@@ -104,13 +137,14 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
                 i => i.category.toLowerCase() === cat.toLowerCase()
               ).length;
               const hasData = productCount > 0;
+              const isEditingThis = editingCat === cat;
 
               return (
                 <div
                   key={cat}
-                  className="flex items-center justify-between p-3 rounded-xl bg-slate-50/80 border border-slate-200/80 hover:bg-white hover:shadow-2xs transition"
+                  className="flex items-center justify-between gap-2 p-3 rounded-xl bg-slate-50/80 border border-slate-200/80 hover:bg-white hover:shadow-2xs transition"
                 >
-                  <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
                     <div
                       className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
                         hasData ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'
@@ -118,47 +152,102 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
                     >
                       {cat.charAt(0).toUpperCase()}
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold text-slate-800 truncate">{cat}</p>
-                      <p className="text-[10px] text-slate-400 flex items-center gap-1">
-                        {hasData ? (
-                          <span className="text-blue-600 font-semibold flex items-center gap-1">
-                            <Lock className="w-2.5 h-2.5" /> {productCount} product{productCount > 1 ? 's' : ''} in stock (Locked)
-                          </span>
-                        ) : (
-                          <span className="text-emerald-600 font-semibold flex items-center gap-1">
-                            <CheckCircle2 className="w-2.5 h-2.5" /> 0 products (Safe to delete)
-                          </span>
-                        )}
-                      </p>
+                    <div className="min-w-0 flex-1">
+                      {isEditingThis ? (
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={editCatName}
+                            onChange={e => setEditCatName(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleSaveRename(cat);
+                              } else if (e.key === 'Escape') {
+                                setEditingCat(null);
+                              }
+                            }}
+                            autoFocus
+                            className="w-full bg-white border border-purple-400 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                          />
+                        </div>
+                      ) : (
+                        <>
+                          <p className="text-xs font-bold text-slate-800 truncate">{cat}</p>
+                          <p className="text-[10px] text-slate-400 flex items-center gap-1">
+                            {hasData ? (
+                              <span className="text-blue-600 font-semibold flex items-center gap-1">
+                                <Lock className="w-2.5 h-2.5" /> {productCount} product{productCount > 1 ? 's' : ''} in stock (Locked • Name editable)
+                              </span>
+                            ) : (
+                              <span className="text-emerald-600 font-semibold flex items-center gap-1">
+                                <CheckCircle2 className="w-2.5 h-2.5" /> 0 products (Safe to delete)
+                              </span>
+                            )}
+                          </p>
+                        </>
+                      )}
                     </div>
                   </div>
 
                   {/* Actions */}
-                  <div>
-                    {hasData ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          showToast(
-                            `Cannot delete "${cat}": It contains ${productCount} active product(s). Please delete or reassign them first!`,
-                            'error'
-                          )
-                        }
-                        className="p-1.5 text-slate-300 hover:text-amber-600 rounded-lg hover:bg-amber-50 transition cursor-not-allowed"
-                        title={`Protected: Contains ${productCount} product(s)`}
-                      >
-                        <Lock className="w-4 h-4 text-slate-400" />
-                      </button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {isEditingThis ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleSaveRename(cat)}
+                          className="p-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition cursor-pointer"
+                          title="Save Category Name"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingCat(null)}
+                          className="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg transition cursor-pointer"
+                          title="Cancel"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => setCatToDelete(cat)}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
-                        title="Delete empty category"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <>
+                        {onRenameCategory && (
+                          <button
+                            type="button"
+                            onClick={() => startEditing(cat)}
+                            className="p-1.5 text-slate-500 hover:text-purple-600 rounded-lg hover:bg-purple-50 transition cursor-pointer"
+                            title="Edit Category Name"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {hasData ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              showToast(
+                                `Cannot delete "${cat}": It contains ${productCount} active product(s). You can still edit its name!`,
+                                'error'
+                              )
+                            }
+                            className="p-1.5 text-slate-300 hover:text-amber-600 rounded-lg hover:bg-amber-50 transition cursor-not-allowed"
+                            title={`Protected against deletion: Contains ${productCount} product(s)`}
+                          >
+                            <Lock className="w-4 h-4 text-slate-400" />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setCatToDelete(cat)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                            title="Delete empty category"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -171,7 +260,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
         <div className="p-3 bg-amber-50/70 border border-amber-200/60 rounded-xl flex items-start gap-2 text-[11px] text-amber-800">
           <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
           <span>
-            <strong>Data Safety Protection:</strong> A category cannot be deleted if any products are currently assigned to it.
+            <strong>Data Safety Protection:</strong> Locked categories cannot be deleted while products exist, but you can edit their name anytime.
           </span>
         </div>
 

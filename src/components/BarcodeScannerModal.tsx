@@ -221,7 +221,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                 <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-2 border-l-2 border-white rounded-bl" />
                 <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-2 border-r-2 border-white rounded-br" />
               </div>
-              <p className="text-[11px] font-mono text-emerald-400 font-bold bg-slate-950/70 px-3 py-1 rounded-full border border-emerald-500/30 mt-3">
+              <p className="text-[11px] tabular-nums text-emerald-400 font-bold bg-slate-950/70 px-3 py-1 rounded-full border border-emerald-500/30 mt-3">
                 Align Barcode / IMEI Inside Frame
               </p>
             </div>
@@ -292,7 +292,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                 value={manualCode}
                 onChange={e => setManualCode(e.target.value)}
                 placeholder="Type barcode or 15-digit IMEI..."
-                className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-mono font-bold text-white focus:outline-none focus:border-blue-500 min-h-[44px]"
+                className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs tabular-nums font-bold text-white focus:outline-none focus:border-blue-500 min-h-[44px]"
               />
             </div>
             <button

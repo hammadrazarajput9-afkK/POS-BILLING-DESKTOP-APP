@@ -1,29 +1,29 @@
 import React, { useState, useMemo } from 'react';
-import { KhataCustomer, ShopSettings } from '../types';
+import { KhataCustomer, SaleRecord, ShopSettings } from '../types';
 import {
   Search,
   UserPlus,
   BookOpen,
-  DollarSign,
-  CreditCard,
   MessageSquare,
   Trash2,
   Phone,
-  Clock,
-  CheckCircle2,
-  X,
   User,
   ExternalLink,
   MapPin,
-  FileText
+  FileText,
+  Navigation,
+  AlertTriangle,
+  Calendar,
 } from 'lucide-react';
 import { useToast } from './Toast';
-import { CustomerAccountModal } from './CustomerAccountModal';
+import { CustomerAccountModal, CustomerAccountUpdatePayload } from './CustomerAccountModal';
 import { ConfirmModal } from './ConfirmModal';
+import { buildGoogleMapsTrackUrl } from '../utils/mapsConfig';
 
 interface KhataTabProps {
   khata: KhataCustomer[];
   settings: ShopSettings;
+  sales?: SaleRecord[];
   isAdmin?: boolean;
   onOpenAddModal: () => void;
   onOpenSettleModal: (customer: KhataCustomer) => void;
@@ -36,6 +36,8 @@ interface KhataTabProps {
     accountId?: string,
     note?: string
   ) => void;
+  onUpdateCustomer?: (updated: CustomerAccountUpdatePayload) => void;
+  onDeleteTransaction?: (customerId: string, txId: string) => void;
   selectedCustomerId?: string | null;
   onClearSelectedCustomer?: () => void;
   onOpenPdfReport?: () => void;
@@ -44,11 +46,13 @@ interface KhataTabProps {
 const KhataTabComponent: React.FC<KhataTabProps> = ({
   khata,
   settings,
+  sales = [],
   isAdmin = true,
   onOpenAddModal,
-  onOpenSettleModal,
   onDeleteCustomer,
   onAddTransaction,
+  onUpdateCustomer,
+  onDeleteTransaction,
   selectedCustomerId,
   onClearSelectedCustomer,
   onOpenPdfReport,
@@ -82,7 +86,9 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
         k.name.toLowerCase().includes(q) ||
         k.phone.toLowerCase().includes(q) ||
         (k.phone2 && k.phone2.toLowerCase().includes(q)) ||
-        (k.address && k.address.toLowerCase().includes(q))
+        (k.address && k.address.toLowerCase().includes(q)) ||
+        (k.cnic && k.cnic.toLowerCase().includes(q)) ||
+        (k.shopName && k.shopName.toLowerCase().includes(q))
       );
     });
   }, [khata, search]);
@@ -95,14 +101,22 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
     return khata.filter(k => k.balance > 0).length;
   }, [khata]);
 
-  const handleSendWhatsAppReminder = (customer: KhataCustomer) => {
+  const getWhatsAppReminderUrl = (customer: KhataCustomer) => {
     const phone = customer.phone.replace(/[^0-9]/g, '');
     const cleanPhone = phone.startsWith('0') ? '92' + phone.substring(1) : phone;
     const message = encodeURIComponent(
       `Assalam-o-Alaikum ${customer.name},\n\nThis is a polite reminder from *${settings.shopName}* regarding your pending Khata/Udhar balance of *${settings.currency} ${customer.balance.toLocaleString()}*.\n\nPlease arrange payment at your earliest convenience. Thank you!\nPh: ${settings.phone}`
     );
-    window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank');
-    showToast(`WhatsApp reminder opened for ${customer.name}`, 'info');
+    return `https://wa.me/${cleanPhone}?text=${message}`;
+  };
+
+  const isDueOverdue = (cust: KhataCustomer) => {
+    if (!cust.dueDate || cust.balance <= 0) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const due = new Date(cust.dueDate);
+    due.setHours(0, 0, 0, 0);
+    return due.getTime() < today.getTime();
   };
 
   return (
@@ -113,7 +127,7 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
           <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">
             Total Outstanding Credit
           </span>
-          <h3 className="text-sm sm:text-2xl font-extrabold text-purple-700 font-mono tabular-nums mt-0.5 sm:mt-1 truncate">
+          <h3 className="text-sm sm:text-2xl font-extrabold text-purple-700 tabular-nums mt-0.5 sm:mt-1 truncate">
             {settings.currency} {totalOutstanding.toLocaleString()}
           </h3>
           <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">Pending receivables from customers</p>
@@ -123,7 +137,7 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
           <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">
             Pending Balance
           </span>
-          <h3 className="text-sm sm:text-2xl font-extrabold text-slate-900 font-mono tabular-nums mt-0.5 sm:mt-1 truncate">
+          <h3 className="text-sm sm:text-2xl font-extrabold text-slate-900 tabular-nums mt-0.5 sm:mt-1 truncate">
             {debtorCount} Customers
           </h3>
           <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">Active credit accounts</p>
@@ -133,7 +147,7 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
           <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">
             Total Ledger Accounts
           </span>
-          <h3 className="text-sm sm:text-2xl font-extrabold text-slate-900 font-mono tabular-nums mt-0.5 sm:mt-1 truncate">
+          <h3 className="text-sm sm:text-2xl font-extrabold text-slate-900 tabular-nums mt-0.5 sm:mt-1 truncate">
             {khata.length} Accounts
           </h3>
           <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">Credit clients & buyers</p>
@@ -146,7 +160,7 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
           <div>
             <h3 className="font-bold text-slate-900 text-base">Customer Credit & Ledger Accounts</h3>
             <p className="text-xs text-slate-500">
-              Track outstanding balances, view customer accounts, and record ledger payments
+              Track outstanding balances, view customer accounts, pin locations & record ledger payments
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -176,7 +190,7 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search by customer name, phone number, or address..."
+            placeholder="Search by customer name, phone, CNIC, shop name, or address..."
             className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-purple-600 focus:bg-white transition"
           />
         </div>
@@ -190,7 +204,7 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
                   <th className="p-3">Customer Profile</th>
                   <th className="p-3">Contact Details</th>
                   <th className="p-3 text-right">Outstanding Due Balance</th>
-                  <th className="p-3 text-center">Last Activity</th>
+                  <th className="p-3 text-center">Due / Activity</th>
                   <th className="p-3 text-center">Customer Account</th>
                 </tr>
               </thead>
@@ -204,86 +218,128 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
                     </td>
                   </tr>
                 ) : (
-                  filtered.map(cust => (
-                    <tr
-                      key={cust.id}
-                      className="hover:bg-purple-50/30 transition group cursor-pointer"
-                      onClick={() => setActiveAccountCustomer(cust)}
-                    >
-                      <td className="p-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-purple-100/70 border border-purple-200 overflow-hidden flex items-center justify-center shrink-0">
-                            {cust.image ? (
-                              <img src={cust.image} alt={cust.name} className="w-full h-full object-cover" />
-                            ) : (
-                              <User className="w-5 h-5 text-purple-600" />
+                  filtered.map(cust => {
+                    const trackUrl = buildGoogleMapsTrackUrl({
+                      lat: cust.lat,
+                      lng: cust.lng,
+                      placeId: cust.placeId,
+                      address: cust.address,
+                    });
+                    const hasGps = typeof cust.lat === 'number' && typeof cust.lng === 'number';
+                    const overdue = isDueOverdue(cust);
+                    const overLimit = cust.creditLimit && cust.creditLimit > 0 && cust.balance > cust.creditLimit;
+
+                    return (
+                      <tr
+                        key={cust.id}
+                        className="hover:bg-purple-50/30 transition group cursor-pointer"
+                        onClick={() => setActiveAccountCustomer(cust)}
+                      >
+                        <td className="p-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-purple-100/70 border border-purple-200 overflow-hidden flex items-center justify-center shrink-0">
+                              {cust.image ? (
+                                <img src={cust.image} alt={cust.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <User className="w-5 h-5 text-purple-600" />
+                              )}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <p className="font-bold text-slate-900 leading-snug group-hover:text-purple-700 transition">
+                                  {cust.name}
+                                </p>
+                                {overLimit && (
+                                  <span className="text-[10px] font-bold text-rose-600 flex items-center gap-0.5" title="Over Credit Limit">
+                                    <AlertTriangle className="w-3 h-3" /> Limit
+                                  </span>
+                                )}
+                              </div>
+                              {cust.address && (
+                                <p className="text-[11px] text-slate-400 flex items-center gap-1 truncate max-w-[230px]">
+                                  <MapPin className={`w-2.5 h-2.5 shrink-0 ${hasGps ? 'text-emerald-600' : 'text-slate-400'}`} />
+                                  {cust.address}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="p-3 tabular-nums text-slate-600">
+                          <div className="space-y-0.5">
+                            <p className="text-xs font-semibold text-slate-800">{cust.phone}</p>
+                            {cust.phone2 && (
+                              <p className="text-[10px] text-slate-400">Alt: {cust.phone2}</p>
                             )}
                           </div>
-                          <div>
-                            <p className="font-bold text-slate-900 leading-snug group-hover:text-purple-700 transition">
-                              {cust.name}
-                            </p>
-                            {cust.address && (
-                              <p className="text-[11px] text-slate-400 flex items-center gap-1 truncate max-w-[200px]">
-                                <MapPin className="w-2.5 h-2.5 text-slate-400" /> {cust.address}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-3 font-mono text-slate-600">
-                        <div className="space-y-0.5">
-                          <p className="text-xs font-semibold text-slate-800">{cust.phone}</p>
-                          {cust.phone2 && (
-                            <p className="text-[10px] text-slate-400">Alt: {cust.phone2}</p>
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-3 text-right">
-                        <span
-                          className={`font-mono tabular-nums font-extrabold text-sm ${
-                            cust.balance > 0 ? 'text-purple-700' : 'text-emerald-600'
-                          }`}
-                        >
-                          {settings.currency} {cust.balance.toLocaleString()}
-                        </span>
-                      </td>
-                      <td className="p-3 text-center text-slate-400 text-[11px]">
-                        {new Date(cust.lastUpdated).toLocaleDateString()}
-                      </td>
-                      <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
-                        <div className="inline-flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => setActiveAccountCustomer(cust)}
-                            className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                        </td>
+                        <td className="p-3 text-right">
+                          <span
+                            className={`tabular-nums font-extrabold text-sm ${
+                              cust.balance > 0 ? 'text-purple-700' : 'text-emerald-600'
+                            }`}
                           >
-                            <ExternalLink className="w-3 h-3" /> Open Account
-                          </button>
-                          {cust.balance > 0 && (
+                            {settings.currency} {cust.balance.toLocaleString()}
+                          </span>
+                        </td>
+                        <td className="p-3 text-center text-[11px]">
+                          {overdue ? (
+                            <span className="font-bold text-rose-600 flex items-center justify-center gap-1">
+                              <Calendar className="w-3 h-3" /> Overdue ({new Date(cust.dueDate!).toLocaleDateString()})
+                            </span>
+                          ) : cust.dueDate && cust.balance > 0 ? (
+                            <span className="font-semibold text-amber-700">
+                              Due {new Date(cust.dueDate).toLocaleDateString()}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">{new Date(cust.lastUpdated).toLocaleDateString()}</span>
+                          )}
+                        </td>
+                        <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
+                          <div className="inline-flex items-center gap-1.5">
                             <button
                               type="button"
-                              onClick={() => handleSendWhatsAppReminder(cust)}
-                              className="p-1.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition cursor-pointer"
-                              title="Send WhatsApp Reminder"
+                              onClick={() => setActiveAccountCustomer(cust)}
+                              className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs transition cursor-pointer flex items-center gap-1 shadow-2xs"
                             >
-                              <MessageSquare className="w-3.5 h-3.5" />
+                              <ExternalLink className="w-3 h-3" /> Open Account
                             </button>
-                          )}
-                          {isAdmin && (
-                            <button
-                              type="button"
-                              onClick={() => setCustomerToDelete(cust)}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
-                              title="Delete Account"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                            {trackUrl && (
+                              <a
+                                href={trackUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition"
+                                title="Track Customer Location in Google Maps"
+                              >
+                                <Navigation className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+                            {cust.balance > 0 && (
+                              <a
+                                href={getWhatsAppReminderUrl(cust)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-1.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition"
+                                title="Send WhatsApp Reminder"
+                              >
+                                <MessageSquare className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => setCustomerToDelete(cust)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                                title="Delete Account"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -299,102 +355,120 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
               <p className="text-[11px] text-slate-400">Add customers to maintain customer credit ledgers</p>
             </div>
           ) : (
-            filtered.map(cust => (
-              <div
-                key={cust.id}
-                onClick={() => setActiveAccountCustomer(cust)}
-                className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-xs transition hover:border-purple-300 cursor-pointer"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-11 h-11 rounded-xl bg-purple-100 text-purple-700 font-bold flex items-center justify-center shrink-0 border border-purple-200 overflow-hidden">
-                      {cust.image ? (
-                        <img src={cust.image} alt={cust.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <User className="w-6 h-6 text-purple-600" />
+            filtered.map(cust => {
+              const trackUrl = buildGoogleMapsTrackUrl({
+                lat: cust.lat,
+                lng: cust.lng,
+                placeId: cust.placeId,
+                address: cust.address,
+              });
+              const hasGps = typeof cust.lat === 'number' && typeof cust.lng === 'number';
+              return (
+                <div
+                  key={cust.id}
+                  onClick={() => setActiveAccountCustomer(cust)}
+                  className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-xs transition hover:border-purple-300 cursor-pointer"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-11 h-11 rounded-xl bg-purple-100 text-purple-700 font-bold flex items-center justify-center shrink-0 border border-purple-200 overflow-hidden">
+                        {cust.image ? (
+                          <img src={cust.image} alt={cust.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <User className="w-6 h-6 text-purple-600" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="font-bold text-slate-900 text-sm leading-snug truncate">
+                          {cust.name}
+                        </h4>
+                        <p className="text-xs text-slate-500 tabular-nums flex items-center gap-1 mt-0.5">
+                          <Phone className="w-3 h-3 text-slate-400" />
+                          <span>{cust.phone}</span>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <span
+                        className={`text-xs font-black tabular-nums ${
+                          cust.balance > 0 ? 'text-rose-700' : 'text-emerald-700'
+                        }`}
+                      >
+                        {cust.balance > 0 ? `${settings.currency} ${cust.balance.toLocaleString()} DUE` : 'Settled (0)'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {cust.address && (
+                    <p className="text-[11px] text-slate-500 flex items-center gap-1 bg-slate-50 p-2 rounded-xl border border-slate-100 truncate">
+                      <MapPin className={`w-3 h-3 shrink-0 ${hasGps ? 'text-emerald-600' : 'text-slate-400'}`} />
+                      <span className="truncate">{cust.address}</span>
+                    </p>
+                  )}
+
+                  {/* Mobile Touch Action Bar */}
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center gap-1.5">
+                      <a
+                        href={`tel:${cust.phone.replace(/[^0-9+]/g, '')}`}
+                        className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold flex items-center gap-1.5 transition min-h-[42px] min-w-[42px] justify-center"
+                        title="Direct Call"
+                      >
+                        <Phone className="w-4 h-4 text-slate-600" />
+                      </a>
+
+                      {trackUrl && (
+                        <a
+                          href={trackUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl font-bold flex items-center gap-1.5 transition border border-blue-200 min-h-[42px] min-w-[42px] justify-center"
+                          title="Track Location in Google Maps"
+                        >
+                          <Navigation className="w-4 h-4 text-blue-600" />
+                        </a>
                       )}
+
+                      <a
+                        href={getWhatsAppReminderUrl(cust)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl font-bold flex items-center gap-1.5 transition border border-emerald-200 min-h-[42px] min-w-[42px] justify-center"
+                        title="WhatsApp Reminder"
+                      >
+                        <MessageSquare className="w-4 h-4 text-emerald-600" />
+                      </a>
                     </div>
-                    <div className="min-w-0">
-                      <h4 className="font-bold text-slate-900 text-sm leading-snug truncate">
-                        {cust.name}
-                      </h4>
-                      <p className="text-xs text-slate-500 font-mono flex items-center gap-1 mt-0.5">
-                        <Phone className="w-3 h-3 text-slate-400" />
-                        <span>{cust.phone}</span>
-                      </p>
-                    </div>
-                  </div>
 
-                  <div className="text-right shrink-0">
-                    <span
-                      className={`inline-block px-2.5 py-1 rounded-full text-xs font-black font-mono tabular-nums ${
-                        cust.balance > 0
-                          ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                          : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                      }`}
-                    >
-                      {cust.balance > 0 ? `${settings.currency} ${cust.balance.toLocaleString()} DUE` : 'Settled (0)'}
-                    </span>
-                  </div>
-                </div>
-
-                {cust.address && (
-                  <p className="text-[11px] text-slate-500 flex items-center gap-1 bg-slate-50 p-2 rounded-xl border border-slate-100 truncate">
-                    <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
-                    <span className="truncate">{cust.address}</span>
-                  </p>
-                )}
-
-                {/* Mobile Touch Action Bar */}
-                <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs" onClick={e => e.stopPropagation()}>
-                  <div className="flex items-center gap-2">
-                    {/* Direct Call touch link */}
-                    <a
-                      href={`tel:${cust.phone.replace(/[^0-9+]/g, '')}`}
-                      className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold flex items-center gap-1.5 transition min-h-[44px] min-w-[44px] justify-center"
-                      title="Direct Call"
-                    >
-                      <Phone className="w-4 h-4 text-slate-600" />
-                    </a>
-
-                    {/* WhatsApp Reminder */}
-                    <button
-                      type="button"
-                      onClick={() => handleSendWhatsAppReminder(cust)}
-                      className="p-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl font-bold flex items-center gap-1.5 transition border border-emerald-200 min-h-[44px] min-w-[44px] justify-center cursor-pointer"
-                      title="WhatsApp Reminder"
-                    >
-                      <MessageSquare className="w-4 h-4 text-emerald-600" />
-                    </button>
-                  </div>
-
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setActiveAccountCustomer(cust)}
-                      className="px-3.5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs transition flex items-center gap-1.5 min-h-[44px] cursor-pointer shadow-xs"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" /> Open Ledger
-                    </button>
-
-                    {isAdmin && (
+                    <div className="flex items-center gap-1.5">
                       <button
                         type="button"
-                        onClick={() => setCustomerToDelete(cust)}
-                        className="p-2.5 text-slate-400 hover:text-rose-600 rounded-xl hover:bg-rose-50 transition border border-slate-200 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer"
+                        onClick={() => setActiveAccountCustomer(cust)}
+                        className="px-3.5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs transition flex items-center gap-1.5 min-h-[42px] cursor-pointer shadow-xs"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <ExternalLink className="w-3.5 h-3.5" /> Open Ledger
                       </button>
-                    )}
+
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => setCustomerToDelete(cust)}
+                          className="p-2.5 text-slate-400 hover:text-rose-600 rounded-xl hover:bg-rose-50 transition border border-slate-200 min-h-[42px] min-w-[42px] flex items-center justify-center cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
 
-      {/* Full Dedicated Customer Account Modal */}
+      {/* Full Enlarged Customer Account Modal */}
       {currentActiveCustomer && (
         <CustomerAccountModal
           customer={currentActiveCustomer}
@@ -404,7 +478,11 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
             if (onClearSelectedCustomer) onClearSelectedCustomer();
           }}
           settings={settings}
+          sales={sales}
+          isAdmin={isAdmin}
           onAddTransaction={onAddTransaction}
+          onUpdateCustomer={onUpdateCustomer}
+          onDeleteTransaction={onDeleteTransaction}
         />
       )}
 

@@ -59,7 +59,7 @@ export const PWAUpdateBanner: React.FC = () => {
               <div className="min-w-0">
                 <h4 className="font-extrabold text-sm leading-tight flex items-center gap-1.5">
                   <span>New Software Update Available!</span>
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-400 text-slate-900">
+                  <span className="px-1.5 py-0.5 rounded text-[10px] tabular-nums font-bold bg-amber-400 text-slate-900">
                     Live
                   </span>
                 </h4>

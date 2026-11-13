@@ -504,7 +504,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
             </span>
             <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 shrink-0" />
           </div>
-          <h3 className="text-sm sm:text-xl font-extrabold text-slate-900 dark:text-white font-mono tabular-nums mt-0.5 sm:mt-1 truncate">
+          <h3 className="text-sm sm:text-xl font-extrabold text-slate-900 dark:text-white tabular-nums mt-0.5 sm:mt-1 truncate">
             {currency} {totalSalesRevenue.toLocaleString()}
           </h3>
           <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">{filteredSales.length} Invoices</p>
@@ -521,7 +521,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
             </span>
             <Store className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-600 shrink-0" />
           </div>
-          <h3 className="text-sm sm:text-xl font-extrabold text-purple-700 dark:text-purple-400 font-mono tabular-nums mt-0.5 sm:mt-1 truncate">
+          <h3 className="text-sm sm:text-xl font-extrabold text-purple-700 dark:text-purple-400 tabular-nums mt-0.5 sm:mt-1 truncate">
             {currency} {totalWholesaleRevenue.toLocaleString()}
           </h3>
           <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">{wholesaleSales.length} Invoices</p>
@@ -549,7 +549,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
           ) : (
             <>
               <h3
-                className={`text-sm sm:text-xl font-extrabold font-mono tabular-nums mt-0.5 sm:mt-1 truncate ${
+                className={`text-sm sm:text-xl font-extrabold tabular-nums mt-0.5 sm:mt-1 truncate ${
                   netProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600'
                 }`}
               >
@@ -571,7 +571,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
             </span>
             <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-600 shrink-0" />
           </div>
-          <h3 className="text-sm sm:text-xl font-extrabold text-rose-600 dark:text-rose-400 font-mono tabular-nums mt-0.5 sm:mt-1 truncate">
+          <h3 className="text-sm sm:text-xl font-extrabold text-rose-600 dark:text-rose-400 tabular-nums mt-0.5 sm:mt-1 truncate">
             {currency} {totalExpenses.toLocaleString()}
           </h3>
           <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">{filteredExpenses.length} Records</p>
@@ -588,7 +588,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
             </span>
             <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600 shrink-0" />
           </div>
-          <h3 className="text-sm sm:text-xl font-extrabold text-slate-900 dark:text-white font-mono tabular-nums mt-0.5 sm:mt-1 truncate">
+          <h3 className="text-sm sm:text-xl font-extrabold text-slate-900 dark:text-white tabular-nums mt-0.5 sm:mt-1 truncate">
             {currency} {stockValuationCost.toLocaleString()}
           </h3>
           <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">{totalStockUnits} Units in stock</p>
@@ -874,7 +874,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                 ) : (
                   [...data.sales].reverse().slice(0, 15).map(sale => (
                     <tr key={sale.invNo} className="hover:bg-slate-50/60 transition">
-                      <td className="p-3 font-mono font-bold text-blue-600">
+                      <td className="p-3 tabular-nums font-bold text-blue-600">
                         #{sale.invNo}
                       </td>
                       <td className="p-3">
@@ -900,7 +900,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                           )}
                         </div>
                       </td>
-                      <td className="p-3 text-slate-500 font-mono text-[11px]">
+                      <td className="p-3 text-slate-500 tabular-nums text-[11px]">
                         {new Date(sale.date).toLocaleDateString()}
                       </td>
                       <td className="p-3 font-semibold text-slate-900">
@@ -915,10 +915,10 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                           {sale.paymentMethod}
                         </span>
                       </td>
-                      <td className="p-3 text-right font-mono tabular-nums font-bold text-slate-900">
+                      <td className="p-3 text-right tabular-nums font-bold text-slate-900">
                         {currency} {sale.grandTotal.toLocaleString()}
                       </td>
-                      <td className="p-3 text-right font-mono tabular-nums font-bold text-emerald-600">
+                      <td className="p-3 text-right tabular-nums font-bold text-emerald-600">
                         {data.currentRole === 'salesman' ? '••••' : `+${currency} ${sale.netProfit.toLocaleString()}`}
                       </td>
                       <td className="p-3 text-center">
@@ -1105,7 +1105,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                 </div>
                 <div className="text-left sm:text-right">
                   <p className="text-[10px] sm:text-[11px] font-bold text-slate-700 dark:text-neutral-300">Date Generated:</p>
-                  <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-neutral-400 font-mono">{new Date().toLocaleString()}</p>
+                  <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-neutral-400 tabular-nums">{new Date().toLocaleString()}</p>
                 </div>
               </div>
 
@@ -1116,7 +1116,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
                     <div className="p-3 bg-purple-50 dark:bg-neutral-900 rounded-xl border border-purple-200 dark:border-purple-900/60">
                       <span className="text-[10px] font-bold text-purple-700 dark:text-purple-400 uppercase">Wholesale Sales</span>
-                      <p className="text-base sm:text-lg font-bold font-mono text-purple-900 dark:text-purple-300 mt-0.5 truncate">
+                      <p className="text-base sm:text-lg font-bold tabular-nums text-purple-900 dark:text-purple-300 mt-0.5 truncate">
                         {currency} {totalWholesaleRevenue.toLocaleString()}
                       </p>
                       <p className="text-[10px] text-purple-600 dark:text-purple-400 mt-0.5">{wholesaleSales.length} Invoices • {totalWholesaleUnits} units</p>
@@ -1124,7 +1124,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
 
                     <div className="p-3 bg-slate-100 dark:bg-neutral-900 rounded-xl border border-slate-200 dark:border-neutral-800">
                       <span className="text-[10px] font-bold text-slate-600 dark:text-neutral-400 uppercase">Wholesale Cost (COGS)</span>
-                      <p className="text-base sm:text-lg font-bold font-mono text-slate-900 dark:text-neutral-200 mt-0.5 truncate">
+                      <p className="text-base sm:text-lg font-bold tabular-nums text-slate-900 dark:text-neutral-200 mt-0.5 truncate">
                         {currency} {totalWholesaleCost.toLocaleString()}
                       </p>
                       <p className="text-[10px] text-slate-500 mt-0.5">Purchased Cost</p>
@@ -1132,14 +1132,14 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
 
                     <div className="p-3 bg-emerald-50 dark:bg-neutral-900 rounded-xl border border-emerald-200 dark:border-emerald-900/60">
                       <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase">Wholesale Net Profit/Loss</span>
-                      <p className={`text-base sm:text-lg font-bold font-mono mt-0.5 truncate ${totalWholesaleProfit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600'}`}>
+                      <p className={`text-base sm:text-lg font-bold tabular-nums mt-0.5 truncate ${totalWholesaleProfit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600'}`}>
                         {totalWholesaleProfit >= 0 ? '+' : ''}{currency} {totalWholesaleProfit.toLocaleString()}
                       </p>
                     </div>
 
                     <div className="p-3 bg-amber-50 dark:bg-neutral-900 rounded-xl border border-amber-200 dark:border-amber-900/60">
                       <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase">Retailer Discounts Given</span>
-                      <p className="text-base sm:text-lg font-bold font-mono text-amber-900 dark:text-amber-300 mt-0.5 truncate">
+                      <p className="text-base sm:text-lg font-bold tabular-nums text-amber-900 dark:text-amber-300 mt-0.5 truncate">
                         {currency} {totalWholesaleDiscountsGiven.toLocaleString()}
                       </p>
                     </div>
@@ -1184,15 +1184,15 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                                 <td className="p-2.5 text-slate-600 dark:text-neutral-300">
                                   {r.shopName !== '-' ? r.shopName : ''} {r.city !== '-' ? `(${r.city})` : '-'}
                                 </td>
-                                <td className="p-2.5 font-mono text-[11px] text-slate-500 dark:text-neutral-400">{r.phone}</td>
-                                <td className="p-2.5 text-center font-mono font-bold">{r.invoicesCount}</td>
-                                <td className="p-2.5 text-right font-mono font-bold text-slate-900 dark:text-white">
+                                <td className="p-2.5 tabular-nums text-[11px] text-slate-500 dark:text-neutral-400">{r.phone}</td>
+                                <td className="p-2.5 text-center tabular-nums font-bold">{r.invoicesCount}</td>
+                                <td className="p-2.5 text-right tabular-nums font-bold text-slate-900 dark:text-white">
                                   {currency} {r.totalPurchased.toLocaleString()}
                                 </td>
-                                <td className="p-2.5 text-right font-mono font-bold text-emerald-600">
+                                <td className="p-2.5 text-right tabular-nums font-bold text-emerald-600">
                                   +{currency} {r.totalProfit.toLocaleString()}
                                 </td>
-                                <td className="p-2.5 text-right font-mono font-bold text-amber-600">
+                                <td className="p-2.5 text-right tabular-nums font-bold text-amber-600">
                                   {currency} {r.totalDiscounts.toLocaleString()}
                                 </td>
                               </tr>
@@ -1235,8 +1235,8 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                           ) : (
                             wholesaleSales.map(s => (
                               <tr key={s.invNo} className="hover:bg-slate-50 dark:hover:bg-neutral-850">
-                                <td className="p-2.5 font-mono font-bold text-purple-600">#{s.invNo}</td>
-                                <td className="p-2.5 text-slate-500 font-mono text-[11px]">
+                                <td className="p-2.5 tabular-nums font-bold text-purple-600">#{s.invNo}</td>
+                                <td className="p-2.5 text-slate-500 tabular-nums text-[11px]">
                                   {new Date(s.date).toLocaleDateString()}
                                 </td>
                                 <td className="p-2.5 font-semibold text-slate-900 dark:text-white">
@@ -1257,13 +1257,13 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                                     {s.paymentMethod}
                                   </span>
                                 </td>
-                                <td className="p-2.5 text-right font-mono font-bold text-amber-600">
+                                <td className="p-2.5 text-right tabular-nums font-bold text-amber-600">
                                   {currency} {((s.wholesaleSavings || 0) + (s.discount || 0)).toLocaleString()}
                                 </td>
-                                <td className="p-2.5 text-right font-mono font-bold text-slate-900 dark:text-white">
+                                <td className="p-2.5 text-right tabular-nums font-bold text-slate-900 dark:text-white">
                                   {currency} {s.grandTotal.toLocaleString()}
                                 </td>
-                                <td className="p-2.5 text-right font-mono font-bold text-emerald-600">
+                                <td className="p-2.5 text-right tabular-nums font-bold text-emerald-600">
                                   +{currency} {s.netProfit.toLocaleString()}
                                 </td>
                                 <td className="p-2.5 text-center">
@@ -1292,15 +1292,15 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
                     <div className="p-2.5 sm:p-3 bg-blue-50 dark:bg-neutral-900 rounded-xl border border-blue-200 dark:border-blue-900/60">
                       <span className="text-[10px] font-bold text-blue-700 dark:text-blue-400 uppercase">Gross Revenue</span>
-                      <p className="text-base sm:text-lg font-bold font-mono text-blue-900 dark:text-blue-300 mt-0.5 truncate">{currency} {totalSalesRevenue.toLocaleString()}</p>
+                      <p className="text-base sm:text-lg font-bold tabular-nums text-blue-900 dark:text-blue-300 mt-0.5 truncate">{currency} {totalSalesRevenue.toLocaleString()}</p>
                     </div>
                     <div className="p-2.5 sm:p-3 bg-slate-100 dark:bg-neutral-900 rounded-xl border border-slate-200 dark:border-neutral-800">
                       <span className="text-[10px] font-bold text-slate-600 dark:text-neutral-400 uppercase">Total COGS</span>
-                      <p className="text-base sm:text-lg font-bold font-mono text-slate-900 dark:text-neutral-200 mt-0.5 truncate">{currency} {totalCOGS.toLocaleString()}</p>
+                      <p className="text-base sm:text-lg font-bold tabular-nums text-slate-900 dark:text-neutral-200 mt-0.5 truncate">{currency} {totalCOGS.toLocaleString()}</p>
                     </div>
                     <div className="col-span-2 sm:col-span-1 p-2.5 sm:p-3 bg-emerald-50 dark:bg-neutral-900 rounded-xl border border-emerald-200 dark:border-emerald-900/60">
                       <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase">Total Profit</span>
-                      <p className="text-base sm:text-lg font-bold font-mono text-emerald-900 dark:text-emerald-300 mt-0.5 truncate">+{currency} {netProfit.toLocaleString()}</p>
+                      <p className="text-base sm:text-lg font-bold tabular-nums text-emerald-900 dark:text-emerald-300 mt-0.5 truncate">+{currency} {netProfit.toLocaleString()}</p>
                     </div>
                   </div>
 
@@ -1320,13 +1320,13 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                       <tbody className="divide-y divide-slate-100 dark:divide-neutral-800 text-xs">
                         {filteredSales.map(s => (
                           <tr key={s.invNo} className="hover:bg-slate-50 dark:hover:bg-neutral-850">
-                            <td className="p-2.5 font-mono font-bold text-blue-600">#{s.invNo}</td>
+                            <td className="p-2.5 tabular-nums font-bold text-blue-600">#{s.invNo}</td>
                             <td className="p-2.5 font-semibold capitalize">{s.invoiceType || 'Cash'}</td>
-                            <td className="p-2.5 text-slate-500 font-mono text-[11px]">{new Date(s.date).toLocaleDateString()}</td>
+                            <td className="p-2.5 text-slate-500 tabular-nums text-[11px]">{new Date(s.date).toLocaleDateString()}</td>
                             <td className="p-2.5 font-bold text-slate-800 dark:text-white">{s.custName}</td>
                             <td className="p-2.5">{s.paymentMethod}</td>
-                            <td className="p-2.5 text-right font-mono font-bold">{currency} {s.grandTotal.toLocaleString()}</td>
-                            <td className="p-2.5 text-right font-mono font-bold text-emerald-600">+{currency} {s.netProfit.toLocaleString()}</td>
+                            <td className="p-2.5 text-right tabular-nums font-bold">{currency} {s.grandTotal.toLocaleString()}</td>
+                            <td className="p-2.5 text-right tabular-nums font-bold text-emerald-600">+{currency} {s.netProfit.toLocaleString()}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1341,7 +1341,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                   <div className="p-3 sm:p-3.5 bg-rose-50 rounded-xl border border-rose-200 flex justify-between items-center gap-2">
                     <div>
                       <span className="text-[10px] font-bold text-rose-700 uppercase">Total Recorded Expenses</span>
-                      <p className="text-lg sm:text-xl font-bold font-mono text-rose-900">{currency} {totalExpenses.toLocaleString()}</p>
+                      <p className="text-lg sm:text-xl font-bold tabular-nums text-rose-900">{currency} {totalExpenses.toLocaleString()}</p>
                     </div>
                     <span className="text-xs font-bold text-rose-700 bg-white px-3 py-1 rounded-xl shadow-2xs border border-rose-100 shrink-0">
                       {data.expenses.length} Records
@@ -1362,11 +1362,11 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                       <tbody className="divide-y divide-slate-100 text-xs">
                         {data.expenses.map(e => (
                           <tr key={e.id} className="hover:bg-slate-50">
-                            <td className="p-2.5 text-slate-500 font-mono text-[11px]">{new Date(e.date).toLocaleDateString()}</td>
+                            <td className="p-2.5 text-slate-500 tabular-nums text-[11px]">{new Date(e.date).toLocaleDateString()}</td>
                             <td className="p-2.5 font-semibold text-slate-900">{e.description}</td>
                             <td className="p-2.5"><span className="px-2 py-0.5 bg-slate-100 rounded text-[11px]">{e.category}</span></td>
                             <td className="p-2.5">{e.paymentMethod || 'Cash'}</td>
-                            <td className="p-2.5 text-right font-mono font-bold text-rose-600">{currency} {e.amount.toLocaleString()}</td>
+                            <td className="p-2.5 text-right tabular-nums font-bold text-rose-600">{currency} {e.amount.toLocaleString()}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1381,15 +1381,15 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
                     <div className="p-2.5 sm:p-3 bg-indigo-50 rounded-xl border border-indigo-200">
                       <span className="text-[10px] font-bold text-indigo-700 uppercase">Cost Value</span>
-                      <p className="text-base sm:text-lg font-bold font-mono text-indigo-900 mt-0.5 truncate">{currency} {stockValuationCost.toLocaleString()}</p>
+                      <p className="text-base sm:text-lg font-bold tabular-nums text-indigo-900 mt-0.5 truncate">{currency} {stockValuationCost.toLocaleString()}</p>
                     </div>
                     <div className="p-2.5 sm:p-3 bg-blue-50 rounded-xl border border-blue-200">
                       <span className="text-[10px] font-bold text-blue-700 uppercase">Retail Value</span>
-                      <p className="text-base sm:text-lg font-bold font-mono text-blue-900 mt-0.5 truncate">{currency} {stockValuationRetail.toLocaleString()}</p>
+                      <p className="text-base sm:text-lg font-bold tabular-nums text-blue-900 mt-0.5 truncate">{currency} {stockValuationRetail.toLocaleString()}</p>
                     </div>
                     <div className="col-span-2 sm:col-span-1 p-2.5 sm:p-3 bg-emerald-50 rounded-xl border border-emerald-200">
                       <span className="text-[10px] font-bold text-emerald-700 uppercase">Expected Profit</span>
-                      <p className="text-base sm:text-lg font-bold font-mono text-emerald-900 mt-0.5 truncate">+{currency} {(stockValuationRetail - stockValuationCost).toLocaleString()}</p>
+                      <p className="text-base sm:text-lg font-bold tabular-nums text-emerald-900 mt-0.5 truncate">+{currency} {(stockValuationRetail - stockValuationCost).toLocaleString()}</p>
                     </div>
                   </div>
 
@@ -1410,12 +1410,12 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                           <tr key={item.id} className="hover:bg-slate-50">
                             <td className="p-2.5 font-bold text-slate-900">{item.name}</td>
                             <td className="p-2.5 text-slate-500">{item.category}</td>
-                            <td className="p-2.5 text-center font-mono font-bold">
+                            <td className="p-2.5 text-center tabular-nums font-bold">
                               <span className={item.qty <= 1 ? 'text-rose-600 font-bold' : ''}>{item.qty}</span>
                             </td>
-                            <td className="p-2.5 text-right font-mono">{currency} {item.costPrice.toLocaleString()}</td>
-                            <td className="p-2.5 text-right font-mono font-bold">{currency} {item.salePrice.toLocaleString()}</td>
-                            <td className="p-2.5 text-right font-mono font-extrabold text-indigo-700">
+                            <td className="p-2.5 text-right tabular-nums">{currency} {item.costPrice.toLocaleString()}</td>
+                            <td className="p-2.5 text-right tabular-nums font-bold">{currency} {item.salePrice.toLocaleString()}</td>
+                            <td className="p-2.5 text-right tabular-nums font-extrabold text-indigo-700">
                               {currency} {(item.costPrice * item.qty).toLocaleString()}
                             </td>
                           </tr>
@@ -1432,7 +1432,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                   <div className="p-3 sm:p-3.5 bg-purple-50 rounded-xl border border-purple-200 flex justify-between items-center gap-2">
                     <div>
                       <span className="text-[10px] font-bold text-purple-700 uppercase">Total Pending Receivables</span>
-                      <p className="text-lg sm:text-xl font-bold font-mono text-purple-900">{currency} {totalUdhar.toLocaleString()}</p>
+                      <p className="text-lg sm:text-xl font-bold tabular-nums text-purple-900">{currency} {totalUdhar.toLocaleString()}</p>
                     </div>
                     <span className="text-xs font-bold text-purple-700 bg-white px-3 py-1 rounded-xl shrink-0 border border-purple-100">
                       {debtorCustomersCount} Customers with Balance
@@ -1454,10 +1454,10 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                         {data.khata.map(c => (
                           <tr key={c.id} className="hover:bg-slate-50">
                             <td className="p-2.5 font-bold text-slate-900">{c.name}</td>
-                            <td className="p-2.5 font-mono">{c.phone}</td>
+                            <td className="p-2.5 tabular-nums">{c.phone}</td>
                             <td className="p-2.5 text-slate-500">{c.address || '-'}</td>
                             <td className="p-2.5 text-center">{c.history.length}</td>
-                            <td className="p-2.5 text-right font-mono font-bold text-purple-700">{currency} {c.balance.toLocaleString()}</td>
+                            <td className="p-2.5 text-right tabular-nums font-bold text-purple-700">{currency} {c.balance.toLocaleString()}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1476,27 +1476,27 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                   <div className="space-y-2 text-xs">
                     <div className="flex justify-between py-1.5 border-b border-slate-100">
                       <span className="font-semibold text-slate-700">Gross Sales Revenue:</span>
-                      <span className="font-mono font-bold text-slate-900">{currency} {totalSalesRevenue.toLocaleString()}</span>
+                      <span className="tabular-nums font-bold text-slate-900">{currency} {totalSalesRevenue.toLocaleString()}</span>
                     </div>
 
                     <div className="flex justify-between py-1.5 border-b border-slate-100 text-slate-600">
                       <span>Less: Cost of Goods Sold (COGS):</span>
-                      <span className="font-mono font-bold text-slate-700">-{currency} {totalCOGS.toLocaleString()}</span>
+                      <span className="tabular-nums font-bold text-slate-700">-{currency} {totalCOGS.toLocaleString()}</span>
                     </div>
 
                     <div className="flex justify-between py-2 border-b border-slate-200 font-bold bg-slate-50 px-2 rounded-lg">
                       <span className="text-slate-900">Gross Operating Profit:</span>
-                      <span className="font-mono text-emerald-700">{currency} {grossProfit.toLocaleString()}</span>
+                      <span className="tabular-nums text-emerald-700">{currency} {grossProfit.toLocaleString()}</span>
                     </div>
 
                     <div className="flex justify-between py-1.5 border-b border-slate-100 text-rose-600">
                       <span>Less: Operational Shop Expenses:</span>
-                      <span className="font-mono font-bold">-{currency} {totalExpenses.toLocaleString()}</span>
+                      <span className="tabular-nums font-bold">-{currency} {totalExpenses.toLocaleString()}</span>
                     </div>
 
                     <div className="flex justify-between py-3 border-t-2 border-slate-900 font-extrabold text-xs sm:text-sm">
                       <span className="text-slate-900">Net Business Profit (kat peet kar):</span>
-                      <span className={`font-mono ${netProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      <span className={`tabular-nums ${netProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                         {currency} {netProfit.toLocaleString()}
                       </span>
                     </div>
@@ -1527,12 +1527,12 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                       <tbody className="divide-y divide-slate-100 text-xs">
                         {closingsHistory.map(rec => (
                           <tr key={rec.id} className="hover:bg-slate-50">
-                            <td className="p-2.5 font-mono font-bold">{rec.date} ({rec.time})</td>
+                            <td className="p-2.5 tabular-nums font-bold">{rec.date} ({rec.time})</td>
                             <td className="p-2.5">{rec.closedBy}</td>
-                            <td className="p-2.5 text-right font-mono font-bold text-emerald-600">{currency} {rec.totalCash.toLocaleString()}</td>
-                            <td className="p-2.5 text-right font-mono font-bold text-blue-600">{currency} {rec.totalOnline.toLocaleString()}</td>
-                            <td className="p-2.5 text-right font-mono font-extrabold text-slate-900">{currency} {rec.grandTotal.toLocaleString()}</td>
-                            <td className="p-2.5 text-right font-mono font-bold">
+                            <td className="p-2.5 text-right tabular-nums font-bold text-emerald-600">{currency} {rec.totalCash.toLocaleString()}</td>
+                            <td className="p-2.5 text-right tabular-nums font-bold text-blue-600">{currency} {rec.totalOnline.toLocaleString()}</td>
+                            <td className="p-2.5 text-right tabular-nums font-extrabold text-slate-900">{currency} {rec.grandTotal.toLocaleString()}</td>
+                            <td className="p-2.5 text-right tabular-nums font-bold">
                               {rec.difference === 0 ? 'Matched' : `${rec.difference! > 0 ? '+' : ''}${currency} ${rec.difference?.toLocaleString()}`}
                             </td>
                           </tr>
@@ -1560,11 +1560,11 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                       <tbody className="divide-y divide-slate-100 text-xs">
                         {data.purchasesLedger.map(p => (
                           <tr key={p.id} className="hover:bg-slate-50">
-                            <td className="p-2.5 text-slate-500 font-mono text-[11px]">{new Date(p.date).toLocaleDateString()}</td>
+                            <td className="p-2.5 text-slate-500 tabular-nums text-[11px]">{new Date(p.date).toLocaleDateString()}</td>
                             <td className="p-2.5 font-bold text-slate-900">{p.itemTitle}</td>
-                            <td className="p-2.5 text-center font-mono font-bold">{p.qty}</td>
-                            <td className="p-2.5 text-right font-mono">{currency} {p.costPrice.toLocaleString()}</td>
-                            <td className="p-2.5 text-right font-mono font-bold text-amber-700">{currency} {p.total.toLocaleString()}</td>
+                            <td className="p-2.5 text-center tabular-nums font-bold">{p.qty}</td>
+                            <td className="p-2.5 text-right tabular-nums">{currency} {p.costPrice.toLocaleString()}</td>
+                            <td className="p-2.5 text-right tabular-nums font-bold text-amber-700">{currency} {p.total.toLocaleString()}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1593,8 +1593,8 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                             <td className="p-2.5 font-bold text-slate-400">#{idx + 1}</td>
                             <td className="p-2.5 font-bold text-slate-900">{p.name}</td>
                             <td className="p-2.5 text-slate-500">{p.category}</td>
-                            <td className="p-2.5 text-center font-mono font-bold text-blue-600">{p.unitsSold}</td>
-                            <td className="p-2.5 text-right font-mono font-extrabold text-slate-900">{currency} {p.totalRevenue.toLocaleString()}</td>
+                            <td className="p-2.5 text-center tabular-nums font-bold text-blue-600">{p.unitsSold}</td>
+                            <td className="p-2.5 text-right tabular-nums font-extrabold text-slate-900">{currency} {p.totalRevenue.toLocaleString()}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1609,7 +1609,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                   <div className="p-3 sm:p-3.5 bg-amber-50 rounded-xl border border-amber-200 flex justify-between items-center gap-2">
                     <div>
                       <span className="text-[10px] font-bold text-amber-700 uppercase">Total Customer Refunds Paid</span>
-                      <p className="text-lg sm:text-xl font-bold font-mono text-amber-900">{currency} {totalRefundsAmount.toLocaleString()}</p>
+                      <p className="text-lg sm:text-xl font-bold tabular-nums text-amber-900">{currency} {totalRefundsAmount.toLocaleString()}</p>
                     </div>
                     <span className="text-xs font-bold text-amber-800 bg-white px-3 py-1 rounded-xl shadow-2xs border border-amber-200 shrink-0">
                       {(data.salesReturns || []).length} Return Records
@@ -1638,21 +1638,21 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                         <tbody className="divide-y divide-slate-100">
                           {data.salesReturns.map(ret => (
                             <tr key={ret.id} className="hover:bg-slate-50">
-                              <td className="p-2.5 font-mono font-bold text-amber-700">#{ret.returnNo}</td>
-                              <td className="p-2.5 text-slate-500 font-mono text-[11px]">{new Date(ret.returnDate).toLocaleDateString()}</td>
-                              <td className="p-2.5 font-mono font-semibold text-blue-600">#{ret.originalInvNo}</td>
+                              <td className="p-2.5 tabular-nums font-bold text-amber-700">#{ret.returnNo}</td>
+                              <td className="p-2.5 text-slate-500 tabular-nums text-[11px]">{new Date(ret.returnDate).toLocaleDateString()}</td>
+                              <td className="p-2.5 tabular-nums font-semibold text-blue-600">#{ret.originalInvNo}</td>
                               <td className="p-2.5 font-bold text-slate-900">{ret.customerName}</td>
                               <td className="p-2.5">
                                 {ret.items.map((i, idx) => (
                                   <div key={idx} className="text-[11px]">
                                     <span className="font-semibold text-slate-800">{i.name} (x{i.qty})</span>
                                     {i.imeis && i.imeis.length > 0 && (
-                                      <div className="text-[10px] font-mono text-purple-700">
+                                      <div className="text-[10px] tabular-nums text-purple-700">
                                         IMEI: {i.imeis.join(', ')}
                                       </div>
                                     )}
                                     {i.imei && !i.imeis && (
-                                      <div className="text-[10px] font-mono text-purple-700">
+                                      <div className="text-[10px] tabular-nums text-purple-700">
                                         IMEI: {i.imei}
                                       </div>
                                     )}
@@ -1661,7 +1661,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                               </td>
                               <td className="p-2.5 text-slate-600 text-[11px]">{ret.reason}</td>
                               <td className="p-2.5 text-slate-700 font-semibold">{ret.refundPaymentMethod}</td>
-                              <td className="p-2.5 text-right font-mono font-bold text-rose-600">
+                              <td className="p-2.5 text-right tabular-nums font-bold text-rose-600">
                                 -{currency} {ret.totalRefundAmount.toLocaleString()}
                               </td>
                             </tr>
@@ -1820,7 +1820,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                   <h3 className="font-extrabold text-slate-900 text-base leading-tight">
                     {deleteSaleModal.status === 'CANCELLED' ? 'Delete Cancelled Invoice' : 'Delete / Void Invoice'}
                   </h3>
-                  <p className="text-xs text-slate-500 font-mono">
+                  <p className="text-xs text-slate-500 tabular-nums">
                     Invoice #{deleteSaleModal.invNo} • {new Date(deleteSaleModal.date).toLocaleDateString()}
                   </p>
                 </div>
@@ -1841,7 +1841,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
               </div>
               <div className="flex justify-between items-center pt-1 border-t border-slate-200">
                 <span className="font-bold text-slate-700">Total:</span>
-                <span className="font-mono font-black text-sm text-slate-900">
+                <span className="tabular-nums font-black text-sm text-slate-900">
                   {currency} {deleteSaleModal.grandTotal.toLocaleString()}
                 </span>
               </div>

@@ -82,6 +82,7 @@ export interface KhataTransaction {
   paymentMethod?: string; // 'Cash' | 'Bank' | 'JazzCash' | 'Easypaisa' | 'Card' | 'Other'
   accountId?: string;
   note?: string;
+  receiptImage?: string;
 }
 
 export interface KhataCustomer {
@@ -90,11 +91,21 @@ export interface KhataCustomer {
   phone: string;
   phone2?: string;
   address?: string;
+  lat?: number;
+  lng?: number;
+  placeId?: string;
+  mapUrl?: string;
   image?: string;
   customerType?: 'retail' | 'retailer' | 'wholesaler';
   shopName?: string;
   city?: string;
   ntnNumber?: string;
+  cnic?: string;
+  creditLimit?: number;
+  dueDate?: string;
+  guarantorName?: string;
+  guarantorPhone?: string;
+  notes?: string;
   balance: number;
   lastUpdated: string;
   history: KhataTransaction[];
@@ -282,7 +293,11 @@ export interface PurchaseItem {
   qty: number;
   costPrice: number;
   salePrice?: number;
+  wholesalePrice?: number;
   total: number;
+  ram?: string;
+  storage?: string;
+  color?: string;
   barcode?: string;
   imei?: string;
   imeis?: string[];

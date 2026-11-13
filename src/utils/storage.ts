@@ -842,28 +842,31 @@ export async function deleteUserFromFirestore(userId: string, targetStoreId?: st
 export async function fetchLiveUsersFromFirestore(): Promise<UserAccount[]> {
   try {
     const usersMap = new Map<string, UserAccount>();
+    const sid = currentActiveStoreId || DEFAULT_STORE_ID;
+
+    // Fetch all user registries in parallel to minimize login latency
+    const [globalSnap, storeUsersSnap, legacySnap, legacyRootSnap] = await Promise.all([
+      getDocs(collection(db, 'users')).catch(() => null),
+      getDocs(collection(db, STORES_COLLECTION, sid, SUB_COLLECTIONS.USERS)).catch(() => null),
+      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.USERS)).catch(() => null),
+      getDoc(doc(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID)).catch(() => null),
+    ]);
 
     // 1. Global registry
-    try {
-      const globalSnap = await getDocs(collection(db, 'users'));
+    if (globalSnap) {
       globalSnap.forEach(d => {
         const u = d.data() as UserAccount;
         if (u && u.id) {
-          // Normalize storeId if missing
           if (!u.storeId) {
             u.storeId = u.role === 'admin' ? u.id : DEFAULT_STORE_ID;
           }
           usersMap.set(u.id, u);
         }
       });
-    } catch {
-      // Continue to fallback checks
     }
 
-    // 2. Check current store's users sub-collection
-    try {
-      const sid = currentActiveStoreId || DEFAULT_STORE_ID;
-      const storeUsersSnap = await getDocs(collection(db, STORES_COLLECTION, sid, SUB_COLLECTIONS.USERS));
+    // 2. Store users sub-collection
+    if (storeUsersSnap) {
       storeUsersSnap.forEach(d => {
         const u = d.data() as UserAccount;
         if (u && u.id && !usersMap.has(u.id)) {
@@ -871,13 +874,10 @@ export async function fetchLiveUsersFromFirestore(): Promise<UserAccount[]> {
           usersMap.set(u.id, u);
         }
       });
-    } catch {
-      // ignore
     }
 
-    // 3. Legacy compatibility fallback: /pos_data/main_store/users
-    try {
-      const legacySnap = await getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.USERS));
+    // 3. Legacy compatibility fallback
+    if (legacySnap) {
       legacySnap.forEach(d => {
         const u = d.data() as UserAccount;
         if (u && u.id && !usersMap.has(u.id)) {
@@ -885,18 +885,15 @@ export async function fetchLiveUsersFromFirestore(): Promise<UserAccount[]> {
           usersMap.set(u.id, u);
         }
       });
-      const legacyRootSnap = await getDoc(doc(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID));
-      if (legacyRootSnap.exists()) {
-        const legacyRootUsers = (legacyRootSnap.data()?.users as UserAccount[]) || [];
-        legacyRootUsers.forEach(u => {
-          if (u && u.id && !usersMap.has(u.id)) {
-            if (!u.storeId) u.storeId = u.role === 'admin' ? u.id : DEFAULT_STORE_ID;
-            usersMap.set(u.id, u);
-          }
-        });
-      }
-    } catch {
-      // ignore
+    }
+    if (legacyRootSnap && legacyRootSnap.exists()) {
+      const legacyRootUsers = (legacyRootSnap.data()?.users as UserAccount[]) || [];
+      legacyRootUsers.forEach(u => {
+        if (u && u.id && !usersMap.has(u.id)) {
+          if (!u.storeId) u.storeId = u.role === 'admin' ? u.id : DEFAULT_STORE_ID;
+          usersMap.set(u.id, u);
+        }
+      });
     }
 
     // 4. Strict Deduplication: An admin email must only ever yield a single master record

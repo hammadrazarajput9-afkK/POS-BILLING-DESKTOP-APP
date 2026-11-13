@@ -117,7 +117,7 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
               <Receipt className="w-3.5 h-3.5" />
             </span>
           </div>
-          <h3 className="text-xl sm:text-2xl font-extrabold text-rose-600 font-mono tabular-nums mt-0.5 sm:mt-1">
+          <h3 className="text-xl sm:text-2xl font-extrabold text-rose-600 tabular-nums mt-0.5 sm:mt-1">
             {currency} {totalExpenseAmount.toLocaleString()}
           </h3>
           <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">
@@ -145,7 +145,7 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
           <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 block truncate">
             Expense Records
           </span>
-          <h3 className="text-base sm:text-2xl font-extrabold text-slate-900 font-mono tabular-nums mt-0.5 sm:mt-1">
+          <h3 className="text-base sm:text-2xl font-extrabold text-slate-900 tabular-nums mt-0.5 sm:mt-1">
             {filtered.length} Entries
           </h3>
           <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">
@@ -337,7 +337,7 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
                         <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700">
                           {expense.category}
                         </span>
-                        <span className="text-[10px] font-semibold text-slate-500 font-mono">
+                        <span className="text-[10px] font-semibold text-slate-500 tabular-nums">
                           {new Date(expense.date).toLocaleDateString()}
                         </span>
                       </div>
@@ -346,7 +346,7 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
 
                   {/* Amount & Delete Button */}
                   <div className="text-right shrink-0 flex flex-col items-end">
-                    <span className="font-mono font-extrabold text-rose-600 text-sm tabular-nums">
+                    <span className="tabular-nums font-extrabold text-rose-600 text-sm tabular-nums">
                       {currency} {expense.amount.toLocaleString()}
                     </span>
                     <span className="text-[10px] font-medium text-slate-500 mt-0.5">
@@ -430,7 +430,7 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
                         )}
                       </td>
 
-                      <td className="p-3 text-slate-500 font-mono text-[11px] whitespace-nowrap">
+                      <td className="p-3 text-slate-500 tabular-nums text-[11px] whitespace-nowrap">
                         {new Date(expense.date).toLocaleDateString()}
                       </td>
 
@@ -450,7 +450,7 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
                         </span>
                       </td>
 
-                      <td className="p-3 text-right font-mono font-extrabold text-rose-600 text-sm tabular-nums whitespace-nowrap">
+                      <td className="p-3 text-right tabular-nums font-extrabold text-rose-600 text-sm tabular-nums whitespace-nowrap">
                         {currency} {expense.amount.toLocaleString()}
                       </td>
 

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { SupplierPurchase, PurchaseItem, InventoryItem, ImeiRecord, SaleRecord, OnlineAccount } from '../types';
+import { AppData, SupplierPurchase, PurchaseItem, InventoryItem, ImeiRecord, SaleRecord, OnlineAccount } from '../types';
 import {
   Truck,
   Plus,
@@ -25,12 +25,22 @@ import {
   Sparkles,
   Barcode,
   Smartphone,
-  CreditCard
+  CreditCard,
+  Cpu,
+  HardDrive,
+  Palette,
+  Edit2,
+  Download,
+  MessageCircle,
+  ScanLine
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { ConfirmModal } from './ConfirmModal';
-import { StockModal, isMobileCategory } from './StockModal';
-import { validateImeis } from '../utils/imeiManager';
+import { StockModal, isMobileCategory, isAndroidCategory, isKeypadCategory } from './StockModal';
+import { BarcodeScannerModal } from './BarcodeScannerModal';
+import { validateImeis, distributeImeiInput, MAX_SINGLE_IMEI_LENGTH, sanitizeSingleImei, extractScannedImeiTokens } from '../utils/imeiManager';
+import { generateSinglePurchasePdf } from '../utils/pdfGenerator';
+import { sharePurchaseOnWhatsApp } from '../utils/whatsappInvoice';
 
 interface PurchasesTabProps {
   purchases: SupplierPurchase[];
@@ -40,8 +50,14 @@ interface PurchasesTabProps {
   imeiRecords?: ImeiRecord[];
   sales?: SaleRecord[];
   onlineAccounts?: OnlineAccount[];
+  appData?: AppData;
   isAdmin?: boolean;
   onSavePurchase: (
+    purchase: Omit<SupplierPurchase, 'id'>,
+    autoAddToInventory: boolean
+  ) => void;
+  onUpdatePurchase?: (
+    purchaseId: string,
     purchase: Omit<SupplierPurchase, 'id'>,
     autoAddToInventory: boolean
   ) => void;
@@ -55,21 +71,48 @@ interface PurchasesTabProps {
   onOpenAddInventoryProduct?: () => void;
   onAddInventoryProduct?: (item: Omit<InventoryItem, 'id' | 'createdAt'>) => InventoryItem | void;
   onAddCategory?: (category: string) => void;
+  onRenameCategory?: (oldName: string, newName: string) => boolean;
   onSettlePurchaseDue?: (params: { purchaseId: string; paymentAmount: number; paymentMethod: string; notes?: string }) => void;
+  onOpenPdfReport?: () => void;
 }
 
 export interface InwardDraftItem {
   name: string;
   category: string;
   qty: number | '';
+  ram?: string;
+  storage?: string;
+  color?: string;
   costPrice: number | '';
   salePrice: number | '';
+  wholesalePrice?: number | '';
   imei: string;
   imeis: string[];
   barcode: string;
 }
 
 const DRAFT_KEY = 'mobilepos_purchase_draft_v2';
+
+function generateInwardBillNo(dateStr?: string, existingPurchases: SupplierPurchase[] = []): string {
+  const clean = (dateStr || new Date().toISOString().substring(0, 10)).split('T')[0];
+  const parts = clean.split('-');
+  let ddmmyy = '';
+  if (parts.length === 3) {
+    const [yyyy, mm, dd] = parts;
+    ddmmyy = `${dd.padStart(2, '0')}${mm.padStart(2, '0')}${yyyy.slice(-2)}`;
+  } else {
+    const now = new Date();
+    ddmmyy = `${String(now.getDate()).padStart(2, '0')}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getFullYear()).slice(-2)}`;
+  }
+  const base = `FMZ-${ddmmyy}`;
+  const used = new Set(existingPurchases.map(p => (p.billNo || '').trim().toUpperCase()));
+  if (!used.has(base.toUpperCase())) return base;
+  let seq = 2;
+  while (used.has(`${base}-${seq}`.toUpperCase())) {
+    seq++;
+  }
+  return `${base}-${seq}`;
+}
 
 const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
   purchases = [],
@@ -78,21 +121,29 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
   inventory,
   imeiRecords = [],
   sales = [],
+  appData,
   onSavePurchase,
+  onUpdatePurchase,
   onDeletePurchase,
   onReversePurchase,
   onOpenAddInventoryProduct,
   onAddInventoryProduct,
   onAddCategory,
+  onRenameCategory,
   onSettlePurchaseDue,
+  onOpenPdfReport,
 }) => {
   const { showToast } = useToast();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'REVERSED' | 'PAID' | 'DUE'>('ALL');
   const [dateFilter, setDateFilter] = useState('');
+  const [isSearchScannerOpen, setIsSearchScannerOpen] = useState(false);
+  const [isScannerModalOpen, setIsScannerModalOpen] = useState(false);
+  const [scannerTarget, setScannerTarget] = useState<{ itemIdx: number; imeiIdx: number } | null>(null);
 
   // Modals
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingPurchaseId, setEditingPurchaseId] = useState<string | null>(null);
   const [isStockModalOpen, setIsStockModalOpen] = useState(false);
   const [selectedPurchaseForView, setSelectedPurchaseForView] = useState<SupplierPurchase | null>(null);
   const [selectedPurchaseForSettlement, setSelectedPurchaseForSettlement] = useState<SupplierPurchase | null>(null);
@@ -105,6 +156,47 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
   const [reversalNotes, setReversalNotes] = useState<string>('');
   const [reversedBy, setReversedBy] = useState<string>('Admin');
   const [zoomImage, setZoomImage] = useState<string | null>(null);
+
+  const fallbackPdfData: AppData = useMemo(
+    () =>
+      appData || {
+        inventory,
+        sales,
+        khata: [],
+        expenses: [],
+        activities: [],
+        categories,
+        purchasesLedger: [],
+        supplierPurchases: purchases,
+        imeiRecords,
+        settings: {
+          shopName: 'FMZ Friends Mobile Zone',
+          tagline: 'Mobile POS & Stock Management',
+          address: '',
+          phone: '',
+          currency,
+          taxRate: 0,
+          lowStockThreshold: 2,
+          receiptFooter: 'Thank you for your business!',
+          theme: 'blue-white',
+        },
+      },
+    [appData, inventory, sales, categories, purchases, imeiRecords, currency]
+  );
+
+  const handleDownloadSinglePdf = async (p: SupplierPurchase) => {
+    try {
+      await generateSinglePurchasePdf(p, fallbackPdfData);
+      showToast(`PDF downloaded for Bill #${p.billNo}`, 'success');
+    } catch {
+      showToast('Failed to generate purchase bill PDF', 'error');
+    }
+  };
+
+  const handleShareWhatsApp = (p: SupplierPurchase) => {
+    sharePurchaseOnWhatsApp(p, fallbackPdfData.settings);
+    showToast(`Opening WhatsApp for Bill #${p.billNo}...`, 'info');
+  };
 
   // Inward Product Search Bar state
   const [productSearch, setProductSearch] = useState('');
@@ -141,44 +233,49 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
     }).slice(0, 15);
   }, [inventory, productSearch]);
 
+  const resolveItemCategory = (rawCat?: string): string => {
+    const clean = (rawCat || '').trim();
+    if (!clean) return categories[0] || 'Android Mobile';
+
+    const exactMatch = categories.find(c => c === clean);
+    if (exactMatch) return exactMatch;
+
+    const ciMatch = categories.find(c => c.trim().toLowerCase() === clean.toLowerCase());
+    if (ciMatch) return ciMatch;
+
+    if (isKeypadCategory(clean)) {
+      const keypadCat = categories.find(c => isKeypadCategory(c));
+      if (keypadCat) return keypadCat;
+    }
+
+    if (isAndroidCategory(clean)) {
+      const androidCat = categories.find(c => isAndroidCategory(c));
+      if (androidCat) return androidCat;
+    }
+
+    return clean;
+  };
+
   const handleSelectProductFromInventory = (inv: InventoryItem) => {
-    setItems(prev => {
-      const existingIdx = prev.findIndex(
-        i => i.name.toLowerCase().trim() === inv.name.toLowerCase().trim()
-      );
-      if (existingIdx >= 0) {
-        const copy = [...prev];
-        const newQty = (Number(copy[existingIdx].qty) || 0) + 1;
-        const targetCount = newQty;
-        const curImeis = copy[existingIdx].imeis || (copy[existingIdx].imei ? copy[existingIdx].imei.split(',').map(s => s.trim()) : []);
-        const nextImeis = [...curImeis];
-        while (nextImeis.length < targetCount) nextImeis.push('');
-
-        copy[existingIdx] = {
-          ...copy[existingIdx],
-          qty: newQty,
-          imeis: nextImeis.slice(0, targetCount),
-          imei: nextImeis.slice(0, targetCount).filter(Boolean).join(', '),
-        };
-        showToast(`Increased inward quantity for "${inv.name}" (+1)`, 'info');
-        return copy;
-      }
-
-      showToast(`Added "${inv.name}" to inward stock list`, 'success');
-      return [
-        ...prev,
-        {
-          name: inv.name,
-          category: inv.category,
-          qty: 1,
-          costPrice: inv.costPrice || 0,
-          salePrice: inv.salePrice || 0,
-          imei: '',
-          imeis: [''],
-          barcode: inv.barcode || '',
-        },
-      ];
-    });
+    const resolvedCategory = resolveItemCategory(inv.category);
+    setItems(prev => [
+      ...prev,
+      {
+        name: inv.name,
+        category: resolvedCategory,
+        qty: '',
+        ram: '',
+        storage: '',
+        color: '',
+        costPrice: '',
+        salePrice: '',
+        wholesalePrice: '',
+        imei: '',
+        imeis: [],
+        barcode: '',
+      },
+    ]);
+    showToast(`Selected "${inv.name}" (${resolvedCategory}) — enter new stock details`, 'success');
     setProductSearch('');
     setIsSearchOpen(false);
   };
@@ -209,9 +306,9 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
     }
   }, []);
 
-  // Auto-Save Draft
+  // Auto-Save Draft (only for new purchase mode, not when editing existing bill)
   useEffect(() => {
-    if (!isAddModalOpen) return;
+    if (!isAddModalOpen || editingPurchaseId) return;
     const hasContent =
       partyName.trim() ||
       items.some(i => i.name.trim() || Number(i.costPrice) > 0) ||
@@ -238,6 +335,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
     }
   }, [
     isAddModalOpen,
+    editingPurchaseId,
     partyName,
     partyPhone,
     billNo,
@@ -255,10 +353,11 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
       const saved = localStorage.getItem(DRAFT_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
+        const targetDate = parsed.purchaseDate || new Date().toISOString().substring(0, 10);
         setPartyName(parsed.partyName || '');
         setPartyPhone(parsed.partyPhone || '');
-        setBillNo(parsed.billNo || 'PUR-' + Math.floor(1000 + Math.random() * 9000));
-        setPurchaseDate(parsed.purchaseDate || new Date().toISOString().substring(0, 10));
+        setBillNo(parsed.billNo || generateInwardBillNo(targetDate, purchases));
+        setPurchaseDate(targetDate);
         setPaymentMethod(parsed.paymentMethod || 'Cash');
         setPaidAmount(parsed.paidAmount ?? '');
         setNotes(parsed.notes || '');
@@ -267,19 +366,21 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
         if (Array.isArray(parsed.items) && parsed.items.length > 0) {
           setItems(
             parsed.items.map((it: any) => {
-              const q = it.qty !== undefined && it.qty !== '' ? Number(it.qty) : 1;
+              const q = it.qty !== undefined && it.qty !== '' ? Number(it.qty) : '';
+              const targetCount = q === '' || q <= 0 ? 0 : Math.min(100, q);
               const itemImeis =
                 it.imeis && it.imeis.length > 0
                   ? [...it.imeis]
                   : it.imei
                   ? it.imei.split(',').map((s: string) => s.trim()).filter(Boolean)
-                  : [''];
-              while (itemImeis.length < Math.max(1, q || 1)) itemImeis.push('');
+                  : [];
+              while (itemImeis.length < targetCount) itemImeis.push('');
               return {
                 ...it,
-                qty: it.qty !== undefined ? it.qty : 1,
-                imeis: itemImeis.slice(0, Math.max(1, q || 1)),
-                imei: itemImeis.filter(Boolean).join(', '),
+                category: resolveItemCategory(it.category),
+                qty: q,
+                imeis: targetCount > 0 ? itemImeis.slice(0, targetCount) : [],
+                imei: targetCount > 0 ? itemImeis.slice(0, targetCount).filter(Boolean).join(', ') : '',
               };
             })
           );
@@ -300,10 +401,12 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
 
   // Reset form
   const resetForm = () => {
+    const today = new Date().toISOString().substring(0, 10);
+    setEditingPurchaseId(null);
     setPartyName('');
     setPartyPhone('');
-    setBillNo('PUR-' + Math.floor(1000 + Math.random() * 9000));
-    setPurchaseDate(new Date().toISOString().substring(0, 10));
+    setBillNo(generateInwardBillNo(today, purchases));
+    setPurchaseDate(today);
     setPaymentMethod('Cash');
     setPaidAmount('');
     setNotes('');
@@ -316,18 +419,53 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
 
   const openAddModal = () => {
     resetForm();
-    // Check if draft exists
-    try {
-      const saved = localStorage.getItem(DRAFT_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.partyName || (parsed.items && parsed.items.length > 0 && parsed.items[0].name)) {
-          restoreDraft();
-        }
+    setIsAddModalOpen(true);
+  };
+
+  const openEditModal = (purchase: SupplierPurchase) => {
+    setEditingPurchaseId(purchase.id);
+    setPartyName(purchase.partyName || '');
+    setPartyPhone(purchase.partyPhone || '');
+    setBillNo(purchase.billNo || '');
+    setPurchaseDate((purchase.date || new Date().toISOString()).substring(0, 10));
+    setPaymentMethod(purchase.paymentMethod || 'Cash');
+    setPaidAmount(purchase.paidAmount ?? '');
+    setNotes(purchase.notes || '');
+    setInvoiceImage(purchase.invoiceImage || '');
+    setAutoAddToInventory(true);
+    setProductSearch('');
+    setIsSearchOpen(false);
+
+    const mappedItems: InwardDraftItem[] = (purchase.items || []).map(it => {
+      const q = Number(it.qty) || 1;
+      const resolvedCat = resolveItemCategory(it.category);
+      const isMob = isMobileCategory(resolvedCat);
+      const rawImeis = it.imeis && it.imeis.length > 0
+        ? [...it.imeis]
+        : it.imei
+        ? it.imei.split(',').map(s => s.trim()).filter(Boolean)
+        : [];
+      const nextImeis = isMob ? [...rawImeis] : [];
+      if (isMob) {
+        while (nextImeis.length < Math.min(100, q)) nextImeis.push('');
       }
-    } catch {
-      // ignore
-    }
+      return {
+        name: it.name,
+        category: resolvedCat,
+        qty: q,
+        ram: it.ram || '',
+        storage: it.storage || '',
+        color: it.color || '',
+        costPrice: it.costPrice ?? '',
+        salePrice: it.salePrice ?? '',
+        wholesalePrice: it.wholesalePrice ?? '',
+        imei: nextImeis.filter(Boolean).join(', '),
+        imeis: isMob ? nextImeis.slice(0, Math.min(100, q)) : [],
+        barcode: it.barcode || '',
+      };
+    });
+
+    setItems(mappedItems);
     setIsAddModalOpen(true);
   };
 
@@ -360,11 +498,15 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
       {
         name: '',
         category: categories[0] || 'Android Mobile',
-        qty: 1,
+        qty: '',
+        ram: '',
+        storage: '',
+        color: '',
         costPrice: '',
         salePrice: '',
+        wholesalePrice: '',
         imei: '',
-        imeis: [''],
+        imeis: [],
         barcode: '',
       },
     ]);
@@ -384,7 +526,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
       const copy = [...prev];
       const item = { ...copy[index] };
       item.qty = val;
-      const targetCount = val === '' || val === 0 ? 1 : Math.max(1, Math.min(100, val));
+      const targetCount = val === '' || val === 0 ? 0 : Math.max(1, Math.min(100, val));
       const curImeis = item.imeis || (item.imei ? item.imei.split(',').map(s => s.trim()) : []);
       const nextImeis = [...curImeis];
       while (nextImeis.length < targetCount) nextImeis.push('');
@@ -395,19 +537,117 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
     });
   };
 
+  const focusPurchaseImeiSafely = (id: string) => {
+    setTimeout(() => {
+      const el = document.getElementById(id) as HTMLInputElement | null;
+      if (el) el.focus();
+    }, 0);
+  };
+
+  const handleScanFromCamera = (scannedText: string) => {
+    if (!scannerTarget) return;
+    const { itemIdx, imeiIdx } = scannerTarget;
+    const tokens = extractScannedImeiTokens(scannedText);
+    if (tokens.length > 0) {
+      const token = sanitizeSingleImei(tokens[0]);
+      if (token) {
+        let isDuplicateInForm = false;
+        items.forEach((it, iIdx) => {
+          const imList = it.imeis || (it.imei ? it.imei.split(',').map(s => s.trim()) : []);
+          imList.forEach((im, imI) => {
+            if (iIdx === itemIdx && imI === imeiIdx) return;
+            if (im.toLowerCase() === token.toLowerCase()) {
+              isDuplicateInForm = true;
+            }
+          });
+        });
+
+        if (isDuplicateInForm) {
+          showToast(`Duplicate IMEI detected: "${token}" is already added in this bill!`, 'error');
+          setIsScannerModalOpen(false);
+          setScannerTarget(null);
+          return;
+        }
+
+        const valCheck = validateImeis({
+          imeisToCheck: [token],
+          inventory,
+          imeiRecords,
+          sales,
+        });
+
+        if (!valCheck.valid) {
+          showToast(valCheck.error || `Duplicate IMEI: "${token}" already exists in stock or sold records!`, 'error');
+          setIsScannerModalOpen(false);
+          setScannerTarget(null);
+          return;
+        }
+
+        handleItemImeiChange(itemIdx, imeiIdx, token);
+        showToast(`Scanned IMEI #${imeiIdx + 1} added successfully`, 'success');
+      }
+    }
+    setIsScannerModalOpen(false);
+    setScannerTarget(null);
+  };
+
   const handleItemImeiChange = (itemIdx: number, imeiIdx: number, rawVal: string) => {
-    const val = rawVal.replace(/[\r\n\t]/g, '').trimStart();
+    const curItemImeis = [...(items[itemIdx]?.imeis || [''])];
+    const res = distributeImeiInput({
+      rawValue: rawVal,
+      currentImeis: curItemImeis,
+      targetIndex: imeiIdx,
+    });
+
+    const newlySetImei = res.nextImeis[imeiIdx]?.trim() || '';
+    if (newlySetImei) {
+      let isDuplicateInForm = false;
+      items.forEach((it, iIdx) => {
+        const imList = it.imeis || (it.imei ? it.imei.split(',').map(s => s.trim()) : []);
+        imList.forEach((im, imI) => {
+          if (iIdx === itemIdx && imI === imeiIdx) return;
+          if (im.toLowerCase() === newlySetImei.toLowerCase()) {
+            isDuplicateInForm = true;
+          }
+        });
+      });
+
+      if (isDuplicateInForm) {
+        showToast(`Duplicate IMEI detected: "${newlySetImei}" is already added in this bill!`, 'error');
+        res.nextImeis[imeiIdx] = '';
+      } else {
+        const valCheck = validateImeis({
+          imeisToCheck: [newlySetImei],
+          inventory,
+          imeiRecords,
+          sales,
+        });
+
+        if (!valCheck.valid) {
+          showToast(valCheck.error || `Duplicate IMEI: "${newlySetImei}" already exists in stock or sold records!`, 'error');
+          res.nextImeis[imeiIdx] = '';
+        }
+      }
+    }
+
     setItems(prev => {
       const copy = [...prev];
       const item = { ...copy[itemIdx] };
-      const curImeis = [...(item.imeis || [''])];
-      while (curImeis.length <= imeiIdx) curImeis.push('');
-      curImeis[imeiIdx] = val;
-      item.imeis = curImeis;
-      item.imei = curImeis.filter(Boolean).join(', ');
+      item.imeis = res.nextImeis;
+      item.imei = res.nextImeis.filter(Boolean).join(', ');
       copy[itemIdx] = item;
       return copy;
     });
+
+    if (res.overflowCount > 0) {
+      showToast('1 box = 1 IMEI only! Increase Inward Qty to add more IMEI boxes.', 'warning');
+    } else if (res.multipleDetected) {
+      showToast('1 IMEI per box enforced — extra IMEIs moved to next boxes.', 'info');
+    }
+
+    if (res.focusIndex !== null) {
+      focusPurchaseImeiSafely(`purchase-item-imei-${itemIdx}-${res.focusIndex}`);
+    }
   };
 
   const handleItemImeiKeyDown = (
@@ -415,23 +655,40 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
     itemIdx: number,
     imeiIdx: number
   ) => {
+    const currentVal = items[itemIdx]?.imeis?.[imeiIdx]?.trim() || '';
+
+    if (e.key === ' ' || e.key === ',' || e.key === ';') {
+      e.preventDefault();
+      if (currentVal) {
+        const nextSameItem = document.getElementById(`purchase-item-imei-${itemIdx}-${imeiIdx + 1}`);
+        if (nextSameItem) {
+          nextSameItem.focus();
+          return;
+        }
+        const nextItemFirst = document.getElementById(`purchase-item-imei-${itemIdx + 1}-0`);
+        if (nextItemFirst) {
+          nextItemFirst.focus();
+          return;
+        }
+        showToast('1 box = 1 IMEI only! Increase Inward Qty for more IMEIs.', 'warning');
+      }
+      return;
+    }
+
     if (e.key === 'Enter') {
       e.preventDefault();
       e.stopPropagation();
 
-      const currentVal = items[itemIdx]?.imeis?.[imeiIdx]?.trim();
       if (currentVal) {
         showToast(`IMEI #${imeiIdx + 1} captured`, 'info');
       }
 
-      // Try focusing next IMEI box in same item
       const nextSameItem = document.getElementById(`purchase-item-imei-${itemIdx}-${imeiIdx + 1}`);
       if (nextSameItem) {
         nextSameItem.focus();
         return;
       }
 
-      // Try focusing first IMEI box in next item
       const nextItemFirst = document.getElementById(`purchase-item-imei-${itemIdx + 1}-0`);
       if (nextItemFirst) {
         nextItemFirst.focus();
@@ -448,65 +705,93 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
     const pasted = e.clipboardData.getData('text');
     if (!pasted) return;
 
-    const tokens = pasted
-      .split(/[\r\n,]+/)
-      .map(t => t.trim())
-      .filter(Boolean);
+    const inputEl = e.currentTarget;
+    const isAllSelected =
+      inputEl.selectionStart === 0 && inputEl.selectionEnd === inputEl.value.length;
+    const curItemImeis = [...(items[itemIdx]?.imeis || [''])];
+    const currentBoxVal = (curItemImeis[imeiIdx] || '').trim();
 
-    if (tokens.length > 1) {
+    if (currentBoxVal.length >= 15 && !isAllSelected) {
       e.preventDefault();
+      const nextEmptyIdx = curItemImeis.findIndex((im, idx) => idx > imeiIdx && !im.trim());
+      if (nextEmptyIdx === -1) {
+        showToast('This box already holds 1 IMEI! Increase Inward Qty for more boxes.', 'warning');
+        return;
+      }
+      const res = distributeImeiInput({
+        rawValue: pasted,
+        currentImeis: curItemImeis,
+        targetIndex: nextEmptyIdx,
+      });
       setItems(prev => {
         const copy = [...prev];
         const item = { ...copy[itemIdx] };
-        const curImeis = [...(item.imeis || [''])];
-
-        for (let i = 0; i < tokens.length; i++) {
-          const targetIndex = imeiIdx + i;
-          if (targetIndex < curImeis.length) {
-            curImeis[targetIndex] = tokens[i].replace(/[^0-9a-zA-Z]/g, '');
-          }
-        }
-
-        item.imeis = curImeis;
-        item.imei = curImeis.filter(Boolean).join(', ');
+        item.imeis = res.nextImeis;
+        item.imei = res.nextImeis.filter(Boolean).join(', ');
         copy[itemIdx] = item;
         return copy;
       });
-      showToast(`${tokens.length} IMEIs populated from scan/paste!`, 'success');
+      if (res.overflowCount > 0) {
+        showToast('1 box = 1 IMEI only! Extra IMEIs skipped — increase Inward Qty.', 'warning');
+      }
+      if (res.focusIndex !== null) {
+        focusPurchaseImeiSafely(`purchase-item-imei-${itemIdx}-${res.focusIndex}`);
+      }
+      return;
+    }
+
+    e.preventDefault();
+    const res = distributeImeiInput({
+      rawValue: pasted,
+      currentImeis: curItemImeis,
+      targetIndex: imeiIdx,
+    });
+    setItems(prev => {
+      const copy = [...prev];
+      const item = { ...copy[itemIdx] };
+      item.imeis = res.nextImeis;
+      item.imei = res.nextImeis.filter(Boolean).join(', ');
+      copy[itemIdx] = item;
+      return copy;
+    });
+
+    if (res.overflowCount > 0) {
+      showToast('1 box = 1 IMEI only! Extra IMEIs skipped — increase Inward Qty.', 'warning');
+    } else if (res.multipleDetected) {
+      showToast('IMEIs placed 1 per box cleanly!', 'success');
+    }
+
+    if (res.focusIndex !== null) {
+      focusPurchaseImeiSafely(`purchase-item-imei-${itemIdx}-${res.focusIndex}`);
     }
   };
 
   const handleItemChange = (index: number, field: string, value: any) => {
     setItems(prev => {
       const updated = [...prev];
-      updated[index] = { ...updated[index], [field]: value };
+      const current = { ...updated[index], [field]: value };
 
-      // Autocomplete if user selects existing inventory product
-      if (field === 'name') {
-        const matched = inventory.find(
-          inv => inv.name.toLowerCase() === String(value).toLowerCase()
-        );
-        if (matched) {
-          updated[index].category = matched.category || updated[index].category;
-          if (!updated[index].costPrice || updated[index].costPrice === 0) {
-            updated[index].costPrice = matched.costPrice || '';
-          }
-          if (!updated[index].salePrice || updated[index].salePrice === 0) {
-            updated[index].salePrice = matched.salePrice || '';
-          }
-          if (matched.barcode && !updated[index].barcode) {
-            updated[index].barcode = matched.barcode;
-          }
-          if (matched.imeis && matched.imeis.length > 0) {
-            updated[index].imeis = [...matched.imeis];
-            updated[index].imei = matched.imeis.join(', ');
-          } else if (matched.imei) {
-            updated[index].imei = matched.imei;
-            updated[index].imeis = matched.imei.split(',').map(s => s.trim());
-          }
+      if (field === 'category') {
+        const newCat = String(value || '');
+        if (!isAndroidCategory(newCat)) {
+          current.ram = '';
+          current.storage = '';
+        }
+        if (!isMobileCategory(newCat)) {
+          current.color = '';
+          current.imei = '';
+          current.imeis = [];
+        } else {
+          const qNum = current.qty === '' ? 0 : Number(current.qty) || 0;
+          const targetCount = qNum <= 0 ? 0 : Math.min(100, qNum);
+          const curImeis = [...(current.imeis || [])];
+          while (curImeis.length < targetCount) curImeis.push('');
+          current.imeis = curImeis.slice(0, targetCount);
+          current.imei = current.imeis.filter(Boolean).join(', ');
         }
       }
 
+      updated[index] = current;
       return updated;
     });
   };
@@ -519,7 +804,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
   const calculatedPaidAmount = paidAmount === '' ? totalBillAmount : Number(paidAmount);
   const balanceDue = Math.max(0, totalBillAmount - calculatedPaidAmount);
 
-  // Submit New Purchase
+  // Submit New or Edited Purchase
   const handleSubmitPurchase = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -547,9 +832,23 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
       }
     }
 
+    const originalPurchase = editingPurchaseId
+      ? purchases.find(p => p.id === editingPurchaseId)
+      : undefined;
+    const ownedImeis = originalPurchase
+      ? (originalPurchase.items || []).flatMap(it =>
+          it.imeis && it.imeis.length > 0
+            ? it.imeis.map(s => s.trim()).filter(Boolean)
+            : it.imei
+            ? it.imei.split(',').map(s => s.trim()).filter(Boolean)
+            : []
+        )
+      : [];
+
     if (allInwardImeis.length > 0) {
       const validation = validateImeis({
         imeisToCheck: allInwardImeis,
+        allowedExistingImeis: ownedImeis,
         inventory,
         imeiRecords,
         sales,
@@ -562,9 +861,11 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
     }
 
     const purchaseItems: PurchaseItem[] = validItems.map((item, idx) => {
-      const cleanImeis = (item.imeis && item.imeis.length > 0)
-        ? item.imeis.map(s => s.trim()).filter(Boolean)
-        : (item.imei ? item.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
+      const cleanImeis = isMobileCategory(item.category)
+        ? (item.imeis && item.imeis.length > 0
+            ? item.imeis.map(s => s.trim()).filter(Boolean)
+            : (item.imei ? item.imei.split(',').map(s => s.trim()).filter(Boolean) : []))
+        : [];
 
       return {
         id: 'PITM-' + Date.now() + '-' + idx,
@@ -573,15 +874,19 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
         qty: Number(item.qty) || 1,
         costPrice: Number(item.costPrice) || 0,
         salePrice: Number(item.salePrice) || Number(item.costPrice) * 1.15,
+        wholesalePrice: item.wholesalePrice !== '' && item.wholesalePrice !== undefined ? Number(item.wholesalePrice) : undefined,
         total: (Number(item.qty) || 1) * (Number(item.costPrice) || 0),
-        barcode: item.barcode?.trim() || undefined,
+        ram: isAndroidCategory(item.category) ? item.ram?.trim() || undefined : undefined,
+        storage: isAndroidCategory(item.category) ? item.storage?.trim() || undefined : undefined,
+        color: isMobileCategory(item.category) ? item.color?.trim() || undefined : undefined,
+        barcode: !isMobileCategory(item.category) ? item.barcode?.trim() || undefined : undefined,
         imei: cleanImeis.length > 0 ? cleanImeis.join(', ') : undefined,
         imeis: cleanImeis.length > 0 ? cleanImeis : undefined,
       };
     });
 
     const newPurchaseData: Omit<SupplierPurchase, 'id'> = {
-      billNo: billNo.trim() || 'PUR-' + Math.floor(1000 + Math.random() * 9000),
+      billNo: billNo.trim() || generateInwardBillNo(purchaseDate, purchases),
       partyName: partyName.trim(),
       partyPhone: partyPhone.trim() || undefined,
       date: purchaseDate,
@@ -594,6 +899,13 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
       invoiceImage: invoiceImage || undefined,
     };
 
+    if (editingPurchaseId && onUpdatePurchase) {
+      onUpdatePurchase(editingPurchaseId, newPurchaseData, autoAddToInventory);
+      setIsAddModalOpen(false);
+      resetForm();
+      return;
+    }
+
     onSavePurchase(newPurchaseData, autoAddToInventory);
     showToast(`Purchase bill recorded successfully (${currency} ${totalBillAmount.toLocaleString()})`, 'success');
     clearDraft();
@@ -601,15 +913,106 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
     resetForm();
   };
 
-  // Filtered Purchases list
+  // Build map of billNos matching IMEIs in permanent imeiRecords when searching
+  const billNosFromImeiRecords = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return new Set<string>();
+    const set = new Set<string>();
+    imeiRecords.forEach(rec => {
+      if (rec.imei && rec.imei.toLowerCase().includes(q) && rec.purchaseBillNo) {
+        set.add(rec.purchaseBillNo.trim().toLowerCase());
+      }
+    });
+    return set;
+  }, [search, imeiRecords]);
+
+  // Direct IMEI-to-Party lookup results displayed prominently above table
+  const imeiPartyMatches = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (q.length < 4) return [];
+
+    const matches: Array<{
+      imei: string;
+      partyName: string;
+      partyPhone?: string;
+      billNo: string;
+      date: string;
+      productName: string;
+      costPrice?: number;
+      purchase?: SupplierPurchase;
+    }> = [];
+    const seen = new Set<string>();
+
+    purchases.forEach(p => {
+      (p.items || []).forEach(it => {
+        const list = [
+          ...(it.imeis || []),
+          ...(it.imei ? it.imei.split(',').map(s => s.trim()) : []),
+        ].filter(Boolean);
+        list.forEach(im => {
+          if (im.toLowerCase().includes(q)) {
+            const key = `${p.id}|${im.toLowerCase()}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              matches.push({
+                imei: im,
+                partyName: p.partyName,
+                partyPhone: p.partyPhone,
+                billNo: p.billNo,
+                date: p.date,
+                productName: it.name,
+                costPrice: it.costPrice,
+                purchase: p,
+              });
+            }
+          }
+        });
+      });
+    });
+
+    imeiRecords.forEach(rec => {
+      if (rec.imei && rec.imei.toLowerCase().includes(q) && rec.purchaseParty) {
+        const linkedPurchase = purchases.find(
+          p => rec.purchaseBillNo && p.billNo.toLowerCase() === rec.purchaseBillNo.toLowerCase()
+        );
+        const key = `${linkedPurchase?.id || rec.purchaseBillNo || rec.id}|${rec.imei.toLowerCase()}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          matches.push({
+            imei: rec.imei,
+            partyName: rec.purchaseParty,
+            partyPhone: linkedPurchase?.partyPhone,
+            billNo: rec.purchaseBillNo || '-',
+            date: linkedPurchase?.date || rec.createdAt || '',
+            productName: rec.productName,
+            purchase: linkedPurchase,
+          });
+        }
+      }
+    });
+
+    return matches.slice(0, 6);
+  }, [search, purchases, imeiRecords]);
+
+  // Filtered Purchases list (including deep IMEI & barcode matching)
   const filteredPurchases = useMemo(() => {
+    const q = search.trim().toLowerCase();
     return purchases
       .filter(p => {
         const matchesSearch =
-          p.partyName.toLowerCase().includes(search.toLowerCase()) ||
-          p.billNo.toLowerCase().includes(search.toLowerCase()) ||
-          (p.partyPhone && p.partyPhone.includes(search)) ||
-          p.items.some(i => i.name.toLowerCase().includes(search.toLowerCase()));
+          !q ||
+          p.partyName.toLowerCase().includes(q) ||
+          p.billNo.toLowerCase().includes(q) ||
+          (p.partyPhone && p.partyPhone.toLowerCase().includes(q)) ||
+          billNosFromImeiRecords.has((p.billNo || '').trim().toLowerCase()) ||
+          p.items.some(i => {
+            const imeisStr = [i.imei || '', ...(i.imeis || [])].join(' ').toLowerCase();
+            return (
+              i.name.toLowerCase().includes(q) ||
+              imeisStr.includes(q) ||
+              (i.barcode && i.barcode.toLowerCase().includes(q))
+            );
+          });
 
         const isReversed = p.status === 'REVERSED';
         const matchesStatus =
@@ -628,7 +1031,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
         return matchesSearch && matchesStatus && matchesDate;
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [purchases, search, statusFilter, dateFilter]);
+  }, [purchases, search, statusFilter, dateFilter, billNosFromImeiRecords]);
 
   // Aggregate stats (active non-reversed purchases)
   const stats = useMemo(() => {
@@ -652,7 +1055,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
-      {/* Top Header & Stat Cards */}
+      {/* Top Header & Action Buttons */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
@@ -662,18 +1065,30 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
             Supplier Purchases & Stock Inward
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            Record supplier bills, upload physical invoices, and automatically inject items into inventory
+            Record supplier bills, scan IMEI to find party, download PDFs &amp; share via WhatsApp
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={openAddModal}
-          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-lg shadow-blue-600/25 transition cursor-pointer active:scale-95"
-        >
-          <Plus className="w-4 h-4" />
-          Add Purchase / Inward Bill
-        </button>
+        <div className="w-full sm:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+          {onOpenPdfReport && (
+            <button
+              type="button"
+              onClick={onOpenPdfReport}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 text-xs font-extrabold rounded-xl shadow-xs transition cursor-pointer active:scale-95"
+            >
+              <Download className="w-4 h-4 text-blue-600" />
+              Download PDF Report
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={openAddModal}
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-lg shadow-blue-600/25 transition cursor-pointer active:scale-95"
+          >
+            <Plus className="w-4 h-4" />
+            Add Purchase / Inward Bill
+          </button>
+        </div>
       </div>
 
       {/* Metric Cards */}
@@ -725,15 +1140,36 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
 
       {/* Search & Filter Toolbar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search by supplier, bill number, phone, or item..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-          />
+        <div className="flex items-center gap-2 flex-1">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search or scan IMEI to find supplier party, bill #, or product..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 cursor-pointer"
+                title="Clear search"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsSearchScannerOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold transition cursor-pointer shrink-0"
+            title="Scan IMEI / Barcode to find Supplier Party"
+          >
+            <ScanLine className="w-4 h-4" />
+            <span className="hidden sm:inline">Scan IMEI</span>
+          </button>
         </div>
 
         <div className="flex items-center gap-2 overflow-x-auto">
@@ -743,7 +1179,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                 key={tab}
                 type="button"
                 onClick={() => setStatusFilter(tab)}
-                className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg transition cursor-pointer whitespace-nowrap ${
                   statusFilter === tab
                     ? 'bg-white text-blue-600 shadow-2xs font-extrabold'
                     : 'text-slate-600 hover:text-slate-900'
@@ -766,7 +1202,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
             type="date"
             value={dateFilter}
             onChange={e => setDateFilter(e.target.value)}
-            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:border-blue-500 cursor-pointer"
+            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs tabular-nums font-semibold text-slate-700 focus:outline-none focus:border-blue-500 cursor-pointer"
           />
 
           {dateFilter && (
@@ -780,6 +1216,54 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
           )}
         </div>
       </div>
+
+      {/* Prominent IMEI -> Supplier / Party Match Card */}
+      {imeiPartyMatches.length > 0 && (
+        <div className="bg-blue-50/90 border border-blue-200 rounded-2xl p-4 space-y-2.5 shadow-xs animate-in fade-in">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs font-extrabold text-blue-900">
+              <Smartphone className="w-4 h-4 text-blue-600" />
+              <span>IMEI Supplier / Party Lookup ({imeiPartyMatches.length} match{imeiPartyMatches.length > 1 ? 'es' : ''})</span>
+            </div>
+            <span className="text-[11px] font-bold text-blue-700">Matched from Stock Inward History</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+            {imeiPartyMatches.map((m, idx) => (
+              <div
+                key={idx}
+                className="bg-white border border-blue-200/80 rounded-xl p-3 flex items-center justify-between gap-3"
+              >
+                <div className="min-w-0 space-y-0.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <Building2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                    <span className="font-black text-sm text-slate-900 truncate">{m.partyName}</span>
+                    {m.partyPhone && (
+                      <span className="text-[11px] font-semibold text-slate-500 tabular-nums">({m.partyPhone})</span>
+                    )}
+                  </div>
+                  <p className="text-xs font-bold text-slate-700 truncate">{m.productName}</p>
+                  <p className="text-[11px] text-slate-500 tabular-nums">
+                    IMEI: <strong className="text-blue-700">{m.imei}</strong> • Bill #{m.billNo}
+                    {m.date ? ` • ${new Date(m.date).toLocaleDateString()}` : ''}
+                    {m.costPrice !== undefined ? ` • Cost: ${currency} ${m.costPrice.toLocaleString()}` : ''}
+                  </p>
+                </div>
+                {m.purchase && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPurchaseForView(m.purchase!)}
+                      className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold cursor-pointer transition"
+                    >
+                      View Bill
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Purchases List */}
       {filteredPurchases.length === 0 ? (
@@ -829,7 +1313,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                     return (
                       <tr key={p.id} className={`transition ${isReversed ? 'bg-rose-50/40 text-slate-500' : 'hover:bg-slate-50/60'}`}>
                         <td className="py-3 px-4">
-                          <div className="flex items-center gap-1.5 font-mono font-bold text-slate-900">
+                          <div className="flex items-center gap-1.5 tabular-nums font-bold text-slate-900">
                             <span>#{p.billNo}</span>
                             {isReversed && (
                               <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-rose-600 text-white">
@@ -893,7 +1377,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                               <CheckCircle2 className="w-3 h-3" /> PAID
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 font-mono">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 tabular-nums">
                               {currency} {p.balanceDue.toLocaleString()} DUE
                             </span>
                           )}
@@ -916,7 +1400,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                         </td>
 
                         <td className="py-3 px-4 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
+                          <div className="flex items-center justify-end gap-1">
                             <button
                               type="button"
                               onClick={() => setSelectedPurchaseForView(p)}
@@ -924,6 +1408,35 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                               title="View Purchase Details"
                             >
                               <Eye className="w-4 h-4" />
+                            </button>
+
+                            {!isReversed && onUpdatePurchase && (
+                              <button
+                                type="button"
+                                onClick={() => openEditModal(p)}
+                                className="p-1.5 rounded-lg text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
+                                title="Edit Purchase Bill"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadSinglePdf(p)}
+                              className="p-1.5 rounded-lg text-slate-600 hover:text-blue-700 hover:bg-blue-50 transition cursor-pointer"
+                              title="Download Purchase Bill PDF"
+                            >
+                              <Download className="w-4 h-4" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleShareWhatsApp(p)}
+                              className="p-1.5 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition cursor-pointer"
+                              title="Send Bill on WhatsApp"
+                            >
+                              <MessageCircle className="w-4 h-4" />
                             </button>
 
                             {!isReversed && p.balanceDue > 0 && (
@@ -984,7 +1497,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                   <div className="flex items-start justify-between gap-2">
                     <div className="space-y-1 min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-mono font-extrabold text-xs text-slate-900">
+                        <span className="tabular-nums font-extrabold text-xs text-slate-900">
                           #{p.billNo}
                         </span>
                         {isReversed ? (
@@ -1016,11 +1529,11 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
 
                     <div className="text-right shrink-0">
                       <span className="text-[10px] text-slate-400 block font-semibold">Total Bill</span>
-                      <span className="font-mono font-black text-sm text-slate-900 tabular-nums">
+                      <span className="tabular-nums font-black text-sm text-slate-900 tabular-nums">
                         {currency} {p.totalAmount.toLocaleString()}
                       </span>
                       {p.balanceDue > 0 && !isReversed && (
-                        <span className="text-[10px] font-mono font-bold text-rose-600 block">
+                        <span className="text-[10px] tabular-nums font-bold text-rose-600 block">
                           Due: {currency} {p.balanceDue.toLocaleString()}
                         </span>
                       )}
@@ -1028,7 +1541,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                   </div>
 
                   {/* Mobile Touch Action Bar */}
-                  <div className="flex items-center justify-between pt-2.5 border-t border-slate-100 text-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-slate-100 text-xs">
                     <div className="flex items-center gap-1.5">
                       {p.invoiceImage && (
                         <button
@@ -1037,7 +1550,22 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                           className="px-2.5 py-1.5 bg-blue-50 text-blue-700 font-bold rounded-xl text-xs flex items-center gap-1 border border-blue-200 min-h-[40px] cursor-pointer"
                         >
                           <Camera className="w-3.5 h-3.5" />
-                          <span>Bill Photo</span>
+                          <span>Photo</span>
+                        </button>
+                      )}
+                      {!isReversed && p.balanceDue > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedPurchaseForSettlement(p);
+                            setSettlementAmount(p.balanceDue);
+                            setSettlementMethod('Cash');
+                            setSettlementNotes('');
+                          }}
+                          className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center gap-1 min-h-[40px] cursor-pointer"
+                        >
+                          <CreditCard className="w-3.5 h-3.5" />
+                          <span>Pay Due</span>
                         </button>
                       )}
                     </div>
@@ -1046,10 +1574,40 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                       <button
                         type="button"
                         onClick={() => setSelectedPurchaseForView(p)}
-                        className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl text-xs flex items-center gap-1 min-h-[40px] cursor-pointer"
+                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl text-xs flex items-center gap-1 min-h-[40px] cursor-pointer"
+                        title="View Details"
                       >
                         <Eye className="w-3.5 h-3.5" />
-                        <span>Details</span>
+                        <span>View</span>
+                      </button>
+
+                      {!isReversed && onUpdatePurchase && (
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(p)}
+                          className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-xl border border-indigo-200 min-h-[40px] min-w-[40px] flex items-center justify-center cursor-pointer"
+                          title="Edit Purchase Bill"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadSinglePdf(p)}
+                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl border border-blue-200 min-h-[40px] min-w-[40px] flex items-center justify-center cursor-pointer"
+                        title="Download PDF"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleShareWhatsApp(p)}
+                        className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-xl border border-emerald-200 min-h-[40px] min-w-[40px] flex items-center justify-center cursor-pointer"
+                        title="Send on WhatsApp"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
                       </button>
 
                       {!isReversed && (
@@ -1089,23 +1647,34 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                 </div>
                 <div>
                   <h3 className="font-extrabold text-slate-900 text-sm sm:text-base">
-                    Record Supplier Purchase / Stock Inward
+                    {editingPurchaseId ? `Edit Purchase / Inward Bill #${billNo}` : 'Record Supplier Purchase / Stock Inward'}
                   </h3>
                   <p className="text-[11px] text-slate-400">
-                    Add inventory items directly, upload paper bill, and update ledger
+                    {editingPurchaseId
+                      ? 'Update party details, items, IMEIs, prices or payment status and sync inventory'
+                      : 'Add inventory items directly, upload paper bill, and update ledger'}
                   </p>
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
-                {hasDraft && draftSavedTime && (
+                {!editingPurchaseId && hasDraft && (
                   <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-[10px] font-bold">
                     <Sparkles className="w-3 h-3 text-amber-500" />
-                    <span>Draft Saved ({draftSavedTime})</span>
+                    <span>{draftSavedTime ? `Draft Saved (${draftSavedTime})` : 'Saved Draft'}</span>
+                    {items.length === 0 && (
+                      <button
+                        type="button"
+                        onClick={restoreDraft}
+                        className="ml-1 underline text-amber-800 hover:text-amber-950 cursor-pointer"
+                      >
+                        Restore
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={clearDraft}
-                      className="ml-1 text-slate-400 hover:text-rose-600"
+                      className="ml-1 text-slate-400 hover:text-rose-600 cursor-pointer"
                       title="Clear saved draft"
                     >
                       ×
@@ -1115,7 +1684,10 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => setIsAddModalOpen(false)}
+                  onClick={() => {
+                    setIsAddModalOpen(false);
+                    setEditingPurchaseId(null);
+                  }}
                   className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
                 >
                   <X className="w-5 h-5" />
@@ -1180,10 +1752,10 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                   </label>
                   <input
                     type="text"
-                    placeholder="INV-9901"
+                    placeholder="FMZ-121126"
                     value={billNo}
                     onChange={e => setBillNo(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold focus:outline-none focus:border-blue-500"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs tabular-nums font-bold focus:outline-none focus:border-blue-500"
                   />
                 </div>
 
@@ -1195,8 +1767,14 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                     type="date"
                     required
                     value={purchaseDate}
-                    onChange={e => setPurchaseDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500"
+                    onChange={e => {
+                      const nextDate = e.target.value;
+                      setPurchaseDate(nextDate);
+                      if (!billNo.trim() || /^FMZ-\d{6}(-\d+)?$/i.test(billNo.trim())) {
+                        setBillNo(generateInwardBillNo(nextDate, purchases));
+                      }
+                    }}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs tabular-nums font-semibold focus:outline-none focus:border-blue-500"
                   />
                 </div>
 
@@ -1250,23 +1828,32 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                   <div>
                     <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
                       <Package className="w-4 h-4 text-blue-600" />
-                      Inward Products from Inventory
+                      Inward Stock Products
                     </h4>
                     <p className="text-[11px] text-slate-400">
-                      Search existing products to inward stock, or click + Add Product to register in Inventory
+                      Pick an existing product (loads Name &amp; Category only), switch Category for Android/Keypad/Other layout, or add a new item
                     </p>
                   </div>
 
-                  {/* Quick Add Product Button (Opens full StockModal directly inside Stock Inward without redirect!) */}
-                  <button
-                    type="button"
-                    onClick={() => setIsStockModalOpen(true)}
-                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold shadow-sm transition cursor-pointer self-start sm:self-auto"
-                    title="Add new product with categories, barcode, IMEI, pricing"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>+ Add Product</span>
-                  </button>
+                  <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handleAddItemRow}
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold shadow-sm transition cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>New Row</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsStockModalOpen(true)}
+                      className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold shadow-sm transition cursor-pointer"
+                      title="Register a new product directly into Inventory"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>+ Add Product</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Existing Products Search Bar with Dropdown */}
@@ -1282,7 +1869,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                           setIsSearchOpen(true);
                         }}
                         onFocus={() => setIsSearchOpen(true)}
-                        placeholder="Search existing products to add (Title, Category, Barcode, IMEI)..."
+                        placeholder="Search existing products (click to load Product Name & Category only)..."
                         className="w-full pl-10 pr-9 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition"
                       />
                       {productSearch && (
@@ -1317,13 +1904,24 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                                 type="button"
                                 onClick={() => {
                                   setIsSearchOpen(false);
+                                  handleAddItemRow();
+                                }}
+                                className="font-bold text-blue-600 hover:underline cursor-pointer"
+                              >
+                                New Row
+                              </button>{' '}
+                              or{' '}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsSearchOpen(false);
                                   setIsStockModalOpen(true);
                                 }}
                                 className="font-bold text-emerald-600 hover:underline cursor-pointer"
                               >
                                 + Add Product
                               </button>{' '}
-                              to create it right here in Stock Inward.
+                              to add it now.
                             </p>
                           </div>
                         ) : (
@@ -1336,19 +1934,17 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                               <div className="min-w-0">
                                 <p className="font-bold text-slate-900 truncate">{prod.name}</p>
                                 <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-500">
-                                  <span className="px-1.5 py-0.2 bg-slate-100 rounded text-slate-600 font-medium">
+                                  <span className="px-2 py-0.5 bg-slate-100 rounded text-slate-700 font-semibold">
                                     {prod.category}
                                   </span>
-                                  {prod.barcode && <span>Barcode: {prod.barcode}</span>}
-                                  {prod.imei && <span className="font-mono text-blue-600">IMEI: {prod.imei}</span>}
                                 </div>
                               </div>
                               <div className="text-right shrink-0">
-                                <span className="font-mono font-bold text-blue-700 block">
-                                  Cost: {currency} {(prod.costPrice || 0).toLocaleString()}
+                                <span className="tabular-nums text-[11px] font-bold text-blue-600 block">
+                                  Select Name &amp; Category →
                                 </span>
-                                <span className="text-[10px] text-slate-400">
-                                  Current Stock: {prod.qty || 0} units
+                                <span className="tabular-nums text-[10px] text-slate-400">
+                                  Stock: {prod.qty || 0} units
                                 </span>
                               </div>
                             </div>
@@ -1360,18 +1956,20 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                 </div>
 
                 {/* Selected Inward Products Table / List */}
-                <div className="space-y-2.5">
+                <div className="space-y-3">
                   {items.length === 0 ? (
                     <div className="p-6 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
                       <Package className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                       <p className="text-xs font-bold text-slate-700">No inward products added yet</p>
                       <p className="text-[11px] text-slate-400 max-w-sm mx-auto mt-0.5">
-                        Use the search bar above to select products from your existing inventory, or click <strong>+ Add Product</strong> to register a new product in Inventory.
+                        Search an existing product above to load its <strong>Name &amp; Category</strong>, or click <strong>New Row</strong> to enter a product and choose Android / Keypad / Other category.
                       </p>
                     </div>
                   ) : (
                     items.map((item, idx) => {
                       const rowTotal = (Number(item.qty) || 0) * (Number(item.costPrice) || 0);
+                      const isAndroid = isAndroidCategory(item.category);
+                      const isKeypad = isKeypadCategory(item.category);
                       const isMobile = isMobileCategory(item.category);
                       const itemImeis = item.imeis || (item.imei ? item.imei.split(',').map(s => s.trim()) : ['']);
 
@@ -1380,27 +1978,49 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                           key={idx}
                           className="p-3.5 bg-slate-50/90 rounded-2xl border border-slate-200/90 space-y-3 shadow-2xs hover:border-blue-300 transition"
                         >
+                          {/* Row Header: Editable Product Name, Editable Category Switcher, Delete */}
                           <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+                            <div className="sm:col-span-5">
+                              <label className="block text-[10px] font-bold text-slate-600 mb-1">
+                                Product Title / Model Name *
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                placeholder="e.g. Samsung Galaxy A15, Nokia 105, 20W Charger"
+                                value={item.name}
+                                onChange={e => handleItemChange(idx, 'name', e.target.value)}
+                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-600"
+                              />
+                            </div>
+
                             <div className="sm:col-span-4">
-                              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
-                                Product Title *
+                              <label className="block text-[10px] font-bold text-slate-600 mb-1">
+                                Category (Switches Entry System) *
                               </label>
-                              <div className="px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 truncate">
-                                {item.name || 'Unnamed Product'}
-                              </div>
+                              {(() => {
+                                const rowCategories =
+                                  item.category && !categories.includes(item.category)
+                                    ? [item.category, ...categories]
+                                    : categories;
+                                return (
+                                  <select
+                                    value={item.category}
+                                    onChange={e => handleItemChange(idx, 'category', e.target.value)}
+                                    className="w-full px-2.5 py-2 bg-white border border-blue-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-600"
+                                  >
+                                    {rowCategories.map(cat => (
+                                      <option key={cat} value={cat}>
+                                        {cat}
+                                      </option>
+                                    ))}
+                                  </select>
+                                );
+                              })()}
                             </div>
 
                             <div className="sm:col-span-2">
-                              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
-                                Category
-                              </label>
-                              <div className="px-2 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 truncate">
-                                {item.category}
-                              </div>
-                            </div>
-
-                            <div className="sm:col-span-2">
-                              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                              <label className="block text-[10px] font-bold text-slate-600 mb-1">
                                 Inward Qty *
                               </label>
                               <input
@@ -1410,43 +2030,15 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                                 placeholder="Qty"
                                 value={item.qty}
                                 onChange={e => handleItemQtyChange(idx, e.target.value)}
-                                className="w-full px-2.5 py-1.5 bg-white border border-blue-400 rounded-xl text-xs font-extrabold text-blue-700 text-center focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500 shadow-2xs"
+                                className="w-full px-2.5 py-2 bg-white border border-blue-400 rounded-xl text-xs tabular-nums font-extrabold text-blue-700 text-center focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500 shadow-2xs"
                               />
                             </div>
 
-                            <div className="sm:col-span-2">
-                              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
-                                Cost Price ({currency}) *
-                              </label>
-                              <input
-                                type="number"
-                                min="0"
-                                placeholder="0"
-                                value={item.costPrice}
-                                onChange={e => handleItemChange(idx, 'costPrice', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
-                                className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold font-mono text-blue-700 focus:outline-none focus:border-blue-500 shadow-2xs"
-                              />
-                            </div>
-
-                            <div className="sm:col-span-2 flex items-center justify-between gap-2">
-                              <div className="flex-1">
-                                <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
-                                  Retail Price
-                                </label>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  placeholder="Retail"
-                                  value={item.salePrice}
-                                  onChange={e => handleItemChange(idx, 'salePrice', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
-                                  className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold font-mono text-emerald-700 focus:outline-none focus:border-blue-500 shadow-2xs"
-                                />
-                              </div>
-
+                            <div className="sm:col-span-1 flex items-center justify-end">
                               <button
                                 type="button"
                                 onClick={() => handleRemoveItemRow(idx)}
-                                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer mb-0.5"
+                                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
                                 title="Remove from inward bill"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -1454,45 +2046,199 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                             </div>
                           </div>
 
-                          {/* Dynamic IMEI Boxes for Mobile Category or Items with IMEIs */}
+                          {/* Category-Specific Entry System: Android vs Keypad vs Other */}
+                          {isAndroid && (
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-white p-3 rounded-xl border border-blue-100">
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-600 mb-1 flex items-center gap-1">
+                                  <Cpu className="w-3 h-3 text-blue-600" /> RAM Memory
+                                </label>
+                                <div className="flex flex-wrap gap-1 mb-1">
+                                  {['4GB', '6GB', '8GB', '12GB'].map(ramOpt => (
+                                    <button
+                                      key={ramOpt}
+                                      type="button"
+                                      onClick={() => handleItemChange(idx, 'ram', ramOpt)}
+                                      className={`px-2 py-0.5 rounded text-[10px] tabular-nums font-bold transition cursor-pointer ${
+                                        item.ram === ramOpt
+                                          ? 'bg-blue-600 text-white'
+                                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                      }`}
+                                    >
+                                      {ramOpt}
+                                    </button>
+                                  ))}
+                                </div>
+                                <input
+                                  type="text"
+                                  placeholder="e.g. 8GB"
+                                  value={item.ram || ''}
+                                  onChange={e => handleItemChange(idx, 'ram', e.target.value)}
+                                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs tabular-nums font-semibold focus:outline-none focus:border-blue-500"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-600 mb-1 flex items-center gap-1">
+                                  <HardDrive className="w-3 h-3 text-indigo-600" /> Storage (ROM)
+                                </label>
+                                <div className="flex flex-wrap gap-1 mb-1">
+                                  {['64GB', '128GB', '256GB', '512GB'].map(romOpt => (
+                                    <button
+                                      key={romOpt}
+                                      type="button"
+                                      onClick={() => handleItemChange(idx, 'storage', romOpt)}
+                                      className={`px-2 py-0.5 rounded text-[10px] tabular-nums font-bold transition cursor-pointer ${
+                                        item.storage === romOpt
+                                          ? 'bg-indigo-600 text-white'
+                                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                      }`}
+                                    >
+                                      {romOpt}
+                                    </button>
+                                  ))}
+                                </div>
+                                <input
+                                  type="text"
+                                  placeholder="e.g. 128GB"
+                                  value={item.storage || ''}
+                                  onChange={e => handleItemChange(idx, 'storage', e.target.value)}
+                                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs tabular-nums font-semibold focus:outline-none focus:border-indigo-500"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-600 mb-1 flex items-center gap-1">
+                                  <Palette className="w-3 h-3 text-purple-600" /> Color
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="e.g. Black, Blue, Gold"
+                                  value={item.color || ''}
+                                  onChange={e => handleItemChange(idx, 'color', e.target.value)}
+                                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-purple-500 mt-5"
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {isKeypad && (
+                            <div className="bg-purple-50/70 p-2.5 rounded-xl border border-purple-200/80">
+                              <label className="text-[10px] font-bold text-purple-900 mb-1 flex items-center gap-1">
+                                <Palette className="w-3.5 h-3.5 text-purple-600" /> Keypad Phone Color
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="e.g. Black, Blue, Red, Gold"
+                                value={item.color || ''}
+                                onChange={e => handleItemChange(idx, 'color', e.target.value)}
+                                className="w-full px-3 py-1.5 bg-white border border-purple-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-purple-600"
+                              />
+                            </div>
+                          )}
+
+                          {/* Pricing Row (Cost, Wholesale, Retail) */}
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                                Cost Price ({currency}) *
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                placeholder="Enter cost price"
+                                value={item.costPrice}
+                                onChange={e => handleItemChange(idx, 'costPrice', e.target.value === '' ? '' : Number(e.target.value))}
+                                className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold tabular-nums text-blue-700 focus:outline-none focus:border-blue-500 shadow-2xs"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] font-bold text-purple-900 mb-0.5">
+                                Wholesale Price ({currency})
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                placeholder="Optional"
+                                value={item.wholesalePrice ?? ''}
+                                onChange={e => handleItemChange(idx, 'wholesalePrice', e.target.value === '' ? '' : Number(e.target.value))}
+                                className="w-full px-2.5 py-1.5 bg-purple-50/40 border border-purple-200 rounded-xl text-xs font-bold tabular-nums text-purple-800 focus:outline-none focus:border-purple-500 shadow-2xs"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                                Retail Sale Price ({currency})
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                placeholder="Enter retail price"
+                                value={item.salePrice}
+                                onChange={e => handleItemChange(idx, 'salePrice', e.target.value === '' ? '' : Number(e.target.value))}
+                                className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold tabular-nums text-emerald-700 focus:outline-none focus:border-blue-500 shadow-2xs"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Dynamic IMEI Boxes for Android/Keypad OR Barcode for Other Categories */}
                           {isMobile ? (
                             <div className="p-2.5 bg-blue-50/70 border border-blue-200 rounded-xl space-y-2">
                               <div className="flex items-center justify-between text-[11px] font-bold">
                                 <span className="flex items-center gap-1.5 text-blue-800">
                                   <Smartphone className="w-3.5 h-3.5 text-blue-600" />
-                                  IMEI Numbers for {item.name || 'Mobile'} ({itemImeis.length} {itemImeis.length === 1 ? 'Box' : 'Boxes'} for {item.qty || 1} units)
+                                  {isAndroid ? 'Android' : 'Keypad'} IMEI Numbers ({itemImeis.length} {itemImeis.length === 1 ? 'Box' : 'Boxes'} for {Number(item.qty) || 0} units)
                                 </span>
                                 <span className="text-[10px] font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
-                                  1 IMEI per unit (Scan / Enter advances next)
+                                  1 Box = 1 IMEI Only
                                 </span>
                               </div>
 
-                              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-44 overflow-y-auto pr-1">
-                                {itemImeis.map((imVal, imIdx) => (
-                                  <div
-                                    key={imIdx}
-                                    className="flex items-center gap-1.5 bg-white p-1.5 rounded-lg border border-slate-200 shadow-2xs focus-within:border-blue-500 transition"
-                                  >
-                                    <span className="font-mono text-[10px] font-bold text-slate-500 w-12 shrink-0">
-                                      #{imIdx + 1}:
-                                    </span>
-                                    <input
-                                      id={`purchase-item-imei-${idx}-${imIdx}`}
-                                      type="text"
-                                      value={imVal}
-                                      onChange={e => handleItemImeiChange(idx, imIdx, e.target.value)}
-                                      onKeyDown={e => handleItemImeiKeyDown(e, idx, imIdx)}
-                                      onPaste={e => handleItemImeiPaste(e, idx, imIdx)}
-                                      placeholder={`IMEI #${imIdx + 1} (Scan/Enter)`}
-                                      className="w-full text-[11px] font-mono px-1 py-0.5 bg-transparent focus:outline-none"
-                                      autoComplete="off"
-                                    />
-                                  </div>
-                                ))}
-                              </div>
+                              {itemImeis.length === 0 ? (
+                                <p className="text-[11px] text-blue-700/80 py-1">
+                                  Enter Inward Qty above to add IMEI number boxes.
+                                </p>
+                              ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1.5 max-h-40 overflow-y-auto pr-1">
+                                  {itemImeis.map((imVal, imIdx) => (
+                                    <div
+                                      key={imIdx}
+                                      className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-2xs focus-within:border-blue-500 transition"
+                                    >
+                                      <span className="tabular-nums text-[10px] font-bold text-slate-500 w-7 shrink-0">
+                                        #{imIdx + 1}
+                                      </span>
+                                      <input
+                                        id={`purchase-item-imei-${idx}-${imIdx}`}
+                                        type="text"
+                                        maxLength={MAX_SINGLE_IMEI_LENGTH}
+                                        value={imVal}
+                                        onChange={e => handleItemImeiChange(idx, imIdx, e.target.value)}
+                                        onKeyDown={e => handleItemImeiKeyDown(e, idx, imIdx)}
+                                        onPaste={e => handleItemImeiPaste(e, idx, imIdx)}
+                                        placeholder="1 IMEI (15 digits)"
+                                        className="w-full text-[11px] tabular-nums font-medium px-1 py-0.5 bg-transparent focus:outline-none"
+                                        autoComplete="off"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setScannerTarget({ itemIdx: idx, imeiIdx: imIdx });
+                                          setIsScannerModalOpen(true);
+                                        }}
+                                        className="p-1 text-blue-600 hover:bg-blue-50 rounded transition cursor-pointer shrink-0"
+                                        title="Scan IMEI with Camera"
+                                      >
+                                        <Camera className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
 
                               <div className="flex items-center justify-end pt-1 border-t border-blue-100">
-                                <span className="text-xs font-black text-slate-900 font-mono">
+                                <span className="text-xs font-black text-slate-900 tabular-nums">
                                   Subtotal: {currency} {rowTotal.toLocaleString()}
                                 </span>
                               </div>
@@ -1503,7 +2249,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                                 <Barcode className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                                 <input
                                   type="text"
-                                  placeholder="Barcode Code (Scan or enter)"
+                                  placeholder="Barcode / Item Code (Scan or enter)"
                                   value={item.barcode}
                                   onChange={e => {
                                     const sanitized = e.target.value.replace(/[\r\n\t]/g, '');
@@ -1516,13 +2262,13 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                                       showToast(`Barcode for item #${idx + 1} captured`, 'info');
                                     }
                                   }}
-                                  className="w-full px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:border-blue-500"
+                                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs tabular-nums focus:outline-none focus:border-blue-500"
                                   autoComplete="off"
                                 />
                               </div>
 
                               <div className="text-right">
-                                <span className="text-xs font-black text-slate-900 font-mono">
+                                <span className="text-xs font-black text-slate-900 tabular-nums">
                                   Subtotal: {currency} {rowTotal.toLocaleString()}
                                 </span>
                               </div>
@@ -1562,9 +2308,9 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                     <input
                       type="number"
                       min="0"
-                      placeholder={`Full (${totalBillAmount})`}
+                      placeholder="Enter paid amount"
                       value={paidAmount}
-                      onChange={e => setPaidAmount(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
+                      onChange={e => setPaidAmount(e.target.value === '' ? '' : Number(e.target.value))}
                       className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-emerald-700 focus:outline-none focus:border-blue-500"
                     />
                   </div>
@@ -1573,7 +2319,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">
                       Balance Due / Payable ({currency})
                     </label>
-                    <div className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs font-black font-mono text-rose-600">
+                    <div className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs font-black tabular-nums text-rose-600">
                       {currency} {balanceDue.toLocaleString()}
                     </div>
                   </div>
@@ -1613,7 +2359,10 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setIsAddModalOpen(false)}
+                    onClick={() => {
+                      setIsAddModalOpen(false);
+                      setEditingPurchaseId(null);
+                    }}
                     className="px-4 py-2 border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold rounded-xl transition cursor-pointer"
                   >
                     Cancel
@@ -1623,7 +2372,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                     type="submit"
                     className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold rounded-xl shadow-lg shadow-blue-600/25 transition cursor-pointer"
                   >
-                    Save Inward Bill
+                    {editingPurchaseId ? 'Update Inward Bill' : 'Save Inward Bill'}
                   </button>
                 </div>
               </div>
@@ -1720,8 +2469,8 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                       <tr key={idx}>
                         <td className="py-2 px-3">
                           <div className="font-bold text-slate-900">{i.name}</div>
-                          {i.imei && <div className="text-[10px] text-slate-400 font-mono">IMEI: {i.imei}</div>}
-                          {i.barcode && <div className="text-[10px] text-slate-400 font-mono">Code: {i.barcode}</div>}
+                          {i.imei && <div className="text-[10px] text-slate-400 tabular-nums">IMEI: {i.imei}</div>}
+                          {i.barcode && <div className="text-[10px] text-slate-400 tabular-nums">Code: {i.barcode}</div>}
                         </td>
                         <td className="py-2 px-3 text-center font-bold">{i.qty}</td>
                         <td className="py-2 px-3 text-right font-medium">
@@ -1759,7 +2508,37 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2">
+            <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
+              {selectedPurchaseForView.status !== 'REVERSED' && onUpdatePurchase && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = selectedPurchaseForView;
+                    setSelectedPurchaseForView(null);
+                    openEditModal(target);
+                  }}
+                  className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                  <span>Edit Bill</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => handleDownloadSinglePdf(selectedPurchaseForView)}
+                className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Download PDF</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleShareWhatsApp(selectedPurchaseForView)}
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                <span>Send on WhatsApp</span>
+              </button>
               {selectedPurchaseForView.balanceDue > 0 && selectedPurchaseForView.status !== 'REVERSED' && (
                 <button
                   type="button"
@@ -1770,10 +2549,10 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                     setSettlementNotes('');
                     setSelectedPurchaseForView(null);
                   }}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm"
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-extrabold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm"
                 >
                   <CreditCard className="w-4 h-4" />
-                  <span>Pay Due Balance ({currency} {selectedPurchaseForView.balanceDue.toLocaleString()})</span>
+                  <span>Pay Due ({currency} {selectedPurchaseForView.balanceDue.toLocaleString()})</span>
                 </button>
               )}
               <button
@@ -1846,20 +2625,20 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
               <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs space-y-2">
                 <div className="flex justify-between items-center font-bold">
                   <span className="text-slate-600">Supplier: <strong className="text-slate-900">{purchaseToReverse.partyName}</strong></span>
-                  <span className="font-mono text-blue-600">Bill #{purchaseToReverse.billNo}</span>
+                  <span className="tabular-nums text-blue-600">Bill #{purchaseToReverse.billNo}</span>
                 </div>
                 <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-200 text-[11px]">
                   <div>
                     <span className="text-slate-400 block font-semibold">Total Bill</span>
-                    <span className="font-bold font-mono text-slate-900">{currency} {purchaseToReverse.totalAmount.toLocaleString()}</span>
+                    <span className="font-bold tabular-nums text-slate-900">{currency} {purchaseToReverse.totalAmount.toLocaleString()}</span>
                   </div>
                   <div>
                     <span className="text-slate-400 block font-semibold">Financial Outflow Paid</span>
-                    <span className="font-bold font-mono text-emerald-700">{currency} {purchaseToReverse.paidAmount.toLocaleString()}</span>
+                    <span className="font-bold tabular-nums text-emerald-700">{currency} {purchaseToReverse.paidAmount.toLocaleString()}</span>
                   </div>
                   <div>
                     <span className="text-slate-400 block font-semibold">Payable Balance</span>
-                    <span className="font-bold font-mono text-rose-600">{currency} {purchaseToReverse.balanceDue.toLocaleString()}</span>
+                    <span className="font-bold tabular-nums text-rose-600">{currency} {purchaseToReverse.balanceDue.toLocaleString()}</span>
                   </div>
                 </div>
               </div>
@@ -2066,8 +2845,33 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
           imeiRecords={imeiRecords}
           sales={sales}
           onAddCategory={onAddCategory || (() => {})}
+          onRenameCategory={onRenameCategory}
         />
       )}
+
+      {/* IMEI / Barcode Scanner for Stock Inward Search & Supplier Lookup */}
+      <BarcodeScannerModal
+        isOpen={isSearchScannerOpen}
+        onClose={() => setIsSearchScannerOpen(false)}
+        onScan={scannedCode => {
+          setSearch(scannedCode);
+          showToast(`Scanned IMEI/Code: ${scannedCode}`, 'success');
+        }}
+        title="Scan IMEI to Find Supplier Party"
+        placeholder="Scan phone IMEI or barcode label..."
+      />
+
+      {/* IMEI Box Camera Scanner Modal */}
+      <BarcodeScannerModal
+        isOpen={isScannerModalOpen}
+        onClose={() => {
+          setIsScannerModalOpen(false);
+          setScannerTarget(null);
+        }}
+        onScan={handleScanFromCamera}
+        title={scannerTarget ? `Scan IMEI Box #${scannerTarget.imeiIdx + 1}` : 'Scan IMEI'}
+        placeholder="Point camera at phone IMEI barcode..."
+      />
       {/* ========================================================= */}
       {/* SETTLE DUE PAYMENT MODAL */}
       {/* ========================================================= */}
@@ -2098,15 +2902,15 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 space-y-1 text-xs">
               <div className="flex items-center justify-between text-slate-600 font-bold">
                 <span>Total Bill Amount:</span>
-                <span className="font-mono text-slate-900">{currency} {selectedPurchaseForSettlement.totalAmount.toLocaleString()}</span>
+                <span className="tabular-nums text-slate-900">{currency} {selectedPurchaseForSettlement.totalAmount.toLocaleString()}</span>
               </div>
               <div className="flex items-center justify-between text-emerald-700 font-bold">
                 <span>Previously Paid:</span>
-                <span className="font-mono">{currency} {selectedPurchaseForSettlement.paidAmount.toLocaleString()}</span>
+                <span className="tabular-nums">{currency} {selectedPurchaseForSettlement.paidAmount.toLocaleString()}</span>
               </div>
               <div className="flex items-center justify-between text-rose-600 font-extrabold pt-1 border-t border-slate-200/60">
                 <span>Current Outstanding Due:</span>
-                <span className="font-mono text-sm">{currency} {selectedPurchaseForSettlement.balanceDue.toLocaleString()}</span>
+                <span className="tabular-nums text-sm">{currency} {selectedPurchaseForSettlement.balanceDue.toLocaleString()}</span>
               </div>
             </div>
 
@@ -2117,9 +2921,10 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                   type="number"
                   min={1}
                   max={selectedPurchaseForSettlement.balanceDue}
+                  placeholder="Enter amount"
                   value={settlementAmount}
-                  onChange={e => setSettlementAmount(Number(e.target.value) || '')}
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:border-emerald-600"
+                  onChange={e => setSettlementAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm tabular-nums font-bold text-slate-900 focus:outline-none focus:border-emerald-600"
                 />
               </div>
 

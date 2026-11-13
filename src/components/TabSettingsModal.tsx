@@ -44,7 +44,11 @@ export const TabSettingsModal: React.FC<TabSettingsModalProps> = ({
   };
 
   const handleSave = () => {
-    onSavePreferences(activeTab, localPrefs);
+    const cleaned = { ...localPrefs };
+    if (cleaned.lowStockThreshold === '' || Number(cleaned.lowStockThreshold) < 1) {
+      delete cleaned.lowStockThreshold;
+    }
+    onSavePreferences(activeTab, cleaned);
     showToast('Tab customization saved successfully!', 'success');
     onClose();
   };
@@ -167,9 +171,10 @@ export const TabSettingsModal: React.FC<TabSettingsModalProps> = ({
                   type="number"
                   min="1"
                   max="10"
-                  value={localPrefs.lowStockThreshold || 1}
-                  onChange={e => updateSetting('lowStockThreshold', Number(e.target.value))}
-                  className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-bold font-mono focus:outline-none focus:border-blue-600"
+                  placeholder="Qty"
+                  value={localPrefs.lowStockThreshold ?? ''}
+                  onChange={e => updateSetting('lowStockThreshold', e.target.value === '' ? '' : Number(e.target.value))}
+                  className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-bold tabular-nums focus:outline-none focus:border-blue-600"
                 />
                 <p className="text-[10px] text-slate-400">Trigger alert when units remaining reaches this number</p>
               </div>
