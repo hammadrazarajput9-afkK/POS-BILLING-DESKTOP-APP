@@ -1461,6 +1461,40 @@ export function saveStoredData(data: AppData, targetStoreId?: string): void {
   });
 }
 
+function mergeAppData(local: AppData, remote: AppData): AppData {
+  const mergeByField = <T>(arr1: T[] = [], arr2: T[] = [], keyFn: (item: T) => string | undefined): T[] => {
+    const map = new Map<string, T>();
+    (arr1 || []).forEach(item => {
+      const k = keyFn(item);
+      if (k) map.set(k, item);
+    });
+    (arr2 || []).forEach(item => {
+      const k = keyFn(item);
+      if (k) map.set(k, item);
+    });
+    return Array.from(map.values());
+  };
+
+  const mergeStringArrays = (arr1: string[] = [], arr2: string[] = []): string[] => {
+    return Array.from(new Set([...(arr1 || []), ...(arr2 || [])]));
+  };
+
+  return {
+    ...remote,
+    inventory: mergeByField(local.inventory, remote.inventory, i => i.id) as any,
+    sales: mergeByField(local.sales, remote.sales, s => s.invNo) as any,
+    khata: mergeByField(local.khata, remote.khata, k => k.id) as any,
+    expenses: mergeByField(local.expenses, remote.expenses, e => e.id) as any,
+    supplierPurchases: mergeByField(local.supplierPurchases, remote.supplierPurchases, p => p.id || p.billNo) as any,
+    imeiRecords: mergeByField(local.imeiRecords, remote.imeiRecords, r => r.id || r.imei) as any,
+    purchasesLedger: mergeByField(local.purchasesLedger, remote.purchasesLedger, l => l.id) as any,
+    salesReturns: mergeByField(local.salesReturns, remote.salesReturns, ret => ret.returnNo || ret.id) as any,
+    activities: mergeByField(local.activities, remote.activities, act => act.id) as any,
+    categories: mergeStringArrays(local.categories, remote.categories),
+    expenseCategories: mergeStringArrays(local.expenseCategories, remote.expenseCategories),
+  };
+}
+
 /**
  * Safe Data Migration and Initialization Utility:
  * Reads from localStorage for instant render, IndexedDB for high-res images,
@@ -1482,7 +1516,7 @@ export async function migrateAndInitializeData(
     let currentBestData = localData;
     try {
       const idbData = await loadFromIndexedDB(storeId);
-      if (idbData && idbData.inventory && idbData.inventory.length > 0) {
+      if (idbData && ((idbData.inventory && idbData.inventory.length > 0) || (idbData.supplierPurchases && idbData.supplierPurchases.length > 0))) {
         currentBestData = idbData;
         onDataLoaded(idbData);
       }
@@ -1494,16 +1528,24 @@ export async function migrateAndInitializeData(
     const remoteData = await loadAppDataFromFirestore(storeId);
 
     if (remoteData) {
-      // Ensure inventory is preserved if remote data inventory is empty but current has items
-      if ((!remoteData.inventory || remoteData.inventory.length === 0) && currentBestData.inventory.length > 0) {
-        remoteData.inventory = currentBestData.inventory;
-      }
+      // Intelligently merge remoteData and currentBestData so NO data (purchases, sales, inventory, khata, etc.) is ever lost!
+      const mergedData = mergeAppData(currentBestData, remoteData);
       
       // Update IndexedDB (full payload) and safe localStorage mirror
-      await saveToIndexedDB(storeId, remoteData);
-      safeSetLocalStorage(getLocalStorageKey(storeId), remoteData);
+      await saveToIndexedDB(storeId, mergedData);
+      safeSetLocalStorage(getLocalStorageKey(storeId), mergedData);
 
-      onDataLoaded(remoteData);
+      onDataLoaded(mergedData);
+
+      // Save back merged data to ensure cloud Firestore is fully updated with any local-only entries
+      saveRootConfigToFirestore({
+        supplierPurchases: mergedData.supplierPurchases,
+        purchasesLedger: mergedData.purchasesLedger,
+        imeiRecords: mergedData.imeiRecords,
+        salesReturns: mergedData.salesReturns,
+        categories: mergedData.categories,
+        expenseCategories: mergedData.expenseCategories,
+      }, storeId).catch(() => {});
     } else {
       // If remote store data could not be reached, preserve current best local data without overwriting cloud Firestore
       onDataLoaded(currentBestData);
