@@ -34,7 +34,12 @@ import {
   subscribeQuotaState,
   subscribeCloudError,
   getLastCloudError,
+  getLastCloudErrorAt,
   setLastCloudError,
+  recordCloudWrite,
+  recordCloudRead,
+  getDailyCloudUsage,
+  DailyCloudUsage,
 } from './firebase';
 import {
   doc,
@@ -653,27 +658,67 @@ function getIDB(): Promise<IDBPDatabase> {
   return dbPromise;
 }
 
+export type OfflineReasonCode =
+  | 'online'
+  | 'no_internet'
+  | 'quota_exceeded'
+  | 'auth_blocked'
+  | 'cloud_error';
+
 export interface SyncStatusSnapshot {
   isOnline: boolean;
   isSyncing: boolean;
   pendingCount: number;
   pendingOps: PendingWriteOp[];
   lastError: string | null;
+  lastErrorAt: string | null;
   isQuotaExceeded: boolean;
+  offlineReason: OfflineReasonCode;
+  dailyUsage: DailyCloudUsage;
+  lastLocalSaveAt: string | null;
 }
 
 const syncStatusListeners: Array<(snap: SyncStatusSnapshot) => void> = [];
 let currentPendingOps: PendingWriteOp[] = [];
 let isQueueFlushing = false;
+let lastLocalSaveAt: string | null = null;
 
 export function getSyncStatusSnapshot(): SyncStatusSnapshot {
+  const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+  const isQuotaExceeded = getQuotaExceededFlag();
+  const lastError = getLastCloudError();
+  const queuedNonOfflineError = currentPendingOps.find(
+    op => op.lastError && !op.lastError.startsWith('Device offline')
+  )?.lastError;
+  const effectiveError = lastError || queuedNonOfflineError || null;
+
+  let offlineReason: OfflineReasonCode = 'online';
+  if (!isOnline) {
+    offlineReason = 'no_internet';
+  } else if (isQuotaExceeded) {
+    offlineReason = 'quota_exceeded';
+  } else if (
+    effectiveError &&
+    (effectiveError.includes('Anonymous Auth') ||
+      effectiveError.includes('operation-not-allowed') ||
+      effectiveError.includes('admin-restricted-operation'))
+  ) {
+    offlineReason = 'auth_blocked';
+  } else if (effectiveError) {
+    offlineReason = 'cloud_error';
+  }
+
   return {
-    isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
+    isOnline,
     isSyncing: isQueueFlushing,
     pendingCount: currentPendingOps.length,
     pendingOps: currentPendingOps,
-    lastError: getLastCloudError(),
-    isQuotaExceeded: getQuotaExceededFlag(),
+    lastError,
+    lastErrorAt: getLastCloudErrorAt(),
+    isQuotaExceeded,
+    offlineReason,
+    dailyUsage: getDailyCloudUsage(),
+    lastLocalSaveAt,
   };
 }
 
@@ -849,6 +894,7 @@ async function executeDocWriteOrQueue(params: {
         params.merge === false ? setDoc(ref, payload) : setDoc(ref, payload, { merge: true });
       await awaitWriteWithQuotaAndTimeout(writeOp);
     }
+    recordCloudWrite(1);
     setLastCloudError(null);
     notifySyncStatusListeners();
   } catch (err) {
@@ -923,6 +969,7 @@ export async function processPendingWritesQueue(): Promise<{ processed: number; 
           await awaitWriteWithQuotaAndTimeout(writeOp);
         }
         await idb.delete(IDB_PENDING_WRITES_STORE, op.id);
+        recordCloudWrite(1);
         processed++;
       } catch (err) {
         failed++;
@@ -1199,6 +1246,7 @@ export async function saveSaleAtomic(
     );
 
     await awaitWriteWithQuotaAndTimeout(batch.commit());
+    recordCloudWrite(2 + inventoryUpdates.length + (khataUpdate ? 1 : 0) + (activity ? 1 : 0));
     setLastCloudError(null);
     notifySyncStatusListeners();
   } catch (err) {
@@ -1419,6 +1467,7 @@ export async function savePurchasesLedgerBatchToFirestore(
         batch.set(ref, sanitizeForFirestore({ ...entry, updatedAt: entry.updatedAt || now }) as Record<string, unknown>, { merge: true });
       }
       await awaitWriteWithQuotaAndTimeout(batch.commit());
+      recordCloudWrite(chunk.length);
     }
     setLastCloudError(null);
   } catch (err) {
@@ -1483,6 +1532,7 @@ export async function saveImeiRecordsBatchToFirestore(
         batch.set(ref, sanitizeForFirestore({ ...rec, updatedAt: rec.updatedAt || now }) as Record<string, unknown>, { merge: true });
       }
       await awaitWriteWithQuotaAndTimeout(batch.commit());
+      recordCloudWrite(chunk.length);
     }
     setLastCloudError(null);
   } catch (err) {
@@ -1702,6 +1752,7 @@ export function subscribeToStoreFullData(
             });
 
             if (upserts.length > 0 || removals.length > 0) {
+              recordCloudRead(upserts.length);
               callbacks.onCollectionDelta({
                 collection: key,
                 upserts,
@@ -2020,13 +2071,16 @@ export async function loadAppDataFromFirestore(targetStoreId?: string): Promise<
       const tombstones = normalizedDeleted[key] || [];
       const arr: T[] = [];
       if (snap && typeof snap.forEach === 'function') {
+        let count = 0;
         snap.forEach((docSnap: any) => {
+          count++;
           const item = docSnap.data() as T;
           const id = idFn(item) || docSnap.id;
           if (!isItemTombstoned(id, timeFn(item), tombstones)) {
             arr.push(item);
           }
         });
+        if (count > 0) recordCloudRead(count);
       }
       return arr;
     };
@@ -2282,19 +2336,33 @@ export async function runOneTimeSubcollectionMigration(
 
     if (!hasOldDataToMigrate) {
       if (rootSnap.exists()) {
-        await setDoc(rootDocRef, { migrationDone: true }, { merge: true });
+        await awaitWriteWithQuotaAndTimeout(setDoc(rootDocRef, { migrationDone: true }, { merge: true }));
+        recordCloudWrite(1);
       }
       return null;
     }
 
-    // (a) Download JSON backup of current local data before migration if non-empty
+    // (a) Download JSON backup of current local data AT MOST ONCE before migration if non-empty
+    const preMigrationBackupKey = `MOBILE_POS_PRE_MIGRATION_BACKUP_DONE_${storeId}`;
+    let alreadyDownloadedPreMigration = false;
+    try {
+      alreadyDownloadedPreMigration = Boolean(localStorage.getItem(preMigrationBackupKey));
+    } catch {
+      alreadyDownloadedPreMigration = false;
+    }
+
     const hasLocalRecords =
       (currentLocalData.inventory?.length || 0) > 0 ||
       (currentLocalData.sales?.length || 0) > 0 ||
       (currentLocalData.khata?.length || 0) > 0 ||
       (currentLocalData.expenses?.length || 0) > 0 ||
       (currentLocalData.supplierPurchases?.length || 0) > 0;
-    if (hasLocalRecords) {
+    if (hasLocalRecords && !alreadyDownloadedPreMigration) {
+      try {
+        localStorage.setItem(preMigrationBackupKey, new Date().toISOString());
+      } catch {
+        // ignore
+      }
       downloadJsonBackup(currentLocalData, 'pre_migration_backup_');
     }
 
@@ -2329,7 +2397,8 @@ export async function runOneTimeSubcollectionMigration(
             const ref = doc(db, STORES_COLLECTION, storeId, subCol, toValidFirestoreDocId(idFn(item), prefix));
             batch.set(ref, sanitizeForFirestore(item) as Record<string, unknown>, { merge: true });
           }
-          await batch.commit();
+          await awaitWriteWithQuotaAndTimeout(batch.commit());
+          recordCloudWrite(chunk.length);
         }
       }
       return [...existing, ...missing];
@@ -2426,7 +2495,8 @@ export async function runOneTimeSubcollectionMigration(
       'IMEI'
     );
 
-    await setDoc(rootDocRef, { migrationDone: true }, { merge: true });
+    await awaitWriteWithQuotaAndTimeout(setDoc(rootDocRef, { migrationDone: true }, { merge: true }));
+    recordCloudWrite(1);
 
     return {
       ...baseData,
@@ -2531,7 +2601,9 @@ export function loadStoredData(targetStoreId?: string): AppData {
 export async function saveToIndexedDB(storeId: string, data: AppData): Promise<void> {
   try {
     const idb = await getIDB();
-    await idb.put(IDB_STORE_NAME, { storeId, data, updatedAt: new Date().toISOString() });
+    const now = new Date().toISOString();
+    await idb.put(IDB_STORE_NAME, { storeId, data, updatedAt: now });
+    lastLocalSaveAt = now;
   } catch (err) {
     console.warn(`IndexedDB save error for store [${storeId}]:`, err);
   }
@@ -2600,6 +2672,7 @@ function safeSetLocalStorage(key: string, data: AppData): void {
   try {
     const sanitized = stripLargePayloadForLocalStorage(data);
     localStorage.setItem(key, JSON.stringify(sanitized));
+    lastLocalSaveAt = new Date().toISOString();
   } catch {
     try {
       const lightweight: AppData = {
@@ -3117,8 +3190,8 @@ export async function migrateAndInitializeData(
     if (remoteData) {
       let mergedData = mergeAppData(currentBestData, remoteData);
 
-      // 4. One-time subcollection migration if needed
-      if (!remoteData.migrationDone) {
+      // 4. One-time subcollection migration if needed (skip while quota cooldown is active)
+      if (!remoteData.migrationDone && !getQuotaExceededFlag()) {
         const migrated = await runOneTimeSubcollectionMigration(mergedData, remoteData, storeId);
         if (migrated) {
           mergedData = migrated;

@@ -8,6 +8,8 @@ import {
   X,
   CheckCircle2,
   Clock,
+  HardDrive,
+  Gauge,
 } from 'lucide-react';
 import { AppData } from '../types';
 import {
@@ -18,11 +20,26 @@ import {
   loadStoredData,
   SyncStatusSnapshot,
 } from '../utils/storage';
-import { setQuotaExceededFlag, setLastCloudError } from '../utils/firebase';
+import {
+  setQuotaExceededFlag,
+  setLastCloudError,
+  FIREBASE_FREE_DAILY_WRITES_LIMIT,
+  FIREBASE_FREE_DAILY_READS_LIMIT,
+  formatTimeUntilQuotaReset,
+} from '../utils/firebase';
 
 export interface OnlineStatusBadgeProps {
   onRefreshData?: () => void | Promise<void>;
   appData?: AppData;
+}
+
+function formatShortTime(iso?: string | null): string {
+  if (!iso) return 'Just now';
+  try {
+    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } catch {
+    return iso;
+  }
 }
 
 export const OnlineStatusBadge: React.FC<OnlineStatusBadgeProps> = ({
@@ -74,6 +91,14 @@ export const OnlineStatusBadge: React.FC<OnlineStatusBadgeProps> = ({
         effectiveLastError.includes('admin-restricted-operation'))
   );
 
+  const writesToday = status.dailyUsage?.writesToday || 0;
+  const readsToday = status.dailyUsage?.readsToday || 0;
+  const isServerQuotaFull = Boolean(status.isQuotaExceeded || status.dailyUsage?.serverQuotaFull);
+  const writePct = isServerQuotaFull
+    ? 100
+    : Math.min(100, Math.round((writesToday / FIREBASE_FREE_DAILY_WRITES_LIMIT) * 100));
+  const readPct = Math.min(100, Math.round((readsToday / FIREBASE_FREE_DAILY_READS_LIMIT) * 100));
+
   let badgeClasses =
     'bg-emerald-50 text-emerald-700 border-emerald-200/80 hover:bg-emerald-100';
   let dotClasses = 'bg-emerald-500';
@@ -83,6 +108,10 @@ export const OnlineStatusBadge: React.FC<OnlineStatusBadgeProps> = ({
     badgeClasses = 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200';
     dotClasses = 'bg-slate-500';
     labelText = status.pendingCount > 0 ? `Offline (${status.pendingCount} pending)` : 'Offline';
+  } else if (status.isQuotaExceeded) {
+    badgeClasses = 'bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100';
+    dotClasses = 'bg-rose-500';
+    labelText = 'Quota Full (Local Safe)';
   } else if (hasCloudError) {
     badgeClasses = 'bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100';
     dotClasses = 'bg-rose-500';
@@ -93,13 +122,36 @@ export const OnlineStatusBadge: React.FC<OnlineStatusBadgeProps> = ({
     labelText = `Syncing… (${status.pendingCount} pending)`;
   }
 
+  let offlineReasonTitle = 'Cloud Sync Live';
+  let offlineReasonDetail = 'Data is saving to both LocalStorage/IndexedDB and Cloud Firestore in real time.';
+  if (status.offlineReason === 'no_internet') {
+    offlineReasonTitle = 'Internet Disconnected (No Network)';
+    offlineReasonDetail =
+      'Aapke device ka internet (Wi-Fi / Data) band hai. Nayi entries LocalStorage aur IndexedDB mein save ho rahi hain aur internet aatay hi cloud par upload hongi.';
+  } else if (status.offlineReason === 'quota_exceeded') {
+    offlineReasonTitle = 'Firebase Free Daily Write Limit Full (RESOURCE_EXHAUSTED)';
+    offlineReasonDetail =
+      'Aaj ki Firebase Free Tier daily write limit (20,000 writes/day) server par poori ho chuki hai. Aapka data is waqt LocalStorage aur IndexedDB mein safe ho raha hai aur quota reset hotay hi auto-sync hoga.';
+  } else if (status.offlineReason === 'auth_blocked') {
+    offlineReasonTitle = 'Firebase Authentication Blocked';
+    offlineReasonDetail =
+      'Firebase Anonymous Auth sign-in block hui hai. LocalStorage aur IndexedDB backup active hai, lekin cloud sync ke liye Auth check karein.';
+  } else if (status.offlineReason === 'cloud_error') {
+    offlineReasonTitle = 'Cloud Connection / Sync Error';
+    offlineReasonDetail =
+      effectiveLastError ||
+      'Firestore server write temporary fail hui. Changes LocalStorage/IndexedDB queue mein save hain aur auto-retry honge.';
+  }
+
+  const isCloudLive = !isOffline && !hasCloudError && status.pendingCount === 0;
+
   return (
     <>
       <button
         type="button"
         onClick={() => setDetailsOpen(true)}
         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition cursor-pointer active:scale-95 shadow-2xs ${badgeClasses}`}
-        title="Tap for cloud sync status, pending writes queue, and backup options"
+        title="Tap for cloud sync status, quota usage, local vs online backup status, and pending writes queue"
       >
         <span className="relative flex h-2 w-2 shrink-0">
           {!isOffline && !hasCloudError && (
@@ -160,7 +212,7 @@ export const OnlineStatusBadge: React.FC<OnlineStatusBadgeProps> = ({
                 </div>
                 <div>
                   <h3 className="font-black text-slate-900 text-sm sm:text-base">
-                    Cloud Sync & Offline Queue
+                    Cloud Sync, Quota & Backup Status
                   </h3>
                   <p className="text-[11px] text-slate-500 font-medium">
                     Status: <span className="font-bold text-slate-800">{labelText}</span>
@@ -177,52 +229,128 @@ export const OnlineStatusBadge: React.FC<OnlineStatusBadgeProps> = ({
             </div>
 
             <div className="space-y-3 overflow-y-auto pr-1 flex-1">
+              {/* Storage Mode: Local vs Online */}
               <div className="grid grid-cols-2 gap-2.5 text-xs">
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <span className="text-[10px] font-bold uppercase text-slate-400 block">
-                    Internet Connection
+                <div className="p-3 bg-emerald-50/70 rounded-xl border border-emerald-200">
+                  <span className="text-[10px] font-bold uppercase text-emerald-700 block">
+                    Local Backup (Device)
                   </span>
-                  <span className="font-extrabold text-slate-800 flex items-center gap-1.5 mt-0.5">
-                    {status.isOnline ? (
-                      <>
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Online
-                      </>
-                    ) : (
-                      <>
-                        <CloudOff className="w-3.5 h-3.5 text-slate-500" /> Offline
-                      </>
-                    )}
+                  <span className="font-extrabold text-emerald-900 flex items-center gap-1.5 mt-0.5">
+                    <HardDrive className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    IndexedDB + LocalStorage
+                  </span>
+                  <span className="text-[10px] text-emerald-700 block mt-0.5">
+                    Active • Saved: {formatShortTime(status.lastLocalSaveAt)}
                   </span>
                 </div>
 
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <span className="text-[10px] font-bold uppercase text-slate-400 block">
-                    Pending Queue
+                <div
+                  className={`p-3 rounded-xl border ${
+                    isCloudLive
+                      ? 'bg-emerald-50/70 border-emerald-200'
+                      : 'bg-amber-50/80 border-amber-200'
+                  }`}
+                >
+                  <span className="text-[10px] font-bold uppercase text-slate-500 block">
+                    Online Cloud Backup
                   </span>
-                  <span className="font-extrabold text-slate-800 tabular-nums flex items-center gap-1.5 mt-0.5">
-                    <Clock className="w-3.5 h-3.5 text-blue-600" />
-                    {status.pendingCount} pending {status.pendingCount === 1 ? 'write' : 'writes'}
+                  <span className="font-extrabold text-slate-900 flex items-center gap-1.5 mt-0.5">
+                    {isCloudLive ? (
+                      <>
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> Live Online
+                      </>
+                    ) : isOffline ? (
+                      <>
+                        <CloudOff className="w-3.5 h-3.5 text-slate-600 shrink-0" /> Offline (Local Only)
+                      </>
+                    ) : (
+                      <>
+                        <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" /> Paused (Local Only)
+                      </>
+                    )}
+                  </span>
+                  <span className="text-[10px] text-slate-600 block mt-0.5">
+                    Internet: {status.isOnline ? 'Connected' : 'Disconnected'} • {status.pendingCount} pending
                   </span>
                 </div>
               </div>
 
-              {hasCloudError && (
-                <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-900 space-y-2">
-                  <div className="flex items-center gap-1.5 font-extrabold text-rose-800">
-                    <AlertCircle className="w-4 h-4 shrink-0" />
-                    <span>Last Cloud Error</span>
+              {/* Daily Quota & Usage Meter */}
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 font-extrabold text-slate-800">
+                    <Gauge className="w-4 h-4 text-blue-600 shrink-0" />
+                    <span>Today&apos;s Firebase Quota ({status.dailyUsage?.pacificDate})</span>
                   </div>
-                  <p className="text-[11px] leading-relaxed break-words">
-                    {effectiveLastError ||
-                      'Firestore quota cooldown active. Changes remain safely saved locally and will auto-retry.'}
-                  </p>
-                  {status.isQuotaExceeded && !isAnonymousAuthDisabled && (
-                    <div className="pt-2 border-t border-rose-200/80 text-[11px] text-rose-900 space-y-1">
-                      <p className="font-bold">Why are writes waiting?</p>
-                      <p className="text-rose-800">
-                        Your Firebase Free Tier daily write limit is currently full for today. Your sales, inventory, and settings are safely stored locally on this device and will upload automatically once the daily quota resets (Midnight Pacific Time / 1:00 PM PKT). Use <strong>Download backup</strong> below to keep an extra copy.
-                      </p>
+                  <span
+                    className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
+                      isServerQuotaFull
+                        ? 'bg-rose-100 text-rose-700'
+                        : 'bg-emerald-100 text-emerald-700'
+                    }`}
+                  >
+                    {isServerQuotaFull ? 'Limit Full Today' : 'Within Free Limit'}
+                  </span>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div>
+                    <div className="flex justify-between text-[11px] font-semibold text-slate-700">
+                      <span>Writes (This device today)</span>
+                      <span className="tabular-nums">
+                        {writesToday.toLocaleString()} / {FIREBASE_FREE_DAILY_WRITES_LIMIT.toLocaleString()}
+                        {isServerQuotaFull ? ' (Server Quota Full)' : ` (${writePct}%)`}
+                      </span>
                     </div>
+                    <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden mt-1">
+                      <div
+                        className={`h-full transition-all ${
+                          isServerQuotaFull || writePct >= 85
+                            ? 'bg-rose-500'
+                            : writePct >= 50
+                            ? 'bg-amber-500'
+                            : 'bg-emerald-500'
+                        }`}
+                        style={{ width: `${Math.max(writePct, isServerQuotaFull ? 100 : 2)}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-[11px] font-semibold text-slate-600">
+                      <span>Reads (This device today)</span>
+                      <span className="tabular-nums">
+                        {readsToday.toLocaleString()} / {FIREBASE_FREE_DAILY_READS_LIMIT.toLocaleString()} ({readPct}%)
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-[10px] text-slate-500 leading-snug">
+                  Free quota resets in <strong>{formatTimeUntilQuotaReset()}</strong>. Server quota is shared across all sessions/devices of this project.
+                </p>
+              </div>
+
+              {/* Exact Why-Offline / Pause Reason */}
+              {(status.offlineReason !== 'online' || hasCloudError) && (
+                <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-900 space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 font-extrabold text-rose-800">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>Why Cloud Backup Paused / Offline</span>
+                    </div>
+                    {(status.lastErrorAt || status.dailyUsage?.lastServerQuotaAt) && (
+                      <span className="text-[10px] text-rose-700 font-semibold tabular-nums">
+                        {formatShortTime(status.lastErrorAt || status.dailyUsage?.lastServerQuotaAt)}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] font-bold text-rose-900">{offlineReasonTitle}</p>
+                  <p className="text-[11px] leading-relaxed text-rose-800">{offlineReasonDetail}</p>
+                  {effectiveLastError && (
+                    <p className="text-[10px] font-mono bg-white/70 border border-rose-200/70 rounded-lg p-2 break-words text-rose-800">
+                      Detail: {effectiveLastError}
+                    </p>
                   )}
                   {isAnonymousAuthDisabled && (
                     <div className="pt-2 border-t border-rose-200/80 text-[11px] text-rose-900 space-y-1">

@@ -65,21 +65,133 @@ export interface FirestoreErrorInfo {
 
 const QUOTA_STORAGE_KEY = 'MOBILE_POS_QUOTA_EXCEEDED_AT';
 const LEGACY_QUOTA_KEY = 'MOBILE_POS_QUOTA_EXCEEDED';
-const QUOTA_RESET_MS = 60 * 60 * 1000; // 1 hour
+const USAGE_STORAGE_KEY = 'MOBILE_POS_DAILY_CLOUD_USAGE';
+const QUOTA_RESET_MS = 60 * 60 * 1000; // 1 hour retry cooldown
+
+export const FIREBASE_FREE_DAILY_WRITES_LIMIT = 20000;
+export const FIREBASE_FREE_DAILY_READS_LIMIT = 50000;
+
+export interface DailyCloudUsage {
+  pacificDate: string;
+  writesToday: number;
+  readsToday: number;
+  serverQuotaFull: boolean;
+  lastServerQuotaAt?: string;
+  lastSuccessfulWriteAt?: string;
+}
+
+export function getPacificDateKey(date = new Date()): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Los_Angeles',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(date);
+    const y = parts.find(p => p.type === 'year')?.value;
+    const m = parts.find(p => p.type === 'month')?.value;
+    const d = parts.find(p => p.type === 'day')?.value;
+    if (y && m && d) return `${y}-${m}-${d}`;
+  } catch {
+    // fallback
+  }
+  return date.toISOString().slice(0, 10);
+}
+
+export function formatTimeUntilQuotaReset(): string {
+  try {
+    const now = new Date();
+    const ptStr = now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles', hour12: false });
+    const timePart = ptStr.split(', ')[1] || '00:00:00';
+    const [hh, mm] = timePart.split(':').map(Number);
+    if (Number.isFinite(hh) && Number.isFinite(mm)) {
+      const elapsedMins = (hh % 24) * 60 + mm;
+      const remainingMins = Math.max(1, 24 * 60 - elapsedMins);
+      const hrs = Math.floor(remainingMins / 60);
+      const mins = remainingMins % 60;
+      return `${hrs}h ${mins}m (Midnight PT / ~1:00 PM PKT)`;
+    }
+  } catch {
+    // ignore
+  }
+  return 'Midnight Pacific Time (~1:00 PM PKT)';
+}
+
+function loadRawDailyUsage(): DailyCloudUsage {
+  const today = getPacificDateKey();
+  try {
+    const raw = localStorage.getItem(USAGE_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as DailyCloudUsage;
+      if (parsed && parsed.pacificDate === today) {
+        return {
+          pacificDate: today,
+          writesToday: Number(parsed.writesToday) || 0,
+          readsToday: Number(parsed.readsToday) || 0,
+          serverQuotaFull: Boolean(parsed.serverQuotaFull),
+          lastServerQuotaAt: parsed.lastServerQuotaAt,
+          lastSuccessfulWriteAt: parsed.lastSuccessfulWriteAt,
+        };
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return {
+    pacificDate: today,
+    writesToday: 0,
+    readsToday: 0,
+    serverQuotaFull: false,
+  };
+}
+
+function saveRawDailyUsage(usage: DailyCloudUsage): void {
+  try {
+    localStorage.setItem(USAGE_STORAGE_KEY, JSON.stringify(usage));
+  } catch {
+    // ignore
+  }
+}
+
+export function getDailyCloudUsage(): DailyCloudUsage {
+  return loadRawDailyUsage();
+}
+
+export function recordCloudWrite(count = 1): void {
+  if (count <= 0) return;
+  const usage = loadRawDailyUsage();
+  usage.writesToday += count;
+  usage.lastSuccessfulWriteAt = new Date().toISOString();
+  usage.serverQuotaFull = false;
+  saveRawDailyUsage(usage);
+}
+
+export function recordCloudRead(count = 1): void {
+  if (count <= 0) return;
+  const usage = loadRawDailyUsage();
+  usage.readsToday += count;
+  saveRawDailyUsage(usage);
+}
 
 let quotaExceededAt: number | null = null;
 const quotaListeners: Array<(isExceeded: boolean) => void> = [];
 
 let lastCloudErrorMessage: string | null = null;
+let lastCloudErrorAt: string | null = null;
 const cloudErrorListeners: Array<(err: string | null) => void> = [];
 
 export function getLastCloudError(): string | null {
   return lastCloudErrorMessage;
 }
 
+export function getLastCloudErrorAt(): string | null {
+  return lastCloudErrorAt;
+}
+
 export function setLastCloudError(msg: string | null): void {
   if (lastCloudErrorMessage !== msg) {
     lastCloudErrorMessage = msg;
+    lastCloudErrorAt = msg ? new Date().toISOString() : null;
     cloudErrorListeners.forEach(l => l(msg));
   }
 }
@@ -130,6 +242,11 @@ export function setQuotaExceededFlag(val: boolean): void {
     } catch {
       // ignore
     }
+    const usage = loadRawDailyUsage();
+    usage.serverQuotaFull = true;
+    usage.lastServerQuotaAt = new Date(now).toISOString();
+    saveRawDailyUsage(usage);
+
     setLastCloudError(
       'Daily Firestore free write quota exceeded for today. Changes are safely saved locally and will auto-sync after quota reset (midnight PT).'
     );
