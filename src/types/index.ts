@@ -389,4 +389,9 @@ export interface AppData {
   currentRole?: UserRole;
   users?: UserAccount[];
   currentUser?: UserAccount;
+  deletedInventoryIds?: string[];
+  deletedSalesIds?: string[];
+  deletedKhataIds?: string[];
+  deletedExpensesIds?: string[];
+  deletedPurchasesIds?: string[];
 }

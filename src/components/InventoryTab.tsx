@@ -776,7 +776,15 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                         <div>
                           <span className="text-[10px] text-slate-400 block uppercase font-semibold">Price</span>
                           <span className="tabular-nums font-extrabold text-blue-600 text-xs sm:text-sm">
-                            {currency} {item.salePrice.toLocaleString()}
+                            {(() => {
+                              const prices = (item.variants || []).map(v => Number(v.salePrice)).filter(p => !isNaN(p) && p > 0);
+                              if (prices.length === 0) prices.push(item.salePrice);
+                              const minPrice = Math.min(...prices);
+                              const maxPrice = Math.max(...prices);
+                              return minPrice === maxPrice
+                                ? `${currency} ${minPrice.toLocaleString()}`
+                                : `${currency} ${minPrice.toLocaleString()} - ${maxPrice.toLocaleString()}`;
+                            })()}
                           </span>
                         </div>
                         <div className="text-right">
@@ -920,7 +928,15 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                               {isAdmin ? `${currency} ${item.costPrice.toLocaleString()}` : '••••'}
                             </td>
                             <td className="p-3 text-right tabular-nums font-bold text-slate-900">
-                              {currency} {item.salePrice.toLocaleString()}
+                              {(() => {
+                                const prices = (item.variants || []).map(v => Number(v.salePrice)).filter(p => !isNaN(p) && p > 0);
+                                if (prices.length === 0) prices.push(item.salePrice);
+                                const minPrice = Math.min(...prices);
+                                const maxPrice = Math.max(...prices);
+                                return minPrice === maxPrice
+                                  ? `${currency} ${minPrice.toLocaleString()}`
+                                  : `${currency} ${minPrice.toLocaleString()} - ${maxPrice.toLocaleString()}`;
+                              })()}
                             </td>
                             <td className="p-3 text-center">
                               <span
@@ -1086,9 +1102,15 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                           </span>
                           {v.color || `${v.ram || ''} ${v.storage || ''}`.trim() || 'Standard Variant'}
                         </span>
-                        <span className="tabular-nums text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
-                          {v.qty || 1} units
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="tabular-nums font-black text-blue-600 text-xs">
+                            {currency} {Number(v.salePrice || selectedProductPopup.salePrice).toLocaleString()}
+                            {isAdmin && v.costPrice ? ` (Cost: ${currency} ${Number(v.costPrice).toLocaleString()})` : ''}
+                          </span>
+                          <span className="tabular-nums text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                            {v.qty || 1} units
+                          </span>
+                        </div>
                       </div>
                       {v.imeis && v.imeis.filter(Boolean).length > 0 && (
                         <div className="pt-1 border-t border-slate-100 flex flex-wrap gap-1">

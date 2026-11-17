@@ -309,12 +309,15 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
       })
       .map(i => i.id);
 
-    // Filter out item and its variants from inventory array and clean up imeiRecords
     const remainingImeis = (data.imeiRecords || []).filter(rec => !relatedIds.includes(rec.productId));
+    const nextDeletedIds = Array.from(new Set([...(data.deletedInventoryIds || []), ...relatedIds]));
+    const nextInventory = data.inventory.filter(item => !relatedIds.includes(item.id));
+
     setData(prev => ({
       ...prev,
-      inventory: prev.inventory.filter(item => !relatedIds.includes(item.id)),
+      inventory: nextInventory,
       imeiRecords: (prev.imeiRecords || []).filter(rec => !relatedIds.includes(rec.productId)),
+      deletedInventoryIds: nextDeletedIds,
     }));
 
     relatedIds.forEach(targetId => {
@@ -322,7 +325,11 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
         console.warn('Firestore permanent delete item warning:', err);
       });
     });
-    saveRootConfigToFirestore({ imeiRecords: remainingImeis }).catch(() => {});
+    saveRootConfigToFirestore({
+      inventory: nextInventory,
+      imeiRecords: remainingImeis,
+      deletedInventoryIds: nextDeletedIds,
+    }).catch(() => {});
 
     logActivity(
       'Inventory',

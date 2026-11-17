@@ -18,7 +18,7 @@ import {
   PaymentMethod,
   DailyClosingRecord,
 } from '../types';
-import { db, handleFirestoreError, OperationType, isQuotaError, setQuotaExceededFlag } from './firebase';
+import { db, handleFirestoreError, OperationType, isQuotaError, setQuotaExceededFlag, getQuotaExceededFlag } from './firebase';
 import {
   doc,
   getDoc,
@@ -423,6 +423,7 @@ export async function saveSaleAtomic(
   },
   targetStoreId?: string
 ): Promise<void> {
+  if (getQuotaExceededFlag()) return;
   const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   const { sale, inventoryUpdates, khataUpdate, activity } = params;
 
@@ -493,6 +494,7 @@ export async function saveSaleAtomic(
  * Deletes a sale document from `/stores/{storeId}/sales/{invNo}`
  */
 export async function deleteSaleFromFirestore(invNo: string, targetStoreId?: string): Promise<void> {
+  if (getQuotaExceededFlag()) return;
   const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   try {
     const saleDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.SALES, invNo);
@@ -506,6 +508,7 @@ export async function deleteSaleFromFirestore(invNo: string, targetStoreId?: str
  * Updates a sale document in `/stores/{storeId}/sales/{invNo}`
  */
 export async function updateSaleInFirestore(sale: SaleRecord, targetStoreId?: string): Promise<void> {
+  if (getQuotaExceededFlag()) return;
   const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   try {
     const saleDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.SALES, sale.invNo);
@@ -519,6 +522,7 @@ export async function updateSaleInFirestore(sale: SaleRecord, targetStoreId?: st
  * Saves a single inventory item to `/stores/{storeId}/inventory/{id}`
  */
 export async function saveInventoryItemToFirestore(item: InventoryItem, targetStoreId?: string): Promise<void> {
+  if (getQuotaExceededFlag()) return;
   const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   try {
     const itemDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.INVENTORY, item.id);
@@ -532,6 +536,7 @@ export async function saveInventoryItemToFirestore(item: InventoryItem, targetSt
  * Deletes an inventory item from `/stores/{storeId}/inventory/{id}`
  */
 export async function deleteInventoryItemFromFirestore(id: string, targetStoreId?: string): Promise<void> {
+  if (getQuotaExceededFlag()) return;
   const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   try {
     const itemDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.INVENTORY, id);
@@ -545,6 +550,7 @@ export async function deleteInventoryItemFromFirestore(id: string, targetStoreId
  * Saves a single Khata customer to `/stores/{storeId}/khata/{id}`
  */
 export async function saveKhataCustomerToFirestore(customer: KhataCustomer, targetStoreId?: string): Promise<void> {
+  if (getQuotaExceededFlag()) return;
   const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   try {
     const custDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.KHATA, customer.id);
@@ -558,6 +564,7 @@ export async function saveKhataCustomerToFirestore(customer: KhataCustomer, targ
  * Deletes a Khata customer from `/stores/{storeId}/khata/{id}`
  */
 export async function deleteKhataCustomerFromFirestore(id: string, targetStoreId?: string): Promise<void> {
+  if (getQuotaExceededFlag()) return;
   const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   try {
     const custDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.KHATA, id);
@@ -571,6 +578,7 @@ export async function deleteKhataCustomerFromFirestore(id: string, targetStoreId
  * Saves an expense item to `/stores/{storeId}/expenses/{id}`
  */
 export async function saveExpenseItemToFirestore(expense: ExpenseItem, targetStoreId?: string): Promise<void> {
+  if (getQuotaExceededFlag()) return;
   const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   try {
     const expDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.EXPENSES, expense.id);
@@ -584,6 +592,7 @@ export async function saveExpenseItemToFirestore(expense: ExpenseItem, targetSto
  * Deletes an expense item from `/stores/{storeId}/expenses/{id}`
  */
 export async function deleteExpenseItemFromFirestore(id: string, targetStoreId?: string): Promise<void> {
+  if (getQuotaExceededFlag()) return;
   const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   try {
     const expDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.EXPENSES, id);
@@ -597,6 +606,7 @@ export async function deleteExpenseItemFromFirestore(id: string, targetStoreId?:
  * Saves an activity log to `/stores/{storeId}/activities/{id}`
  */
 export async function saveActivityLogToFirestore(activity: ActivityLog, targetStoreId?: string): Promise<void> {
+  if (getQuotaExceededFlag()) return;
   const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   try {
     const actDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.ACTIVITIES, toValidFirestoreDocId(activity.id, 'ACT'));
@@ -627,6 +637,7 @@ export function toValidFirestoreDocId(rawId: string | undefined, fallbackPrefix 
  * Saves a single supplier purchase bill to `/stores/{storeId}/purchases/{id}`
  */
 export async function savePurchaseToFirestore(purchase: SupplierPurchase, targetStoreId?: string): Promise<void> {
+  if (getQuotaExceededFlag()) return;
   const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
   const docId = toValidFirestoreDocId(purchase.id || purchase.billNo, 'PUR');
   try {
@@ -645,6 +656,7 @@ export async function savePurchaseToFirestore(purchase: SupplierPurchase, target
  * Saves a daily closing record to `/stores/{storeId}/daily_closings/{id}`
  */
 export async function saveDailyClosingToFirestore(record: DailyClosingRecord, targetStoreId?: string): Promise<void> {
+  if (getQuotaExceededFlag()) return;
   const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
   const docId = toValidFirestoreDocId(record.id || record.date, 'DCL');
   try {
@@ -663,6 +675,7 @@ export async function saveDailyClosingToFirestore(record: DailyClosingRecord, ta
  * Deletes a daily closing record from `/stores/{storeId}/daily_closings/{id}`
  */
 export async function deleteDailyClosingFromFirestore(id: string, targetStoreId?: string): Promise<void> {
+  if (getQuotaExceededFlag()) return;
   const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
   const docId = toValidFirestoreDocId(id, 'DCL');
   try {
@@ -681,6 +694,7 @@ export async function deleteDailyClosingFromFirestore(id: string, targetStoreId?
  * Saves a stock adjustment record to `/stores/{storeId}/stock_adjustments/{id}`
  */
 export async function saveStockAdjustmentToFirestore(adj: StockAdjustment, targetStoreId?: string): Promise<void> {
+  if (getQuotaExceededFlag()) return;
   const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
   const docId = toValidFirestoreDocId(adj.id, 'ADJ');
   try {
@@ -699,6 +713,7 @@ export async function saveStockAdjustmentToFirestore(adj: StockAdjustment, targe
  * Saves a sales return record to `/stores/{storeId}/sales_returns/{id}`
  */
 export async function saveSalesReturnToFirestore(ret: SalesReturnRecord, targetStoreId?: string): Promise<void> {
+  if (getQuotaExceededFlag()) return;
   const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
   const docId = toValidFirestoreDocId(ret.id || ret.returnNo, 'RET');
   try {
@@ -720,7 +735,7 @@ export async function savePurchasesLedgerBatchToFirestore(
   entries: PurchaseLedgerEntry[],
   targetStoreId?: string
 ): Promise<void> {
-  if (!entries || entries.length === 0) return;
+  if (getQuotaExceededFlag() || !entries || entries.length === 0) return;
   const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
   try {
     const chunks = chunkArray(entries, 450);
@@ -749,7 +764,7 @@ export async function saveImeiRecordsBatchToFirestore(
   records: ImeiRecord[],
   targetStoreId?: string
 ): Promise<void> {
-  if (!records || records.length === 0) return;
+  if (getQuotaExceededFlag() || !records || records.length === 0) return;
   const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
   try {
     const chunks = chunkArray(records, 450);
@@ -775,6 +790,7 @@ export async function saveImeiRecordsBatchToFirestore(
  * Saves root configuration and settings to `/stores/{storeId}`
  */
 export async function saveRootConfigToFirestore(data: Partial<AppData>, targetStoreId?: string): Promise<void> {
+  if (getQuotaExceededFlag()) return;
   const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   try {
     const rootDocRef = doc(db, STORES_COLLECTION, storeId);
@@ -797,6 +813,7 @@ export async function saveRootConfigToFirestore(data: Partial<AppData>, targetSt
     if (data.tabPreferences !== undefined) configToSave.tabPreferences = data.tabPreferences;
     if (data.currentRole !== undefined) configToSave.currentRole = data.currentRole;
     if (data.users !== undefined && data.users.length > 0) configToSave.users = data.users;
+    if (data.deletedInventoryIds !== undefined) configToSave.deletedInventoryIds = data.deletedInventoryIds;
 
     await setDoc(rootDocRef, sanitizeForFirestore(configToSave) as Record<string, unknown>, { merge: true });
   } catch (err) {
@@ -811,6 +828,9 @@ export function subscribeToStoreRootConfig(
   targetStoreId: string,
   onUpdate: (updatedRoot: Partial<AppData>) => void
 ): () => void {
+  if (getQuotaExceededFlag()) {
+    return () => {};
+  }
   const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   const rootDocRef = doc(db, STORES_COLLECTION, storeId);
 
@@ -851,6 +871,9 @@ export function subscribeToStoreFullData(
   targetStoreId: string,
   onUpdate: (patch: Partial<AppData>) => void
 ): () => void {
+  if (getQuotaExceededFlag()) {
+    return () => {};
+  }
   const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   const unsubs: (() => void)[] = [];
 
@@ -1082,6 +1105,7 @@ export function subscribeToStoreFullData(
  * 3. Store root document `users` array
  */
 export async function saveUserToFirestore(user: UserAccount, targetStoreId?: string): Promise<void> {
+  if (getQuotaExceededFlag()) return;
   const effectiveStoreId = user.storeId || targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   const userWithStore: UserAccount = {
     ...user,
@@ -1115,6 +1139,7 @@ export async function saveUserToFirestore(user: UserAccount, targetStoreId?: str
  * Deletes an individual user document from global registry and store
  */
 export async function deleteUserFromFirestore(userId: string, targetStoreId?: string): Promise<void> {
+  if (getQuotaExceededFlag()) return;
   const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   try {
     // 1. Delete from global registry
@@ -1149,6 +1174,7 @@ export async function deleteUserFromFirestore(userId: string, targetStoreId?: st
  * Searches global `/users` collection and checks legacy paths if needed.
  */
 export async function fetchLiveUsersFromFirestore(): Promise<UserAccount[]> {
+  if (getQuotaExceededFlag()) return [];
   try {
     const usersMap = new Map<string, UserAccount>();
     const sid = currentActiveStoreId || DEFAULT_STORE_ID;
@@ -1240,6 +1266,7 @@ export async function fetchLiveUsersFromFirestore(): Promise<UserAccount[]> {
  * Saves complete AppData to Firestore under `/stores/{storeId}` using chunked write batches.
  */
 export async function saveAppDataToFirestore(data: AppData, targetStoreId?: string): Promise<void> {
+  if (getQuotaExceededFlag()) return;
   const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
 
   try {
@@ -1372,6 +1399,7 @@ export async function saveAppDataToFirestore(data: AppData, targetStoreId?: stri
  * Supports automatic fallback migration from legacy pos_data/main_store if the primary store is not yet initialized.
  */
 export async function loadAppDataFromFirestore(targetStoreId?: string): Promise<AppData | null> {
+  if (getQuotaExceededFlag()) return null;
   const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
 
   try {
@@ -1613,6 +1641,7 @@ export async function loadAppDataFromFirestore(targetStoreId?: string): Promise<
  * Internal helper to read legacy pos_data/main_store for migration
  */
 async function loadAppDataFromLegacyFirestore(): Promise<AppData | null> {
+  if (getQuotaExceededFlag()) return null;
   try {
     const rootDocRef = doc(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID);
     const rootDocSnap = await getDoc(rootDocRef);
@@ -1986,6 +2015,7 @@ export function mergeAppData(local: AppData, remote: Partial<AppData>): AppData 
         : remote.lastModified || local.lastModified || new Date().toISOString(),
     settings: mergedSettings,
     users: remote.users !== undefined ? (preferLocalWhenAmbiguous && (local.users?.length || 0) >= (remote.users?.length || 0) ? local.users! : remote.users) : (local.users || []),
+    deletedInventoryIds: Array.from(new Set([...(local.deletedInventoryIds || []), ...(remote.deletedInventoryIds || [])])),
     inventory: remote.inventory !== undefined
       ? mergeByField(local.inventory, remote.inventory, i => i.id, (ex, inc) => {
           const { winner, loser } = pickByTime(ex, inc, x => x.createdAt);
@@ -1994,8 +2024,11 @@ export function mergeAppData(local: AppData, remote: Partial<AppData>): AppData 
             ...winner,
             image: winner.image || loser.image,
           };
+        }).filter(item => {
+          const allDeleted = Array.from(new Set([...(local.deletedInventoryIds || []), ...(remote.deletedInventoryIds || [])]));
+          return !allDeleted.includes(item.id);
         })
-      : (local.inventory || []),
+      : (local.inventory || []).filter(item => !(local.deletedInventoryIds || []).includes(item.id)),
     sales: remote.sales !== undefined
       ? mergeByField(local.sales, remote.sales, s => s.invNo, (ex, inc) => pickByTime(ex, inc, x => x.date).winner)
       : (local.sales || []),
@@ -2125,44 +2158,46 @@ export async function recoverAllMissingStoreData(
     }
   }
 
-  // 3. Scan Firestore stores/{sid} root + subcollections
-  for (const sid of storeIdsToScan) {
+  // 3. Scan Firestore stores/{sid} root + subcollections (only if quota not exceeded)
+  if (!getQuotaExceededFlag()) {
+    for (const sid of storeIdsToScan) {
+      try {
+        const remoteStore = await loadAppDataFromFirestore(sid);
+        if (remoteStore) {
+          accumulatedData = mergeAppData(accumulatedData, remoteStore);
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    // 4. Scan legacy pos_data/main_store collection
     try {
-      const remoteStore = await loadAppDataFromFirestore(sid);
-      if (remoteStore) {
-        accumulatedData = mergeAppData(accumulatedData, remoteStore);
+      const legacyStore = await loadAppDataFromLegacyFirestore();
+      if (legacyStore) {
+        accumulatedData = mergeAppData(accumulatedData, legacyStore);
+      }
+      const [legacyPurSnap, legacyLedgerSnap, legacyImeiSnap] = await Promise.all([
+        getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.PURCHASES)).catch(() => null),
+        getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.PURCHASES_LEDGER)).catch(() => null),
+        getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.IMEI_RECORDS)).catch(() => null),
+      ]);
+      const extraPatch: Partial<AppData> = {};
+      if (legacyPurSnap && !legacyPurSnap.empty) {
+        extraPatch.supplierPurchases = legacyPurSnap.docs.map(d => d.data() as SupplierPurchase);
+      }
+      if (legacyLedgerSnap && !legacyLedgerSnap.empty) {
+        extraPatch.purchasesLedger = legacyLedgerSnap.docs.map(d => d.data() as PurchaseLedgerEntry);
+      }
+      if (legacyImeiSnap && !legacyImeiSnap.empty) {
+        extraPatch.imeiRecords = legacyImeiSnap.docs.map(d => d.data() as ImeiRecord);
+      }
+      if (Object.keys(extraPatch).length > 0) {
+        accumulatedData = mergeAppData(accumulatedData, extraPatch);
       }
     } catch {
       // ignore
     }
-  }
-
-  // 4. Scan legacy pos_data/main_store collection
-  try {
-    const legacyStore = await loadAppDataFromLegacyFirestore();
-    if (legacyStore) {
-      accumulatedData = mergeAppData(accumulatedData, legacyStore);
-    }
-    const [legacyPurSnap, legacyLedgerSnap, legacyImeiSnap] = await Promise.all([
-      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.PURCHASES)).catch(() => null),
-      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.PURCHASES_LEDGER)).catch(() => null),
-      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.IMEI_RECORDS)).catch(() => null),
-    ]);
-    const extraPatch: Partial<AppData> = {};
-    if (legacyPurSnap && !legacyPurSnap.empty) {
-      extraPatch.supplierPurchases = legacyPurSnap.docs.map(d => d.data() as SupplierPurchase);
-    }
-    if (legacyLedgerSnap && !legacyLedgerSnap.empty) {
-      extraPatch.purchasesLedger = legacyLedgerSnap.docs.map(d => d.data() as PurchaseLedgerEntry);
-    }
-    if (legacyImeiSnap && !legacyImeiSnap.empty) {
-      extraPatch.imeiRecords = legacyImeiSnap.docs.map(d => d.data() as ImeiRecord);
-    }
-    if (Object.keys(extraPatch).length > 0) {
-      accumulatedData = mergeAppData(accumulatedData, extraPatch);
-    }
-  } catch {
-    // ignore
   }
 
   const finalPurchaseCount = (accumulatedData.supplierPurchases || []).length;
@@ -2172,7 +2207,7 @@ export async function recoverAllMissingStoreData(
   await saveToIndexedDB(storeId, accumulatedData);
   safeSetLocalStorage(getLocalStorageKey(storeId), accumulatedData);
 
-  if (recoveredPurchasesCount > 0) {
+  if (recoveredPurchasesCount > 0 && !getQuotaExceededFlag()) {
     for (const pur of accumulatedData.supplierPurchases || []) {
       savePurchaseToFirestore(pur, storeId).catch(() => {});
     }
@@ -2281,7 +2316,7 @@ export async function migrateAndInitializeData(
         (mergedData.expenses?.length || 0) > (remoteData.expenses?.length || 0) ||
         (mergedData.supplierPurchases?.length || 0) > (remoteData.supplierPurchases?.length || 0);
 
-      if (localHadNewerOrExtra) {
+      if (localHadNewerOrExtra && !getQuotaExceededFlag()) {
         saveAppDataToFirestore(mergedData, storeId).catch(() => {});
       }
     } else {
