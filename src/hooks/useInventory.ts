@@ -11,6 +11,10 @@ import {
   saveInventoryItemToFirestore,
   deleteInventoryItemFromFirestore,
   saveRootConfigToFirestore,
+  saveStockAdjustmentToFirestore,
+  saveImeiRecordsBatchToFirestore,
+  savePurchasesLedgerBatchToFirestore,
+  savePurchaseToFirestore,
 } from '../utils/storage';
 import { hasPermission } from '../utils/permissions';
 import { generateEntityId } from '../utils/id';
@@ -44,10 +48,14 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
       adjustedAt: new Date().toISOString(),
     };
 
+    const nextAdjustments = [newAdjustment, ...(data.stockAdjustments || [])];
     setData(prev => ({
       ...prev,
       stockAdjustments: [newAdjustment, ...(prev.stockAdjustments || [])],
     }));
+
+    saveStockAdjustmentToFirestore(newAdjustment).catch(() => {});
+    saveRootConfigToFirestore({ stockAdjustments: nextAdjustments }).catch(() => {});
 
     logActivity(
       'Inventory',
@@ -101,6 +109,11 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
         status: singleItem.status || existingProduct?.status || 'ACTIVE',
       };
 
+      const syncedImeis = recordImeisAvailable({
+        items: [updatedItem],
+        existingImeiRecords: data.imeiRecords || [],
+      });
+
       setData(prev => {
         // Clean up any other legacy separate variant records with the same base name and category
         const cleanBase = singleItem.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
@@ -142,6 +155,10 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
       saveInventoryItemToFirestore(updatedItem).catch(err => {
         console.warn('Firestore inventory update warning:', err);
       });
+      if (syncedImeis.length > 0) {
+        saveImeiRecordsBatchToFirestore(syncedImeis).catch(() => {});
+        saveRootConfigToFirestore({ imeiRecords: syncedImeis }).catch(() => {});
+      }
 
       logActivity(
         'Inventory',
@@ -167,6 +184,12 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
         total: item.costPrice * item.qty,
       }));
 
+      const syncedImeis = recordImeisAvailable({
+        items: newItems,
+        existingImeiRecords: data.imeiRecords || [],
+      });
+      const syncedLedger = [...newPurchases, ...(data.purchasesLedger || [])];
+
       setData(prev => {
         const updatedImeiRecords = recordImeisAvailable({
           items: newItems,
@@ -176,7 +199,7 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
         return {
           ...prev,
           inventory: [...newItems, ...prev.inventory],
-          purchasesLedger: [...newPurchases, ...prev.purchasesLedger],
+          purchasesLedger: [...newPurchases, ...(prev.purchasesLedger || [])],
           imeiRecords: updatedImeiRecords,
         };
       });
@@ -187,6 +210,14 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
           console.warn('Firestore new item save warning:', err);
         });
       }
+      savePurchasesLedgerBatchToFirestore(newPurchases).catch(() => {});
+      if (syncedImeis.length > 0) {
+        saveImeiRecordsBatchToFirestore(syncedImeis).catch(() => {});
+      }
+      saveRootConfigToFirestore({
+        purchasesLedger: syncedLedger,
+        imeiRecords: syncedImeis,
+      }).catch(() => {});
 
       if (itemsList.length === 1) {
         logActivity(
@@ -279,6 +310,7 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
       .map(i => i.id);
 
     // Filter out item and its variants from inventory array and clean up imeiRecords
+    const remainingImeis = (data.imeiRecords || []).filter(rec => !relatedIds.includes(rec.productId));
     setData(prev => ({
       ...prev,
       inventory: prev.inventory.filter(item => !relatedIds.includes(item.id)),
@@ -290,6 +322,7 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
         console.warn('Firestore permanent delete item warning:', err);
       });
     });
+    saveRootConfigToFirestore({ imeiRecords: remainingImeis }).catch(() => {});
 
     logActivity(
       'Inventory',
@@ -385,68 +418,73 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
       return false;
     }
 
-    let updatedCategories: string[] = [];
-    let updatedInventoryToSync: InventoryItem[] = [];
-    let updatedImeisToSync: typeof data.imeiRecords = [];
-    let updatedPurchasesToSync: typeof data.supplierPurchases = [];
+    const updatedCategories = (data.categories || []).map(c =>
+      c.toLowerCase() === cleanOld.toLowerCase() ? cleanNew : c
+    );
+    if (!updatedCategories.some(c => c.toLowerCase() === cleanNew.toLowerCase())) {
+      updatedCategories.push(cleanNew);
+    }
 
-    setData(prev => {
-      updatedCategories = (prev.categories || []).map(c =>
-        c.toLowerCase() === cleanOld.toLowerCase() ? cleanNew : c
-      );
-      if (!updatedCategories.some(c => c.toLowerCase() === cleanNew.toLowerCase())) {
-        updatedCategories.push(cleanNew);
+    const updatedInventoryToSync: InventoryItem[] = [];
+    (data.inventory || []).forEach(item => {
+      if ((item.category || '').trim().toLowerCase() === cleanOld.toLowerCase()) {
+        updatedInventoryToSync.push({ ...item, category: cleanNew });
       }
+    });
 
-      const updatedInventory = (prev.inventory || []).map(item => {
-        if ((item.category || '').trim().toLowerCase() === cleanOld.toLowerCase()) {
-          const nextItem = { ...item, category: cleanNew };
-          updatedInventoryToSync.push(nextItem);
-          return nextItem;
-        }
-        return item;
-      });
+    const updatedImeisToSync = (data.imeiRecords || []).map(rec =>
+      (rec.category || '').trim().toLowerCase() === cleanOld.toLowerCase()
+        ? { ...rec, category: cleanNew }
+        : rec
+    );
 
-      const updatedImeiRecords = (prev.imeiRecords || []).map(rec =>
+    const updatedPurchasesToSync = (data.supplierPurchases || []).map(pur => ({
+      ...pur,
+      items: (pur.items || []).map(pi =>
+        (pi.category || '').trim().toLowerCase() === cleanOld.toLowerCase()
+          ? { ...pi, category: cleanNew }
+          : pi
+      ),
+    }));
+
+    setData(prev => ({
+      ...prev,
+      categories: updatedCategories,
+      inventory: (prev.inventory || []).map(item =>
+        (item.category || '').trim().toLowerCase() === cleanOld.toLowerCase()
+          ? { ...item, category: cleanNew }
+          : item
+      ),
+      imeiRecords: (prev.imeiRecords || []).map(rec =>
         (rec.category || '').trim().toLowerCase() === cleanOld.toLowerCase()
           ? { ...rec, category: cleanNew }
           : rec
-      );
-
-      const updatedPurchases = (prev.supplierPurchases || []).map(pur => ({
+      ),
+      supplierPurchases: (prev.supplierPurchases || []).map(pur => ({
         ...pur,
         items: (pur.items || []).map(pi =>
           (pi.category || '').trim().toLowerCase() === cleanOld.toLowerCase()
             ? { ...pi, category: cleanNew }
             : pi
         ),
-      }));
+      })),
+    }));
 
-      updatedImeisToSync = updatedImeiRecords;
-      updatedPurchasesToSync = updatedPurchases;
-
-      return {
-        ...prev,
-        categories: updatedCategories,
-        inventory: updatedInventory,
-        imeiRecords: updatedImeiRecords,
-        supplierPurchases: updatedPurchases,
-      };
+    updatedInventoryToSync.forEach(item => {
+      saveInventoryItemToFirestore(item).catch(err => {
+        console.warn('Firestore category rename inventory sync warning:', err);
+      });
     });
-
-    queueMicrotask(() => {
-      updatedInventoryToSync.forEach(item => {
-        saveInventoryItemToFirestore(item).catch(err => {
-          console.warn('Firestore category rename inventory sync warning:', err);
-        });
-      });
-      saveRootConfigToFirestore({
-        categories: updatedCategories,
-        imeiRecords: updatedImeisToSync,
-        supplierPurchases: updatedPurchasesToSync,
-      }).catch(err => {
-        console.warn('Firestore category rename config sync warning:', err);
-      });
+    updatedPurchasesToSync.forEach(pur => {
+      savePurchaseToFirestore(pur).catch(() => {});
+    });
+    saveImeiRecordsBatchToFirestore(updatedImeisToSync).catch(() => {});
+    saveRootConfigToFirestore({
+      categories: updatedCategories,
+      imeiRecords: updatedImeisToSync,
+      supplierPurchases: updatedPurchasesToSync,
+    }).catch(err => {
+      console.warn('Firestore category rename config sync warning:', err);
     });
 
     logActivity(
@@ -467,6 +505,10 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
       status: 'ACTIVE',
     };
 
+    const syncedImeis = recordImeisAvailable({
+      items: [newItem],
+      existingImeiRecords: data.imeiRecords || [],
+    });
     setData(prev => {
       const updatedImeis = recordImeisAvailable({
         items: [newItem],
@@ -482,6 +524,10 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
     saveInventoryItemToFirestore(newItem).catch(err => {
       console.warn('Firestore purchase item save warning:', err);
     });
+    if (syncedImeis.length > 0) {
+      saveImeiRecordsBatchToFirestore(syncedImeis).catch(() => {});
+      saveRootConfigToFirestore({ imeiRecords: syncedImeis }).catch(() => {});
+    }
 
     logActivity(
       'Inventory',

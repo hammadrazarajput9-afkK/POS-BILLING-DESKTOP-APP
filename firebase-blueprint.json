@@ -189,6 +189,71 @@
           "description": "Account registration timestamp"
         }
       }
+    },
+    "SupplierPurchase": {
+      "title": "SupplierPurchase",
+      "description": "Supplier Stock Inward bill with items, IMEIs, payment tracking, and optional compressed invoice photo",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique purchase bill ID" },
+        "billNo": { "type": "string", "description": "Supplier invoice bill number" },
+        "partyName": { "type": "string", "description": "Supplier / party name" },
+        "date": { "type": "string", "description": "Purchase bill ISO date" },
+        "totalAmount": { "type": "number", "description": "Total inward bill amount" },
+        "paidAmount": { "type": "number", "description": "Paid amount" },
+        "balanceDue": { "type": "number", "description": "Outstanding payable balance" }
+      }
+    },
+    "DailyClosing": {
+      "title": "DailyClosing",
+      "description": "Daily cash and bank closing register record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique closing ID" },
+        "date": { "type": "string", "description": "Closing date YYYY-MM-DD" },
+        "grandTotal": { "type": "number", "description": "Combined cash and bank closing total" }
+      }
+    },
+    "SalesReturn": {
+      "title": "SalesReturn",
+      "description": "Customer sales return and refund record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique return ID" },
+        "returnNo": { "type": "string", "description": "Return voucher number" },
+        "originalInvNo": { "type": "string", "description": "Original invoice number" },
+        "totalRefundAmount": { "type": "number", "description": "Refunded amount" }
+      }
+    },
+    "StockAdjustment": {
+      "title": "StockAdjustment",
+      "description": "Inventory quantity adjustment audit record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique adjustment ID" },
+        "productId": { "type": "string", "description": "Adjusted inventory product ID" },
+        "difference": { "type": "number", "description": "Quantity delta" }
+      }
+    },
+    "PurchaseLedgerEntry": {
+      "title": "PurchaseLedgerEntry",
+      "description": "Itemized stock inward ledger line item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique ledger entry ID" },
+        "itemTitle": { "type": "string", "description": "Purchased product and supplier label" },
+        "total": { "type": "number", "description": "Total line cost" }
+      }
+    },
+    "ImeiRecord": {
+      "title": "ImeiRecord",
+      "description": "Permanent per-device IMEI lifecycle tracking record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique IMEI record ID" },
+        "imei": { "type": "string", "description": "Device IMEI number" },
+        "status": { "type": "string", "description": "Current status (AVAILABLE, SOLD, RETURNED)" }
+      }
     }
   },
   "firestore": {
@@ -223,6 +288,30 @@
     "/stores/{storeId}/users/{userId}": {
       "schema": "UserAccount",
       "description": "Store user account profiles and salesmen isolated per store"
+    },
+    "/stores/{storeId}/purchases/{purchaseId}": {
+      "schema": "SupplierPurchase",
+      "description": "Supplier purchases and Stock Inward bills isolated per store"
+    },
+    "/stores/{storeId}/daily_closings/{closingId}": {
+      "schema": "DailyClosing",
+      "description": "Daily closing register records isolated per store"
+    },
+    "/stores/{storeId}/sales_returns/{returnId}": {
+      "schema": "SalesReturn",
+      "description": "Sales return records isolated per store"
+    },
+    "/stores/{storeId}/stock_adjustments/{adjustmentId}": {
+      "schema": "StockAdjustment",
+      "description": "Inventory stock adjustment records isolated per store"
+    },
+    "/stores/{storeId}/purchases_ledger/{entryId}": {
+      "schema": "PurchaseLedgerEntry",
+      "description": "Purchases cost ledger entries isolated per store"
+    },
+    "/stores/{storeId}/imei_records/{recordId}": {
+      "schema": "ImeiRecord",
+      "description": "Permanent IMEI lifecycle tracking records isolated per store"
     },
     "/pos_data/{storeId}": {
       "schema": "StoreConfig",

@@ -3,7 +3,7 @@ import { Cloud, CloudOff, AlertCircle, ExternalLink, RefreshCw } from 'lucide-re
 import { getQuotaExceededFlag, subscribeQuotaState } from '../utils/firebase';
 
 export interface OnlineStatusBadgeProps {
-  onRefreshData?: () => void;
+  onRefreshData?: () => void | Promise<void>;
 }
 
 export const OnlineStatusBadge: React.FC<OnlineStatusBadgeProps> = ({ onRefreshData }) => {
@@ -33,10 +33,11 @@ export const OnlineStatusBadge: React.FC<OnlineStatusBadgeProps> = ({ onRefreshD
 
   const handleTriggerSync = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (onRefreshData) {
+    if (onRefreshData && !isSyncing) {
       setIsSyncing(true);
-      onRefreshData();
-      setTimeout(() => setIsSyncing(false), 1200);
+      Promise.resolve(onRefreshData()).finally(() => {
+        setTimeout(() => setIsSyncing(false), 400);
+      });
     }
   };
 

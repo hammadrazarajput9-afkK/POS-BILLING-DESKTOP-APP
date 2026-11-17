@@ -64,6 +64,12 @@ export const SUB_COLLECTIONS = {
   EXPENSES: 'expenses',
   ACTIVITIES: 'activities',
   USERS: 'users',
+  PURCHASES: 'purchases',
+  DAILY_CLOSINGS: 'daily_closings',
+  SALES_RETURNS: 'sales_returns',
+  STOCK_ADJUSTMENTS: 'stock_adjustments',
+  PURCHASES_LEDGER: 'purchases_ledger',
+  IMEI_RECORDS: 'imei_records',
 } as const;
 
 // Legacy storage keys
@@ -102,8 +108,8 @@ export function saveCurrentSession(user?: UserAccount | null): void {
   try {
     if (user) {
       localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(user));
-      const sid = user.storeId || user.id;
-      setActiveStoreId(sid);
+      // Keep active store unified to DEFAULT_STORE_ID so writes and real-time listeners always share the same store path
+      setActiveStoreId(DEFAULT_STORE_ID);
     } else {
       localStorage.removeItem(SESSION_STORAGE_KEY);
     }
@@ -148,7 +154,20 @@ export const defaultSettings: ShopSettings = {
   loginPageLogo: '/assets/aistudio/Gemini_Generated_Image_5gj5px5gj5px5gj5_cc4a2a95.png',
 };
 
-export const defaultCategories: string[] = ['Android Mobile', 'Keypad Phone', 'Accessories', 'Chargers & Cables', 'Audio & AirPods', 'Repair Parts'];
+export const defaultCategories: string[] = ['Android Phone', 'Keypad Phone'];
+
+export function cleanCategories(rawCategories: unknown): string[] {
+  const oldDefaults = new Set(['android mobile', 'accessories', 'chargers & cables', 'audio & airpods', 'repair parts']);
+  const list = Array.isArray(rawCategories) ? rawCategories.map(c => String(c).trim()).filter(Boolean) : [];
+  const filtered = list.filter(c => !oldDefaults.has(c.toLowerCase()));
+  if (!filtered.some(c => c.toLowerCase() === 'android phone' || c.toLowerCase() === 'android mobile')) {
+    filtered.unshift('Android Phone');
+  }
+  if (!filtered.some(c => c.toLowerCase() === 'keypad phone')) {
+    filtered.push('Keypad Phone');
+  }
+  return filtered.map(c => (c.toLowerCase() === 'android mobile' ? 'Android Phone' : c));
+}
 
 export const defaultExpenseCategories: string[] = [
   'Shop Rent',
@@ -314,7 +333,7 @@ export function validateBackupData(parsed: unknown): BackupValidationResult {
     purchasesLedger: Array.isArray(raw.purchasesLedger) ? (raw.purchasesLedger as PurchaseLedgerEntry[]) : [],
     supplierPurchases: Array.isArray(raw.supplierPurchases) ? (raw.supplierPurchases as SupplierPurchase[]) : [],
     settings: mergedSettings,
-    categories: Array.isArray(raw.categories) ? (raw.categories as string[]) : defaultCategories,
+    categories: cleanCategories(raw.categories),
     expenseCategories: Array.isArray(raw.expenseCategories) ? (raw.expenseCategories as string[]) : defaultExpenseCategories,
     activities: Array.isArray(raw.activities) ? (raw.activities as ActivityLog[]) : [],
     dailyClosings: Array.isArray(raw.dailyClosings) ? raw.dailyClosings : [],
@@ -580,10 +599,175 @@ export async function deleteExpenseItemFromFirestore(id: string, targetStoreId?:
 export async function saveActivityLogToFirestore(activity: ActivityLog, targetStoreId?: string): Promise<void> {
   const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   try {
-    const actDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.ACTIVITIES, activity.id);
+    const actDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.ACTIVITIES, toValidFirestoreDocId(activity.id, 'ACT'));
     await setDoc(actDocRef, sanitizeForFirestore(activity) as Record<string, unknown>);
   } catch (err) {
+    if (isQuotaError(err)) {
+      setQuotaExceededFlag(true);
+      return;
+    }
     console.warn(`Failed to save activity log [${activity.id}] to store [${storeId}]:`, err);
+  }
+}
+
+/**
+ * Ensures any document ID written to Firestore strictly complies with firestore.rules `isValidId` (`^[a-zA-Z0-9_-]{1,128}$`).
+ */
+export function toValidFirestoreDocId(rawId: string | undefined, fallbackPrefix = 'DOC'): string {
+  const cleaned = String(rawId || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, '_');
+  if (!cleaned) {
+    return generateEntityId(fallbackPrefix);
+  }
+  return cleaned.slice(0, 128);
+}
+
+/**
+ * Saves a single supplier purchase bill to `/stores/{storeId}/purchases/{id}`
+ */
+export async function savePurchaseToFirestore(purchase: SupplierPurchase, targetStoreId?: string): Promise<void> {
+  const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
+  const docId = toValidFirestoreDocId(purchase.id || purchase.billNo, 'PUR');
+  try {
+    const purDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.PURCHASES, docId);
+    await setDoc(purDocRef, sanitizeForFirestore(purchase) as Record<string, unknown>, { merge: true });
+  } catch (err) {
+    if (isQuotaError(err)) {
+      setQuotaExceededFlag(true);
+      return;
+    }
+    console.warn(`Failed to save supplier purchase [${docId}] to store [${storeId}]:`, err);
+  }
+}
+
+/**
+ * Saves a daily closing record to `/stores/{storeId}/daily_closings/{id}`
+ */
+export async function saveDailyClosingToFirestore(record: DailyClosingRecord, targetStoreId?: string): Promise<void> {
+  const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
+  const docId = toValidFirestoreDocId(record.id || record.date, 'DCL');
+  try {
+    const closingDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.DAILY_CLOSINGS, docId);
+    await setDoc(closingDocRef, sanitizeForFirestore(record) as Record<string, unknown>, { merge: true });
+  } catch (err) {
+    if (isQuotaError(err)) {
+      setQuotaExceededFlag(true);
+      return;
+    }
+    console.warn(`Failed to save daily closing [${docId}] to store [${storeId}]:`, err);
+  }
+}
+
+/**
+ * Deletes a daily closing record from `/stores/{storeId}/daily_closings/{id}`
+ */
+export async function deleteDailyClosingFromFirestore(id: string, targetStoreId?: string): Promise<void> {
+  const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
+  const docId = toValidFirestoreDocId(id, 'DCL');
+  try {
+    const closingDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.DAILY_CLOSINGS, docId);
+    await deleteDoc(closingDocRef);
+  } catch (err) {
+    if (isQuotaError(err)) {
+      setQuotaExceededFlag(true);
+      return;
+    }
+    console.warn(`Failed to delete daily closing [${docId}] from store [${storeId}]:`, err);
+  }
+}
+
+/**
+ * Saves a stock adjustment record to `/stores/{storeId}/stock_adjustments/{id}`
+ */
+export async function saveStockAdjustmentToFirestore(adj: StockAdjustment, targetStoreId?: string): Promise<void> {
+  const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
+  const docId = toValidFirestoreDocId(adj.id, 'ADJ');
+  try {
+    const adjDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.STOCK_ADJUSTMENTS, docId);
+    await setDoc(adjDocRef, sanitizeForFirestore(adj) as Record<string, unknown>, { merge: true });
+  } catch (err) {
+    if (isQuotaError(err)) {
+      setQuotaExceededFlag(true);
+      return;
+    }
+    console.warn(`Failed to save stock adjustment [${docId}] to store [${storeId}]:`, err);
+  }
+}
+
+/**
+ * Saves a sales return record to `/stores/{storeId}/sales_returns/{id}`
+ */
+export async function saveSalesReturnToFirestore(ret: SalesReturnRecord, targetStoreId?: string): Promise<void> {
+  const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
+  const docId = toValidFirestoreDocId(ret.id || ret.returnNo, 'RET');
+  try {
+    const retDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.SALES_RETURNS, docId);
+    await setDoc(retDocRef, sanitizeForFirestore(ret) as Record<string, unknown>, { merge: true });
+  } catch (err) {
+    if (isQuotaError(err)) {
+      setQuotaExceededFlag(true);
+      return;
+    }
+    console.warn(`Failed to save sales return [${docId}] to store [${storeId}]:`, err);
+  }
+}
+
+/**
+ * Saves a batch of purchase ledger entries to `/stores/{storeId}/purchases_ledger/{id}`
+ */
+export async function savePurchasesLedgerBatchToFirestore(
+  entries: PurchaseLedgerEntry[],
+  targetStoreId?: string
+): Promise<void> {
+  if (!entries || entries.length === 0) return;
+  const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
+  try {
+    const chunks = chunkArray(entries, 450);
+    for (const chunk of chunks) {
+      const batch = writeBatch(db);
+      for (const entry of chunk) {
+        const docId = toValidFirestoreDocId(entry.id, 'PL');
+        const ref = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.PURCHASES_LEDGER, docId);
+        batch.set(ref, sanitizeForFirestore(entry) as Record<string, unknown>, { merge: true });
+      }
+      await batch.commit();
+    }
+  } catch (err) {
+    if (isQuotaError(err)) {
+      setQuotaExceededFlag(true);
+      return;
+    }
+    console.warn(`Failed to batch-save purchases ledger to store [${storeId}]:`, err);
+  }
+}
+
+/**
+ * Saves a batch of IMEI tracking records to `/stores/{storeId}/imei_records/{id}`
+ */
+export async function saveImeiRecordsBatchToFirestore(
+  records: ImeiRecord[],
+  targetStoreId?: string
+): Promise<void> {
+  if (!records || records.length === 0) return;
+  const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
+  try {
+    const chunks = chunkArray(records, 450);
+    for (const chunk of chunks) {
+      const batch = writeBatch(db);
+      for (const rec of chunk) {
+        const docId = toValidFirestoreDocId(rec.id || rec.imei, 'IMEI');
+        const ref = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.IMEI_RECORDS, docId);
+        batch.set(ref, sanitizeForFirestore(rec) as Record<string, unknown>, { merge: true });
+      }
+      await batch.commit();
+    }
+  } catch (err) {
+    if (isQuotaError(err)) {
+      setQuotaExceededFlag(true);
+      return;
+    }
+    console.warn(`Failed to batch-save IMEI records to store [${storeId}]:`, err);
   }
 }
 
@@ -753,6 +937,131 @@ export function subscribeToStoreFullData(
     );
   } catch (err) {
     console.warn(`Expenses listener initialization error [${storeId}]:`, err);
+  }
+
+  // 6. Supplier Purchases Subcollection Real-time Listener
+  try {
+    const purColRef = collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.PURCHASES);
+    unsubs.push(
+      onSnapshot(
+        purColRef,
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const supplierPurchases: SupplierPurchase[] = [];
+            snapshot.forEach(d => supplierPurchases.push(d.data() as SupplierPurchase));
+            supplierPurchases.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            onUpdate({ supplierPurchases });
+          }
+        },
+        (err) => console.warn(`Purchases real-time sync notice [${storeId}]:`, err)
+      )
+    );
+  } catch (err) {
+    console.warn(`Purchases listener initialization error [${storeId}]:`, err);
+  }
+
+  // 7. Daily Closings Subcollection Real-time Listener
+  try {
+    const closingColRef = collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.DAILY_CLOSINGS);
+    unsubs.push(
+      onSnapshot(
+        closingColRef,
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const dailyClosings: DailyClosingRecord[] = [];
+            snapshot.forEach(d => dailyClosings.push(d.data() as DailyClosingRecord));
+            dailyClosings.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            onUpdate({ dailyClosings });
+          }
+        },
+        (err) => console.warn(`Daily closings real-time sync notice [${storeId}]:`, err)
+      )
+    );
+  } catch (err) {
+    console.warn(`Daily closings listener initialization error [${storeId}]:`, err);
+  }
+
+  // 8. Sales Returns Subcollection Real-time Listener
+  try {
+    const retColRef = collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.SALES_RETURNS);
+    unsubs.push(
+      onSnapshot(
+        retColRef,
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const salesReturns: SalesReturnRecord[] = [];
+            snapshot.forEach(d => salesReturns.push(d.data() as SalesReturnRecord));
+            salesReturns.sort((a, b) => new Date(b.returnDate).getTime() - new Date(a.returnDate).getTime());
+            onUpdate({ salesReturns });
+          }
+        },
+        (err) => console.warn(`Sales returns real-time sync notice [${storeId}]:`, err)
+      )
+    );
+  } catch (err) {
+    console.warn(`Sales returns listener initialization error [${storeId}]:`, err);
+  }
+
+  // 9. Stock Adjustments Subcollection Real-time Listener
+  try {
+    const adjColRef = collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.STOCK_ADJUSTMENTS);
+    unsubs.push(
+      onSnapshot(
+        adjColRef,
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const stockAdjustments: StockAdjustment[] = [];
+            snapshot.forEach(d => stockAdjustments.push(d.data() as StockAdjustment));
+            stockAdjustments.sort((a, b) => new Date(b.adjustedAt).getTime() - new Date(a.adjustedAt).getTime());
+            onUpdate({ stockAdjustments });
+          }
+        },
+        (err) => console.warn(`Stock adjustments real-time sync notice [${storeId}]:`, err)
+      )
+    );
+  } catch (err) {
+    console.warn(`Stock adjustments listener initialization error [${storeId}]:`, err);
+  }
+
+  // 10. Purchases Ledger Subcollection Real-time Listener
+  try {
+    const ledgerColRef = collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.PURCHASES_LEDGER);
+    unsubs.push(
+      onSnapshot(
+        ledgerColRef,
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const purchasesLedger: PurchaseLedgerEntry[] = [];
+            snapshot.forEach(d => purchasesLedger.push(d.data() as PurchaseLedgerEntry));
+            purchasesLedger.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            onUpdate({ purchasesLedger });
+          }
+        },
+        (err) => console.warn(`Purchases ledger real-time sync notice [${storeId}]:`, err)
+      )
+    );
+  } catch (err) {
+    console.warn(`Purchases ledger listener initialization error [${storeId}]:`, err);
+  }
+
+  // 11. IMEI Records Subcollection Real-time Listener
+  try {
+    const imeiColRef = collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.IMEI_RECORDS);
+    unsubs.push(
+      onSnapshot(
+        imeiColRef,
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const imeiRecords: ImeiRecord[] = [];
+            snapshot.forEach(d => imeiRecords.push(d.data() as ImeiRecord));
+            onUpdate({ imeiRecords });
+          }
+        },
+        (err) => console.warn(`IMEI records real-time sync notice [${storeId}]:`, err)
+      )
+    );
+  } catch (err) {
+    console.warn(`IMEI records listener initialization error [${storeId}]:`, err);
   }
 
   return () => {
@@ -986,11 +1295,62 @@ export async function saveAppDataToFirestore(data: AppData, targetStoreId?: stri
     if (recentActivities.length > 0) {
       const batch = writeBatch(db);
       for (const act of recentActivities) {
-        const actRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.ACTIVITIES, act.id);
+        const actRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.ACTIVITIES, toValidFirestoreDocId(act.id, 'ACT'));
         batch.set(actRef, sanitizeForFirestore(act) as Record<string, unknown>);
       }
       await batch.commit();
     }
+
+    // 7. Save Supplier Purchases in batches
+    const purchaseChunks = chunkArray(data.supplierPurchases || [], 450);
+    for (const chunk of purchaseChunks) {
+      const batch = writeBatch(db);
+      for (const pur of chunk) {
+        const purRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.PURCHASES, toValidFirestoreDocId(pur.id || pur.billNo, 'PUR'));
+        batch.set(purRef, sanitizeForFirestore(pur) as Record<string, unknown>, { merge: true });
+      }
+      await batch.commit();
+    }
+
+    // 8. Save Daily Closings, Sales Returns, Stock Adjustments, Purchases Ledger, and IMEI Records
+    if (data.dailyClosings && data.dailyClosings.length > 0) {
+      const closingChunks = chunkArray(data.dailyClosings, 450);
+      for (const chunk of closingChunks) {
+        const batch = writeBatch(db);
+        for (const rec of chunk) {
+          const ref = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.DAILY_CLOSINGS, toValidFirestoreDocId(rec.id || rec.date, 'DCL'));
+          batch.set(ref, sanitizeForFirestore(rec) as Record<string, unknown>, { merge: true });
+        }
+        await batch.commit();
+      }
+    }
+
+    if (data.salesReturns && data.salesReturns.length > 0) {
+      const returnChunks = chunkArray(data.salesReturns, 450);
+      for (const chunk of returnChunks) {
+        const batch = writeBatch(db);
+        for (const ret of chunk) {
+          const ref = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.SALES_RETURNS, toValidFirestoreDocId(ret.id || ret.returnNo, 'RET'));
+          batch.set(ref, sanitizeForFirestore(ret) as Record<string, unknown>, { merge: true });
+        }
+        await batch.commit();
+      }
+    }
+
+    if (data.stockAdjustments && data.stockAdjustments.length > 0) {
+      const adjChunks = chunkArray(data.stockAdjustments, 450);
+      for (const chunk of adjChunks) {
+        const batch = writeBatch(db);
+        for (const adj of chunk) {
+          const ref = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.STOCK_ADJUSTMENTS, toValidFirestoreDocId(adj.id, 'ADJ'));
+          batch.set(ref, sanitizeForFirestore(adj) as Record<string, unknown>, { merge: true });
+        }
+        await batch.commit();
+      }
+    }
+
+    await savePurchasesLedgerBatchToFirestore(data.purchasesLedger || [], storeId);
+    await saveImeiRecordsBatchToFirestore(data.imeiRecords || [], storeId);
   } catch (error) {
     console.warn(`Firebase Firestore save notice for store [${storeId}]:`, error);
     if (isQuotaError(error)) {
@@ -1039,7 +1399,21 @@ export async function loadAppDataFromFirestore(targetStoreId?: string): Promise<
     const rootData = rootDocSnap.data() as Record<string, unknown>;
 
     // Load sub-collections for this isolated store in parallel
-    const [salesSnap, invSnap, khataSnap, expSnap, actSnap, usersSnap] = await Promise.all([
+    const emptySnap = { docs: [], forEach: () => {} } as any;
+    const [
+      salesSnap,
+      invSnap,
+      khataSnap,
+      expSnap,
+      actSnap,
+      usersSnap,
+      purSnap,
+      closingSnap,
+      returnsSnap,
+      adjSnap,
+      ledgerSnap,
+      imeiSnap,
+    ] = await Promise.all([
       getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.SALES)),
       getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.INVENTORY)),
       getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.KHATA)),
@@ -1051,10 +1425,13 @@ export async function loadAppDataFromFirestore(targetStoreId?: string): Promise<
           limit(300)
         )
       ).catch(() => getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.ACTIVITIES))),
-      getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.USERS)).catch(() => ({
-        docs: [],
-        forEach: () => {},
-      } as any)),
+      getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.USERS)).catch(() => emptySnap),
+      getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.PURCHASES)).catch(() => emptySnap),
+      getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.DAILY_CLOSINGS)).catch(() => emptySnap),
+      getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.SALES_RETURNS)).catch(() => emptySnap),
+      getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.STOCK_ADJUSTMENTS)).catch(() => emptySnap),
+      getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.PURCHASES_LEDGER)).catch(() => emptySnap),
+      getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.IMEI_RECORDS)).catch(() => emptySnap),
     ]);
 
     const sales: SaleRecord[] = [];
@@ -1113,6 +1490,58 @@ export async function loadAppDataFromFirestore(targetStoreId?: string): Promise<
     const activities: ActivityLog[] = [];
     actSnap.forEach(docSnap => activities.push(docSnap.data() as ActivityLog));
 
+    const mergeSubAndRoot = <T>(rootArr: T[] = [], snap: any, keyFn: (item: T) => string | undefined): T[] => {
+      const map = new Map<string, T>();
+      (Array.isArray(rootArr) ? rootArr : []).forEach(item => {
+        const k = keyFn(item);
+        if (k) map.set(k, item);
+      });
+      if (snap && typeof snap.forEach === 'function') {
+        snap.forEach((docSnap: any) => {
+          const item = docSnap.data() as T;
+          const k = keyFn(item);
+          if (k) map.set(k, item);
+        });
+      }
+      return Array.from(map.values());
+    };
+
+    const supplierPurchases = mergeSubAndRoot(
+      (rootData.supplierPurchases as SupplierPurchase[]) || [],
+      purSnap,
+      p => p.id || p.billNo
+    ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    const dailyClosings = mergeSubAndRoot(
+      (rootData.dailyClosings as DailyClosingRecord[]) || [],
+      closingSnap,
+      d => d.id || d.date
+    ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    const salesReturns = mergeSubAndRoot(
+      (rootData.salesReturns as SalesReturnRecord[]) || [],
+      returnsSnap,
+      r => r.returnNo || r.id
+    ).sort((a, b) => new Date(b.returnDate).getTime() - new Date(a.returnDate).getTime());
+
+    const stockAdjustments = mergeSubAndRoot(
+      (rootData.stockAdjustments as StockAdjustment[]) || [],
+      adjSnap,
+      a => a.id
+    ).sort((a, b) => new Date(b.adjustedAt).getTime() - new Date(a.adjustedAt).getTime());
+
+    const purchasesLedger = mergeSubAndRoot(
+      (rootData.purchasesLedger as PurchaseLedgerEntry[]) || [],
+      ledgerSnap,
+      l => l.id
+    ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    const imeiRecords = mergeSubAndRoot(
+      (rootData.imeiRecords as ImeiRecord[]) || [],
+      imeiSnap,
+      r => r.id || r.imei
+    );
+
     // Reconcile users for this store
     const subUsers: UserAccount[] = [];
     if (usersSnap && usersSnap.docs) {
@@ -1143,15 +1572,15 @@ export async function loadAppDataFromFirestore(targetStoreId?: string): Promise<
       backupVersion: CURRENT_BACKUP_VERSION,
       lastModified: typeof rootData.lastModified === 'string' ? rootData.lastModified : new Date().toISOString(),
       settings: (rootData.settings as ShopSettings) || defaultSettings,
-      categories: Array.isArray(rootData.categories) ? (rootData.categories as string[]) : defaultCategories,
+      categories: cleanCategories(rootData.categories),
       expenseCategories: Array.isArray(rootData.expenseCategories) ? (rootData.expenseCategories as string[]) : defaultExpenseCategories,
       onlineAccounts: Array.isArray(rootData.onlineAccounts) ? (rootData.onlineAccounts as OnlineAccount[]) : defaultOnlineAccounts,
-      dailyClosings: (rootData.dailyClosings as DailyClosingRecord[]) || [],
-      imeiRecords: (rootData.imeiRecords as ImeiRecord[]) || [],
-      stockAdjustments: (rootData.stockAdjustments as StockAdjustment[]) || [],
-      purchasesLedger: (rootData.purchasesLedger as PurchaseLedgerEntry[]) || [],
-      supplierPurchases: (rootData.supplierPurchases as SupplierPurchase[]) || [],
-      salesReturns: (rootData.salesReturns as SalesReturnRecord[]) || [],
+      dailyClosings,
+      imeiRecords,
+      stockAdjustments,
+      purchasesLedger,
+      supplierPurchases,
+      salesReturns,
       tabPreferences: (rootData.tabPreferences as TabPreferences) || {},
       users: assembledUsers,
       currentRole: (rootData.currentRole as UserRole) || 'admin',
@@ -1225,7 +1654,7 @@ async function loadAppDataFromLegacyFirestore(): Promise<AppData | null> {
       backupVersion: CURRENT_BACKUP_VERSION,
       lastModified: new Date().toISOString(),
       settings: (rootData.settings as ShopSettings) || defaultSettings,
-      categories: Array.isArray(rootData.categories) ? (rootData.categories as string[]) : defaultCategories,
+      categories: cleanCategories(rootData.categories),
       expenseCategories: Array.isArray(rootData.expenseCategories) ? (rootData.expenseCategories as string[]) : defaultExpenseCategories,
       onlineAccounts: Array.isArray(rootData.onlineAccounts) ? (rootData.onlineAccounts as OnlineAccount[]) : defaultOnlineAccounts,
       dailyClosings: (rootData.dailyClosings as DailyClosingRecord[]) || [],
@@ -1388,6 +1817,15 @@ function stripLargePayloadForLocalStorage(data: AppData): AppData {
 
   return {
     ...data,
+    settings: data.settings
+      ? {
+          ...data.settings,
+          logo: sanitizeImg(data.settings.logo),
+          shopLogo: sanitizeImg(data.settings.shopLogo),
+          invoiceLogo: sanitizeImg(data.settings.invoiceLogo),
+          loginPageLogo: sanitizeImg(data.settings.loginPageLogo),
+        }
+      : data.settings,
     inventory: (data.inventory || []).map(item => ({
       ...item,
       image: sanitizeImg(item.image),
@@ -1395,6 +1833,18 @@ function stripLargePayloadForLocalStorage(data: AppData): AppData {
     khata: (data.khata || []).map(c => ({
       ...c,
       image: sanitizeImg(c.image),
+      history: (c.history || []).map(h => ({
+        ...h,
+        receiptImage: sanitizeImg(h.receiptImage),
+      })),
+    })),
+    expenses: (data.expenses || []).map(e => ({
+      ...e,
+      image: sanitizeImg(e.image),
+    })),
+    supplierPurchases: (data.supplierPurchases || []).map(p => ({
+      ...p,
+      invoiceImage: sanitizeImg(p.invoiceImage),
     })),
   };
 }
@@ -1423,12 +1873,9 @@ function safeSetLocalStorage(key: string, data: AppData): void {
           localStorage.removeItem(legacyKey);
         }
         const minimal: AppData = {
-          ...initialCleanData,
-          settings: data.settings,
-          categories: data.categories,
-          expenseCategories: data.expenseCategories,
-          inventory: (data.inventory || []).map(i => ({ ...i, image: undefined })),
-          khata: (data.khata || []).map(k => ({ ...k, image: undefined, history: [] })),
+          ...stripLargePayloadForLocalStorage(data),
+          sales: (data.sales || []).slice(0, 40),
+          activities: [],
         };
         localStorage.setItem(key, JSON.stringify(minimal));
       } catch {
@@ -1461,8 +1908,23 @@ export function saveStoredData(data: AppData, targetStoreId?: string): void {
   });
 }
 
-function mergeAppData(local: AppData, remote: AppData): AppData {
-  const mergeByField = <T>(arr1: T[] = [], arr2: T[] = [], keyFn: (item: T) => string | undefined): T[] => {
+export function mergeAppData(local: AppData, remote: Partial<AppData>): AppData {
+  const localSnapTime = Date.parse(local.lastModified || '') || 0;
+  const remoteSnapTime = Date.parse(remote.lastModified || '') || 0;
+  const preferLocalWhenAmbiguous = localSnapTime > 0 && remoteSnapTime > 0 && localSnapTime > remoteSnapTime;
+
+  const parseTime = (val?: string): number => {
+    if (!val) return 0;
+    const t = Date.parse(val);
+    return Number.isFinite(t) ? t : 0;
+  };
+
+  const mergeByField = <T>(
+    arr1: T[] = [],
+    arr2: T[] = [],
+    keyFn: (item: T) => string | undefined,
+    preferMergeFn?: (existing: T, incoming: T) => T
+  ): T[] => {
     const map = new Map<string, T>();
     (arr1 || []).forEach(item => {
       const k = keyFn(item);
@@ -1470,28 +1932,268 @@ function mergeAppData(local: AppData, remote: AppData): AppData {
     });
     (arr2 || []).forEach(item => {
       const k = keyFn(item);
-      if (k) map.set(k, item);
+      if (k) {
+        const existing = map.get(k);
+        map.set(k, existing && preferMergeFn ? preferMergeFn(existing, item) : item);
+      }
     });
     return Array.from(map.values());
+  };
+
+  const pickByTime = <T>(
+    ex: T,
+    inc: T,
+    getTimeStr: (x: T) => string | undefined
+  ): { winner: T; loser: T } => {
+    const exTime = parseTime(getTimeStr(ex));
+    const incTime = parseTime(getTimeStr(inc));
+    if (exTime > incTime) return { winner: ex, loser: inc };
+    if (incTime > exTime) return { winner: inc, loser: ex };
+    return preferLocalWhenAmbiguous ? { winner: ex, loser: inc } : { winner: inc, loser: ex };
   };
 
   const mergeStringArrays = (arr1: string[] = [], arr2: string[] = []): string[] => {
     return Array.from(new Set([...(arr1 || []), ...(arr2 || [])]));
   };
 
+  const mergedSettings = remote.settings
+    ? preferLocalWhenAmbiguous
+      ? {
+          ...remote.settings,
+          ...local.settings,
+          logo: local.settings?.logo || remote.settings?.logo,
+          shopLogo: local.settings?.shopLogo || remote.settings?.shopLogo,
+          invoiceLogo: local.settings?.invoiceLogo || remote.settings?.invoiceLogo,
+          loginPageLogo: local.settings?.loginPageLogo || remote.settings?.loginPageLogo,
+        }
+      : {
+          ...local.settings,
+          ...remote.settings,
+          logo: remote.settings?.logo || local.settings?.logo,
+          shopLogo: remote.settings?.shopLogo || local.settings?.shopLogo,
+          invoiceLogo: remote.settings?.invoiceLogo || local.settings?.invoiceLogo,
+          loginPageLogo: remote.settings?.loginPageLogo || local.settings?.loginPageLogo,
+        }
+    : local.settings;
+
   return {
+    ...local,
     ...remote,
-    inventory: mergeByField(local.inventory, remote.inventory, i => i.id) as any,
-    sales: mergeByField(local.sales, remote.sales, s => s.invNo) as any,
-    khata: mergeByField(local.khata, remote.khata, k => k.id) as any,
-    expenses: mergeByField(local.expenses, remote.expenses, e => e.id) as any,
-    supplierPurchases: mergeByField(local.supplierPurchases, remote.supplierPurchases, p => p.id || p.billNo) as any,
-    imeiRecords: mergeByField(local.imeiRecords, remote.imeiRecords, r => r.id || r.imei) as any,
-    purchasesLedger: mergeByField(local.purchasesLedger, remote.purchasesLedger, l => l.id) as any,
-    salesReturns: mergeByField(local.salesReturns, remote.salesReturns, ret => ret.returnNo || ret.id) as any,
-    activities: mergeByField(local.activities, remote.activities, act => act.id) as any,
-    categories: mergeStringArrays(local.categories, remote.categories),
-    expenseCategories: mergeStringArrays(local.expenseCategories, remote.expenseCategories),
+    backupVersion: CURRENT_BACKUP_VERSION,
+    lastModified:
+      localSnapTime > remoteSnapTime
+        ? local.lastModified || new Date().toISOString()
+        : remote.lastModified || local.lastModified || new Date().toISOString(),
+    settings: mergedSettings,
+    users: remote.users !== undefined ? (preferLocalWhenAmbiguous && (local.users?.length || 0) >= (remote.users?.length || 0) ? local.users! : remote.users) : (local.users || []),
+    inventory: remote.inventory !== undefined
+      ? mergeByField(local.inventory, remote.inventory, i => i.id, (ex, inc) => {
+          const { winner, loser } = pickByTime(ex, inc, x => x.createdAt);
+          return {
+            ...loser,
+            ...winner,
+            image: winner.image || loser.image,
+          };
+        })
+      : (local.inventory || []),
+    sales: remote.sales !== undefined
+      ? mergeByField(local.sales, remote.sales, s => s.invNo, (ex, inc) => pickByTime(ex, inc, x => x.date).winner)
+      : (local.sales || []),
+    khata: remote.khata !== undefined
+      ? mergeByField(local.khata, remote.khata, k => k.id, (ex, inc) => {
+          const { winner, loser } = pickByTime(ex, inc, x => x.lastUpdated);
+          return {
+            ...loser,
+            ...winner,
+            image: winner.image || loser.image,
+            history:
+              (winner.history?.length || 0) >= (loser.history?.length || 0)
+                ? winner.history
+                : loser.history,
+          };
+        })
+      : (local.khata || []),
+    expenses: remote.expenses !== undefined
+      ? mergeByField(local.expenses, remote.expenses, e => e.id, (ex, inc) => {
+          const { winner, loser } = pickByTime(ex, inc, x => x.date);
+          return {
+            ...loser,
+            ...winner,
+            image: winner.image || loser.image,
+          };
+        })
+      : (local.expenses || []),
+    supplierPurchases: remote.supplierPurchases !== undefined
+      ? mergeByField(local.supplierPurchases, remote.supplierPurchases, p => p.id || p.billNo, (ex, inc) => {
+          const { winner, loser } = pickByTime(ex, inc, x => x.reversedAt || x.date);
+          return {
+            ...loser,
+            ...winner,
+            invoiceImage: winner.invoiceImage || loser.invoiceImage,
+          };
+        })
+      : (local.supplierPurchases || []),
+    imeiRecords: remote.imeiRecords !== undefined
+      ? mergeByField(local.imeiRecords, remote.imeiRecords, r => r.id || r.imei, (ex, inc) =>
+          pickByTime(ex, inc, x => x.updatedAt || x.createdAt).winner
+        )
+      : (local.imeiRecords || []),
+    purchasesLedger: remote.purchasesLedger !== undefined
+      ? mergeByField(local.purchasesLedger, remote.purchasesLedger, l => l.id, (ex, inc) =>
+          pickByTime(ex, inc, x => x.date).winner
+        )
+      : (local.purchasesLedger || []),
+    salesReturns: remote.salesReturns !== undefined
+      ? mergeByField(local.salesReturns, remote.salesReturns, ret => ret.returnNo || ret.id, (ex, inc) =>
+          pickByTime(ex, inc, x => x.returnDate).winner
+        )
+      : (local.salesReturns || []),
+    stockAdjustments: remote.stockAdjustments !== undefined
+      ? mergeByField(local.stockAdjustments, remote.stockAdjustments, a => a.id, (ex, inc) =>
+          pickByTime(ex, inc, x => x.adjustedAt).winner
+        )
+      : (local.stockAdjustments || []),
+    dailyClosings: remote.dailyClosings !== undefined
+      ? mergeByField(local.dailyClosings, remote.dailyClosings, d => d.id || d.date, (ex, inc) =>
+          pickByTime(ex, inc, x => x.createdAt || x.date).winner
+        )
+      : (local.dailyClosings || []),
+    activities: remote.activities !== undefined
+      ? mergeByField(local.activities, remote.activities, act => act.id)
+      : (local.activities || []),
+    categories: remote.categories !== undefined
+      ? (preferLocalWhenAmbiguous && (local.categories?.length || 0) > 0 ? local.categories : mergeStringArrays(local.categories, remote.categories))
+      : (local.categories || []),
+    expenseCategories: remote.expenseCategories !== undefined
+      ? (preferLocalWhenAmbiguous && (local.expenseCategories?.length || 0) > 0 ? local.expenseCategories : mergeStringArrays(local.expenseCategories, remote.expenseCategories))
+      : (local.expenseCategories || defaultExpenseCategories),
+  };
+}
+
+/**
+ * Deep recovery utility that scans Firestore sub-collections, root docs, legacy collections,
+ * IndexedDB, and all localStorage partitions to recover any missing Stock Inward / purchase / ledger / IMEI records.
+ */
+export async function recoverAllMissingStoreData(
+  currentData: AppData,
+  targetStoreId?: string
+): Promise<{ mergedData: AppData; recoveredPurchasesCount: number }> {
+  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
+  const initialPurchaseCount = (currentData.supplierPurchases || []).length;
+  let accumulatedData: AppData = { ...currentData };
+
+  // 1. Scan all localStorage partitions (current store, default store, legacy keys)
+  try {
+    const candidateKeys = Array.from(
+      new Set([
+        getLocalStorageKey(storeId),
+        getLocalStorageKey(DEFAULT_STORE_ID),
+        STORAGE_KEY,
+        ...LEGACY_STORAGE_KEYS,
+      ])
+    );
+    for (const key of candidateKeys) {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      try {
+        const parsed = JSON.parse(raw);
+        const validation = validateBackupData(parsed);
+        if (validation.valid && validation.data) {
+          accumulatedData = mergeAppData(accumulatedData, validation.data);
+        }
+      } catch {
+        // ignore malformed local key
+      }
+    }
+  } catch {
+    // ignore localStorage read errors
+  }
+
+  // 2. Scan IndexedDB across storeId and known store keys
+  const storeIdsToScan = Array.from(
+    new Set([storeId, DEFAULT_STORE_ID, 'USR-ADM-1793988681742', 'USR-ADM-1793966178251'])
+  ).filter(Boolean);
+
+  for (const sid of storeIdsToScan) {
+    try {
+      const idbData = await loadFromIndexedDB(sid);
+      if (idbData) {
+        accumulatedData = mergeAppData(accumulatedData, idbData);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 3. Scan Firestore stores/{sid} root + subcollections
+  for (const sid of storeIdsToScan) {
+    try {
+      const remoteStore = await loadAppDataFromFirestore(sid);
+      if (remoteStore) {
+        accumulatedData = mergeAppData(accumulatedData, remoteStore);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 4. Scan legacy pos_data/main_store collection
+  try {
+    const legacyStore = await loadAppDataFromLegacyFirestore();
+    if (legacyStore) {
+      accumulatedData = mergeAppData(accumulatedData, legacyStore);
+    }
+    const [legacyPurSnap, legacyLedgerSnap, legacyImeiSnap] = await Promise.all([
+      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.PURCHASES)).catch(() => null),
+      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.PURCHASES_LEDGER)).catch(() => null),
+      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.IMEI_RECORDS)).catch(() => null),
+    ]);
+    const extraPatch: Partial<AppData> = {};
+    if (legacyPurSnap && !legacyPurSnap.empty) {
+      extraPatch.supplierPurchases = legacyPurSnap.docs.map(d => d.data() as SupplierPurchase);
+    }
+    if (legacyLedgerSnap && !legacyLedgerSnap.empty) {
+      extraPatch.purchasesLedger = legacyLedgerSnap.docs.map(d => d.data() as PurchaseLedgerEntry);
+    }
+    if (legacyImeiSnap && !legacyImeiSnap.empty) {
+      extraPatch.imeiRecords = legacyImeiSnap.docs.map(d => d.data() as ImeiRecord);
+    }
+    if (Object.keys(extraPatch).length > 0) {
+      accumulatedData = mergeAppData(accumulatedData, extraPatch);
+    }
+  } catch {
+    // ignore
+  }
+
+  const finalPurchaseCount = (accumulatedData.supplierPurchases || []).length;
+  const recoveredPurchasesCount = Math.max(0, finalPurchaseCount - initialPurchaseCount);
+
+  // Persist recovered dataset locally and sync back to primary store sub-collections
+  await saveToIndexedDB(storeId, accumulatedData);
+  safeSetLocalStorage(getLocalStorageKey(storeId), accumulatedData);
+
+  if (recoveredPurchasesCount > 0) {
+    for (const pur of accumulatedData.supplierPurchases || []) {
+      savePurchaseToFirestore(pur, storeId).catch(() => {});
+    }
+    savePurchasesLedgerBatchToFirestore(accumulatedData.purchasesLedger || [], storeId).catch(() => {});
+    saveImeiRecordsBatchToFirestore(accumulatedData.imeiRecords || [], storeId).catch(() => {});
+    saveRootConfigToFirestore(
+      {
+        supplierPurchases: accumulatedData.supplierPurchases,
+        purchasesLedger: accumulatedData.purchasesLedger,
+        imeiRecords: accumulatedData.imeiRecords,
+        dailyClosings: accumulatedData.dailyClosings,
+        salesReturns: accumulatedData.salesReturns,
+        stockAdjustments: accumulatedData.stockAdjustments,
+      },
+      storeId
+    ).catch(() => {});
+  }
+
+  return {
+    mergedData: accumulatedData,
+    recoveredPurchasesCount,
   };
 }
 
@@ -1502,57 +2204,93 @@ function mergeAppData(local: AppData, remote: AppData): AppData {
  */
 export async function migrateAndInitializeData(
   onDataLoaded: (data: AppData) => void,
-  targetStoreId?: string
+  targetStoreId?: string,
+  options?: { currentState?: AppData }
 ): Promise<void> {
   const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   setActiveStoreId(storeId);
 
   try {
-    // 1. Instant zero-latency render from synchronous localStorage mirror
-    const localData = loadStoredData(storeId);
-    onDataLoaded(localData);
+    let currentBestData: AppData;
 
-    // 2. Fast rehydration from IndexedDB (contains full images and full records)
-    let currentBestData = localData;
-    try {
-      const idbData = await loadFromIndexedDB(storeId);
-      if (idbData && ((idbData.inventory && idbData.inventory.length > 0) || (idbData.supplierPurchases && idbData.supplierPurchases.length > 0))) {
-        currentBestData = idbData;
-        onDataLoaded(idbData);
+    if (options?.currentState) {
+      // Already running session: start from live React state (never revert to stripped localStorage!)
+      currentBestData = options.currentState;
+      try {
+        const idbData = await loadFromIndexedDB(storeId);
+        if (idbData) {
+          currentBestData = mergeAppData(idbData, currentBestData);
+          onDataLoaded(currentBestData);
+        }
+      } catch (idbErr) {
+        console.warn('Manual sync IndexedDB rehydration warning:', idbErr);
       }
-    } catch (idbErr) {
-      console.warn('Initial IndexedDB rehydration warning:', idbErr);
+    } else {
+      // Cold boot: 1. Instant zero-latency render from localStorage mirror
+      const localData = loadStoredData(storeId);
+      currentBestData = localData;
+      onDataLoaded(localData);
+
+      // 2. Fast rehydration from IndexedDB (contains full images and full offline records)
+      try {
+        const idbData = await loadFromIndexedDB(storeId);
+        if (idbData) {
+          currentBestData = mergeAppData(localData, idbData);
+          onDataLoaded(currentBestData);
+        }
+      } catch (idbErr) {
+        console.warn('Initial IndexedDB rehydration warning:', idbErr);
+      }
     }
 
-    // 3. Remote synchronization from Firebase Firestore
+    // 3. Reconcile any entries saved under the logged-in admin's USR-ADM-* storeId from prior sessions
+    const sessionUser = getSavedSessionUser();
+    if (sessionUser?.storeId && sessionUser.storeId !== storeId) {
+      try {
+        const shadowRemote = await loadAppDataFromFirestore(sessionUser.storeId);
+        if (shadowRemote) {
+          currentBestData = mergeAppData(currentBestData, shadowRemote);
+        }
+      } catch {
+        // ignore shadow store read issues
+      }
+    }
+
+    // 4. Remote synchronization from Firebase Firestore primary store
     const remoteData = await loadAppDataFromFirestore(storeId);
 
     if (remoteData) {
-      // Intelligently merge remoteData and currentBestData so NO data (purchases, sales, inventory, khata, etc.) is ever lost!
+      const localTime = Date.parse(currentBestData.lastModified || '') || 0;
+      const remoteTime = Date.parse(remoteData.lastModified || '') || 0;
+
+      // Timestamp-aware merge preserves newer local edits & product images while pulling newer cloud entries
       const mergedData = mergeAppData(currentBestData, remoteData);
-      
+
       // Update IndexedDB (full payload) and safe localStorage mirror
       await saveToIndexedDB(storeId, mergedData);
       safeSetLocalStorage(getLocalStorageKey(storeId), mergedData);
 
       onDataLoaded(mergedData);
 
-      // Save back merged data to ensure cloud Firestore is fully updated with any local-only entries
-      saveRootConfigToFirestore({
-        supplierPurchases: mergedData.supplierPurchases,
-        purchasesLedger: mergedData.purchasesLedger,
-        imeiRecords: mergedData.imeiRecords,
-        salesReturns: mergedData.salesReturns,
-        categories: mergedData.categories,
-        expenseCategories: mergedData.expenseCategories,
-      }, storeId).catch(() => {});
+      // If local/IDB or shadow admin store had newer/more records than primary cloud store, sync up to primary cloud store
+      const localHadNewerOrExtra =
+        localTime > remoteTime ||
+        (mergedData.inventory?.length || 0) > (remoteData.inventory?.length || 0) ||
+        (mergedData.sales?.length || 0) > (remoteData.sales?.length || 0) ||
+        (mergedData.khata?.length || 0) > (remoteData.khata?.length || 0) ||
+        (mergedData.expenses?.length || 0) > (remoteData.expenses?.length || 0) ||
+        (mergedData.supplierPurchases?.length || 0) > (remoteData.supplierPurchases?.length || 0);
+
+      if (localHadNewerOrExtra) {
+        saveAppDataToFirestore(mergedData, storeId).catch(() => {});
+      }
     } else {
-      // If remote store data could not be reached, preserve current best local data without overwriting cloud Firestore
+      // If remote store data could not be reached, preserve current best local data
       onDataLoaded(currentBestData);
     }
   } catch (err) {
     console.error(`Error in safe data migration/sync with Firestore for store [${storeId}]:`, err);
-    onDataLoaded(loadStoredData(storeId));
+    onDataLoaded(options?.currentState || loadStoredData(storeId));
   }
 }
 

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { CheckCircle2, AlertCircle, AlertTriangle, Info, X } from 'lucide-react';
+import { getQuotaExceededFlag } from '../utils/firebase';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
@@ -20,7 +21,11 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const showToast = useCallback((message: string, type: ToastType = 'info') => {
     const id = Math.random().toString(36).substring(2, 9);
-    setToasts(prev => [...prev, { id, message, type }]);
+    const isQuota = getQuotaExceededFlag();
+    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    const saveMode = (isQuota || !isOnline) ? 'Local Saved ✓' : 'Cloud Saved ✓';
+    const finalMessage = message.includes('Saved') || type === 'error' || type === 'warning' ? message : `${message} · ${saveMode}`;
+    setToasts(prev => [...prev, { id, message: finalMessage, type }]);
 
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));

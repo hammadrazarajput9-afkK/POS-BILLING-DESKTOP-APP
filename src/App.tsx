@@ -14,6 +14,8 @@ import { hasPermission } from './utils/permissions';
 import {
   loadStoredData,
   saveStoredData,
+  loadFromIndexedDB,
+  saveAppDataToFirestore,
   defaultExpenseCategories,
   migrateAndInitializeData,
   saveExpenseItemToFirestore,
@@ -31,6 +33,13 @@ import {
   subscribeToStoreRootConfig,
   subscribeToStoreFullData,
   saveInventoryItemToFirestore,
+  savePurchaseToFirestore,
+  saveDailyClosingToFirestore,
+  deleteDailyClosingFromFirestore,
+  savePurchasesLedgerBatchToFirestore,
+  saveImeiRecordsBatchToFirestore,
+  mergeAppData,
+  recoverAllMissingStoreData,
   DEFAULT_STORE_ID,
 } from './utils/storage';
 import { recordImeisReversed, recordImeisAvailable } from './utils/imeiManager';
@@ -69,6 +78,8 @@ import { useKhata } from './hooks/useKhata';
 function AppContent() {
   const { showToast } = useToast();
   const [data, setData] = useState<AppData>(() => loadStoredData());
+  const dataRef = useRef<AppData>(data);
+  dataRef.current = data;
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(true);
 
@@ -236,29 +247,44 @@ function AppContent() {
     const activeSid = DEFAULT_STORE_ID;
     const unsubscribe = subscribeToStoreFullData(activeSid, (incomingPatch) => {
       setData(prev => {
+        // Non-destructively merge collections so older cloud snapshots never wipe latest entries or product images
+        const merged = mergeAppData(prev, incomingPatch);
         let hasChanges = false;
         const patchToApply: Partial<AppData> = {};
 
-        const keysToCheck = [
-          'settings',
-          'categories',
-          'expenseCategories',
-          'onlineAccounts',
-          'tabPreferences',
-          'users',
-          'supplierPurchases',
-          'purchasesLedger',
-          'dailyClosings',
-          'imeiRecords',
-          'stockAdjustments',
-          'salesReturns',
+        const nonDestructiveKeys = [
           'inventory',
           'sales',
           'khata',
           'expenses',
+          'dailyClosings',
+          'settings',
+          'supplierPurchases',
+          'purchasesLedger',
+          'imeiRecords',
+          'salesReturns',
+          'stockAdjustments',
+          'categories',
+          'expenseCategories',
         ] as const;
 
-        for (const key of keysToCheck) {
+        for (const key of nonDestructiveKeys) {
+          if (
+            incomingPatch[key] !== undefined &&
+            JSON.stringify(prev[key]) !== JSON.stringify((merged as any)[key])
+          ) {
+            (patchToApply as any)[key] = (merged as any)[key];
+            hasChanges = true;
+          }
+        }
+
+        const directSyncKeys = [
+          'onlineAccounts',
+          'tabPreferences',
+          'users',
+        ] as const;
+
+        for (const key of directSyncKeys) {
           if (
             incomingPatch[key] !== undefined &&
             JSON.stringify(prev[key]) !== JSON.stringify(incomingPatch[key])
@@ -272,6 +298,7 @@ function AppContent() {
           return {
             ...prev,
             ...patchToApply,
+            lastModified: merged.lastModified,
           };
         }
         return prev;
@@ -310,23 +337,49 @@ function AppContent() {
 
   // Manual Force Refresh & Multi-Device Sync Handler
   const handleManualSyncData = useCallback(async () => {
-    const activeSid = data.currentUser?.storeId || data.currentUser?.id || getActiveStoreId();
-    if (!activeSid) return;
+    const activeSid = DEFAULT_STORE_ID;
     try {
-      showToast('Syncing latest data from Cloud Firestore...', 'info');
-      await migrateAndInitializeData((reloadedData) => {
-        setData(prev => ({
-          ...reloadedData,
-          currentUser: prev.currentUser, // CRITICAL: Preserve active session user to prevent logout!
-          currentRole: prev.currentRole || prev.currentUser?.role || 'admin',
-        }));
-      }, activeSid);
-      showToast('All shop data synchronized across devices!', 'success');
+      showToast('Syncing & reconciling latest data with Cloud Firestore...', 'info');
+      await migrateAndInitializeData(
+        (reloadedData) => {
+          setData(prev => ({
+            ...mergeAppData(prev, reloadedData),
+            currentUser: prev.currentUser,
+            currentRole: prev.currentRole || prev.currentUser?.role || 'admin',
+          }));
+        },
+        activeSid,
+        { currentState: dataRef.current }
+      );
+      showToast('Latest data & images synchronized cleanly!', 'success');
     } catch (err) {
       console.warn('Manual sync warning:', err);
       showToast('Data sync complete with offline cache', 'info');
     }
-  }, [data.currentUser?.storeId, data.currentUser?.id, showToast]);
+  }, [showToast]);
+
+  // Deep Recovery Handler for Stock Inward / Purchases
+  const handleRecoverMissingPurchases = useCallback(async (): Promise<number> => {
+    const activeSid = DEFAULT_STORE_ID;
+    try {
+      const { mergedData, recoveredPurchasesCount } = await recoverAllMissingStoreData(data, activeSid);
+      setData(prev => ({
+        ...mergedData,
+        currentUser: prev.currentUser,
+        currentRole: prev.currentRole || prev.currentUser?.role || 'admin',
+      }));
+      if (recoveredPurchasesCount > 0) {
+        showToast(`Recovered ${recoveredPurchasesCount} missing Stock Inward bill(s)!`, 'success');
+      } else {
+        showToast('Deep scan complete — all available Stock Inward records are already loaded.', 'info');
+      }
+      return recoveredPurchasesCount;
+    } catch (err) {
+      console.warn('Recovery scan warning:', err);
+      showToast('Could not complete cloud recovery scan', 'warning');
+      return 0;
+    }
+  }, [data, showToast]);
 
   // Expenses Handlers
   const handleSaveExpense = (expenseData: {
@@ -444,40 +497,35 @@ function AppContent() {
       return false;
     }
 
-    let updatedCats: string[] = [];
+    const prevCats = data.expenseCategories || defaultExpenseCategories;
+    const updatedCats = prevCats.map(c => (c.toLowerCase() === cleanOld.toLowerCase() ? cleanNew : c));
+    if (!updatedCats.some(c => c.toLowerCase() === cleanNew.toLowerCase())) {
+      updatedCats.push(cleanNew);
+    }
+
     const updatedExpensesToSync: ExpenseItem[] = [];
-
-    setData(prev => {
-      const prevCats = prev.expenseCategories || defaultExpenseCategories;
-      updatedCats = prevCats.map(c => (c.toLowerCase() === cleanOld.toLowerCase() ? cleanNew : c));
-      if (!updatedCats.some(c => c.toLowerCase() === cleanNew.toLowerCase())) {
-        updatedCats.push(cleanNew);
+    (data.expenses || []).forEach(exp => {
+      if ((exp.category || '').trim().toLowerCase() === cleanOld.toLowerCase()) {
+        updatedExpensesToSync.push({ ...exp, category: cleanNew });
       }
-
-      const updatedExpenses = (prev.expenses || []).map(exp => {
-        if ((exp.category || '').trim().toLowerCase() === cleanOld.toLowerCase()) {
-          const nextExp = { ...exp, category: cleanNew };
-          updatedExpensesToSync.push(nextExp);
-          return nextExp;
-        }
-        return exp;
-      });
-
-      return {
-        ...prev,
-        expenseCategories: updatedCats,
-        expenses: updatedExpenses,
-      };
     });
 
-    queueMicrotask(() => {
-      saveRootConfigToFirestore({ expenseCategories: updatedCats }).catch(err => {
-        console.warn('Firestore expense category rename sync warning:', err);
-      });
-      updatedExpensesToSync.forEach(exp => {
-        saveExpenseItemToFirestore(exp).catch(err => {
-          console.warn('Firestore expense item rename sync warning:', err);
-        });
+    setData(prev => ({
+      ...prev,
+      expenseCategories: updatedCats,
+      expenses: (prev.expenses || []).map(exp =>
+        (exp.category || '').trim().toLowerCase() === cleanOld.toLowerCase()
+          ? { ...exp, category: cleanNew }
+          : exp
+      ),
+    }));
+
+    saveRootConfigToFirestore({ expenseCategories: updatedCats }).catch(err => {
+      console.warn('Firestore expense category rename sync warning:', err);
+    });
+    updatedExpensesToSync.forEach(exp => {
+      saveExpenseItemToFirestore(exp).catch(err => {
+        console.warn('Firestore expense item rename sync warning:', err);
       });
     });
 
@@ -499,30 +547,26 @@ function AppContent() {
     }
 
     const newRecordId = generateEntityId('DCL');
+    const existingList = data.dailyClosings || [];
+    const existingIndex = existingList.findIndex(r => r.date === record.date);
+    let savedRecord: DailyClosingRecord;
+    let syncedClosings: DailyClosingRecord[];
 
-    setData(prev => {
-      const existingIndex = (prev.dailyClosings || []).findIndex(r => r.date === record.date);
-      if (existingIndex >= 0) {
-        const updatedClosings = [...(prev.dailyClosings || [])];
-        updatedClosings[existingIndex] = {
-          ...updatedClosings[existingIndex],
-          ...record,
-        };
-        return {
-          ...prev,
-          dailyClosings: updatedClosings,
-        };
-      } else {
-        const newRecord: DailyClosingRecord = {
-          id: newRecordId,
-          ...record,
-        };
-        return {
-          ...prev,
-          dailyClosings: [newRecord, ...(prev.dailyClosings || [])],
-        };
-      }
-    });
+    if (existingIndex >= 0) {
+      savedRecord = { ...existingList[existingIndex], ...record };
+      syncedClosings = existingList.map((r, idx) => (idx === existingIndex ? savedRecord : r));
+    } else {
+      savedRecord = { id: newRecordId, ...record };
+      syncedClosings = [savedRecord, ...existingList];
+    }
+
+    setData(prev => ({
+      ...prev,
+      dailyClosings: syncedClosings,
+    }));
+
+    saveDailyClosingToFirestore(savedRecord, DEFAULT_STORE_ID).catch(() => {});
+    saveRootConfigToFirestore({ dailyClosings: syncedClosings }, DEFAULT_STORE_ID).catch(() => {});
 
     logActivity(
       'Closing',
@@ -540,10 +584,14 @@ function AppContent() {
       return;
     }
 
+    const remainingClosings = (data.dailyClosings || []).filter(r => r.id !== id);
     setData(prev => ({
       ...prev,
-      dailyClosings: (prev.dailyClosings || []).filter(r => r.id !== id),
+      dailyClosings: remainingClosings,
     }));
+
+    deleteDailyClosingFromFirestore(id, DEFAULT_STORE_ID).catch(() => {});
+    saveRootConfigToFirestore({ dailyClosings: remainingClosings }, DEFAULT_STORE_ID).catch(() => {});
 
     showToast('Daily closing record deleted', 'info');
   };
@@ -605,175 +653,164 @@ function AppContent() {
       id: newPurchaseId,
     };
 
-    let affectedInventoryItems: InventoryItem[] = [];
-    let syncedPurchases: SupplierPurchase[] = [];
-    let syncedLedger: typeof data.purchasesLedger = [];
-    let syncedImeis: typeof data.imeiRecords = [];
+    let updatedInventory = [...data.inventory];
+    const itemsToRegisterImeis: { id: string; name: string; category?: string; imei?: string; imeis?: string[] }[] = [];
+    const changedMap = new Map<string, InventoryItem>();
 
-    setData(prev => {
-      let updatedInventory = [...prev.inventory];
-      const itemsToRegisterImeis: { id: string; name: string; category?: string; imei?: string; imeis?: string[] }[] = [];
-      const changedMap = new Map<string, InventoryItem>();
+    if (autoAddToInventory) {
+      newPurchase.items.forEach(purchaseItem => {
+        const matchIndex = updatedInventory.findIndex(
+          inv =>
+            inv.name.trim().toLowerCase() === purchaseItem.name.trim().toLowerCase() ||
+            (purchaseItem.barcode && inv.barcode === purchaseItem.barcode)
+        );
 
-      if (autoAddToInventory) {
-        newPurchase.items.forEach(purchaseItem => {
-          const matchIndex = updatedInventory.findIndex(
-            inv =>
-              inv.name.trim().toLowerCase() === purchaseItem.name.trim().toLowerCase() ||
-              (purchaseItem.barcode && inv.barcode === purchaseItem.barcode)
-          );
+        if (matchIndex >= 0) {
+          const existing = updatedInventory[matchIndex];
+          const existingImeis = existing.imeis || (existing.imei ? [existing.imei] : []);
+          const newImeis = purchaseItem.imeis || (purchaseItem.imei ? [purchaseItem.imei] : []);
+          const combinedImeis = Array.from(new Set([...existingImeis, ...newImeis]));
 
-          if (matchIndex >= 0) {
-            const existing = updatedInventory[matchIndex];
-            const existingImeis = existing.imeis || (existing.imei ? [existing.imei] : []);
-            const newImeis = purchaseItem.imeis || (purchaseItem.imei ? [purchaseItem.imei] : []);
-            const combinedImeis = Array.from(new Set([...existingImeis, ...newImeis]));
-
-            let updatedVariants = existing.variants ? [...existing.variants] : undefined;
-            if (updatedVariants && (purchaseItem.ram || purchaseItem.storage || purchaseItem.color || newImeis.length > 0)) {
-              const vIdx = updatedVariants.findIndex(
-                v =>
-                  (v.ram || '').toLowerCase() === (purchaseItem.ram || '').toLowerCase() &&
-                  (v.storage || '').toLowerCase() === (purchaseItem.storage || '').toLowerCase() &&
-                  (v.color || '').toLowerCase() === (purchaseItem.color || '').toLowerCase()
-              );
-              if (vIdx >= 0) {
-                const targetV = updatedVariants[vIdx];
-                updatedVariants[vIdx] = {
-                  ...targetV,
-                  qty: (Number(targetV.qty) || 0) + purchaseItem.qty,
-                  costPrice: purchaseItem.costPrice > 0 ? purchaseItem.costPrice : targetV.costPrice,
-                  salePrice: purchaseItem.salePrice && purchaseItem.salePrice > 0 ? purchaseItem.salePrice : targetV.salePrice,
-                  wholesalePrice: purchaseItem.wholesalePrice !== undefined ? purchaseItem.wholesalePrice : targetV.wholesalePrice,
-                  imeis: Array.from(new Set([...(targetV.imeis || []), ...newImeis])),
-                };
-              } else {
-                updatedVariants.push({
-                  id: generateEntityId('VAR'),
-                  ram: purchaseItem.ram || '',
-                  storage: purchaseItem.storage || '',
-                  color: purchaseItem.color || '',
-                  costPrice: purchaseItem.costPrice,
-                  salePrice: purchaseItem.salePrice || existing.salePrice,
-                  wholesalePrice: purchaseItem.wholesalePrice !== undefined ? purchaseItem.wholesalePrice : existing.wholesalePrice,
-                  qty: purchaseItem.qty,
-                  imeis: newImeis,
-                });
-              }
+          let updatedVariants = existing.variants ? [...existing.variants] : undefined;
+          if (updatedVariants && (purchaseItem.ram || purchaseItem.storage || purchaseItem.color || newImeis.length > 0)) {
+            const vIdx = updatedVariants.findIndex(
+              v =>
+                (v.ram || '').toLowerCase() === (purchaseItem.ram || '').toLowerCase() &&
+                (v.storage || '').toLowerCase() === (purchaseItem.storage || '').toLowerCase() &&
+                (v.color || '').toLowerCase() === (purchaseItem.color || '').toLowerCase()
+            );
+            if (vIdx >= 0) {
+              const targetV = updatedVariants[vIdx];
+              updatedVariants[vIdx] = {
+                ...targetV,
+                qty: (Number(targetV.qty) || 0) + purchaseItem.qty,
+                costPrice: purchaseItem.costPrice > 0 ? purchaseItem.costPrice : targetV.costPrice,
+                salePrice: purchaseItem.salePrice && purchaseItem.salePrice > 0 ? purchaseItem.salePrice : targetV.salePrice,
+                wholesalePrice: purchaseItem.wholesalePrice !== undefined ? purchaseItem.wholesalePrice : targetV.wholesalePrice,
+                imeis: Array.from(new Set([...(targetV.imeis || []), ...newImeis])),
+              };
+            } else {
+              updatedVariants.push({
+                id: generateEntityId('VAR'),
+                ram: purchaseItem.ram || '',
+                storage: purchaseItem.storage || '',
+                color: purchaseItem.color || '',
+                costPrice: purchaseItem.costPrice,
+                salePrice: purchaseItem.salePrice || existing.salePrice,
+                wholesalePrice: purchaseItem.wholesalePrice !== undefined ? purchaseItem.wholesalePrice : existing.wholesalePrice,
+                qty: purchaseItem.qty,
+                imeis: newImeis,
+              });
             }
-
-            const updatedItem: InventoryItem = {
-              ...existing,
-              category: purchaseItem.category || existing.category,
-              qty: existing.qty + purchaseItem.qty,
-              costPrice: purchaseItem.costPrice > 0 ? purchaseItem.costPrice : existing.costPrice,
-              salePrice:
-                purchaseItem.salePrice && purchaseItem.salePrice > 0
-                  ? purchaseItem.salePrice
-                  : existing.salePrice,
-              wholesalePrice:
-                purchaseItem.wholesalePrice !== undefined
-                  ? purchaseItem.wholesalePrice
-                  : existing.wholesalePrice,
-              ram: purchaseItem.ram || existing.ram,
-              storage: purchaseItem.storage || existing.storage,
-              color: purchaseItem.color || existing.color,
-              variants: updatedVariants,
-              barcode: purchaseItem.barcode || existing.barcode,
-              imei: combinedImeis[0] || existing.imei,
-              imeis: combinedImeis.length > 0 ? combinedImeis : undefined,
-              status: existing.status || 'ACTIVE',
-            };
-
-            updatedInventory[matchIndex] = updatedItem;
-            changedMap.set(updatedItem.id, updatedItem);
-
-            itemsToRegisterImeis.push({
-              id: existing.id,
-              name: updatedItem.name,
-              category: updatedItem.category,
-              imeis: newImeis,
-            });
-          } else {
-            const newItemId = generateEntityId('STK');
-            const newImeis = purchaseItem.imeis || (purchaseItem.imei ? [purchaseItem.imei] : []);
-            const hasMobileSpecs = Boolean(purchaseItem.ram || purchaseItem.storage || purchaseItem.color || newImeis.length > 0);
-            const newItem: InventoryItem = {
-              id: newItemId,
-              name: purchaseItem.name,
-              category: purchaseItem.category || prev.categories?.[0] || 'Android Mobile',
-              costPrice: purchaseItem.costPrice,
-              salePrice: purchaseItem.salePrice || Math.round(purchaseItem.costPrice * 1.15),
-              wholesalePrice: purchaseItem.wholesalePrice,
-              qty: purchaseItem.qty,
-              ram: purchaseItem.ram,
-              storage: purchaseItem.storage,
-              color: purchaseItem.color,
-              variants: hasMobileSpecs
-                ? [
-                    {
-                      id: generateEntityId('VAR'),
-                      ram: purchaseItem.ram || '',
-                      storage: purchaseItem.storage || '',
-                      color: purchaseItem.color || '',
-                      costPrice: purchaseItem.costPrice,
-                      salePrice: purchaseItem.salePrice || Math.round(purchaseItem.costPrice * 1.15),
-                      wholesalePrice: purchaseItem.wholesalePrice,
-                      qty: purchaseItem.qty,
-                      imeis: newImeis,
-                    },
-                  ]
-                : undefined,
-              barcode: purchaseItem.barcode,
-              imei: purchaseItem.imei,
-              imeis: purchaseItem.imeis,
-              status: 'ACTIVE',
-              createdAt: new Date().toISOString(),
-            };
-            updatedInventory = [newItem, ...updatedInventory];
-            changedMap.set(newItem.id, newItem);
-
-            itemsToRegisterImeis.push({
-              id: newItem.id,
-              name: newItem.name,
-              category: newItem.category,
-              imeis: newImeis,
-            });
           }
-        });
-      }
 
-      affectedInventoryItems = Array.from(changedMap.values());
+          const updatedItem: InventoryItem = {
+            ...existing,
+            category: purchaseItem.category || existing.category,
+            qty: existing.qty + purchaseItem.qty,
+            costPrice: purchaseItem.costPrice > 0 ? purchaseItem.costPrice : existing.costPrice,
+            salePrice:
+              purchaseItem.salePrice && purchaseItem.salePrice > 0
+                ? purchaseItem.salePrice
+                : existing.salePrice,
+            wholesalePrice:
+              purchaseItem.wholesalePrice !== undefined
+                ? purchaseItem.wholesalePrice
+                : existing.wholesalePrice,
+            ram: purchaseItem.ram || existing.ram,
+            storage: purchaseItem.storage || existing.storage,
+            color: purchaseItem.color || existing.color,
+            variants: updatedVariants,
+            barcode: purchaseItem.barcode || existing.barcode,
+            imei: combinedImeis[0] || existing.imei,
+            imeis: combinedImeis.length > 0 ? combinedImeis : undefined,
+            status: existing.status || 'ACTIVE',
+          };
 
-      const newLedgerEntries = newPurchase.items.map(item => ({
-        id: generateEntityId('PL'),
-        date: newPurchase.date,
-        itemTitle: `${item.name} (${newPurchase.partyName})`,
-        qty: item.qty,
-        costPrice: item.costPrice,
-        total: item.costPrice * item.qty,
-      }));
+          updatedInventory[matchIndex] = updatedItem;
+          changedMap.set(updatedItem.id, updatedItem);
 
-      // Register new IMEIs in permanent tracking record
-      const updatedImeiRecords = recordImeisAvailable({
-        items: itemsToRegisterImeis,
-        existingImeiRecords: prev.imeiRecords || [],
-        purchaseBillNo: newPurchase.billNo,
-        purchaseParty: newPurchase.partyName,
+          itemsToRegisterImeis.push({
+            id: existing.id,
+            name: updatedItem.name,
+            category: updatedItem.category,
+            imeis: newImeis,
+          });
+        } else {
+          const newItemId = generateEntityId('STK');
+          const newImeis = purchaseItem.imeis || (purchaseItem.imei ? [purchaseItem.imei] : []);
+          const hasMobileSpecs = Boolean(purchaseItem.ram || purchaseItem.storage || purchaseItem.color || newImeis.length > 0);
+          const newItem: InventoryItem = {
+            id: newItemId,
+            name: purchaseItem.name,
+            category: purchaseItem.category || data.categories?.[0] || 'Android Mobile',
+            costPrice: purchaseItem.costPrice,
+            salePrice: purchaseItem.salePrice || Math.round(purchaseItem.costPrice * 1.15),
+            wholesalePrice: purchaseItem.wholesalePrice,
+            qty: purchaseItem.qty,
+            ram: purchaseItem.ram,
+            storage: purchaseItem.storage,
+            color: purchaseItem.color,
+            variants: hasMobileSpecs
+              ? [
+                  {
+                    id: generateEntityId('VAR'),
+                    ram: purchaseItem.ram || '',
+                    storage: purchaseItem.storage || '',
+                    color: purchaseItem.color || '',
+                    costPrice: purchaseItem.costPrice,
+                    salePrice: purchaseItem.salePrice || Math.round(purchaseItem.costPrice * 1.15),
+                    wholesalePrice: purchaseItem.wholesalePrice,
+                    qty: purchaseItem.qty,
+                    imeis: newImeis,
+                  },
+                ]
+              : undefined,
+            barcode: purchaseItem.barcode,
+            imei: purchaseItem.imei,
+            imeis: purchaseItem.imeis,
+            status: 'ACTIVE',
+            createdAt: new Date().toISOString(),
+          };
+          updatedInventory = [newItem, ...updatedInventory];
+          changedMap.set(newItem.id, newItem);
+
+          itemsToRegisterImeis.push({
+            id: newItem.id,
+            name: newItem.name,
+            category: newItem.category,
+            imeis: newImeis,
+          });
+        }
       });
+    }
 
-      syncedPurchases = [newPurchase, ...(prev.supplierPurchases || [])];
-      syncedLedger = [...newLedgerEntries, ...(prev.purchasesLedger || [])];
-      syncedImeis = updatedImeiRecords;
+    const affectedInventoryItems = Array.from(changedMap.values());
+    const newLedgerEntries = newPurchase.items.map(item => ({
+      id: generateEntityId('PL'),
+      date: newPurchase.date,
+      itemTitle: `${item.name} (${newPurchase.partyName})`,
+      qty: item.qty,
+      costPrice: item.costPrice,
+      total: item.costPrice * item.qty,
+    }));
 
-      return {
-        ...prev,
-        inventory: updatedInventory,
-        supplierPurchases: syncedPurchases,
-        purchasesLedger: syncedLedger,
-        imeiRecords: syncedImeis,
-      };
+    const syncedImeis = recordImeisAvailable({
+      items: itemsToRegisterImeis,
+      existingImeiRecords: data.imeiRecords || [],
+      purchaseBillNo: newPurchase.billNo,
+      purchaseParty: newPurchase.partyName,
     });
+    const syncedPurchases = [newPurchase, ...(data.supplierPurchases || [])];
+    const syncedLedger = [...newLedgerEntries, ...(data.purchasesLedger || [])];
+
+    setData(prev => ({
+      ...prev,
+      inventory: updatedInventory,
+      supplierPurchases: [newPurchase, ...(prev.supplierPurchases || [])],
+      purchasesLedger: [...newLedgerEntries, ...(prev.purchasesLedger || [])],
+      imeiRecords: syncedImeis,
+    }));
 
     logActivity(
       'Purchase',
@@ -785,24 +822,23 @@ function AppContent() {
 
     showToast(`Purchase bill #${newPurchase.billNo} registered!`, 'success');
 
-    // Immediately push updated/new inventory items & purchase bill to Cloud Firestore
-    queueMicrotask(() => {
-      if (autoAddToInventory && affectedInventoryItems.length > 0) {
-        affectedInventoryItems.forEach(item => {
-          saveInventoryItemToFirestore(item, DEFAULT_STORE_ID).catch(() => {});
-        });
-      }
-      if (syncedPurchases.length > 0) {
-        saveRootConfigToFirestore(
-          {
-            supplierPurchases: syncedPurchases,
-            purchasesLedger: syncedLedger,
-            imeiRecords: syncedImeis,
-          },
-          DEFAULT_STORE_ID
-        ).catch(() => {});
-      }
-    });
+    // Immediately persist to dedicated Firestore subcollections + compact root doc
+    if (autoAddToInventory && affectedInventoryItems.length > 0) {
+      affectedInventoryItems.forEach(item => {
+        saveInventoryItemToFirestore(item, DEFAULT_STORE_ID).catch(() => {});
+      });
+    }
+    savePurchaseToFirestore(newPurchase, DEFAULT_STORE_ID).catch(() => {});
+    savePurchasesLedgerBatchToFirestore(newLedgerEntries, DEFAULT_STORE_ID).catch(() => {});
+    saveImeiRecordsBatchToFirestore(syncedImeis, DEFAULT_STORE_ID).catch(() => {});
+    saveRootConfigToFirestore(
+      {
+        supplierPurchases: syncedPurchases,
+        purchasesLedger: syncedLedger,
+        imeiRecords: syncedImeis,
+      },
+      DEFAULT_STORE_ID
+    ).catch(() => {});
   };
 
   const handleUpdatePurchase = (
@@ -820,243 +856,229 @@ function AppContent() {
     };
 
     const changedInventoryMap = new Map<string, InventoryItem>();
-    let syncedPurchases: SupplierPurchase[] = [];
-    let syncedLedger: typeof data.purchasesLedger = [];
-    let syncedImeis: typeof data.imeiRecords = [];
+    let updatedInventory = [...data.inventory];
+    const oldAllImeis: string[] = [];
 
-    setData(prev => {
-      let updatedInventory = [...prev.inventory];
-      const oldAllImeis: string[] = [];
+    // 1. Roll back previous purchase items & IMEIs from inventory
+    oldPurchase.items.forEach(oldItem => {
+      const oldItemImeis = oldItem.imeis || (oldItem.imei ? oldItem.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
+      oldAllImeis.push(...oldItemImeis);
 
-      // 1. Roll back previous purchase items & IMEIs from inventory
-      oldPurchase.items.forEach(oldItem => {
-        const oldItemImeis = oldItem.imeis || (oldItem.imei ? oldItem.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
-        oldAllImeis.push(...oldItemImeis);
+      const matchIndex = updatedInventory.findIndex(
+        inv =>
+          inv.name.trim().toLowerCase() === oldItem.name.trim().toLowerCase() ||
+          (oldItem.barcode && inv.barcode === oldItem.barcode)
+      );
 
+      if (matchIndex >= 0) {
+        const existing = updatedInventory[matchIndex];
+        const existingImeis =
+          existing.imeis || (existing.imei ? existing.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
+        const remainingImeis = existingImeis.filter(
+          im => !oldItemImeis.some(oIm => oIm.toLowerCase().trim() === im.toLowerCase().trim())
+        );
+
+        let updatedVariants = existing.variants ? [...existing.variants] : undefined;
+        if (updatedVariants) {
+          updatedVariants = updatedVariants
+            .map(v => {
+              const vImeis = (v.imeis || []).filter(
+                im => !oldItemImeis.some(oIm => oIm.toLowerCase().trim() === im.toLowerCase().trim())
+              );
+              const matchesSpecs =
+                (v.ram || '').toLowerCase() === (oldItem.ram || '').toLowerCase() &&
+                (v.storage || '').toLowerCase() === (oldItem.storage || '').toLowerCase() &&
+                (v.color || '').toLowerCase() === (oldItem.color || '').toLowerCase();
+              if (matchesSpecs || (oldItemImeis.length > 0 && vImeis.length !== (v.imeis || []).length)) {
+                const newVQty = Math.max(0, (Number(v.qty) || 0) - oldItem.qty);
+                return { ...v, qty: newVQty, imeis: vImeis };
+              }
+              return v;
+            })
+            .filter(v => (Number(v.qty) || 0) > 0 || (v.imeis && v.imeis.length > 0));
+        }
+
+        const rolledBackItem: InventoryItem = {
+          ...existing,
+          qty: Math.max(0, existing.qty - oldItem.qty),
+          variants: updatedVariants && updatedVariants.length > 0 ? updatedVariants : existing.variants,
+          imei: remainingImeis[0] || undefined,
+          imeis: remainingImeis.length > 0 ? remainingImeis : undefined,
+        };
+
+        updatedInventory[matchIndex] = rolledBackItem;
+        changedInventoryMap.set(rolledBackItem.id, rolledBackItem);
+      }
+    });
+
+    let nextImeiRecords = recordImeisReversed({
+      purchaseBillNo: oldPurchase.billNo,
+      reversedImeis: oldAllImeis,
+      existingImeiRecords: data.imeiRecords || [],
+    });
+
+    const itemsToRegisterImeis: { id: string; name: string; category?: string; imei?: string; imeis?: string[] }[] = [];
+
+    if (autoAddToInventory) {
+      updatedPurchase.items.forEach(purchaseItem => {
         const matchIndex = updatedInventory.findIndex(
           inv =>
-            inv.name.trim().toLowerCase() === oldItem.name.trim().toLowerCase() ||
-            (oldItem.barcode && inv.barcode === oldItem.barcode)
+            inv.name.trim().toLowerCase() === purchaseItem.name.trim().toLowerCase() ||
+            (purchaseItem.barcode && inv.barcode === purchaseItem.barcode)
         );
 
         if (matchIndex >= 0) {
           const existing = updatedInventory[matchIndex];
-          const existingImeis =
-            existing.imeis || (existing.imei ? existing.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
-          const remainingImeis = existingImeis.filter(
-            im => !oldItemImeis.some(oIm => oIm.toLowerCase().trim() === im.toLowerCase().trim())
-          );
+          const existingImeis = existing.imeis || (existing.imei ? [existing.imei] : []);
+          const newImeis = purchaseItem.imeis || (purchaseItem.imei ? [purchaseItem.imei] : []);
+          const combinedImeis = Array.from(new Set([...existingImeis, ...newImeis]));
 
           let updatedVariants = existing.variants ? [...existing.variants] : undefined;
-          if (updatedVariants) {
-            updatedVariants = updatedVariants
-              .map(v => {
-                const vImeis = (v.imeis || []).filter(
-                  im => !oldItemImeis.some(oIm => oIm.toLowerCase().trim() === im.toLowerCase().trim())
-                );
-                const matchesSpecs =
-                  (v.ram || '').toLowerCase() === (oldItem.ram || '').toLowerCase() &&
-                  (v.storage || '').toLowerCase() === (oldItem.storage || '').toLowerCase() &&
-                  (v.color || '').toLowerCase() === (oldItem.color || '').toLowerCase();
-                if (matchesSpecs || (oldItemImeis.length > 0 && vImeis.length !== (v.imeis || []).length)) {
-                  const newVQty = Math.max(0, (Number(v.qty) || 0) - oldItem.qty);
-                  return {
-                    ...v,
-                    qty: newVQty,
-                    imeis: vImeis,
-                  };
-                }
-                return v;
-              })
-              .filter(v => (Number(v.qty) || 0) > 0 || (v.imeis && v.imeis.length > 0));
+          if (updatedVariants && (purchaseItem.ram || purchaseItem.storage || purchaseItem.color || newImeis.length > 0)) {
+            const vIdx = updatedVariants.findIndex(
+              v =>
+                (v.ram || '').toLowerCase() === (purchaseItem.ram || '').toLowerCase() &&
+                (v.storage || '').toLowerCase() === (purchaseItem.storage || '').toLowerCase() &&
+                (v.color || '').toLowerCase() === (purchaseItem.color || '').toLowerCase()
+            );
+            if (vIdx >= 0) {
+              const targetV = updatedVariants[vIdx];
+              updatedVariants[vIdx] = {
+                ...targetV,
+                qty: (Number(targetV.qty) || 0) + purchaseItem.qty,
+                costPrice: purchaseItem.costPrice > 0 ? purchaseItem.costPrice : targetV.costPrice,
+                salePrice: purchaseItem.salePrice && purchaseItem.salePrice > 0 ? purchaseItem.salePrice : targetV.salePrice,
+                wholesalePrice: purchaseItem.wholesalePrice !== undefined ? purchaseItem.wholesalePrice : targetV.wholesalePrice,
+                imeis: Array.from(new Set([...(targetV.imeis || []), ...newImeis])),
+              };
+            } else {
+              updatedVariants.push({
+                id: generateEntityId('VAR'),
+                ram: purchaseItem.ram || '',
+                storage: purchaseItem.storage || '',
+                color: purchaseItem.color || '',
+                costPrice: purchaseItem.costPrice,
+                salePrice: purchaseItem.salePrice || existing.salePrice,
+                wholesalePrice: purchaseItem.wholesalePrice !== undefined ? purchaseItem.wholesalePrice : existing.wholesalePrice,
+                qty: purchaseItem.qty,
+                imeis: newImeis,
+              });
+            }
           }
 
-          const rolledBackItem: InventoryItem = {
+          const updatedItem: InventoryItem = {
             ...existing,
-            qty: Math.max(0, existing.qty - oldItem.qty),
-            variants: updatedVariants && updatedVariants.length > 0 ? updatedVariants : existing.variants,
-            imei: remainingImeis[0] || undefined,
-            imeis: remainingImeis.length > 0 ? remainingImeis : undefined,
+            category: purchaseItem.category || existing.category,
+            qty: existing.qty + purchaseItem.qty,
+            costPrice: purchaseItem.costPrice > 0 ? purchaseItem.costPrice : existing.costPrice,
+            salePrice:
+              purchaseItem.salePrice && purchaseItem.salePrice > 0
+                ? purchaseItem.salePrice
+                : existing.salePrice,
+            wholesalePrice:
+              purchaseItem.wholesalePrice !== undefined
+                ? purchaseItem.wholesalePrice
+                : existing.wholesalePrice,
+            ram: purchaseItem.ram || existing.ram,
+            storage: purchaseItem.storage || existing.storage,
+            color: purchaseItem.color || existing.color,
+            variants: updatedVariants,
+            barcode: purchaseItem.barcode || existing.barcode,
+            imei: combinedImeis[0] || existing.imei,
+            imeis: combinedImeis.length > 0 ? combinedImeis : undefined,
+            status: existing.status || 'ACTIVE',
           };
 
-          updatedInventory[matchIndex] = rolledBackItem;
-          changedInventoryMap.set(rolledBackItem.id, rolledBackItem);
+          updatedInventory[matchIndex] = updatedItem;
+          changedInventoryMap.set(updatedItem.id, updatedItem);
+
+          itemsToRegisterImeis.push({
+            id: existing.id,
+            name: updatedItem.name,
+            category: updatedItem.category,
+            imeis: newImeis,
+          });
+        } else {
+          const newItemId = generateEntityId('STK');
+          const newImeis = purchaseItem.imeis || (purchaseItem.imei ? [purchaseItem.imei] : []);
+          const hasMobileSpecs = Boolean(purchaseItem.ram || purchaseItem.storage || purchaseItem.color || newImeis.length > 0);
+          const newItem: InventoryItem = {
+            id: newItemId,
+            name: purchaseItem.name,
+            category: purchaseItem.category || data.categories?.[0] || 'Android Mobile',
+            costPrice: purchaseItem.costPrice,
+            salePrice: purchaseItem.salePrice || Math.round(purchaseItem.costPrice * 1.15),
+            wholesalePrice: purchaseItem.wholesalePrice,
+            qty: purchaseItem.qty,
+            ram: purchaseItem.ram,
+            storage: purchaseItem.storage,
+            color: purchaseItem.color,
+            variants: hasMobileSpecs
+              ? [
+                  {
+                    id: generateEntityId('VAR'),
+                    ram: purchaseItem.ram || '',
+                    storage: purchaseItem.storage || '',
+                    color: purchaseItem.color || '',
+                    costPrice: purchaseItem.costPrice,
+                    salePrice: purchaseItem.salePrice || Math.round(purchaseItem.costPrice * 1.15),
+                    wholesalePrice: purchaseItem.wholesalePrice,
+                    qty: purchaseItem.qty,
+                    imeis: newImeis,
+                  },
+                ]
+              : undefined,
+            barcode: purchaseItem.barcode,
+            imei: purchaseItem.imei,
+            imeis: purchaseItem.imeis,
+            status: 'ACTIVE',
+            createdAt: new Date().toISOString(),
+          };
+          updatedInventory = [newItem, ...updatedInventory];
+          changedInventoryMap.set(newItem.id, newItem);
+
+          itemsToRegisterImeis.push({
+            id: newItem.id,
+            name: newItem.name,
+            category: newItem.category,
+            imeis: newImeis,
+          });
         }
       });
+    }
 
-      // Remove old purchase's available IMEIs from imeiRecords
-      let nextImeiRecords = recordImeisReversed({
-        purchaseBillNo: oldPurchase.billNo,
-        reversedImeis: oldAllImeis,
-        existingImeiRecords: prev.imeiRecords || [],
-      });
-
-      // 2. Apply updated purchase items into inventory if autoAddToInventory is enabled
-      const itemsToRegisterImeis: { id: string; name: string; category?: string; imei?: string; imeis?: string[] }[] = [];
-
-      if (autoAddToInventory) {
-        updatedPurchase.items.forEach(purchaseItem => {
-          const matchIndex = updatedInventory.findIndex(
-            inv =>
-              inv.name.trim().toLowerCase() === purchaseItem.name.trim().toLowerCase() ||
-              (purchaseItem.barcode && inv.barcode === purchaseItem.barcode)
-          );
-
-          if (matchIndex >= 0) {
-            const existing = updatedInventory[matchIndex];
-            const existingImeis = existing.imeis || (existing.imei ? [existing.imei] : []);
-            const newImeis = purchaseItem.imeis || (purchaseItem.imei ? [purchaseItem.imei] : []);
-            const combinedImeis = Array.from(new Set([...existingImeis, ...newImeis]));
-
-            let updatedVariants = existing.variants ? [...existing.variants] : undefined;
-            if (updatedVariants && (purchaseItem.ram || purchaseItem.storage || purchaseItem.color || newImeis.length > 0)) {
-              const vIdx = updatedVariants.findIndex(
-                v =>
-                  (v.ram || '').toLowerCase() === (purchaseItem.ram || '').toLowerCase() &&
-                  (v.storage || '').toLowerCase() === (purchaseItem.storage || '').toLowerCase() &&
-                  (v.color || '').toLowerCase() === (purchaseItem.color || '').toLowerCase()
-              );
-              if (vIdx >= 0) {
-                const targetV = updatedVariants[vIdx];
-                updatedVariants[vIdx] = {
-                  ...targetV,
-                  qty: (Number(targetV.qty) || 0) + purchaseItem.qty,
-                  costPrice: purchaseItem.costPrice > 0 ? purchaseItem.costPrice : targetV.costPrice,
-                  salePrice: purchaseItem.salePrice && purchaseItem.salePrice > 0 ? purchaseItem.salePrice : targetV.salePrice,
-                  wholesalePrice: purchaseItem.wholesalePrice !== undefined ? purchaseItem.wholesalePrice : targetV.wholesalePrice,
-                  imeis: Array.from(new Set([...(targetV.imeis || []), ...newImeis])),
-                };
-              } else {
-                updatedVariants.push({
-                  id: generateEntityId('VAR'),
-                  ram: purchaseItem.ram || '',
-                  storage: purchaseItem.storage || '',
-                  color: purchaseItem.color || '',
-                  costPrice: purchaseItem.costPrice,
-                  salePrice: purchaseItem.salePrice || existing.salePrice,
-                  wholesalePrice: purchaseItem.wholesalePrice !== undefined ? purchaseItem.wholesalePrice : existing.wholesalePrice,
-                  qty: purchaseItem.qty,
-                  imeis: newImeis,
-                });
-              }
-            }
-
-            const updatedItem: InventoryItem = {
-              ...existing,
-              category: purchaseItem.category || existing.category,
-              qty: existing.qty + purchaseItem.qty,
-              costPrice: purchaseItem.costPrice > 0 ? purchaseItem.costPrice : existing.costPrice,
-              salePrice:
-                purchaseItem.salePrice && purchaseItem.salePrice > 0
-                  ? purchaseItem.salePrice
-                  : existing.salePrice,
-              wholesalePrice:
-                purchaseItem.wholesalePrice !== undefined
-                  ? purchaseItem.wholesalePrice
-                  : existing.wholesalePrice,
-              ram: purchaseItem.ram || existing.ram,
-              storage: purchaseItem.storage || existing.storage,
-              color: purchaseItem.color || existing.color,
-              variants: updatedVariants,
-              barcode: purchaseItem.barcode || existing.barcode,
-              imei: combinedImeis[0] || existing.imei,
-              imeis: combinedImeis.length > 0 ? combinedImeis : undefined,
-              status: existing.status || 'ACTIVE',
-            };
-
-            updatedInventory[matchIndex] = updatedItem;
-            changedInventoryMap.set(updatedItem.id, updatedItem);
-
-            itemsToRegisterImeis.push({
-              id: existing.id,
-              name: updatedItem.name,
-              category: updatedItem.category,
-              imeis: newImeis,
-            });
-          } else {
-            const newItemId = generateEntityId('STK');
-            const newImeis = purchaseItem.imeis || (purchaseItem.imei ? [purchaseItem.imei] : []);
-            const hasMobileSpecs = Boolean(purchaseItem.ram || purchaseItem.storage || purchaseItem.color || newImeis.length > 0);
-            const newItem: InventoryItem = {
-              id: newItemId,
-              name: purchaseItem.name,
-              category: purchaseItem.category || prev.categories?.[0] || 'Android Mobile',
-              costPrice: purchaseItem.costPrice,
-              salePrice: purchaseItem.salePrice || Math.round(purchaseItem.costPrice * 1.15),
-              wholesalePrice: purchaseItem.wholesalePrice,
-              qty: purchaseItem.qty,
-              ram: purchaseItem.ram,
-              storage: purchaseItem.storage,
-              color: purchaseItem.color,
-              variants: hasMobileSpecs
-                ? [
-                    {
-                      id: generateEntityId('VAR'),
-                      ram: purchaseItem.ram || '',
-                      storage: purchaseItem.storage || '',
-                      color: purchaseItem.color || '',
-                      costPrice: purchaseItem.costPrice,
-                      salePrice: purchaseItem.salePrice || Math.round(purchaseItem.costPrice * 1.15),
-                      wholesalePrice: purchaseItem.wholesalePrice,
-                      qty: purchaseItem.qty,
-                      imeis: newImeis,
-                    },
-                  ]
-                : undefined,
-              barcode: purchaseItem.barcode,
-              imei: purchaseItem.imei,
-              imeis: purchaseItem.imeis,
-              status: 'ACTIVE',
-              createdAt: new Date().toISOString(),
-            };
-            updatedInventory = [newItem, ...updatedInventory];
-            changedInventoryMap.set(newItem.id, newItem);
-
-            itemsToRegisterImeis.push({
-              id: newItem.id,
-              name: newItem.name,
-              category: newItem.category,
-              imeis: newImeis,
-            });
-          }
-        });
-      }
-
-      nextImeiRecords = recordImeisAvailable({
-        items: itemsToRegisterImeis,
-        existingImeiRecords: nextImeiRecords,
-        purchaseBillNo: updatedPurchase.billNo,
-        purchaseParty: updatedPurchase.partyName,
-      });
-
-      // Replace ledger entries matching the old purchase if possible, prepending fresh entries
-      const oldSignatures = new Set(
-        oldPurchase.items.map(it => `${oldPurchase.date}|${it.name} (${oldPurchase.partyName})|${it.qty}|${it.costPrice}`)
-      );
-      const filteredOldLedger = (prev.purchasesLedger || []).filter(
-        entry => !oldSignatures.has(`${entry.date}|${entry.itemTitle}|${entry.qty}|${entry.costPrice}`)
-      );
-      const newLedgerEntries = updatedPurchase.items.map(item => ({
-        id: generateEntityId('PL'),
-        date: updatedPurchase.date,
-        itemTitle: `${item.name} (${updatedPurchase.partyName})`,
-        qty: item.qty,
-        costPrice: item.costPrice,
-        total: item.costPrice * item.qty,
-      }));
-
-      syncedPurchases = (prev.supplierPurchases || []).map(p => (p.id === purchaseId ? updatedPurchase : p));
-      syncedLedger = [...newLedgerEntries, ...filteredOldLedger];
-      syncedImeis = nextImeiRecords;
-
-      return {
-        ...prev,
-        inventory: updatedInventory,
-        supplierPurchases: syncedPurchases,
-        purchasesLedger: syncedLedger,
-        imeiRecords: syncedImeis,
-      };
+    const syncedImeis = recordImeisAvailable({
+      items: itemsToRegisterImeis,
+      existingImeiRecords: nextImeiRecords,
+      purchaseBillNo: updatedPurchase.billNo,
+      purchaseParty: updatedPurchase.partyName,
     });
+
+    const oldSignatures = new Set(
+      oldPurchase.items.map(it => `${oldPurchase.date}|${it.name} (${oldPurchase.partyName})|${it.qty}|${it.costPrice}`)
+    );
+    const filteredOldLedger = (data.purchasesLedger || []).filter(
+      entry => !oldSignatures.has(`${entry.date}|${entry.itemTitle}|${entry.qty}|${entry.costPrice}`)
+    );
+    const newLedgerEntries = updatedPurchase.items.map(item => ({
+      id: generateEntityId('PL'),
+      date: updatedPurchase.date,
+      itemTitle: `${item.name} (${updatedPurchase.partyName})`,
+      qty: item.qty,
+      costPrice: item.costPrice,
+      total: item.costPrice * item.qty,
+    }));
+
+    const syncedPurchases = (data.supplierPurchases || []).map(p => (p.id === purchaseId ? updatedPurchase : p));
+    const syncedLedger = [...newLedgerEntries, ...filteredOldLedger];
+
+    setData(prev => ({
+      ...prev,
+      inventory: updatedInventory,
+      supplierPurchases: (prev.supplierPurchases || []).map(p => (p.id === purchaseId ? updatedPurchase : p)),
+      purchasesLedger: syncedLedger,
+      imeiRecords: syncedImeis,
+    }));
 
     logActivity(
       'Purchase',
@@ -1068,19 +1090,20 @@ function AppContent() {
 
     showToast(`Purchase bill #${updatedPurchase.billNo} updated & synced!`, 'success');
 
-    queueMicrotask(() => {
-      Array.from(changedInventoryMap.values()).forEach(item => {
-        saveInventoryItemToFirestore(item, DEFAULT_STORE_ID).catch(() => {});
-      });
-      saveRootConfigToFirestore(
-        {
-          supplierPurchases: syncedPurchases,
-          purchasesLedger: syncedLedger,
-          imeiRecords: syncedImeis,
-        },
-        DEFAULT_STORE_ID
-      ).catch(() => {});
+    Array.from(changedInventoryMap.values()).forEach(item => {
+      saveInventoryItemToFirestore(item, DEFAULT_STORE_ID).catch(() => {});
     });
+    savePurchaseToFirestore(updatedPurchase, DEFAULT_STORE_ID).catch(() => {});
+    savePurchasesLedgerBatchToFirestore(syncedLedger, DEFAULT_STORE_ID).catch(() => {});
+    saveImeiRecordsBatchToFirestore(syncedImeis, DEFAULT_STORE_ID).catch(() => {});
+    saveRootConfigToFirestore(
+      {
+        supplierPurchases: syncedPurchases,
+        purchasesLedger: syncedLedger,
+        imeiRecords: syncedImeis,
+      },
+      DEFAULT_STORE_ID
+    ).catch(() => {});
   };
 
   const handleDeletePurchase = () => {
@@ -1112,100 +1135,83 @@ function AppContent() {
     }
 
     const changedInventory: InventoryItem[] = [];
-    let syncedPurchases: SupplierPurchase[] = [];
-    let syncedLedger: typeof data.purchasesLedger = [];
-    let syncedImeis: typeof data.imeiRecords = [];
+    const updatedInventory = [...data.inventory];
+    const allPurchaseImeis: string[] = [];
 
-    setData(prev => {
-      // 1. Reverse stock in inventory
-      const updatedInventory = [...prev.inventory];
-      const allPurchaseImeis: string[] = [];
+    purchase.items.forEach(purchaseItem => {
+      const itemImeis = purchaseItem.imeis || (purchaseItem.imei ? [purchaseItem.imei] : []);
+      allPurchaseImeis.push(...itemImeis);
 
-      purchase.items.forEach(purchaseItem => {
-        const itemImeis = purchaseItem.imeis || (purchaseItem.imei ? [purchaseItem.imei] : []);
-        allPurchaseImeis.push(...itemImeis);
+      const matchIndex = updatedInventory.findIndex(
+        inv =>
+          inv.name.trim().toLowerCase() === purchaseItem.name.trim().toLowerCase() ||
+          (purchaseItem.barcode && inv.barcode === purchaseItem.barcode)
+      );
 
-        const matchIndex = updatedInventory.findIndex(
-          inv =>
-            inv.name.trim().toLowerCase() === purchaseItem.name.trim().toLowerCase() ||
-            (purchaseItem.barcode && inv.barcode === purchaseItem.barcode)
+      if (matchIndex >= 0) {
+        const existing = updatedInventory[matchIndex];
+        const existingImeis =
+          existing.imeis || (existing.imei ? existing.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
+        const remainingImeis = existingImeis.filter(
+          im => !itemImeis.some(pIm => pIm.toLowerCase().trim() === im.toLowerCase().trim())
         );
 
-        if (matchIndex >= 0) {
-          const existing = updatedInventory[matchIndex];
-          const existingImeis =
-            existing.imeis || (existing.imei ? existing.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
-          const remainingImeis = existingImeis.filter(
-            im => !itemImeis.some(pIm => pIm.toLowerCase().trim() === im.toLowerCase().trim())
-          );
-
-          const updatedItem: InventoryItem = {
-            ...existing,
-            qty: Math.max(0, existing.qty - purchaseItem.qty),
-            imei: remainingImeis.length > 0 ? remainingImeis.join(', ') : undefined,
-            imeis: remainingImeis.length > 0 ? remainingImeis : undefined,
-          };
-          updatedInventory[matchIndex] = updatedItem;
-          changedInventory.push(updatedItem);
-        }
-      });
-
-      // 2. Reverse IMEI stock in imeiRecords
-      const updatedImeiRecords = recordImeisReversed({
-        purchaseBillNo: purchase.billNo,
-        reversedImeis: allPurchaseImeis,
-        existingImeiRecords: prev.imeiRecords || [],
-      });
-
-      // 3. Mark purchasesLedger entry as reversed
-      const updatedLedger = (prev.purchasesLedger || []).map(entry => {
-        if (entry.itemTitle.includes(purchase.partyName) || entry.id.includes(purchase.id)) {
-          return { ...entry, isReversed: true };
-        }
-        return entry;
-      });
-
-      // 4. Mark purchase as REVERSED
-      const updatedPurchases = (prev.supplierPurchases || []).map(p => {
-        if (p.id === purchaseId) {
-          return {
-            ...p,
-            status: 'REVERSED' as const,
-            reversedAt: new Date().toISOString(),
-            reversedBy,
-            reversalReason: reason,
-            reversalNotes: notes,
-          };
-        }
-        return p;
-      });
-
-      syncedPurchases = updatedPurchases;
-      syncedLedger = updatedLedger;
-      syncedImeis = updatedImeiRecords;
-
-      return {
-        ...prev,
-        inventory: updatedInventory,
-        imeiRecords: updatedImeiRecords,
-        purchasesLedger: updatedLedger,
-        supplierPurchases: updatedPurchases,
-      };
+        const updatedItem: InventoryItem = {
+          ...existing,
+          qty: Math.max(0, existing.qty - purchaseItem.qty),
+          imei: remainingImeis.length > 0 ? remainingImeis.join(', ') : undefined,
+          imeis: remainingImeis.length > 0 ? remainingImeis : undefined,
+        };
+        updatedInventory[matchIndex] = updatedItem;
+        changedInventory.push(updatedItem);
+      }
     });
 
-    queueMicrotask(() => {
-      changedInventory.forEach(item => {
-        saveInventoryItemToFirestore(item, DEFAULT_STORE_ID).catch(() => {});
-      });
-      saveRootConfigToFirestore(
-        {
-          supplierPurchases: syncedPurchases,
-          purchasesLedger: syncedLedger,
-          imeiRecords: syncedImeis,
-        },
-        DEFAULT_STORE_ID
-      ).catch(() => {});
+    const syncedImeis = recordImeisReversed({
+      purchaseBillNo: purchase.billNo,
+      reversedImeis: allPurchaseImeis,
+      existingImeiRecords: data.imeiRecords || [],
     });
+
+    const syncedLedger = (data.purchasesLedger || []).map(entry => {
+      if (entry.itemTitle.includes(purchase.partyName) || entry.id.includes(purchase.id)) {
+        return { ...entry, isReversed: true };
+      }
+      return entry;
+    });
+
+    const reversedPurchase: SupplierPurchase = {
+      ...purchase,
+      status: 'REVERSED' as const,
+      reversedAt: new Date().toISOString(),
+      reversedBy,
+      reversalReason: reason,
+      reversalNotes: notes,
+    };
+    const syncedPurchases = (data.supplierPurchases || []).map(p => (p.id === purchaseId ? reversedPurchase : p));
+
+    setData(prev => ({
+      ...prev,
+      inventory: updatedInventory,
+      imeiRecords: syncedImeis,
+      purchasesLedger: syncedLedger,
+      supplierPurchases: (prev.supplierPurchases || []).map(p => (p.id === purchaseId ? reversedPurchase : p)),
+    }));
+
+    changedInventory.forEach(item => {
+      saveInventoryItemToFirestore(item, DEFAULT_STORE_ID).catch(() => {});
+    });
+    savePurchaseToFirestore(reversedPurchase, DEFAULT_STORE_ID).catch(() => {});
+    savePurchasesLedgerBatchToFirestore(syncedLedger, DEFAULT_STORE_ID).catch(() => {});
+    saveImeiRecordsBatchToFirestore(syncedImeis, DEFAULT_STORE_ID).catch(() => {});
+    saveRootConfigToFirestore(
+      {
+        supplierPurchases: syncedPurchases,
+        purchasesLedger: syncedLedger,
+        imeiRecords: syncedImeis,
+      },
+      DEFAULT_STORE_ID
+    ).catch(() => {});
 
     logActivity(
       'Purchase',
@@ -1244,31 +1250,21 @@ function AppContent() {
 
     const newPaidAmount = (purchase.paidAmount || 0) + paymentAmount;
     const newBalanceDue = Math.max(0, purchase.totalAmount - newPaidAmount);
-    let syncedPurchases: SupplierPurchase[] = [];
+    const settledPurchase: SupplierPurchase = {
+      ...purchase,
+      paidAmount: newPaidAmount,
+      balanceDue: newBalanceDue,
+      notes: notes ? `${purchase.notes || ''}\n[Payment ${paymentMethod}: ${data.settings.currency} ${paymentAmount.toLocaleString()} - ${notes}]`.trim() : purchase.notes,
+    };
+    const syncedPurchases = (data.supplierPurchases || []).map(p => (p.id === purchaseId ? settledPurchase : p));
 
-    setData(prev => {
-      const updatedPurchases = (prev.supplierPurchases || []).map(p => {
-        if (p.id === purchaseId) {
-          return {
-            ...p,
-            paidAmount: newPaidAmount,
-            balanceDue: newBalanceDue,
-            notes: notes ? `${p.notes || ''}\n[Payment ${paymentMethod}: ${data.settings.currency} ${paymentAmount.toLocaleString()} - ${notes}]`.trim() : p.notes,
-          };
-        }
-        return p;
-      });
+    setData(prev => ({
+      ...prev,
+      supplierPurchases: (prev.supplierPurchases || []).map(p => (p.id === purchaseId ? settledPurchase : p)),
+    }));
 
-      syncedPurchases = updatedPurchases;
-      return {
-        ...prev,
-        supplierPurchases: updatedPurchases,
-      };
-    });
-
-    queueMicrotask(() => {
-      saveRootConfigToFirestore({ supplierPurchases: syncedPurchases }, DEFAULT_STORE_ID).catch(() => {});
-    });
+    savePurchaseToFirestore(settledPurchase, DEFAULT_STORE_ID).catch(() => {});
+    saveRootConfigToFirestore({ supplierPurchases: syncedPurchases }, DEFAULT_STORE_ID).catch(() => {});
 
     logActivity(
       'Purchase',
@@ -1370,7 +1366,7 @@ function AppContent() {
             const localStoreData = loadStoredData(activeStoreId);
             setData(prev => {
               const base = (prev.inventory && prev.inventory.length > 0) || (prev.sales && prev.sales.length > 0)
-                ? prev
+                ? mergeAppData(localStoreData, prev)
                 : localStoreData;
               const currentUsers = (base.users || []).filter(
                 u => u && u.id && (u.role !== 'admin' || u.id === user.id)
@@ -1385,23 +1381,55 @@ function AppContent() {
               };
             });
 
-            // 2. Non-blocking background refresh from Cloud Firestore
-            loadAppDataFromFirestore(activeStoreId)
-              .then(remoteData => {
-                if (remoteData) {
+            // 2. Immediately rehydrate full images & offline data from IndexedDB right after login
+            loadFromIndexedDB(activeStoreId)
+              .then(idbData => {
+                if (idbData) {
                   setData(prev => {
-                    const rUsers = (remoteData.users || []).filter(
+                    const merged = mergeAppData(prev, idbData);
+                    return {
+                      ...merged,
+                      currentUser: prev.currentUser || user,
+                      currentRole: prev.currentRole || user.role,
+                    };
+                  });
+                }
+              })
+              .catch(() => {});
+
+            // 3. Background refresh & deep merge from Cloud Firestore (including any prior USR-ADM-* shadow writes)
+            Promise.all([
+              loadAppDataFromFirestore(activeStoreId).catch(() => null),
+              user.storeId && user.storeId !== activeStoreId
+                ? loadAppDataFromFirestore(user.storeId).catch(() => null)
+                : Promise.resolve(null),
+            ])
+              .then(([remoteData, shadowRemote]) => {
+                if (remoteData || shadowRemote) {
+                  setData(prev => {
+                    let merged = prev;
+                    if (shadowRemote) merged = mergeAppData(merged, shadowRemote);
+                    if (remoteData) merged = mergeAppData(merged, remoteData);
+
+                    const rUsers = (merged.users || []).filter(
                       u => u && u.id && (u.role !== 'admin' || u.id === user.id)
                     );
                     const rUpdatedUsers = rUsers.some(u => u.id === user.id) ? rUsers : [user, ...rUsers];
 
                     const finalData: AppData = {
-                      ...remoteData,
+                      ...merged,
                       users: rUpdatedUsers,
                       currentUser: prev.currentUser || user,
                       currentRole: prev.currentRole || user.role,
                     };
                     saveStoredData(finalData, activeStoreId);
+
+                    const prevTime = Date.parse(prev.lastModified || '') || 0;
+                    const remoteTime = Date.parse(remoteData?.lastModified || '') || 0;
+                    if (shadowRemote || (remoteData && prevTime > remoteTime)) {
+                      saveAppDataToFirestore(finalData, activeStoreId).catch(() => {});
+                    }
+
                     return finalData;
                   });
                 }
@@ -1523,6 +1551,8 @@ function AppContent() {
                 categories={data.categories || ['Android Mobile', 'Keypad Mobile']}
                 stockAdjustments={data.stockAdjustments || []}
                 sales={data.sales || []}
+                supplierPurchases={data.supplierPurchases || []}
+                imeiRecords={data.imeiRecords || []}
                 isAdmin={(data.currentRole || 'admin') === 'admin'}
                 onOpenAddModal={() => {
                   setEditStockItem(null);
@@ -1561,6 +1591,7 @@ function AppContent() {
                 onAddCategory={handleAddCategory}
                 onRenameCategory={handleRenameCategory}
                 onOpenPdfReport={() => handleOpenPdfReport('purchases')}
+                onRecoverMissingPurchases={handleRecoverMissingPurchases}
               />
             )}
 
@@ -1714,7 +1745,7 @@ function AppContent() {
           showToast('Backup restored successfully', 'success');
         }}
         onUpdateUsers={(users: UserAccount[]) => {
-          const activeSid = data.currentUser?.storeId || data.currentUser?.id;
+          const activeSid = DEFAULT_STORE_ID;
           const updatedData = { ...data, users };
           setData(updatedData);
           saveStoredData(updatedData, activeSid);

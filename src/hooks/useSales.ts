@@ -7,7 +7,16 @@ import {
   ActivityLog,
 } from '../types';
 import { recordImeisSold, extractItemImeis, recordImeisReturned } from '../utils/imeiManager';
-import { saveSaleAtomic, deleteSaleFromFirestore, updateSaleInFirestore } from '../utils/storage';
+import {
+  saveSaleAtomic,
+  deleteSaleFromFirestore,
+  updateSaleInFirestore,
+  saveSalesReturnToFirestore,
+  saveInventoryItemToFirestore,
+  saveKhataCustomerToFirestore,
+  saveImeiRecordsBatchToFirestore,
+  saveRootConfigToFirestore,
+} from '../utils/storage';
 import { generateEntityId } from '../utils/id';
 
 interface UseSalesProps {
@@ -192,7 +201,7 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
     setReceiptModalOpen(true);
     showToast(`Sale #${sale.invNo} completed!`, 'success');
 
-    // 5. Fire atomic Firestore subcollection batch update
+    // 5. Fire atomic Firestore subcollection batch update & IMEI tracking sync
     saveSaleAtomic({
       sale,
       inventoryUpdates,
@@ -201,6 +210,10 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
     }).catch(err => {
       console.warn('Background atomic Firestore sync warning:', err);
     });
+    if (updatedImeiRecords.length > 0) {
+      saveImeiRecordsBatchToFirestore(updatedImeiRecords).catch(() => {});
+      saveRootConfigToFirestore({ imeiRecords: updatedImeiRecords }).catch(() => {});
+    }
   };
 
   /**
@@ -211,6 +224,72 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
     permanent: boolean = false,
     reason: string = 'Customer request / voided'
   ) => {
+    const targetSale = data.sales.find(s => s.invNo === invNo);
+    const restoredInventoryToSync: typeof data.inventory = [];
+    let restoredKhataToSync: KhataCustomer | undefined;
+    let syncedImeiRecordsToSave: typeof data.imeiRecords = [];
+
+    if (targetSale && targetSale.status !== 'CANCELLED') {
+      data.inventory.forEach(invItem => {
+        const soldItem = targetSale.items.find(si => si.id === invItem.id || si.name === invItem.name);
+        if (soldItem) {
+          const soldImeis = soldItem.imeis || (soldItem.imei ? [soldItem.imei] : []);
+          const currentImeis = invItem.imeis || (invItem.imei ? invItem.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
+          const combinedImeis = Array.from(new Set([...currentImeis, ...soldImeis]));
+          restoredInventoryToSync.push({
+            ...invItem,
+            qty: invItem.qty + soldItem.qty,
+            imeis: combinedImeis.length > 0 ? combinedImeis : undefined,
+            imei: combinedImeis.length > 0 ? combinedImeis.join(', ') : undefined,
+          });
+        }
+      });
+
+      syncedImeiRecordsToSave = (data.imeiRecords || []).map(rec => {
+        const isFromSale = targetSale.items.some(si => {
+          const soldImeis = si.imeis || (si.imei ? [si.imei] : []);
+          return soldImeis.some(im => im.toLowerCase() === rec.imei.toLowerCase());
+        });
+        if (isFromSale) {
+          return {
+            ...rec,
+            status: 'AVAILABLE' as const,
+            invoiceNo: undefined,
+            soldDate: undefined,
+            customerName: undefined,
+            customerPhone: undefined,
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return rec;
+      });
+
+      if (targetSale.invoiceType === 'credit' && targetSale.amountDue && targetSale.amountDue > 0) {
+        const matchedCust = data.khata.find(c =>
+          targetSale.khataCustomerId
+            ? c.id === targetSale.khataCustomerId
+            : c.name.toLowerCase() === (targetSale.custName || '').toLowerCase()
+        );
+        if (matchedCust) {
+          restoredKhataToSync = {
+            ...matchedCust,
+            balance: Math.max(0, matchedCust.balance - targetSale.amountDue),
+            lastUpdated: new Date().toISOString(),
+            history: [
+              {
+                id: generateEntityId('TX'),
+                date: new Date().toISOString(),
+                type: 'debit' as const,
+                amount: targetSale.amountDue,
+                note: `Invoice #${targetSale.invNo} ${permanent ? 'Permanently Deleted' : 'Cancelled/Voided'}`,
+              },
+              ...matchedCust.history,
+            ],
+          };
+        }
+      }
+    }
+
     setData(prev => {
       const sale = prev.sales.find(s => s.invNo === invNo);
       if (!sale) return prev;
@@ -221,7 +300,6 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
 
       // Only restore stock, IMEIs and khata balance if the sale was NOT already CANCELLED
       if (sale.status !== 'CANCELLED') {
-        // 1. Restore product quantities and IMEIs in inventory
         updatedInventory = prev.inventory.map(invItem => {
           const soldItem = sale.items.find(si => si.id === invItem.id || si.name === invItem.name);
           if (soldItem) {
@@ -238,7 +316,6 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
           return invItem;
         });
 
-        // 2. Update IMEI ledger records back to 'AVAILABLE'
         updatedImeiRecords = (prev.imeiRecords || []).map(rec => {
           const isFromSale = sale.items.some(si => {
             const soldImeis = si.imeis || (si.imei ? [si.imei] : []);
@@ -258,7 +335,6 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
           return rec;
         });
 
-        // 3. Deduct from customer Khata balance if credit sale
         if (sale.invoiceType === 'credit' && sale.amountDue && sale.amountDue > 0) {
           updatedKhata = prev.khata.map(c => {
             const isTarget = sale.khataCustomerId
@@ -287,21 +363,17 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
         }
       }
 
-      let updatedSales: SaleRecord[];
-      if (permanent) {
-        updatedSales = prev.sales.filter(s => s.invNo !== invNo);
-      } else {
-        updatedSales = prev.sales.map(s => {
-          if (s.invNo === invNo) {
-            return {
-              ...s,
-              status: 'CANCELLED' as const,
-              notes: `Cancelled: ${reason} | ${s.notes || ''}`.trim(),
-            };
-          }
-          return s;
-        });
-      }
+      const updatedSales = permanent
+        ? prev.sales.filter(s => s.invNo !== invNo)
+        : prev.sales.map(s =>
+            s.invNo === invNo
+              ? {
+                  ...s,
+                  status: 'CANCELLED' as const,
+                  notes: `Cancelled: ${reason} | ${s.notes || ''}`.trim(),
+                }
+              : s
+          );
 
       return {
         ...prev,
@@ -322,15 +394,19 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
 
     if (permanent) {
       deleteSaleFromFirestore(invNo).catch(err => console.warn('Failed to delete sale from Firestore:', err));
-    } else {
-      const saleToCancel = data.sales.find(s => s.invNo === invNo);
-      if (saleToCancel) {
-        updateSaleInFirestore({
-          ...saleToCancel,
-          status: 'CANCELLED',
-          notes: `Cancelled: ${reason} | ${saleToCancel.notes || ''}`.trim(),
-        }).catch(err => console.warn('Failed to cancel sale in Firestore:', err));
-      }
+    } else if (targetSale) {
+      updateSaleInFirestore({
+        ...targetSale,
+        status: 'CANCELLED',
+        notes: `Cancelled: ${reason} | ${targetSale.notes || ''}`.trim(),
+      }).catch(err => console.warn('Failed to cancel sale in Firestore:', err));
+    }
+
+    restoredInventoryToSync.forEach(item => saveInventoryItemToFirestore(item).catch(() => {}));
+    if (restoredKhataToSync) saveKhataCustomerToFirestore(restoredKhataToSync).catch(() => {});
+    if (syncedImeiRecordsToSave.length > 0) {
+      saveImeiRecordsBatchToFirestore(syncedImeiRecordsToSave).catch(() => {});
+      saveRootConfigToFirestore({ imeiRecords: syncedImeiRecordsToSave }).catch(() => {});
     }
 
     if (activeReceiptSale && activeReceiptSale.invNo === invNo) {
@@ -383,15 +459,75 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
   };
 
   const handleSaveSalesReturn = (returnRecord: SalesReturnRecord) => {
+    const restoredInvToSync: typeof data.inventory = [];
+    data.inventory.forEach(inv => {
+      const retItem = returnRecord.items.find(ri => ri.productId === inv.id || ri.name === inv.name);
+      if (retItem) {
+        const retImeis = retItem.imeis || (retItem.imei ? [retItem.imei] : []);
+        const existingImeis = inv.imeis || (inv.imei ? inv.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
+        const combinedImeis = Array.from(new Set([...existingImeis, ...retImeis]));
+        restoredInvToSync.push({
+          ...inv,
+          qty: inv.qty + retItem.qty,
+          imei: combinedImeis.length > 0 ? combinedImeis.join(', ') : undefined,
+          imeis: combinedImeis.length > 0 ? combinedImeis : undefined,
+        });
+      }
+    });
+
+    let syncedImeiRecords = data.imeiRecords || [];
+    returnRecord.items.forEach(retItem => {
+      const retImeis = retItem.imeis || (retItem.imei ? [retItem.imei] : []);
+      if (retImeis.length > 0) {
+        syncedImeiRecords = recordImeisReturned({
+          returnedImeis: retImeis,
+          productId: retItem.productId,
+          productName: retItem.name,
+          existingImeiRecords: syncedImeiRecords,
+        });
+      }
+    });
+
+    const origSale = data.sales.find(s => s.invNo === returnRecord.originalInvNo);
+    const updatedSaleToSync: SaleRecord | undefined = origSale
+      ? {
+          ...origSale,
+          returnStatus: (origSale.totalRefunded || 0) + returnRecord.totalRefundAmount >= origSale.grandTotal ? 'FULL' : 'PARTIAL',
+          totalRefunded: (origSale.totalRefunded || 0) + returnRecord.totalRefundAmount,
+        }
+      : undefined;
+
+    let updatedKhataToSync: KhataCustomer | undefined;
+    if (returnRecord.khataCustomerId && returnRecord.totalRefundAmount > 0) {
+      const targetCust = data.khata.find(c => c.id === returnRecord.khataCustomerId);
+      if (targetCust) {
+        updatedKhataToSync = {
+          ...targetCust,
+          balance: Math.max(0, targetCust.balance - returnRecord.totalRefundAmount),
+          lastUpdated: new Date().toISOString(),
+          history: [
+            {
+              id: generateEntityId('TX'),
+              date: new Date().toISOString(),
+              type: 'debit' as const,
+              amount: returnRecord.totalRefundAmount,
+              note: `Sales Return #${returnRecord.returnNo} for Inv #${returnRecord.originalInvNo}`,
+            },
+            ...targetCust.history,
+          ],
+        };
+      }
+    }
+
+    const syncedSalesReturns = [returnRecord, ...(data.salesReturns || [])];
+
     setData(prev => {
-      // 1. Restore product quantities and returned IMEIs in inventory
       const updatedInventory = prev.inventory.map(inv => {
         const retItem = returnRecord.items.find(ri => ri.productId === inv.id || ri.name === inv.name);
         if (retItem) {
           const retImeis = retItem.imeis || (retItem.imei ? [retItem.imei] : []);
           const existingImeis = inv.imeis || (inv.imei ? inv.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
           const combinedImeis = Array.from(new Set([...existingImeis, ...retImeis]));
-
           return {
             ...inv,
             qty: inv.qty + retItem.qty,
@@ -402,7 +538,6 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
         return inv;
       });
 
-      // 2. Restore available IMEI in imeiRecords ledger
       let updatedImeiRecords = prev.imeiRecords || [];
       returnRecord.items.forEach(retItem => {
         const retImeis = retItem.imeis || (retItem.imei ? [retItem.imei] : []);
@@ -416,7 +551,6 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
         }
       });
 
-      // 3. Mark original sale returnStatus
       const updatedSales = prev.sales.map(s => {
         if (s.invNo === returnRecord.originalInvNo) {
           const alreadyRefunded = s.totalRefunded || 0;
@@ -431,7 +565,6 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
         return s;
       });
 
-      // 4. If credit sale with customer balance, deduct refund from Khata balance
       let updatedKhata = prev.khata;
       if (returnRecord.khataCustomerId && returnRecord.totalRefundAmount > 0) {
         updatedKhata = prev.khata.map(c => {
@@ -465,6 +598,16 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
         salesReturns: [returnRecord, ...(prev.salesReturns || [])],
       };
     });
+
+    saveSalesReturnToFirestore(returnRecord).catch(() => {});
+    if (updatedSaleToSync) updateSaleInFirestore(updatedSaleToSync).catch(() => {});
+    restoredInvToSync.forEach(item => saveInventoryItemToFirestore(item).catch(() => {}));
+    if (updatedKhataToSync) saveKhataCustomerToFirestore(updatedKhataToSync).catch(() => {});
+    if (syncedImeiRecords.length > 0) saveImeiRecordsBatchToFirestore(syncedImeiRecords).catch(() => {});
+    saveRootConfigToFirestore({
+      salesReturns: syncedSalesReturns,
+      imeiRecords: syncedImeiRecords,
+    }).catch(() => {});
 
     logActivity(
       'Sale',

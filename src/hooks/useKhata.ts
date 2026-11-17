@@ -87,46 +87,41 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
 
     if (id) {
       // Editing existing customer
-      let updatedCustomer: KhataCustomer | undefined;
+      const existingCust = data.khata.find(c => c.id === id);
+      if (!existingCust) return;
+
+      const updatedCustomer: KhataCustomer = {
+        ...existingCust,
+        name: name.trim(),
+        phone: phone.trim(),
+        phone2: phone2?.trim() || undefined,
+        address: address?.trim() || undefined,
+        lat: typeof lat === 'number' && Number.isFinite(lat) ? lat : undefined,
+        lng: typeof lng === 'number' && Number.isFinite(lng) ? lng : undefined,
+        placeId: placeId?.trim() || undefined,
+        mapUrl: mapUrl?.trim() || undefined,
+        image: image === '' ? undefined : image || existingCust.image,
+        customerType: customerType || existingCust.customerType || 'retail',
+        shopName: shopName?.trim() || undefined,
+        city: city?.trim() || undefined,
+        ntnNumber: ntnNumber?.trim() || undefined,
+        cnic: cnic?.trim() || undefined,
+        creditLimit: typeof creditLimit === 'number' && creditLimit > 0 ? creditLimit : undefined,
+        dueDate: dueDate?.trim() || undefined,
+        guarantorName: guarantorName?.trim() || undefined,
+        guarantorPhone: guarantorPhone?.trim() || undefined,
+        notes: notes?.trim() || undefined,
+        lastUpdated: new Date().toISOString(),
+      };
 
       setData(prev => ({
         ...prev,
-        khata: prev.khata.map(c => {
-          if (c.id === id) {
-            updatedCustomer = {
-              ...c,
-              name: name.trim(),
-              phone: phone.trim(),
-              phone2: phone2?.trim() || undefined,
-              address: address?.trim() || undefined,
-              lat: typeof lat === 'number' && Number.isFinite(lat) ? lat : undefined,
-              lng: typeof lng === 'number' && Number.isFinite(lng) ? lng : undefined,
-              placeId: placeId?.trim() || undefined,
-              mapUrl: mapUrl?.trim() || undefined,
-              image: image === '' ? undefined : image || c.image,
-              customerType: customerType || c.customerType || 'retail',
-              shopName: shopName?.trim() || undefined,
-              city: city?.trim() || undefined,
-              ntnNumber: ntnNumber?.trim() || undefined,
-              cnic: cnic?.trim() || undefined,
-              creditLimit: typeof creditLimit === 'number' && creditLimit > 0 ? creditLimit : undefined,
-              dueDate: dueDate?.trim() || undefined,
-              guarantorName: guarantorName?.trim() || undefined,
-              guarantorPhone: guarantorPhone?.trim() || undefined,
-              notes: notes?.trim() || undefined,
-              lastUpdated: new Date().toISOString(),
-            };
-            return updatedCustomer;
-          }
-          return c;
-        }),
+        khata: prev.khata.map(c => (c.id === id ? updatedCustomer : c)),
       }));
 
-      if (updatedCustomer) {
-        saveKhataCustomerToFirestore(updatedCustomer).catch(err => {
-          console.warn('Firestore Khata update warning:', err);
-        });
-      }
+      saveKhataCustomerToFirestore(updatedCustomer).catch(err => {
+        console.warn('Firestore Khata update warning:', err);
+      });
 
       logActivity('Khata', `Updated Customer Account: ${name}`, `Phone: ${phone}`, 'update', id);
       showToast(`Customer account for "${name}" updated`, 'success');
@@ -204,45 +199,39 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
     accountId?: string,
     note?: string
   ) => {
-    let updatedCustomer: KhataCustomer | undefined;
+    const existingCust = data.khata.find(c => c.id === customerId);
+    if (!existingCust) return;
+
+    const now = new Date().toISOString();
+    const newTx = {
+      id: generateEntityId('TX'),
+      date: now,
+      type: 'payment' as const,
+      amount,
+      paymentMethod,
+      accountId,
+      note: note || `Payment of ${data.settings.currency} ${amount.toLocaleString()} received via ${paymentMethod}`,
+    };
+
+    const updatedCustomer: KhataCustomer = {
+      ...existingCust,
+      balance: existingCust.balance - amount,
+      lastUpdated: now,
+      history: [newTx, ...existingCust.history],
+    };
 
     setData(prev => ({
       ...prev,
-      khata: prev.khata.map(c => {
-        if (c.id === customerId) {
-          const newBal = c.balance - amount;
-          const newTx = {
-            id: generateEntityId('TX'),
-            date: new Date().toISOString(),
-            type: 'payment' as const,
-            amount,
-            paymentMethod,
-            accountId,
-            note: note || `Payment of ${data.settings.currency} ${amount.toLocaleString()} received via ${paymentMethod}`,
-          };
-
-          updatedCustomer = {
-            ...c,
-            balance: newBal,
-            lastUpdated: new Date().toISOString(),
-            history: [newTx, ...c.history],
-          };
-          return updatedCustomer;
-        }
-        return c;
-      }),
+      khata: prev.khata.map(c => (c.id === customerId ? updatedCustomer : c)),
     }));
 
-    if (updatedCustomer) {
-      saveKhataCustomerToFirestore(updatedCustomer).catch(err => {
-        console.warn('Firestore Khata settlement warning:', err);
-      });
-    }
+    saveKhataCustomerToFirestore(updatedCustomer).catch(err => {
+      console.warn('Firestore Khata settlement warning:', err);
+    });
 
-    const customer = data.khata.find(c => c.id === customerId);
     logActivity(
       'Khata',
-      `Payment Received: ${customer?.name || 'Customer'}`,
+      `Payment Received: ${existingCust.name || 'Customer'}`,
       `Amount: ${data.settings.currency} ${amount.toLocaleString()} via ${paymentMethod}`,
       'payment',
       customerId
@@ -260,47 +249,44 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
     amount: number,
     paymentMethod?: string,
     accountId?: string,
-    note?: string
+    note?: string,
+    receiptImage?: string
   ) => {
-    let updatedCustomer: KhataCustomer | undefined;
+    const existingCust = data.khata.find(c => c.id === customerId);
+    if (!existingCust) return;
+
+    const now = new Date().toISOString();
+    const newBal = type === 'credit' ? existingCust.balance + amount : existingCust.balance - amount;
+    const newTx = {
+      id: generateEntityId('TX'),
+      date: now,
+      type,
+      amount,
+      paymentMethod,
+      accountId,
+      note: note || (type === 'credit' ? 'Credit balance added' : 'Payment received'),
+      receiptImage: receiptImage || undefined,
+    };
+
+    const updatedCustomer: KhataCustomer = {
+      ...existingCust,
+      balance: newBal,
+      lastUpdated: now,
+      history: [newTx, ...existingCust.history],
+    };
 
     setData(prev => ({
       ...prev,
-      khata: prev.khata.map(c => {
-        if (c.id === customerId) {
-          const newBal = type === 'credit' ? c.balance + amount : c.balance - amount;
-          const newTx = {
-            id: generateEntityId('TX'),
-            date: new Date().toISOString(),
-            type,
-            amount,
-            paymentMethod,
-            accountId,
-            note: note || (type === 'credit' ? 'Credit balance added' : 'Payment received'),
-          };
-
-          updatedCustomer = {
-            ...c,
-            balance: newBal,
-            lastUpdated: new Date().toISOString(),
-            history: [newTx, ...c.history],
-          };
-          return updatedCustomer;
-        }
-        return c;
-      }),
+      khata: prev.khata.map(c => (c.id === customerId ? updatedCustomer : c)),
     }));
 
-    if (updatedCustomer) {
-      saveKhataCustomerToFirestore(updatedCustomer).catch(err => {
-        console.warn('Firestore Khata transaction warning:', err);
-      });
-    }
+    saveKhataCustomerToFirestore(updatedCustomer).catch(err => {
+      console.warn('Firestore Khata transaction warning:', err);
+    });
 
-    const customer = data.khata.find(c => c.id === customerId);
     logActivity(
       'Khata',
-      `${type === 'credit' ? 'Credit Added' : 'Payment Recorded'}: ${customer?.name || 'Customer'}`,
+      `${type === 'credit' ? 'Credit Added' : 'Payment Recorded'}: ${existingCust.name || 'Customer'}`,
       `Amount: ${data.settings.currency} ${amount.toLocaleString()}${note ? ` | Note: ${note}` : ''}`,
       'payment',
       customerId
@@ -316,44 +302,40 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
       return;
     }
 
-    let updatedCustomer: KhataCustomer | undefined;
-    let removedAmount = 0;
+    const existingCust = data.khata.find(c => c.id === customerId);
+    if (!existingCust) return;
+    const target = existingCust.history.find(t => t.id === txId);
+    if (!target) return;
+
+    const removedAmount = target.amount;
+    const nextHistory = existingCust.history.filter(t => t.id !== txId);
+    const recalculatedBalance = nextHistory.reduce((acc, t) => {
+      return t.type === 'credit' ? acc + t.amount : acc - t.amount;
+    }, 0);
+
+    const updatedCustomer: KhataCustomer = {
+      ...existingCust,
+      balance: recalculatedBalance,
+      lastUpdated: new Date().toISOString(),
+      history: nextHistory,
+    };
 
     setData(prev => ({
       ...prev,
-      khata: prev.khata.map(c => {
-        if (c.id !== customerId) return c;
-        const target = c.history.find(t => t.id === txId);
-        if (!target) return c;
-        removedAmount = target.amount;
-        const nextHistory = c.history.filter(t => t.id !== txId);
-        const recalculatedBalance = nextHistory.reduce((acc, t) => {
-          return t.type === 'credit' ? acc + t.amount : acc - t.amount;
-        }, 0);
-
-        updatedCustomer = {
-          ...c,
-          balance: recalculatedBalance,
-          lastUpdated: new Date().toISOString(),
-          history: nextHistory,
-        };
-        return updatedCustomer;
-      }),
+      khata: prev.khata.map(c => (c.id === customerId ? updatedCustomer : c)),
     }));
 
-    if (updatedCustomer) {
-      saveKhataCustomerToFirestore(updatedCustomer).catch(err => {
-        console.warn('Firestore Khata tx delete warning:', err);
-      });
-      logActivity(
-        'Khata',
-        `Removed Ledger Entry: ${updatedCustomer.name}`,
-        `Removed ${data.settings.currency} ${removedAmount.toLocaleString()} entry`,
-        'delete',
-        customerId
-      );
-      showToast('Ledger entry removed and balance updated', 'info');
-    }
+    saveKhataCustomerToFirestore(updatedCustomer).catch(err => {
+      console.warn('Firestore Khata tx delete warning:', err);
+    });
+    logActivity(
+      'Khata',
+      `Removed Ledger Entry: ${updatedCustomer.name}`,
+      `Removed ${data.settings.currency} ${removedAmount.toLocaleString()} entry`,
+      'delete',
+      customerId
+    );
+    showToast('Ledger entry removed and balance updated', 'info');
   };
 
   /**

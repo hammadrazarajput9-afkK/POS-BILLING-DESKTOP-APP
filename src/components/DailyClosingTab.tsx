@@ -90,7 +90,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
   const [newAccountName, setNewAccountName] = useState('');
   const [newAccountNumber, setNewAccountNumber] = useState('');
   const [newAccountTitle, setNewAccountTitle] = useState('');
-  const [newBankType, setNewBankType] = useState('Bank');
+
 
   const [accountToDelete, setAccountToDelete] = useState<OnlineAccount | null>(null);
   const [closingToDelete, setClosingToDelete] = useState<DailyClosingRecord | null>(null);
@@ -222,7 +222,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
       name,
       accountNumber: newAccountNumber.trim() || undefined,
       accountTitle: newAccountTitle.trim() || undefined,
-      bankType: newBankType,
+      bankType: 'Digital Wallet',
     });
 
     setNewAccountName('');
@@ -1632,20 +1632,6 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                 />
               </div>
 
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Channel / Type</label>
-                <select
-                  value={newBankType}
-                  onChange={e => setNewBankType(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:outline-none focus:border-blue-600"
-                >
-                  <option value="Bank">Bank Account</option>
-                  <option value="JazzCash">JazzCash</option>
-                  <option value="Easypaisa">Easypaisa</option>
-                  <option value="Card">Card Machine</option>
-                  <option value="Wallet">Digital Wallet</option>
-                </select>
-              </div>
 
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">Account / IBAN Number (Optional)</label>

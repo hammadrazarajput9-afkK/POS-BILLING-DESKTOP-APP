@@ -41,6 +41,7 @@ import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { validateImeis, distributeImeiInput, MAX_SINGLE_IMEI_LENGTH, sanitizeSingleImei, extractScannedImeiTokens } from '../utils/imeiManager';
 import { generateSinglePurchasePdf } from '../utils/pdfGenerator';
 import { sharePurchaseOnWhatsApp } from '../utils/whatsappInvoice';
+import { compressImage } from '../utils/imageCompressor';
 
 interface PurchasesTabProps {
   purchases: SupplierPurchase[];
@@ -74,6 +75,7 @@ interface PurchasesTabProps {
   onRenameCategory?: (oldName: string, newName: string) => boolean;
   onSettlePurchaseDue?: (params: { purchaseId: string; paymentAmount: number; paymentMethod: string; notes?: string }) => void;
   onOpenPdfReport?: () => void;
+  onRecoverMissingPurchases?: () => Promise<number> | void;
 }
 
 export interface InwardDraftItem {
@@ -132,8 +134,20 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
   onRenameCategory,
   onSettlePurchaseDue,
   onOpenPdfReport,
+  onRecoverMissingPurchases,
 }) => {
   const { showToast } = useToast();
+  const [isRecovering, setIsRecovering] = useState(false);
+
+  const handleTriggerRecover = async () => {
+    if (!onRecoverMissingPurchases || isRecovering) return;
+    setIsRecovering(true);
+    try {
+      await onRecoverMissingPurchases();
+    } finally {
+      setIsRecovering(false);
+    }
+  };
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'REVERSED' | 'PAID' | 'DUE'>('ALL');
   const [dateFilter, setDateFilter] = useState('');
@@ -469,26 +483,23 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
     setIsAddModalOpen(true);
   };
 
-  // Image Upload handler (Base64)
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Image Upload handler (Automatically compressed ~50KB JPEG to protect Firestore storage)
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
-      showToast('Image size exceeds 5MB limit', 'error');
+    if (file.size > 10 * 1024 * 1024) {
+      showToast('Image size exceeds 10MB limit', 'error');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = ev => {
-      const result = ev.target?.result as string;
-      setInvoiceImage(result);
-      showToast('Supplier invoice bill uploaded', 'success');
-    };
-    reader.onerror = () => {
-      showToast('Failed to read image file', 'error');
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressImage(file, 800, 0.72);
+      setInvoiceImage(compressed);
+      showToast('Supplier bill photo compressed & attached!', 'success');
+    } catch {
+      showToast('Failed to process image file', 'error');
+    }
   };
 
   // Items manipulation
@@ -1070,6 +1081,18 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
         </div>
 
         <div className="w-full sm:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+          {onRecoverMissingPurchases && (
+            <button
+              type="button"
+              onClick={handleTriggerRecover}
+              disabled={isRecovering}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-extrabold rounded-xl shadow-xs transition cursor-pointer active:scale-95 disabled:opacity-60"
+              title="Scan Cloud Firestore, Local Cache, and History Logs to restore missing Stock Inward bills"
+            >
+              <RotateCcw className={`w-4 h-4 ${isRecovering ? 'animate-spin' : ''}`} />
+              {isRecovering ? 'Scanning...' : 'Recover Old Bills'}
+            </button>
+          )}
           {onOpenPdfReport && (
             <button
               type="button"
@@ -1277,14 +1300,27 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
               ? 'Try adjusting your search criteria or filters to locate supplier invoices.'
               : 'Start logging stock inward and vendor bills to manage your inventory costs and supplier payables.'}
           </p>
-          <button
-            type="button"
-            onClick={openAddModal}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            Add First Purchase Bill
-          </button>
+          <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+            {onRecoverMissingPurchases && (
+              <button
+                type="button"
+                onClick={handleTriggerRecover}
+                disabled={isRecovering}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-xl text-xs font-extrabold transition cursor-pointer disabled:opacity-60"
+              >
+                <RotateCcw className={`w-4 h-4 ${isRecovering ? 'animate-spin' : ''}`} />
+                {isRecovering ? 'Scanning History & Cloud...' : 'Recover Old Bills'}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={openAddModal}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              Add First Purchase Bill
+            </button>
+          </div>
         </div>
       ) : (
         <>

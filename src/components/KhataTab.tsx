@@ -34,7 +34,8 @@ interface KhataTabProps {
     amount: number,
     paymentMethod?: string,
     accountId?: string,
-    note?: string
+    note?: string,
+    receiptImage?: string
   ) => void;
   onUpdateCustomer?: (updated: CustomerAccountUpdatePayload) => void;
   onDeleteTransaction?: (customerId: string, txId: string) => void;

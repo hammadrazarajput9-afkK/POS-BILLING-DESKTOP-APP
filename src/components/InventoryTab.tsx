@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { InventoryItem, ItemCategory, StockAdjustment, SaleRecord, MobileVariant } from '../types';
+import { InventoryItem, ItemCategory, StockAdjustment, SaleRecord, MobileVariant, SupplierPurchase, ImeiRecord } from '../types';
 import {
   Search,
   Plus,
@@ -26,7 +26,9 @@ import {
   Camera,
   LayoutGrid,
   List,
-  Share2
+  Share2,
+  Truck,
+  Building2
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { ConfirmModal } from './ConfirmModal';
@@ -39,6 +41,8 @@ interface InventoryTabProps {
   categories: string[];
   stockAdjustments?: StockAdjustment[];
   sales?: SaleRecord[];
+  supplierPurchases?: SupplierPurchase[];
+  imeiRecords?: ImeiRecord[];
   isAdmin?: boolean;
   onOpenAddModal: () => void;
   onOpenEditModal: (item: InventoryItem) => void;
@@ -57,6 +61,8 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
   categories,
   stockAdjustments = [],
   sales = [],
+  supplierPurchases = [],
+  imeiRecords = [],
   isAdmin = true,
   onOpenAddModal,
   onOpenEditModal,
@@ -81,6 +87,190 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
 
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [selectedProductPopup, setSelectedProductPopup] = useState<InventoryItem | null>(null);
+
+  const selectedProductSupplierInfo = useMemo(() => {
+    if (!selectedProductPopup) {
+      return {
+        entries: [] as Array<{
+          key: string;
+          billNo: string;
+          partyName: string;
+          partyPhone?: string;
+          date: string;
+          qty: number;
+          costPrice: number;
+          specsLabel: string;
+          imeis: string[];
+        }>,
+        bySupplier: [] as Array<{
+          partyName: string;
+          partyPhone?: string;
+          totalQty: number;
+          billCount: number;
+          lastDate: string;
+        }>,
+        imeiSourceMap: new Map<string, { partyName: string; billNo?: string }>(),
+      };
+    }
+
+    const baseProductName = selectedProductPopup.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
+    const productBarcode = (selectedProductPopup.barcode || '').trim().toLowerCase();
+
+    const productImeiSet = new Set<string>();
+    const collectImeis = (raw?: string | string[]) => {
+      if (!raw) return;
+      if (Array.isArray(raw)) {
+        raw.forEach(s => {
+          const clean = (s || '').trim().toLowerCase();
+          if (clean) productImeiSet.add(clean);
+        });
+      } else {
+        raw.split(',').forEach(s => {
+          const clean = s.trim().toLowerCase();
+          if (clean) productImeiSet.add(clean);
+        });
+      }
+    };
+    collectImeis(selectedProductPopup.imei);
+    collectImeis(selectedProductPopup.imeis);
+    (selectedProductPopup.variants || []).forEach(v => collectImeis(v.imeis));
+
+    const imeiSourceMap = new Map<string, { partyName: string; billNo?: string }>();
+    const entries: Array<{
+      key: string;
+      billNo: string;
+      partyName: string;
+      partyPhone?: string;
+      date: string;
+      qty: number;
+      costPrice: number;
+      specsLabel: string;
+      imeis: string[];
+    }> = [];
+    const seenBillKeys = new Set<string>();
+
+    for (const pur of supplierPurchases) {
+      if (!pur || pur.status === 'REVERSED') continue;
+      for (let idx = 0; idx < (pur.items || []).length; idx++) {
+        const pi = pur.items[idx];
+        const piBase = (pi.name || '').replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
+        const piBarcode = (pi.barcode || '').trim().toLowerCase();
+        const piImeis = Array.from(
+          new Set([
+            ...(pi.imeis || []),
+            ...(pi.imei ? pi.imei.split(',') : []),
+          ].map(s => s.trim()).filter(Boolean))
+        );
+
+        const matchesBarcode = Boolean(productBarcode && piBarcode && piBarcode === productBarcode);
+        const matchesName = Boolean(baseProductName && piBase && piBase === baseProductName);
+        const matchesImei = piImeis.some(im => productImeiSet.has(im.toLowerCase()));
+
+        if (matchesBarcode || matchesName || matchesImei) {
+          piImeis.forEach(im => {
+            imeiSourceMap.set(im.toLowerCase(), {
+              partyName: pur.partyName,
+              billNo: pur.billNo,
+            });
+          });
+
+          const specsParts = [pi.color, pi.ram, pi.storage].filter(Boolean);
+          const entryKey = `${pur.id || pur.billNo}::${idx}`;
+          seenBillKeys.add(`${pur.partyName.toLowerCase()}::${pur.billNo.toLowerCase()}`);
+          entries.push({
+            key: entryKey,
+            billNo: pur.billNo,
+            partyName: pur.partyName,
+            partyPhone: pur.partyPhone,
+            date: pur.date,
+            qty: Number(pi.qty) || 0,
+            costPrice: Number(pi.costPrice) || 0,
+            specsLabel: specsParts.join(' · '),
+            imeis: piImeis,
+          });
+        }
+      }
+    }
+
+    // Supplement with ImeiRecord supplier attribution (if any IMEI came from a bill not already listed)
+    const fallbackGroups = new Map<string, { partyName: string; billNo: string; date: string; imeis: string[] }>();
+    for (const rec of imeiRecords) {
+      if (!rec) continue;
+      const recBase = (rec.productName || '').replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
+      const recImeiClean = (rec.imei || '').trim().toLowerCase();
+      const belongs =
+        rec.productId === selectedProductPopup.id ||
+        (baseProductName && recBase === baseProductName) ||
+        (recImeiClean && productImeiSet.has(recImeiClean));
+
+      if (belongs && rec.purchaseParty) {
+        if (recImeiClean && !imeiSourceMap.has(recImeiClean)) {
+          imeiSourceMap.set(recImeiClean, {
+            partyName: rec.purchaseParty,
+            billNo: rec.purchaseBillNo,
+          });
+        }
+        const billKey = `${rec.purchaseParty.toLowerCase()}::${(rec.purchaseBillNo || 'N/A').toLowerCase()}`;
+        if (!seenBillKeys.has(billKey)) {
+          const existing = fallbackGroups.get(billKey) || {
+            partyName: rec.purchaseParty,
+            billNo: rec.purchaseBillNo || 'Direct IMEI Log',
+            date: rec.createdAt,
+            imeis: [],
+          };
+          if (rec.imei) existing.imeis.push(rec.imei);
+          fallbackGroups.set(billKey, existing);
+        }
+      }
+    }
+
+    fallbackGroups.forEach((grp, key) => {
+      entries.push({
+        key: `imei-grp-${key}`,
+        billNo: grp.billNo,
+        partyName: grp.partyName,
+        date: grp.date,
+        qty: grp.imeis.length || 1,
+        costPrice: 0,
+        specsLabel: '',
+        imeis: grp.imeis,
+      });
+    });
+
+    entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    const supplierAgg = new Map<
+      string,
+      { partyName: string; partyPhone?: string; totalQty: number; billNos: Set<string>; lastDate: string }
+    >();
+    for (const ent of entries) {
+      const k = ent.partyName.trim().toLowerCase();
+      const cur = supplierAgg.get(k) || {
+        partyName: ent.partyName,
+        partyPhone: ent.partyPhone,
+        totalQty: 0,
+        billNos: new Set<string>(),
+        lastDate: ent.date,
+      };
+      cur.totalQty += ent.qty;
+      cur.billNos.add(ent.billNo);
+      if (!cur.partyPhone && ent.partyPhone) cur.partyPhone = ent.partyPhone;
+      if (new Date(ent.date).getTime() > new Date(cur.lastDate).getTime()) cur.lastDate = ent.date;
+      supplierAgg.set(k, cur);
+    }
+
+    const bySupplier = Array.from(supplierAgg.values())
+      .map(s => ({
+        partyName: s.partyName,
+        partyPhone: s.partyPhone,
+        totalQty: s.totalQty,
+        billCount: s.billNos.size,
+        lastDate: s.lastDate,
+      }))
+      .sort((a, b) => b.totalQty - a.totalQty);
+
+    return { entries, bySupplier, imeiSourceMap };
+  }, [selectedProductPopup, supplierPurchases, imeiRecords]);
 
   const handleWhatsAppShareProduct = (item: InventoryItem) => {
     const shopName = 'FMZ Friends Mobile Zone';
@@ -635,7 +825,11 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
 
                         return (
                           <tr key={item.id} className={`transition ${isArchived ? 'bg-slate-50/70 opacity-75' : 'hover:bg-slate-50/60'}`}>
-                            <td className="p-3 font-semibold text-slate-900">
+                            <td
+                              onClick={() => setSelectedProductPopup(item)}
+                              className="p-3 font-semibold text-slate-900 cursor-pointer group"
+                              title="Click to view Product Details & Supplier Source"
+                            >
                               <div className="flex items-center gap-2.5">
                                 {item.image ? (
                                   <div className="w-9 h-9 rounded-lg border border-slate-200 overflow-hidden bg-slate-50 shrink-0 shadow-2xs">
@@ -651,7 +845,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                                   </div>
                                 )}
                                 <div>
-                                  <p className="font-bold text-slate-900 leading-snug">{item.name}</p>
+                                  <p className="font-bold text-slate-900 group-hover:text-blue-600 transition leading-snug">{item.name}</p>
                                 </div>
                               </div>
                             </td>
@@ -898,22 +1092,30 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                       </div>
                       {v.imeis && v.imeis.filter(Boolean).length > 0 && (
                         <div className="pt-1 border-t border-slate-100 flex flex-wrap gap-1">
-                          {v.imeis.filter(Boolean).map((im: string, imIdx: number) => (
-                            <button
-                              key={imIdx}
-                              type="button"
-                              onClick={() => handleCopyImei(im)}
-                              className="tabular-nums text-[10px] bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer transition"
-                              title="Click to copy IMEI"
-                            >
-                              <span>IMEI: {im}</span>
-                              {copiedImei === im ? (
-                                <Check className="w-3 h-3 text-emerald-600" />
-                              ) : (
-                                <Copy className="w-3 h-3 text-blue-400" />
-                              )}
-                            </button>
-                          ))}
+                          {v.imeis.filter(Boolean).map((im: string, imIdx: number) => {
+                            const imeiOrigin = selectedProductSupplierInfo.imeiSourceMap.get(im.trim().toLowerCase());
+                            return (
+                              <button
+                                key={imIdx}
+                                type="button"
+                                onClick={() => handleCopyImei(im)}
+                                className="tabular-nums text-[10px] bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer transition"
+                                title={imeiOrigin ? `Click to copy IMEI · From ${imeiOrigin.partyName}${imeiOrigin.billNo ? ` (Bill #${imeiOrigin.billNo})` : ''}` : 'Click to copy IMEI'}
+                              >
+                                <span>IMEI: {im}</span>
+                                {imeiOrigin && (
+                                  <span className="text-slate-500 font-semibold">
+                                    · {imeiOrigin.partyName}
+                                  </span>
+                                )}
+                                {copiedImei === im ? (
+                                  <Check className="w-3 h-3 text-emerald-600" />
+                                ) : (
+                                  <Copy className="w-3 h-3 text-blue-400" />
+                                )}
+                              </button>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -922,22 +1124,30 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                   <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-2">
                     <span className="text-xs font-bold text-slate-700 block">Registered IMEIs / Serials:</span>
                     <div className="flex flex-wrap gap-1.5">
-                      {selectedProductPopup.imeis.filter(Boolean).map((im, imIdx) => (
-                        <button
-                          key={imIdx}
-                          type="button"
-                          onClick={() => handleCopyImei(im)}
-                          className="tabular-nums text-[10px] bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer transition"
-                          title="Click to copy IMEI"
-                        >
-                          <span>{im}</span>
-                          {copiedImei === im ? (
-                            <Check className="w-3 h-3 text-emerald-600" />
-                          ) : (
-                            <Copy className="w-3 h-3 text-blue-400" />
-                          )}
-                        </button>
-                      ))}
+                      {selectedProductPopup.imeis.filter(Boolean).map((im, imIdx) => {
+                        const imeiOrigin = selectedProductSupplierInfo.imeiSourceMap.get(im.trim().toLowerCase());
+                        return (
+                          <button
+                            key={imIdx}
+                            type="button"
+                            onClick={() => handleCopyImei(im)}
+                            className="tabular-nums text-[10px] bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer transition"
+                            title={imeiOrigin ? `Click to copy IMEI · From ${imeiOrigin.partyName}${imeiOrigin.billNo ? ` (Bill #${imeiOrigin.billNo})` : ''}` : 'Click to copy IMEI'}
+                          >
+                            <span>{im}</span>
+                            {imeiOrigin && (
+                              <span className="text-slate-500 font-semibold">
+                                · {imeiOrigin.partyName}
+                              </span>
+                            )}
+                            {copiedImei === im ? (
+                              <Check className="w-3 h-3 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3 h-3 text-blue-400" />
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 ) : selectedProductPopup.imei ? (
@@ -949,6 +1159,11 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                       className="tabular-nums text-xs text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded flex items-center gap-1 cursor-pointer"
                     >
                       <span>{selectedProductPopup.imei}</span>
+                      {selectedProductSupplierInfo.imeiSourceMap.get(selectedProductPopup.imei.trim().toLowerCase()) && (
+                        <span className="text-slate-500 font-semibold">
+                          · {selectedProductSupplierInfo.imeiSourceMap.get(selectedProductPopup.imei.trim().toLowerCase())?.partyName}
+                        </span>
+                      )}
                       {copiedImei === selectedProductPopup.imei ? (
                         <Check className="w-3 h-3 text-emerald-600" />
                       ) : (
@@ -962,6 +1177,78 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                   </p>
                 )}
               </div>
+            </div>
+
+            {/* Supplier / Stock Inward Source History */}
+            <div className="space-y-2.5 pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-between">
+                <h5 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                  <Truck className="w-4 h-4 text-emerald-600" />
+                  Supplier / Stock Inward Source
+                </h5>
+                {selectedProductSupplierInfo.entries.length > 0 && (
+                  <span className="text-[11px] font-semibold text-slate-500 tabular-nums">
+                    {selectedProductSupplierInfo.bySupplier.length} supplier(s) · {selectedProductSupplierInfo.entries.length} inward entry
+                  </span>
+                )}
+              </div>
+
+              {selectedProductSupplierInfo.entries.length === 0 ? (
+                <p className="text-xs text-slate-400 italic py-2.5 px-3 text-center bg-slate-50 border border-slate-200/70 rounded-xl">
+                  Added directly in Inventory — no Stock Inward supplier bill linked yet.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {/* Supplier Totals Summary */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {selectedProductSupplierInfo.bySupplier.map((sup, sIdx) => (
+                      <div
+                        key={sIdx}
+                        className="px-3 py-2 bg-emerald-50/60 border border-emerald-200/80 rounded-xl flex items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 text-xs font-extrabold text-slate-900 truncate">
+                            <Building2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <span className="truncate">{sup.partyName}</span>
+                          </div>
+                          <div className="text-[10px] text-slate-500 truncate">
+                            {sup.billCount} bill(s){sup.partyPhone ? ` · ${sup.partyPhone}` : ''}
+                          </div>
+                        </div>
+                        <span className="tabular-nums text-xs font-black text-emerald-700 shrink-0">
+                          +{sup.totalQty} units
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Detailed Bill-by-Bill Inward Breakdown */}
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                    {selectedProductSupplierInfo.entries.map(ent => (
+                      <div
+                        key={ent.key}
+                        className="px-3 py-2 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between gap-3 text-xs"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-bold text-slate-900 truncate">
+                            {ent.partyName}
+                            {ent.specsLabel && (
+                              <span className="font-medium text-slate-500"> · {ent.specsLabel}</span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-500 tabular-nums truncate">
+                            Bill #{ent.billNo} · {new Date(ent.date).toLocaleDateString()}
+                            {isAdmin && ent.costPrice > 0 ? ` · Cost: ${currency} ${ent.costPrice.toLocaleString()}` : ''}
+                          </div>
+                        </div>
+                        <span className="tabular-nums font-extrabold text-slate-800 shrink-0">
+                          +{ent.qty} units
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Action Buttons: WhatsApp Share & Separate Product PDF (strictly excluding wholesale & cost) */}
