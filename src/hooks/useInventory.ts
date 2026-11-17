@@ -15,6 +15,8 @@ import {
   saveImeiRecordsBatchToFirestore,
   savePurchasesLedgerBatchToFirestore,
   savePurchaseToFirestore,
+  addTombstonesToMap,
+  removeTombstoneFromMap,
 } from '../utils/storage';
 import { hasPermission } from '../utils/permissions';
 import { generateEntityId } from '../utils/id';
@@ -42,20 +44,21 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
    * Centralized Stock Adjustment Logger
    */
   const handleStockAdjustment = (adj: Omit<StockAdjustment, 'id' | 'adjustedAt'>) => {
+    const now = new Date().toISOString();
     const newAdjustment: StockAdjustment = {
       ...adj,
       id: generateEntityId('ADJ'),
-      adjustedAt: new Date().toISOString(),
+      adjustedAt: now,
+      updatedAt: now,
     };
 
-    const nextAdjustments = [newAdjustment, ...(data.stockAdjustments || [])];
     setData(prev => ({
       ...prev,
+      lastModified: now,
       stockAdjustments: [newAdjustment, ...(prev.stockAdjustments || [])],
     }));
 
     saveStockAdjustmentToFirestore(newAdjustment).catch(() => {});
-    saveRootConfigToFirestore({ stockAdjustments: nextAdjustments }).catch(() => {});
 
     logActivity(
       'Inventory',
@@ -82,6 +85,7 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
       return;
     }
 
+    const now = new Date().toISOString();
     const itemsList = Array.isArray(itemData) ? itemData : [itemData];
 
     if (existingId && itemsList.length === 1) {
@@ -105,7 +109,8 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
       const updatedItem: InventoryItem = {
         ...singleItem,
         id: existingId,
-        createdAt: existingProduct?.createdAt || new Date().toISOString(),
+        createdAt: existingProduct?.createdAt || now,
+        updatedAt: now,
         status: singleItem.status || existingProduct?.status || 'ACTIVE',
       };
 
@@ -114,50 +119,86 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
         existingImeiRecords: data.imeiRecords || [],
       });
 
+      const cleanBase = singleItem.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
+      const otherLegacyIds: string[] = [];
+      data.inventory.forEach(item => {
+        if (item.id === existingId) return;
+        const itemBase = item.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
+        if (
+          singleItem.variants &&
+          singleItem.variants.length > 0 &&
+          item.category.toLowerCase() === singleItem.category.toLowerCase() &&
+          itemBase === cleanBase
+        ) {
+          otherLegacyIds.push(item.id);
+        }
+      });
+
+      let nextTombstones = removeTombstoneFromMap(
+        data.deletedIds,
+        'inventory',
+        existingId,
+        data.deletedInventoryIds
+      );
+      if (otherLegacyIds.length > 0) {
+        nextTombstones = addTombstonesToMap(
+          nextTombstones.deletedIds,
+          'inventory',
+          otherLegacyIds,
+          nextTombstones.deletedInventoryIds
+        );
+      }
+
       setData(prev => {
-        // Clean up any other legacy separate variant records with the same base name and category
-        const cleanBase = singleItem.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
-        const otherLegacyIds: string[] = [];
-        
-        const filteredInventory = prev.inventory.filter(item => {
-          if (item.id === existingId) return false;
-          const itemBase = item.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
-          if (
-            singleItem.variants &&
-            singleItem.variants.length > 0 &&
-            item.category.toLowerCase() === singleItem.category.toLowerCase() &&
-            itemBase === cleanBase
-          ) {
-            otherLegacyIds.push(item.id);
-            return false;
-          }
-          return true;
-        });
-
-        // Delete consolidated legacy variant docs from Firestore
-        otherLegacyIds.forEach(oldId => {
-          deleteInventoryItemFromFirestore(oldId).catch(err => console.warn(err));
-        });
-
+        const filteredInventory = prev.inventory.filter(
+          item => item.id !== existingId && !otherLegacyIds.includes(item.id)
+        );
         const updated = [updatedItem, ...filteredInventory];
         const updatedImeiRecords = recordImeisAvailable({
           items: [updatedItem],
           existingImeiRecords: prev.imeiRecords || [],
         });
 
+        let prevTombstones = removeTombstoneFromMap(
+          prev.deletedIds,
+          'inventory',
+          existingId,
+          prev.deletedInventoryIds
+        );
+        if (otherLegacyIds.length > 0) {
+          prevTombstones = addTombstonesToMap(
+            prevTombstones.deletedIds,
+            'inventory',
+            otherLegacyIds,
+            prevTombstones.deletedInventoryIds
+          );
+        }
+
         return {
           ...prev,
+          lastModified: now,
           inventory: updated,
           imeiRecords: updatedImeiRecords,
+          deletedIds: prevTombstones.deletedIds,
+          deletedInventoryIds: prevTombstones.deletedInventoryIds,
         };
       });
+
+      otherLegacyIds.forEach(oldId => {
+        deleteInventoryItemFromFirestore(oldId).catch(err => console.warn(err));
+      });
+      if (otherLegacyIds.length > 0) {
+        saveRootConfigToFirestore({
+          deletedIds: nextTombstones.deletedIds,
+          deletedInventoryIds: nextTombstones.deletedInventoryIds,
+        }).catch(() => {});
+      }
 
       saveInventoryItemToFirestore(updatedItem).catch(err => {
         console.warn('Firestore inventory update warning:', err);
       });
       if (syncedImeis.length > 0) {
         saveImeiRecordsBatchToFirestore(syncedImeis).catch(() => {});
-        saveRootConfigToFirestore({ imeiRecords: syncedImeis }).catch(() => {});
       }
 
       logActivity(
@@ -172,12 +213,14 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
         ...item,
         id: generateEntityId('STK'),
         status: 'ACTIVE',
-        createdAt: new Date().toISOString(),
+        createdAt: now,
+        updatedAt: now,
       }));
 
       const newPurchases = itemsList.map((item) => ({
         id: generateEntityId('PL'),
-        date: new Date().toISOString(),
+        date: now,
+        updatedAt: now,
         itemTitle: item.name,
         qty: item.qty,
         costPrice: item.costPrice,
@@ -188,7 +231,6 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
         items: newItems,
         existingImeiRecords: data.imeiRecords || [],
       });
-      const syncedLedger = [...newPurchases, ...(data.purchasesLedger || [])];
 
       setData(prev => {
         const updatedImeiRecords = recordImeisAvailable({
@@ -198,6 +240,7 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
 
         return {
           ...prev,
+          lastModified: now,
           inventory: [...newItems, ...prev.inventory],
           purchasesLedger: [...newPurchases, ...(prev.purchasesLedger || [])],
           imeiRecords: updatedImeiRecords,
@@ -214,10 +257,6 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
       if (syncedImeis.length > 0) {
         saveImeiRecordsBatchToFirestore(syncedImeis).catch(() => {});
       }
-      saveRootConfigToFirestore({
-        purchasesLedger: syncedLedger,
-        imeiRecords: syncedImeis,
-      }).catch(() => {});
 
       if (itemsList.length === 1) {
         logActivity(
@@ -250,6 +289,7 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
     const itemToDelete = data.inventory.find(item => item.id === id);
     if (!itemToDelete) return;
 
+    const now = new Date().toISOString();
     const cleanBase = itemToDelete.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
     const relatedIds = data.inventory
       .filter(i => {
@@ -261,15 +301,16 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
 
     setData(prev => ({
       ...prev,
+      lastModified: now,
       inventory: prev.inventory.map(item =>
-        relatedIds.includes(item.id) ? { ...item, status: 'ARCHIVED' as const } : item
+        relatedIds.includes(item.id) ? { ...item, status: 'ARCHIVED' as const, updatedAt: now } : item
       ),
     }));
 
     relatedIds.forEach(targetId => {
       const it = data.inventory.find(i => i.id === targetId);
       if (it) {
-        saveInventoryItemToFirestore({ ...it, status: 'ARCHIVED' }).catch(() => {
+        saveInventoryItemToFirestore({ ...it, status: 'ARCHIVED', updatedAt: now }).catch(() => {
           deleteInventoryItemFromFirestore(targetId).catch(err => {
             console.warn('Firestore delete item warning:', err);
           });
@@ -289,7 +330,7 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
   };
 
   /**
-   * Permanent Delete an Inventory item completely from state and Firestore
+   * Permanent Delete an Inventory item completely from state and Firestore (with tombstones)
    */
   const handlePermanentDeleteInventory = (id: string) => {
     if (!hasPermission(data.currentRole || 'admin', 'canDeleteInventory')) {
@@ -300,6 +341,7 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
     const itemToDelete = data.inventory.find(item => item.id === id);
     if (!itemToDelete) return;
 
+    const now = new Date().toISOString();
     const cleanBase = itemToDelete.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
     const relatedIds = data.inventory
       .filter(i => {
@@ -309,26 +351,61 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
       })
       .map(i => i.id);
 
-    const remainingImeis = (data.imeiRecords || []).filter(rec => !relatedIds.includes(rec.productId));
-    const nextDeletedIds = Array.from(new Set([...(data.deletedInventoryIds || []), ...relatedIds]));
-    const nextInventory = data.inventory.filter(item => !relatedIds.includes(item.id));
+    const removedImeiIds = (data.imeiRecords || [])
+      .filter(rec => relatedIds.includes(rec.productId))
+      .map(rec => rec.id || rec.imei)
+      .filter(Boolean);
 
-    setData(prev => ({
-      ...prev,
-      inventory: nextInventory,
-      imeiRecords: (prev.imeiRecords || []).filter(rec => !relatedIds.includes(rec.productId)),
-      deletedInventoryIds: nextDeletedIds,
-    }));
+    let tombstoneRes = addTombstonesToMap(
+      data.deletedIds,
+      'inventory',
+      relatedIds,
+      data.deletedInventoryIds
+    );
+    if (removedImeiIds.length > 0) {
+      tombstoneRes = addTombstonesToMap(
+        tombstoneRes.deletedIds,
+        'imeiRecords',
+        removedImeiIds,
+        tombstoneRes.deletedInventoryIds
+      );
+    }
+
+    setData(prev => {
+      let prevTombstones = addTombstonesToMap(
+        prev.deletedIds,
+        'inventory',
+        relatedIds,
+        prev.deletedInventoryIds
+      );
+      if (removedImeiIds.length > 0) {
+        prevTombstones = addTombstonesToMap(
+          prevTombstones.deletedIds,
+          'imeiRecords',
+          removedImeiIds,
+          prevTombstones.deletedInventoryIds
+        );
+      }
+
+      return {
+        ...prev,
+        lastModified: now,
+        inventory: prev.inventory.filter(item => !relatedIds.includes(item.id)),
+        imeiRecords: (prev.imeiRecords || []).filter(rec => !relatedIds.includes(rec.productId)),
+        deletedIds: prevTombstones.deletedIds,
+        deletedInventoryIds: prevTombstones.deletedInventoryIds,
+      };
+    });
 
     relatedIds.forEach(targetId => {
       deleteInventoryItemFromFirestore(targetId).catch(err => {
         console.warn('Firestore permanent delete item warning:', err);
       });
     });
+
     saveRootConfigToFirestore({
-      inventory: nextInventory,
-      imeiRecords: remainingImeis,
-      deletedInventoryIds: nextDeletedIds,
+      deletedIds: tombstoneRes.deletedIds,
+      deletedInventoryIds: tombstoneRes.deletedInventoryIds,
     }).catch(() => {});
 
     logActivity(
@@ -354,16 +431,40 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
     const itemToRestore = data.inventory.find(item => item.id === id);
     if (!itemToRestore) return;
 
-    setData(prev => ({
-      ...prev,
-      inventory: prev.inventory.map(item =>
-        item.id === id ? { ...item, status: 'ACTIVE' as const } : item
-      ),
-    }));
+    const now = new Date().toISOString();
+    const updatedItem: InventoryItem = { ...itemToRestore, status: 'ACTIVE', updatedAt: now };
+    const tombstones = removeTombstoneFromMap(
+      data.deletedIds,
+      'inventory',
+      id,
+      data.deletedInventoryIds
+    );
 
-    saveInventoryItemToFirestore({ ...itemToRestore, status: 'ACTIVE' }).catch(err => {
+    setData(prev => {
+      const prevTombstones = removeTombstoneFromMap(
+        prev.deletedIds,
+        'inventory',
+        id,
+        prev.deletedInventoryIds
+      );
+      return {
+        ...prev,
+        lastModified: now,
+        inventory: prev.inventory.map(item =>
+          item.id === id ? { ...item, status: 'ACTIVE' as const, updatedAt: now } : item
+        ),
+        deletedIds: prevTombstones.deletedIds,
+        deletedInventoryIds: prevTombstones.deletedInventoryIds,
+      };
+    });
+
+    saveInventoryItemToFirestore(updatedItem).catch(err => {
       console.warn('Firestore restore item warning:', err);
     });
+    saveRootConfigToFirestore({
+      deletedIds: tombstones.deletedIds,
+      deletedInventoryIds: tombstones.deletedInventoryIds,
+    }).catch(() => {});
 
     logActivity(
       'Inventory',
@@ -380,13 +481,19 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
     const trimmed = catName.trim();
     if (!trimmed || data.categories.includes(trimmed)) return;
 
+    const now = new Date().toISOString();
     const updatedCategories = [...data.categories, trimmed];
     setData(prev => ({
       ...prev,
+      lastModified: now,
+      categoriesUpdatedAt: now,
       categories: updatedCategories,
     }));
 
-    saveRootConfigToFirestore({ categories: updatedCategories }).catch(err => {
+    saveRootConfigToFirestore({
+      categories: updatedCategories,
+      categoriesUpdatedAt: now,
+    }).catch(err => {
       console.warn('Firestore category creation sync warning:', err);
     });
 
@@ -395,13 +502,19 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
   };
 
   const handleDeleteCategory = (catName: string): boolean => {
+    const now = new Date().toISOString();
     const updatedCategories = data.categories.filter(c => c !== catName);
     setData(prev => ({
       ...prev,
+      lastModified: now,
+      categoriesUpdatedAt: now,
       categories: updatedCategories,
     }));
 
-    saveRootConfigToFirestore({ categories: updatedCategories }).catch(err => {
+    saveRootConfigToFirestore({
+      categories: updatedCategories,
+      categoriesUpdatedAt: now,
+    }).catch(err => {
       console.warn('Firestore category deletion sync warning:', err);
     });
 
@@ -425,6 +538,7 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
       return false;
     }
 
+    const now = new Date().toISOString();
     const updatedCategories = (data.categories || []).map(c =>
       c.toLowerCase() === cleanOld.toLowerCase() ? cleanNew : c
     );
@@ -435,40 +549,46 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
     const updatedInventoryToSync: InventoryItem[] = [];
     (data.inventory || []).forEach(item => {
       if ((item.category || '').trim().toLowerCase() === cleanOld.toLowerCase()) {
-        updatedInventoryToSync.push({ ...item, category: cleanNew });
+        updatedInventoryToSync.push({ ...item, category: cleanNew, updatedAt: now });
       }
     });
 
-    const updatedImeisToSync = (data.imeiRecords || []).map(rec =>
-      (rec.category || '').trim().toLowerCase() === cleanOld.toLowerCase()
-        ? { ...rec, category: cleanNew }
-        : rec
-    );
+    const updatedImeisToSync = (data.imeiRecords || [])
+      .filter(rec => (rec.category || '').trim().toLowerCase() === cleanOld.toLowerCase())
+      .map(rec => ({ ...rec, category: cleanNew, updatedAt: now }));
 
-    const updatedPurchasesToSync = (data.supplierPurchases || []).map(pur => ({
-      ...pur,
-      items: (pur.items || []).map(pi =>
-        (pi.category || '').trim().toLowerCase() === cleanOld.toLowerCase()
-          ? { ...pi, category: cleanNew }
-          : pi
-      ),
-    }));
+    const updatedPurchasesToSync = (data.supplierPurchases || [])
+      .filter(pur => (pur.items || []).some(pi => (pi.category || '').trim().toLowerCase() === cleanOld.toLowerCase()))
+      .map(pur => ({
+        ...pur,
+        updatedAt: now,
+        items: (pur.items || []).map(pi =>
+          (pi.category || '').trim().toLowerCase() === cleanOld.toLowerCase()
+            ? { ...pi, category: cleanNew }
+            : pi
+        ),
+      }));
 
     setData(prev => ({
       ...prev,
+      lastModified: now,
+      categoriesUpdatedAt: now,
       categories: updatedCategories,
       inventory: (prev.inventory || []).map(item =>
         (item.category || '').trim().toLowerCase() === cleanOld.toLowerCase()
-          ? { ...item, category: cleanNew }
+          ? { ...item, category: cleanNew, updatedAt: now }
           : item
       ),
       imeiRecords: (prev.imeiRecords || []).map(rec =>
         (rec.category || '').trim().toLowerCase() === cleanOld.toLowerCase()
-          ? { ...rec, category: cleanNew }
+          ? { ...rec, category: cleanNew, updatedAt: now }
           : rec
       ),
       supplierPurchases: (prev.supplierPurchases || []).map(pur => ({
         ...pur,
+        updatedAt: (pur.items || []).some(pi => (pi.category || '').trim().toLowerCase() === cleanOld.toLowerCase())
+          ? now
+          : pur.updatedAt,
         items: (pur.items || []).map(pi =>
           (pi.category || '').trim().toLowerCase() === cleanOld.toLowerCase()
             ? { ...pi, category: cleanNew }
@@ -485,11 +605,12 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
     updatedPurchasesToSync.forEach(pur => {
       savePurchaseToFirestore(pur).catch(() => {});
     });
-    saveImeiRecordsBatchToFirestore(updatedImeisToSync).catch(() => {});
+    if (updatedImeisToSync.length > 0) {
+      saveImeiRecordsBatchToFirestore(updatedImeisToSync).catch(() => {});
+    }
     saveRootConfigToFirestore({
       categories: updatedCategories,
-      imeiRecords: updatedImeisToSync,
-      supplierPurchases: updatedPurchasesToSync,
+      categoriesUpdatedAt: now,
     }).catch(err => {
       console.warn('Firestore category rename config sync warning:', err);
     });
@@ -505,10 +626,12 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
   };
 
   const handleAddProductFromPurchases = (item: Omit<InventoryItem, 'id' | 'createdAt'>): InventoryItem => {
+    const now = new Date().toISOString();
     const newItem: InventoryItem = {
       ...item,
       id: generateEntityId('STK'),
-      createdAt: new Date().toISOString(),
+      createdAt: now,
+      updatedAt: now,
       status: 'ACTIVE',
     };
 
@@ -523,6 +646,7 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
       });
       return {
         ...prev,
+        lastModified: now,
         inventory: [newItem, ...prev.inventory],
         imeiRecords: updatedImeis,
       };
@@ -533,7 +657,6 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
     });
     if (syncedImeis.length > 0) {
       saveImeiRecordsBatchToFirestore(syncedImeis).catch(() => {});
-      saveRootConfigToFirestore({ imeiRecords: syncedImeis }).catch(() => {});
     }
 
     logActivity(

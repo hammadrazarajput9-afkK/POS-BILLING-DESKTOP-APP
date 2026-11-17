@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { ShopSettings, AppData, AppTheme, UserAccount } from '../types';
+import { ShopSettings, AppData, AppTheme, UserAccount, DailyBackupSnapshot } from '../types';
 import {
   X,
   Settings as SettingsIcon,
@@ -21,9 +21,19 @@ import {
   Key,
   RefreshCw,
   QrCode,
+  Clock,
+  RotateCcw,
+  Database,
 } from 'lucide-react';
 import { useToast } from './Toast';
-import { clearAllStoredData, validateBackupData, BackupValidationResult, CURRENT_BACKUP_VERSION, saveUserToFirestore, deleteUserFromFirestore } from '../utils/storage';
+import {
+  validateBackupData,
+  CURRENT_BACKUP_VERSION,
+  saveUserToFirestore,
+  deleteUserFromFirestore,
+  listAutomaticBackups,
+  downloadJsonBackup,
+} from '../utils/storage';
 import { firebaseConfig } from '../utils/firebase';
 import { CameraCaptureModal } from './CameraCaptureModal';
 import { TotpSetupModal } from './TotpSetupModal';
@@ -36,6 +46,7 @@ export interface SettingsProps {
   fullData: AppData;
   onReplaceData: (data: AppData) => void;
   onUpdateUsers?: (users: UserAccount[]) => void;
+  onRecoverMissingData?: () => Promise<number>;
 }
 
 const THEME_OPTIONS: { id: AppTheme; label: string; accent: string; border: string }[] = [
@@ -57,6 +68,7 @@ export const Settings: React.FC<SettingsProps> = ({
   fullData,
   onReplaceData,
   onUpdateUsers,
+  onRecoverMissingData,
 }) => {
   const { showToast } = useToast();
   const [cameraModalConfig, setCameraModalConfig] = useState<{
@@ -90,6 +102,19 @@ export const Settings: React.FC<SettingsProps> = ({
   }, [settings]);
 
   const [activeSubTab, setActiveSubTab] = useState<'profile' | 'branding' | 'backup' | 'users' | 'password'>('profile');
+  const [automaticBackups, setAutomaticBackups] = useState<DailyBackupSnapshot[]>([]);
+  const [loadingAutoBackups, setLoadingAutoBackups] = useState(false);
+  const [isRecoveringData, setIsRecoveringData] = useState(false);
+
+  React.useEffect(() => {
+    if (isOpen && activeSubTab === 'backup') {
+      setLoadingAutoBackups(true);
+      listAutomaticBackups()
+        .then(list => setAutomaticBackups(list))
+        .catch(() => setAutomaticBackups([]))
+        .finally(() => setLoadingAutoBackups(false));
+    }
+  }, [isOpen, activeSubTab]);
 
   // Salesman registration state
   const [salesmanName, setSalesmanName] = useState('');
@@ -314,6 +339,9 @@ export const Settings: React.FC<SettingsProps> = ({
   const handleExecuteRestore = () => {
     if (!pendingRestoreData) return;
 
+    // Automatically download a safety JSON backup of current data before replacing
+    downloadJsonBackup(fullData, 'auto_safety_before_restore_');
+
     onReplaceData(pendingRestoreData);
 
     if (pendingRestoreData.settings?.theme) {
@@ -325,6 +353,30 @@ export const Settings: React.FC<SettingsProps> = ({
     setIsRestoreConfirmOpen(false);
     setPendingRestoreData(null);
     onClose();
+  };
+
+  const handleSelectAutomaticBackup = (backup: DailyBackupSnapshot) => {
+    const validation = validateBackupData(backup.data);
+    if (!validation.valid || !validation.data) {
+      showToast(validation.error || 'Automatic backup snapshot is invalid', 'error');
+      return;
+    }
+    setPendingRestoreData(validation.data);
+    setPendingRestoreSummary(validation.summary || null);
+    setPendingRestoreWarnings(validation.warnings || []);
+    setSafetyBackupCreated(false);
+    setConfirmRestoreAgreement(false);
+    setIsRestoreConfirmOpen(true);
+  };
+
+  const handleManualRecoverMissingData = async () => {
+    if (!onRecoverMissingData || isRecoveringData) return;
+    setIsRecoveringData(true);
+    try {
+      await onRecoverMissingData();
+    } finally {
+      setIsRecoveringData(false);
+    }
   };
 
   const handleChangePassword = (e: React.FormEvent) => {
@@ -1238,6 +1290,103 @@ export const Settings: React.FC<SettingsProps> = ({
                   </label>
                 </div>
               </div>
+
+              {/* Automatic 7-Day Safety Backups */}
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-indigo-600 shrink-0" />
+                    <div>
+                      <h4 className="font-bold text-slate-900 text-xs">
+                        Restore from automatic backup
+                      </h4>
+                      <p className="text-[10px] text-slate-500">
+                        Automatic daily safety snapshots saved locally in IndexedDB (last 7 days)
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {loadingAutoBackups ? (
+                  <p className="text-[11px] text-slate-500 font-semibold py-2">
+                    Loading automatic snapshots...
+                  </p>
+                ) : automaticBackups.length === 0 ? (
+                  <p className="text-[11px] text-slate-500 py-2">
+                    No automatic daily backups recorded yet. Snapshots are created automatically as you work.
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                    {automaticBackups.map((snap) => (
+                      <div
+                        key={snap.id}
+                        className="p-3 bg-white rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                      >
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-extrabold text-slate-800 text-xs tabular-nums">
+                              {snap.date}
+                            </span>
+                            <span className="text-[10px] text-slate-400 tabular-nums">
+                              Saved {new Date(snap.createdAt).toLocaleTimeString()}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-500 tabular-nums">
+                            {snap.data.inventory?.length || 0} products • {snap.data.sales?.length || 0} sales • {snap.data.khata?.length || 0} khata • {snap.data.expenses?.length || 0} expenses • {snap.data.supplierPurchases?.length || 0} purchases
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => downloadJsonBackup(snap.data, `auto_backup_${snap.date}_`)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-bold transition cursor-pointer"
+                            title="Download this automatic backup as JSON"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Download</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSelectAutomaticBackup(snap)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold transition cursor-pointer shadow-xs"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span>Restore</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Manual Data Recovery (Respects Deleted Tombstones) */}
+              {onRecoverMissingData && (
+                <div className="p-4 bg-white rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-start gap-2.5">
+                    <Database className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="font-bold text-slate-900 text-xs">
+                        Recover Missing Records (Manual Scan)
+                      </h4>
+                      <p className="text-[10px] text-slate-500 leading-relaxed">
+                        Scans local caches & Cloud Firestore for any unmerged records while strictly respecting deleted item tombstones.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleManualRecoverMissingData}
+                    disabled={isRecoveringData}
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 disabled:opacity-60"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isRecoveringData ? 'animate-spin' : ''}`} />
+                    <span>{isRecoveringData ? 'Scanning...' : 'Recover Missing Data'}</span>
+                  </button>
+                </div>
+              )}
 
             </div>
           )}

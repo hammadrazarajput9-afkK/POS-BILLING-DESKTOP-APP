@@ -16,6 +16,8 @@ import {
   saveKhataCustomerToFirestore,
   saveImeiRecordsBatchToFirestore,
   saveRootConfigToFirestore,
+  addTombstonesToMap,
+  removeTombstoneFromMap,
 } from '../utils/storage';
 import { generateEntityId } from '../utils/id';
 
@@ -35,7 +37,6 @@ interface UseSalesProps {
 }
 
 export function useSales({ data, setData, logActivity, showToast }: UseSalesProps) {
-  // Modal states related to sales
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
   const [activeReceiptSale, setActiveReceiptSale] = useState<SaleRecord | null>(null);
   const [saleToEdit, setSaleToEdit] = useState<SaleRecord | null>(null);
@@ -48,11 +49,22 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
    * and Atomic Firestore Sub-collection sync.
    */
   const handleCompleteSale = async (sale: SaleRecord) => {
+    const now = new Date().toISOString();
+    const saleWithTs: SaleRecord = {
+      ...sale,
+      updatedAt: now,
+    };
+
     // 1. Calculate Inventory Updates & remaining IMEIs
-    const inventoryUpdates: Array<{ id: string; newQty: number; remainingImeis?: string[] }> = [];
+    const inventoryUpdates: Array<{
+      id: string;
+      newQty: number;
+      remainingImeis?: string[];
+      updatedAt?: string;
+    }> = [];
 
     const updatedInventory = data.inventory.map(invItem => {
-      const soldItem = sale.items.find(s => s.id === invItem.id);
+      const soldItem = saleWithTs.items.find(s => s.id === invItem.id);
       if (soldItem) {
         const soldImeisList = extractItemImeis(soldItem);
         const currentImeis = extractItemImeis(invItem);
@@ -65,11 +77,13 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
           id: invItem.id,
           newQty,
           remainingImeis: remainingImeis.length > 0 ? remainingImeis : undefined,
+          updatedAt: now,
         });
 
         return {
           ...invItem,
           qty: newQty,
+          updatedAt: now,
           imeis: remainingImeis.length > 0 ? remainingImeis : undefined,
           imei: remainingImeis.length > 0 ? remainingImeis.join(', ') : undefined,
         };
@@ -79,13 +93,14 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
 
     // 2. Update permanent IMEI tracking ledger
     const updatedImeiRecords = recordImeisSold({
-      sale,
+      sale: saleWithTs,
       existingImeiRecords: data.imeiRecords || [],
       inventory: data.inventory,
     });
 
     // 3. Khata ledger calculation
     let updatedKhata = data.khata;
+    let newKhataCustomerToCreate: KhataCustomer | undefined;
     let khataAtomicUpdate: {
       customerId: string;
       newBalance: number;
@@ -98,19 +113,19 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
       };
     } | undefined = undefined;
 
-    if (sale.invoiceType === 'credit' && sale.amountDue && sale.amountDue > 0) {
+    if (saleWithTs.invoiceType === 'credit' && saleWithTs.amountDue && saleWithTs.amountDue > 0) {
       let matched = false;
       const txId = generateEntityId('TX');
-      const txDate = new Date().toISOString();
+      const txDate = now;
 
       updatedKhata = data.khata.map(c => {
-        const isTarget = sale.khataCustomerId
-          ? c.id === sale.khataCustomerId
-          : c.name.toLowerCase() === (sale.custName || '').toLowerCase();
+        const isTarget = saleWithTs.khataCustomerId
+          ? c.id === saleWithTs.khataCustomerId
+          : c.name.toLowerCase() === (saleWithTs.custName || '').toLowerCase();
 
         if (isTarget) {
           matched = true;
-          const newBal = c.balance + sale.amountDue!;
+          const newBal = c.balance + saleWithTs.amountDue!;
           khataAtomicUpdate = {
             customerId: c.id,
             newBalance: newBal,
@@ -118,21 +133,22 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
               id: txId,
               date: txDate,
               type: 'credit',
-              amount: sale.amountDue!,
-              note: `Invoice #${sale.invNo} (${sale.items.length} items)`,
+              amount: saleWithTs.amountDue!,
+              note: `Invoice #${saleWithTs.invNo} (${saleWithTs.items.length} items)`,
             },
           };
           return {
             ...c,
             balance: newBal,
             lastUpdated: txDate,
+            updatedAt: txDate,
             history: [
               {
                 id: txId,
                 date: txDate,
                 type: 'credit' as const,
-                amount: sale.amountDue!,
-                note: `Invoice #${sale.invNo} (${sale.items.length} items)`,
+                amount: saleWithTs.amountDue!,
+                note: `Invoice #${saleWithTs.invNo} (${saleWithTs.items.length} items)`,
               },
               ...c.history,
             ],
@@ -142,34 +158,36 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
       });
 
       // If no matching customer was found in Khata, create one automatically
-      if (!matched && sale.custName && sale.custName !== 'Walk-in Customer') {
-        const newCustId = sale.khataCustomerId || generateEntityId('KHT');
+      if (!matched && saleWithTs.custName && saleWithTs.custName !== 'Walk-in Customer') {
+        const newCustId = saleWithTs.khataCustomerId || generateEntityId('KHT');
         const newCust: KhataCustomer = {
           id: newCustId,
-          name: sale.custName,
-          phone: sale.custPhone || 'N/A',
-          balance: sale.amountDue,
+          name: saleWithTs.custName,
+          phone: saleWithTs.custPhone || 'N/A',
+          balance: saleWithTs.amountDue,
           lastUpdated: txDate,
+          updatedAt: txDate,
           history: [
             {
               id: txId,
               date: txDate,
               type: 'credit',
-              amount: sale.amountDue,
-              note: `Invoice #${sale.invNo}`,
+              amount: saleWithTs.amountDue,
+              note: `Invoice #${saleWithTs.invNo}`,
             },
           ],
         };
         updatedKhata = [newCust, ...updatedKhata];
+        newKhataCustomerToCreate = newCust;
         khataAtomicUpdate = {
           customerId: newCustId,
-          newBalance: sale.amountDue,
+          newBalance: saleWithTs.amountDue,
           transaction: {
             id: txId,
             date: txDate,
             type: 'credit',
-            amount: sale.amountDue,
-            note: `Invoice #${sale.invNo}`,
+            amount: saleWithTs.amountDue,
+            note: `Invoice #${saleWithTs.invNo}`,
           },
         };
       }
@@ -177,53 +195,68 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
 
     const activityData: ActivityLog = {
       id: generateEntityId('ACT'),
-      timestamp: new Date().toISOString(),
+      timestamp: now,
+      updatedAt: now,
       category: 'Sale',
-      title: `${sale.invoiceType === 'credit' ? 'Credit' : 'Cash'} Invoice #${sale.invNo} Completed`,
-      details: `Total: ${data.settings.currency} ${sale.grandTotal.toLocaleString()} | Items: ${sale.items.length} | Customer: ${sale.custName || 'Walk-in'}${sale.amountDue ? ` | Due: ${data.settings.currency} ${sale.amountDue.toLocaleString()}` : ''}`,
+      title: `${saleWithTs.invoiceType === 'credit' ? 'Credit' : 'Cash'} Invoice #${saleWithTs.invNo} Completed`,
+      details: `Total: ${data.settings.currency} ${saleWithTs.grandTotal.toLocaleString()} | Items: ${saleWithTs.items.length} | Customer: ${saleWithTs.custName || 'Walk-in'}${saleWithTs.amountDue ? ` | Due: ${data.settings.currency} ${saleWithTs.amountDue.toLocaleString()}` : ''}`,
       type: 'sale',
       user: data.currentRole === 'salesman' ? 'Salesman Terminal' : 'Administrator',
       userRole: data.currentRole,
-      relatedRecordId: sale.invNo,
+      relatedRecordId: saleWithTs.invNo,
     };
 
     // 4. Update React State immediately for responsive UI
-    setData(prev => ({
-      ...prev,
-      inventory: updatedInventory,
-      khata: updatedKhata,
-      sales: [sale, ...prev.sales],
-      imeiRecords: updatedImeiRecords,
-      activities: [activityData, ...(prev.activities || [])].slice(0, 500),
-    }));
+    setData(prev => {
+      const cleanedTombstones = removeTombstoneFromMap(
+        prev.deletedIds,
+        'sales',
+        saleWithTs.invNo,
+        prev.deletedInventoryIds
+      );
+      return {
+        ...prev,
+        lastModified: now,
+        inventory: updatedInventory,
+        khata: updatedKhata,
+        sales: [saleWithTs, ...prev.sales],
+        imeiRecords: updatedImeiRecords,
+        activities: [activityData, ...(prev.activities || [])].slice(0, 500),
+        deletedIds: cleanedTombstones.deletedIds,
+        deletedInventoryIds: cleanedTombstones.deletedInventoryIds,
+      };
+    });
 
-    setActiveReceiptSale(sale);
+    setActiveReceiptSale(saleWithTs);
     setReceiptModalOpen(true);
-    showToast(`Sale #${sale.invNo} completed!`, 'success');
+    showToast(`Sale #${saleWithTs.invNo} completed!`, 'success');
 
     // 5. Fire atomic Firestore subcollection batch update & IMEI tracking sync
     saveSaleAtomic({
-      sale,
+      sale: saleWithTs,
       inventoryUpdates,
-      khataUpdate: khataAtomicUpdate,
+      khataUpdate: newKhataCustomerToCreate ? undefined : khataAtomicUpdate,
       activity: activityData,
     }).catch(err => {
       console.warn('Background atomic Firestore sync warning:', err);
     });
+    if (newKhataCustomerToCreate) {
+      saveKhataCustomerToFirestore(newKhataCustomerToCreate).catch(() => {});
+    }
     if (updatedImeiRecords.length > 0) {
       saveImeiRecordsBatchToFirestore(updatedImeiRecords).catch(() => {});
-      saveRootConfigToFirestore({ imeiRecords: updatedImeiRecords }).catch(() => {});
     }
   };
 
   /**
-   * Delete or Cancel a Sale with Stock & IMEI recovery
+   * Delete or Cancel a Sale with Stock & IMEI recovery (+ tombstone for permanent delete)
    */
   const handleDeleteSale = (
     invNo: string,
     permanent: boolean = false,
     reason: string = 'Customer request / voided'
   ) => {
+    const now = new Date().toISOString();
     const targetSale = data.sales.find(s => s.invNo === invNo);
     const restoredInventoryToSync: typeof data.inventory = [];
     let restoredKhataToSync: KhataCustomer | undefined;
@@ -239,6 +272,7 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
           restoredInventoryToSync.push({
             ...invItem,
             qty: invItem.qty + soldItem.qty,
+            updatedAt: now,
             imeis: combinedImeis.length > 0 ? combinedImeis : undefined,
             imei: combinedImeis.length > 0 ? combinedImeis.join(', ') : undefined,
           });
@@ -258,7 +292,7 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
             soldDate: undefined,
             customerName: undefined,
             customerPhone: undefined,
-            updatedAt: new Date().toISOString(),
+            updatedAt: now,
           };
         }
         return rec;
@@ -274,11 +308,12 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
           restoredKhataToSync = {
             ...matchedCust,
             balance: Math.max(0, matchedCust.balance - targetSale.amountDue),
-            lastUpdated: new Date().toISOString(),
+            lastUpdated: now,
+            updatedAt: now,
             history: [
               {
                 id: generateEntityId('TX'),
-                date: new Date().toISOString(),
+                date: now,
                 type: 'debit' as const,
                 amount: targetSale.amountDue,
                 note: `Invoice #${targetSale.invNo} ${permanent ? 'Permanently Deleted' : 'Cancelled/Voided'}`,
@@ -290,6 +325,10 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
       }
     }
 
+    const tombstoneRes = permanent
+      ? addTombstonesToMap(data.deletedIds, 'sales', [invNo], data.deletedInventoryIds)
+      : null;
+
     setData(prev => {
       const sale = prev.sales.find(s => s.invNo === invNo);
       if (!sale) return prev;
@@ -298,7 +337,6 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
       let updatedImeiRecords = prev.imeiRecords || [];
       let updatedKhata = prev.khata;
 
-      // Only restore stock, IMEIs and khata balance if the sale was NOT already CANCELLED
       if (sale.status !== 'CANCELLED') {
         updatedInventory = prev.inventory.map(invItem => {
           const soldItem = sale.items.find(si => si.id === invItem.id || si.name === invItem.name);
@@ -309,6 +347,7 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
             return {
               ...invItem,
               qty: invItem.qty + soldItem.qty,
+              updatedAt: now,
               imeis: combinedImeis.length > 0 ? combinedImeis : undefined,
               imei: combinedImeis.length > 0 ? combinedImeis.join(', ') : undefined,
             };
@@ -329,7 +368,7 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
               soldDate: undefined,
               customerName: undefined,
               customerPhone: undefined,
-              updatedAt: new Date().toISOString(),
+              updatedAt: now,
             };
           }
           return rec;
@@ -345,11 +384,12 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
               return {
                 ...c,
                 balance: Math.max(0, c.balance - sale.amountDue!),
-                lastUpdated: new Date().toISOString(),
+                lastUpdated: now,
+                updatedAt: now,
                 history: [
                   {
                     id: generateEntityId('TX'),
-                    date: new Date().toISOString(),
+                    date: now,
                     type: 'debit' as const,
                     amount: sale.amountDue!,
                     note: `Invoice #${sale.invNo} ${permanent ? 'Permanently Deleted' : 'Cancelled/Voided'}`,
@@ -370,17 +410,29 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
               ? {
                   ...s,
                   status: 'CANCELLED' as const,
+                  updatedAt: now,
                   notes: `Cancelled: ${reason} | ${s.notes || ''}`.trim(),
                 }
               : s
           );
 
+      const nextTomb = permanent
+        ? addTombstonesToMap(prev.deletedIds, 'sales', [invNo], prev.deletedInventoryIds)
+        : null;
+
       return {
         ...prev,
+        lastModified: now,
         inventory: updatedInventory,
         imeiRecords: updatedImeiRecords,
         khata: updatedKhata,
         sales: updatedSales,
+        ...(nextTomb
+          ? {
+              deletedIds: nextTomb.deletedIds,
+              deletedInventoryIds: nextTomb.deletedInventoryIds,
+            }
+          : {}),
       };
     });
 
@@ -394,10 +446,17 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
 
     if (permanent) {
       deleteSaleFromFirestore(invNo).catch(err => console.warn('Failed to delete sale from Firestore:', err));
+      if (tombstoneRes) {
+        saveRootConfigToFirestore({
+          deletedIds: tombstoneRes.deletedIds,
+          deletedInventoryIds: tombstoneRes.deletedInventoryIds,
+        }).catch(() => {});
+      }
     } else if (targetSale) {
       updateSaleInFirestore({
         ...targetSale,
         status: 'CANCELLED',
+        updatedAt: now,
         notes: `Cancelled: ${reason} | ${targetSale.notes || ''}`.trim(),
       }).catch(err => console.warn('Failed to cancel sale in Firestore:', err));
     }
@@ -406,7 +465,6 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
     if (restoredKhataToSync) saveKhataCustomerToFirestore(restoredKhataToSync).catch(() => {});
     if (syncedImeiRecordsToSave.length > 0) {
       saveImeiRecordsBatchToFirestore(syncedImeiRecordsToSave).catch(() => {});
-      saveRootConfigToFirestore({ imeiRecords: syncedImeiRecordsToSave }).catch(() => {});
     }
 
     if (activeReceiptSale && activeReceiptSale.invNo === invNo) {
@@ -414,7 +472,7 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
         setActiveReceiptSale(null);
         setReceiptModalOpen(false);
       } else {
-        setActiveReceiptSale(prev => (prev ? { ...prev, status: 'CANCELLED' as const } : null));
+        setActiveReceiptSale(prev => (prev ? { ...prev, status: 'CANCELLED' as const, updatedAt: now } : null));
       }
     }
 
@@ -431,26 +489,30 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
   };
 
   const handleUpdateSale = (updatedSale: SaleRecord) => {
+    const now = new Date().toISOString();
+    const saleWithTs: SaleRecord = { ...updatedSale, updatedAt: now };
+
     setData(prev => ({
       ...prev,
-      sales: prev.sales.map(s => (s.invNo === updatedSale.invNo ? updatedSale : s)),
+      lastModified: now,
+      sales: prev.sales.map(s => (s.invNo === saleWithTs.invNo ? saleWithTs : s)),
     }));
 
-    updateSaleInFirestore(updatedSale).catch(err => console.warn('Failed to update sale in Firestore:', err));
+    updateSaleInFirestore(saleWithTs).catch(err => console.warn('Failed to update sale in Firestore:', err));
 
-    if (activeReceiptSale && activeReceiptSale.invNo === updatedSale.invNo) {
-      setActiveReceiptSale(updatedSale);
+    if (activeReceiptSale && activeReceiptSale.invNo === saleWithTs.invNo) {
+      setActiveReceiptSale(saleWithTs);
     }
 
     logActivity(
       'Sale',
-      `Updated Invoice #${updatedSale.invNo}`,
-      `Total: ${data.settings.currency} ${updatedSale.grandTotal.toLocaleString()}`,
+      `Updated Invoice #${saleWithTs.invNo}`,
+      `Total: ${data.settings.currency} ${saleWithTs.grandTotal.toLocaleString()}`,
       'update',
-      updatedSale.invNo
+      saleWithTs.invNo
     );
 
-    showToast(`Invoice #${updatedSale.invNo} updated!`, 'info');
+    showToast(`Invoice #${saleWithTs.invNo} updated!`, 'info');
   };
 
   const handleOpenSalesReturn = (sale?: SaleRecord | null) => {
@@ -459,9 +521,15 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
   };
 
   const handleSaveSalesReturn = (returnRecord: SalesReturnRecord) => {
+    const now = new Date().toISOString();
+    const returnWithTs: SalesReturnRecord = {
+      ...returnRecord,
+      updatedAt: now,
+    };
+
     const restoredInvToSync: typeof data.inventory = [];
     data.inventory.forEach(inv => {
-      const retItem = returnRecord.items.find(ri => ri.productId === inv.id || ri.name === inv.name);
+      const retItem = returnWithTs.items.find(ri => ri.productId === inv.id || ri.name === inv.name);
       if (retItem) {
         const retImeis = retItem.imeis || (retItem.imei ? [retItem.imei] : []);
         const existingImeis = inv.imeis || (inv.imei ? inv.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
@@ -469,6 +537,7 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
         restoredInvToSync.push({
           ...inv,
           qty: inv.qty + retItem.qty,
+          updatedAt: now,
           imei: combinedImeis.length > 0 ? combinedImeis.join(', ') : undefined,
           imeis: combinedImeis.length > 0 ? combinedImeis : undefined,
         });
@@ -476,7 +545,7 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
     });
 
     let syncedImeiRecords = data.imeiRecords || [];
-    returnRecord.items.forEach(retItem => {
+    returnWithTs.items.forEach(retItem => {
       const retImeis = retItem.imeis || (retItem.imei ? [retItem.imei] : []);
       if (retImeis.length > 0) {
         syncedImeiRecords = recordImeisReturned({
@@ -488,30 +557,32 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
       }
     });
 
-    const origSale = data.sales.find(s => s.invNo === returnRecord.originalInvNo);
+    const origSale = data.sales.find(s => s.invNo === returnWithTs.originalInvNo);
     const updatedSaleToSync: SaleRecord | undefined = origSale
       ? {
           ...origSale,
-          returnStatus: (origSale.totalRefunded || 0) + returnRecord.totalRefundAmount >= origSale.grandTotal ? 'FULL' : 'PARTIAL',
-          totalRefunded: (origSale.totalRefunded || 0) + returnRecord.totalRefundAmount,
+          updatedAt: now,
+          returnStatus: (origSale.totalRefunded || 0) + returnWithTs.totalRefundAmount >= origSale.grandTotal ? 'FULL' : 'PARTIAL',
+          totalRefunded: (origSale.totalRefunded || 0) + returnWithTs.totalRefundAmount,
         }
       : undefined;
 
     let updatedKhataToSync: KhataCustomer | undefined;
-    if (returnRecord.khataCustomerId && returnRecord.totalRefundAmount > 0) {
-      const targetCust = data.khata.find(c => c.id === returnRecord.khataCustomerId);
+    if (returnWithTs.khataCustomerId && returnWithTs.totalRefundAmount > 0) {
+      const targetCust = data.khata.find(c => c.id === returnWithTs.khataCustomerId);
       if (targetCust) {
         updatedKhataToSync = {
           ...targetCust,
-          balance: Math.max(0, targetCust.balance - returnRecord.totalRefundAmount),
-          lastUpdated: new Date().toISOString(),
+          balance: Math.max(0, targetCust.balance - returnWithTs.totalRefundAmount),
+          lastUpdated: now,
+          updatedAt: now,
           history: [
             {
               id: generateEntityId('TX'),
-              date: new Date().toISOString(),
+              date: now,
               type: 'debit' as const,
-              amount: returnRecord.totalRefundAmount,
-              note: `Sales Return #${returnRecord.returnNo} for Inv #${returnRecord.originalInvNo}`,
+              amount: returnWithTs.totalRefundAmount,
+              note: `Sales Return #${returnWithTs.returnNo} for Inv #${returnWithTs.originalInvNo}`,
             },
             ...targetCust.history,
           ],
@@ -519,11 +590,9 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
       }
     }
 
-    const syncedSalesReturns = [returnRecord, ...(data.salesReturns || [])];
-
     setData(prev => {
       const updatedInventory = prev.inventory.map(inv => {
-        const retItem = returnRecord.items.find(ri => ri.productId === inv.id || ri.name === inv.name);
+        const retItem = returnWithTs.items.find(ri => ri.productId === inv.id || ri.name === inv.name);
         if (retItem) {
           const retImeis = retItem.imeis || (retItem.imei ? [retItem.imei] : []);
           const existingImeis = inv.imeis || (inv.imei ? inv.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
@@ -531,6 +600,7 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
           return {
             ...inv,
             qty: inv.qty + retItem.qty,
+            updatedAt: now,
             imei: combinedImeis.length > 0 ? combinedImeis.join(', ') : undefined,
             imeis: combinedImeis.length > 0 ? combinedImeis : undefined,
           };
@@ -539,7 +609,7 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
       });
 
       let updatedImeiRecords = prev.imeiRecords || [];
-      returnRecord.items.forEach(retItem => {
+      returnWithTs.items.forEach(retItem => {
         const retImeis = retItem.imeis || (retItem.imei ? [retItem.imei] : []);
         if (retImeis.length > 0) {
           updatedImeiRecords = recordImeisReturned({
@@ -552,12 +622,13 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
       });
 
       const updatedSales = prev.sales.map(s => {
-        if (s.invNo === returnRecord.originalInvNo) {
+        if (s.invNo === returnWithTs.originalInvNo) {
           const alreadyRefunded = s.totalRefunded || 0;
-          const newRefundTotal = alreadyRefunded + returnRecord.totalRefundAmount;
+          const newRefundTotal = alreadyRefunded + returnWithTs.totalRefundAmount;
           const isFull = newRefundTotal >= s.grandTotal;
           return {
             ...s,
+            updatedAt: now,
             returnStatus: isFull ? ('FULL' as const) : ('PARTIAL' as const),
             totalRefunded: newRefundTotal,
           };
@@ -566,20 +637,21 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
       });
 
       let updatedKhata = prev.khata;
-      if (returnRecord.khataCustomerId && returnRecord.totalRefundAmount > 0) {
+      if (returnWithTs.khataCustomerId && returnWithTs.totalRefundAmount > 0) {
         updatedKhata = prev.khata.map(c => {
-          if (c.id === returnRecord.khataCustomerId) {
+          if (c.id === returnWithTs.khataCustomerId) {
             return {
               ...c,
-              balance: Math.max(0, c.balance - returnRecord.totalRefundAmount),
-              lastUpdated: new Date().toISOString(),
+              balance: Math.max(0, c.balance - returnWithTs.totalRefundAmount),
+              lastUpdated: now,
+              updatedAt: now,
               history: [
                 {
                   id: generateEntityId('TX'),
-                  date: new Date().toISOString(),
+                  date: now,
                   type: 'debit' as const,
-                  amount: returnRecord.totalRefundAmount,
-                  note: `Sales Return #${returnRecord.returnNo} for Inv #${returnRecord.originalInvNo}`,
+                  amount: returnWithTs.totalRefundAmount,
+                  note: `Sales Return #${returnWithTs.returnNo} for Inv #${returnWithTs.originalInvNo}`,
                 },
                 ...c.history,
               ],
@@ -591,33 +663,30 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
 
       return {
         ...prev,
+        lastModified: now,
         inventory: updatedInventory,
         imeiRecords: updatedImeiRecords,
         sales: updatedSales,
         khata: updatedKhata,
-        salesReturns: [returnRecord, ...(prev.salesReturns || [])],
+        salesReturns: [returnWithTs, ...(prev.salesReturns || [])],
       };
     });
 
-    saveSalesReturnToFirestore(returnRecord).catch(() => {});
+    saveSalesReturnToFirestore(returnWithTs).catch(() => {});
     if (updatedSaleToSync) updateSaleInFirestore(updatedSaleToSync).catch(() => {});
     restoredInvToSync.forEach(item => saveInventoryItemToFirestore(item).catch(() => {}));
     if (updatedKhataToSync) saveKhataCustomerToFirestore(updatedKhataToSync).catch(() => {});
     if (syncedImeiRecords.length > 0) saveImeiRecordsBatchToFirestore(syncedImeiRecords).catch(() => {});
-    saveRootConfigToFirestore({
-      salesReturns: syncedSalesReturns,
-      imeiRecords: syncedImeiRecords,
-    }).catch(() => {});
 
     logActivity(
       'Sale',
-      `Processed Return #${returnRecord.returnNo} for Inv #${returnRecord.originalInvNo}`,
-      `Customer: ${returnRecord.customerName} | Refunded: ${data.settings.currency} ${returnRecord.totalRefundAmount.toLocaleString()} via ${returnRecord.refundPaymentMethod} | Stock & IMEIs restored | Reason: ${returnRecord.reason}`,
+      `Processed Return #${returnWithTs.returnNo} for Inv #${returnWithTs.originalInvNo}`,
+      `Customer: ${returnWithTs.customerName} | Refunded: ${data.settings.currency} ${returnWithTs.totalRefundAmount.toLocaleString()} via ${returnWithTs.refundPaymentMethod} | Stock & IMEIs restored | Reason: ${returnWithTs.reason}`,
       'return',
-      returnRecord.returnNo
+      returnWithTs.returnNo
     );
 
-    showToast(`Return #${returnRecord.returnNo} completed & stock updated!`, 'success');
+    showToast(`Return #${returnWithTs.returnNo} completed & stock updated!`, 'success');
   };
 
   return {

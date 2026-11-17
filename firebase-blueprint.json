@@ -2,16 +2,52 @@
   "entities": {
     "StoreConfig": {
       "title": "StoreConfig",
-      "description": "Root POS store configuration, settings, categories, and metadata",
+      "description": "Root POS store configuration, settings, categories, tombstones, and sync metadata",
       "type": "object",
       "properties": {
         "backupVersion": {
-          "type": "string",
+          "type": "number",
           "description": "Schema backup version tag"
         },
         "lastModified": {
           "type": "string",
           "description": "ISO timestamp of last modification"
+        },
+        "migrationDone": {
+          "type": "boolean",
+          "description": "One-time legacy root-array to subcollection migration completion flag"
+        },
+        "settingsUpdatedAt": {
+          "type": "string",
+          "description": "ISO timestamp when shop settings were last updated"
+        },
+        "categoriesUpdatedAt": {
+          "type": "string",
+          "description": "ISO timestamp when product categories were last updated"
+        },
+        "expenseCategoriesUpdatedAt": {
+          "type": "string",
+          "description": "ISO timestamp when expense categories were last updated"
+        },
+        "onlineAccountsUpdatedAt": {
+          "type": "string",
+          "description": "ISO timestamp when online accounts were last updated"
+        },
+        "tabPreferencesUpdatedAt": {
+          "type": "string",
+          "description": "ISO timestamp when tab preferences were last updated"
+        },
+        "usersUpdatedAt": {
+          "type": "string",
+          "description": "ISO timestamp when store users list was last updated"
+        },
+        "deletedIds": {
+          "type": "object",
+          "description": "Per-collection tombstone map ({ id, deletedAt }) pruned after 90 days"
+        },
+        "deletedInventoryIds": {
+          "type": "array",
+          "description": "Legacy compatibility list of deleted inventory IDs"
         },
         "settings": {
           "type": "object",

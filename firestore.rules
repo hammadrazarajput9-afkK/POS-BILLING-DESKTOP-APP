@@ -2,6 +2,10 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
     function isValidId(id) {
       return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_-]+$');
     }
@@ -13,37 +17,37 @@ service cloud.firestore {
 
     // Connection health check
     match /test/{docId} {
-      allow get: if isValidId(docId);
-      allow list: if true;
-      allow write: if isValidId(docId);
+      allow get: if isSignedIn() && isValidId(docId);
+      allow list: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(docId);
     }
 
     // Global multi-tenant user authentication registry (cross-device lookup)
     match /users/{userId} {
-      allow get, list: if true;
-      allow create, update, delete: if isValidId(userId);
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if isSignedIn() && isValidId(userId);
     }
 
     // Hierarchical Multi-Tenant Store Data & Sub-Collections (/stores/{storeId}/...)
     match /stores/{storeId} {
-      allow read, write: if isValidId(storeId);
+      allow read, write: if isSignedIn() && isValidId(storeId);
 
-      // Sub-collections: sales, inventory, khata, expenses, activities, users
+      // Sub-collections: sales, inventory, khata, expenses, activities, users, purchases, daily_closings, sales_returns, stock_adjustments, purchases_ledger, imei_records
       match /{subcollection}/{docId} {
-        allow get: if isValidId(storeId) && isValidId(subcollection) && isValidId(docId);
-        allow list: if isValidId(storeId) && isValidId(subcollection);
-        allow create, update, delete: if isValidId(storeId) && isValidId(subcollection) && isValidId(docId);
+        allow get: if isSignedIn() && isValidId(storeId) && isValidId(subcollection) && isValidId(docId);
+        allow list: if isSignedIn() && isValidId(storeId) && isValidId(subcollection);
+        allow create, update, delete: if isSignedIn() && isValidId(storeId) && isValidId(subcollection) && isValidId(docId);
       }
     }
 
     // Backward-compatibility fallback for legacy pos_data paths
     match /pos_data/{storeId} {
-      allow read, write: if isValidId(storeId);
+      allow read, write: if isSignedIn() && isValidId(storeId);
 
       match /{subcollection}/{docId} {
-        allow get: if isValidId(storeId) && isValidId(subcollection) && isValidId(docId);
-        allow list: if isValidId(storeId) && isValidId(subcollection);
-        allow create, update, delete: if isValidId(storeId) && isValidId(subcollection) && isValidId(docId);
+        allow get: if isSignedIn() && isValidId(storeId) && isValidId(subcollection) && isValidId(docId);
+        allow list: if isSignedIn() && isValidId(storeId) && isValidId(subcollection);
+        allow create, update, delete: if isSignedIn() && isValidId(storeId) && isValidId(subcollection) && isValidId(docId);
       }
     }
   }

@@ -20,6 +20,7 @@ export interface InventoryItem {
   storage?: string;
   color?: string;
   variants?: MobileVariant[];
+  updatedAt?: string;
 }
 
 export type ImeiStatus = 'AVAILABLE' | 'SOLD' | 'RETURNED';
@@ -60,6 +61,7 @@ export interface StockAdjustment {
   notes?: string;
   adjustedAt: string;
   adjustedBy: string;
+  updatedAt?: string;
 }
 
 export interface MobileVariant {
@@ -108,6 +110,7 @@ export interface KhataCustomer {
   notes?: string;
   balance: number;
   lastUpdated: string;
+  updatedAt?: string;
   history: KhataTransaction[];
 }
 
@@ -123,6 +126,7 @@ export interface ActivityLog {
   relatedRecordId?: string;
   beforeValue?: string;
   afterValue?: string;
+  updatedAt?: string;
 }
 
 export type ExpenseCategory = string;
@@ -136,6 +140,7 @@ export interface ExpenseItem {
   image?: string;
   paymentMethod?: string;
   accountId?: string;
+  updatedAt?: string;
 }
 
 export interface OnlineAccount {
@@ -183,6 +188,7 @@ export interface DailyClosingRecord {
   closedBy?: string;
   notes?: string;
   status?: 'closed' | 'reopened';
+  updatedAt?: string;
 }
 
 export interface TabPreferences {
@@ -240,6 +246,7 @@ export interface SaleRecord {
   totalRefunded?: number;
   status?: 'COMPLETED' | 'CANCELLED';
   notes?: string;
+  updatedAt?: string;
 }
 
 export interface SalesReturnItem {
@@ -273,6 +280,7 @@ export interface SalesReturnRecord {
   returnDate: string;
   returnedBy: string;
   notes?: string;
+  updatedAt?: string;
 }
 
 export interface PurchaseLedgerEntry {
@@ -284,6 +292,7 @@ export interface PurchaseLedgerEntry {
   total: number;
   isReversed?: boolean;
   reversedPurchaseId?: string;
+  updatedAt?: string;
 }
 
 export interface PurchaseItem {
@@ -323,6 +332,7 @@ export interface SupplierPurchase {
   reversedBy?: string;
   reversalReason?: string;
   reversalNotes?: string;
+  updatedAt?: string;
 }
 
 export type AppTheme =
@@ -367,9 +377,56 @@ export interface ShopSettings {
   loginPageLogo?: string;
 }
 
+export interface DeletedTombstone {
+  id: string;
+  deletedAt: string;
+}
+
+export interface DeletedIdsMap {
+  sales?: DeletedTombstone[];
+  inventory?: DeletedTombstone[];
+  khata?: DeletedTombstone[];
+  expenses?: DeletedTombstone[];
+  supplierPurchases?: DeletedTombstone[];
+  purchasesLedger?: DeletedTombstone[];
+  imeiRecords?: DeletedTombstone[];
+  salesReturns?: DeletedTombstone[];
+  stockAdjustments?: DeletedTombstone[];
+  dailyClosings?: DeletedTombstone[];
+  activities?: DeletedTombstone[];
+}
+
+export type SyncCollectionKey = keyof DeletedIdsMap;
+
+export interface PendingWriteOp {
+  id: string;
+  op: 'set' | 'delete';
+  path: string;
+  data?: Record<string, unknown>;
+  merge?: boolean;
+  createdAt: string;
+  retryCount: number;
+  lastError?: string;
+}
+
+export interface DailyBackupSnapshot {
+  id: string;
+  storeId: string;
+  date: string;
+  createdAt: string;
+  data: AppData;
+}
+
 export interface AppData {
   backupVersion?: number;
   lastModified?: string;
+  migrationDone?: boolean;
+  settingsUpdatedAt?: string;
+  categoriesUpdatedAt?: string;
+  expenseCategoriesUpdatedAt?: string;
+  onlineAccountsUpdatedAt?: string;
+  tabPreferencesUpdatedAt?: string;
+  usersUpdatedAt?: string;
   inventory: InventoryItem[];
   khata: KhataCustomer[];
   expenses: ExpenseItem[];
@@ -389,6 +446,7 @@ export interface AppData {
   currentRole?: UserRole;
   users?: UserAccount[];
   currentUser?: UserAccount;
+  deletedIds?: DeletedIdsMap;
   deletedInventoryIds?: string[];
   deletedSalesIds?: string[];
   deletedKhataIds?: string[];

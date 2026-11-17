@@ -9,6 +9,7 @@ import {
   SupplierPurchase,
   InventoryItem,
   UserAccount,
+  SyncCollectionKey,
 } from './types';
 import { hasPermission } from './utils/permissions';
 import {
@@ -23,14 +24,11 @@ import {
   saveRootConfigToFirestore,
   saveActivityLogToFirestore,
   saveUserToFirestore,
-  clearAllStoredData,
   setActiveStoreId,
-  getActiveStoreId,
   saveCurrentSession,
   getSavedSessionUser,
   clearCurrentSession,
   loadAppDataFromFirestore,
-  subscribeToStoreRootConfig,
   subscribeToStoreFullData,
   saveInventoryItemToFirestore,
   savePurchaseToFirestore,
@@ -40,6 +38,11 @@ import {
   saveImeiRecordsBatchToFirestore,
   mergeAppData,
   recoverAllMissingStoreData,
+  addTombstonesToMap,
+  isItemTombstoned,
+  processPendingWritesQueue,
+  toValidFirestoreDocId,
+  CollectionDeltaEvent,
   DEFAULT_STORE_ID,
 } from './utils/storage';
 import { recordImeisReversed, recordImeisAvailable } from './utils/imeiManager';
@@ -114,9 +117,11 @@ function AppContent() {
       afterValue?: string
     ) => {
       const role = data.currentRole || 'admin';
+      const now = new Date().toISOString();
       const newActivity: ActivityLog = {
         id: generateEntityId('ACT'),
-        timestamp: new Date().toISOString(),
+        timestamp: now,
+        updatedAt: now,
         category,
         title,
         details,
@@ -242,67 +247,196 @@ function AppContent() {
     }
   }, [data]);
 
-  // Live Real-Time Multi-Device Firestore Synchronization (Laptop <-> Mobile PWA <-> Tablet <-> All Devices)
+  // Live Real-Time Multi-Device Firestore Synchronization (Incremental Deltas + Root Config + Tombstones)
   useEffect(() => {
     const activeSid = DEFAULT_STORE_ID;
-    const unsubscribe = subscribeToStoreFullData(activeSid, (incomingPatch) => {
-      setData(prev => {
-        // Non-destructively merge collections so older cloud snapshots never wipe latest entries or product images
-        const merged = mergeAppData(prev, incomingPatch);
-        let hasChanges = false;
-        const patchToApply: Partial<AppData> = {};
 
-        const nonDestructiveKeys = [
-          'inventory',
-          'sales',
-          'khata',
-          'expenses',
-          'dailyClosings',
-          'settings',
-          'supplierPurchases',
-          'purchasesLedger',
-          'imeiRecords',
-          'salesReturns',
-          'stockAdjustments',
-          'categories',
-          'expenseCategories',
-        ] as const;
+    const parseMs = (val?: string): number => {
+      if (!val) return 0;
+      const t = Date.parse(val);
+      return Number.isFinite(t) ? t : 0;
+    };
 
-        for (const key of nonDestructiveKeys) {
-          if (
-            incomingPatch[key] !== undefined &&
-            JSON.stringify(prev[key]) !== JSON.stringify((merged as any)[key])
-          ) {
-            (patchToApply as any)[key] = (merged as any)[key];
-            hasChanges = true;
+    const getCollectionMeta = (
+      colKey: SyncCollectionKey
+    ): {
+      prefix: string;
+      getId: (x: any) => string | undefined;
+      getTime: (x: any) => string | undefined;
+      sortDescBy?: (x: any) => string | undefined;
+      limitCount?: number;
+    } => {
+      switch (colKey) {
+        case 'inventory':
+          return { prefix: 'STK', getId: x => x.id, getTime: x => x.updatedAt || x.createdAt };
+        case 'sales':
+          return { prefix: 'INV', getId: x => x.invNo, getTime: x => x.updatedAt || x.date, sortDescBy: x => x.date };
+        case 'khata':
+          return { prefix: 'KHT', getId: x => x.id, getTime: x => x.updatedAt || x.lastUpdated };
+        case 'expenses':
+          return { prefix: 'EXP', getId: x => x.id, getTime: x => x.updatedAt || x.date, sortDescBy: x => x.date };
+        case 'supplierPurchases':
+          return {
+            prefix: 'PUR',
+            getId: x => x.id || x.billNo,
+            getTime: x => x.updatedAt || x.reversedAt || x.date,
+            sortDescBy: x => x.date,
+          };
+        case 'dailyClosings':
+          return {
+            prefix: 'DCL',
+            getId: x => x.id || x.date,
+            getTime: x => x.updatedAt || x.createdAt || x.date,
+            sortDescBy: x => x.date,
+          };
+        case 'salesReturns':
+          return {
+            prefix: 'RET',
+            getId: x => x.returnNo || x.id,
+            getTime: x => x.updatedAt || x.returnDate,
+            sortDescBy: x => x.returnDate,
+          };
+        case 'stockAdjustments':
+          return {
+            prefix: 'ADJ',
+            getId: x => x.id,
+            getTime: x => x.updatedAt || x.adjustedAt,
+            sortDescBy: x => x.adjustedAt,
+          };
+        case 'purchasesLedger':
+          return {
+            prefix: 'PL',
+            getId: x => x.id,
+            getTime: x => x.updatedAt || x.date,
+            sortDescBy: x => x.date,
+          };
+        case 'imeiRecords':
+          return { prefix: 'IMEI', getId: x => x.id || x.imei, getTime: x => x.updatedAt || x.createdAt };
+        case 'activities':
+          return {
+            prefix: 'ACT',
+            getId: x => x.id,
+            getTime: x => x.updatedAt || x.timestamp,
+            sortDescBy: x => x.timestamp,
+            limitCount: 500,
+          };
+      }
+    };
+
+    const unsubscribe = subscribeToStoreFullData(activeSid, {
+      onRootConfig: (incomingPatch) => {
+        setData(prev => {
+          const merged = mergeAppData(prev, incomingPatch);
+          return {
+            ...merged,
+            currentUser: prev.currentUser,
+            currentRole: prev.currentRole || prev.currentUser?.role || 'admin',
+          };
+        });
+      },
+      onCollectionDelta: (delta: CollectionDeltaEvent) => {
+        setData(prev => {
+          const { collection: colKey, upserts, removals } = delta;
+          const meta = getCollectionMeta(colKey);
+          const tombstones = prev.deletedIds?.[colKey] || [];
+          const currentArr = Array.isArray((prev as any)[colKey]) ? ([...(prev as any)[colKey]] as any[]) : [];
+          let changed = false;
+
+          // Build lookup maps by exact ID and sanitized Firestore docId
+          const indexById = new Map<string, number>();
+          currentArr.forEach((item, idx) => {
+            const rawId = meta.getId(item);
+            if (rawId) {
+              indexById.set(rawId, idx);
+              indexById.set(toValidFirestoreDocId(rawId, meta.prefix), idx);
+            }
+          });
+
+          const removalSet = new Set(removals);
+          let nextArr = currentArr;
+
+          if (removalSet.size > 0) {
+            const filtered = nextArr.filter(item => {
+              const rawId = meta.getId(item);
+              if (!rawId) return true;
+              const safeId = toValidFirestoreDocId(rawId, meta.prefix);
+              if (removalSet.has(rawId) || removalSet.has(safeId)) {
+                changed = true;
+                return false;
+              }
+              return true;
+            });
+            nextArr = filtered;
+            // Rebuild lookup indices after removals
+            indexById.clear();
+            nextArr.forEach((item, idx) => {
+              const rawId = meta.getId(item);
+              if (rawId) {
+                indexById.set(rawId, idx);
+                indexById.set(toValidFirestoreDocId(rawId, meta.prefix), idx);
+              }
+            });
           }
-        }
 
-        const directSyncKeys = [
-          'onlineAccounts',
-          'tabPreferences',
-          'users',
-        ] as const;
+          for (const { docId, item } of upserts) {
+            const itemId = meta.getId(item) || docId;
+            const itemTimeStr = meta.getTime(item);
 
-        for (const key of directSyncKeys) {
-          if (
-            incomingPatch[key] !== undefined &&
-            JSON.stringify(prev[key]) !== JSON.stringify(incomingPatch[key])
-          ) {
-            (patchToApply as any)[key] = incomingPatch[key];
-            hasChanges = true;
+            if (isItemTombstoned(itemId, itemTimeStr, tombstones)) {
+              continue;
+            }
+
+            const existingIdx = indexById.get(itemId) ?? indexById.get(docId);
+            if (existingIdx !== undefined) {
+              const existingItem = nextArr[existingIdx];
+              const localMs = parseMs(meta.getTime(existingItem));
+              const remoteMs = parseMs(itemTimeStr);
+
+              // Keep local item if it has a strictly newer timestamp
+              if (localMs > remoteMs) {
+                continue;
+              }
+
+              let mergedItem: any = { ...existingItem, ...item };
+              if (colKey === 'inventory' || colKey === 'expenses') {
+                mergedItem.image = (item as any).image || existingItem.image;
+              } else if (colKey === 'supplierPurchases') {
+                mergedItem.invoiceImage = (item as any).invoiceImage || existingItem.invoiceImage;
+              } else if (colKey === 'khata') {
+                mergedItem.image = (item as any).image || existingItem.image;
+                const exHist = Array.isArray(existingItem.history) ? existingItem.history : [];
+                const incHist = Array.isArray((item as any).history) ? (item as any).history : [];
+                mergedItem.history = incHist.length >= exHist.length ? incHist : exHist;
+              }
+
+              if (JSON.stringify(existingItem) !== JSON.stringify(mergedItem)) {
+                nextArr[existingIdx] = mergedItem;
+                changed = true;
+              }
+            } else {
+              nextArr.push(item);
+              const newIdx = nextArr.length - 1;
+              indexById.set(itemId, newIdx);
+              indexById.set(docId, newIdx);
+              changed = true;
+            }
           }
-        }
 
-        if (hasChanges) {
+          if (!changed) return prev;
+
+          if (meta.sortDescBy) {
+            nextArr.sort((a, b) => parseMs(meta.sortDescBy!(b)) - parseMs(meta.sortDescBy!(a)));
+          }
+          if (meta.limitCount && nextArr.length > meta.limitCount) {
+            nextArr = nextArr.slice(0, meta.limitCount);
+          }
+
           return {
             ...prev,
-            ...patchToApply,
-            lastModified: merged.lastModified,
+            [colKey]: nextArr,
           };
-        }
-        return prev;
-      });
+        });
+      },
     });
 
     return () => {
@@ -339,7 +473,8 @@ function AppContent() {
   const handleManualSyncData = useCallback(async () => {
     const activeSid = DEFAULT_STORE_ID;
     try {
-      showToast('Syncing & reconciling latest data with Cloud Firestore...', 'info');
+      showToast('Syncing pending writes & refreshing from Cloud Firestore...', 'info');
+      await processPendingWritesQueue();
       await migrateAndInitializeData(
         (reloadedData) => {
           setData(prev => ({
@@ -358,11 +493,11 @@ function AppContent() {
     }
   }, [showToast]);
 
-  // Deep Recovery Handler for Stock Inward / Purchases
+  // Manual Deep Recovery Handler for Stock Inward / Purchases (Respects Tombstones)
   const handleRecoverMissingPurchases = useCallback(async (): Promise<number> => {
     const activeSid = DEFAULT_STORE_ID;
     try {
-      const { mergedData, recoveredPurchasesCount } = await recoverAllMissingStoreData(data, activeSid);
+      const { mergedData, recoveredPurchasesCount } = await recoverAllMissingStoreData(dataRef.current, activeSid);
       setData(prev => ({
         ...mergedData,
         currentUser: prev.currentUser,
@@ -379,7 +514,29 @@ function AppContent() {
       showToast('Could not complete cloud recovery scan', 'warning');
       return 0;
     }
-  }, [data, showToast]);
+  }, [showToast]);
+
+  const handleRecoverMissingData = useCallback(async (): Promise<number> => {
+    const activeSid = DEFAULT_STORE_ID;
+    try {
+      const { mergedData, totalRecoveredCount } = await recoverAllMissingStoreData(dataRef.current, activeSid);
+      setData(prev => ({
+        ...mergedData,
+        currentUser: prev.currentUser,
+        currentRole: prev.currentRole || prev.currentUser?.role || 'admin',
+      }));
+      if (totalRecoveredCount > 0) {
+        showToast(`Recovered ${totalRecoveredCount} missing record(s)!`, 'success');
+      } else {
+        showToast('Scan complete — no missing records found.', 'info');
+      }
+      return totalRecoveredCount;
+    } catch (err) {
+      console.warn('Manual recovery scan warning:', err);
+      showToast('Could not complete cloud recovery scan', 'warning');
+      return 0;
+    }
+  }, [showToast]);
 
   // Expenses Handlers
   const handleSaveExpense = (expenseData: {
@@ -396,13 +553,16 @@ function AppContent() {
       return;
     }
 
+    const now = new Date().toISOString();
     const newExp: ExpenseItem = {
       id: generateEntityId('EXP'),
       ...expenseData,
+      updatedAt: now,
     };
 
     setData(prev => ({
       ...prev,
+      lastModified: now,
       expenses: [newExp, ...prev.expenses],
     }));
 
@@ -427,15 +587,38 @@ function AppContent() {
       return;
     }
 
+    const now = new Date().toISOString();
     const targetExp = data.expenses.find(e => e.id === id);
-    setData(prev => ({
-      ...prev,
-      expenses: prev.expenses.filter(e => e.id !== id),
-    }));
+    const tombstoneRes = addTombstonesToMap(
+      data.deletedIds,
+      'expenses',
+      [id],
+      data.deletedInventoryIds
+    );
+
+    setData(prev => {
+      const prevTomb = addTombstonesToMap(
+        prev.deletedIds,
+        'expenses',
+        [id],
+        prev.deletedInventoryIds
+      );
+      return {
+        ...prev,
+        lastModified: now,
+        expenses: prev.expenses.filter(e => e.id !== id),
+        deletedIds: prevTomb.deletedIds,
+        deletedInventoryIds: prevTomb.deletedInventoryIds,
+      };
+    });
 
     deleteExpenseItemFromFirestore(id).catch(err => {
       console.warn('Firestore expense delete warning:', err);
     });
+    saveRootConfigToFirestore({
+      deletedIds: tombstoneRes.deletedIds,
+      deletedInventoryIds: tombstoneRes.deletedInventoryIds,
+    }).catch(() => {});
 
     if (targetExp) {
       logActivity(
@@ -458,9 +641,18 @@ function AppContent() {
       showToast('Category already exists', 'warning');
       return;
     }
+    const now = new Date().toISOString();
     const updated = [...currentCats, trimmed];
-    setData(prev => ({ ...prev, expenseCategories: updated }));
-    saveRootConfigToFirestore({ expenseCategories: updated }).catch(err => {
+    setData(prev => ({
+      ...prev,
+      lastModified: now,
+      expenseCategoriesUpdatedAt: now,
+      expenseCategories: updated,
+    }));
+    saveRootConfigToFirestore({
+      expenseCategories: updated,
+      expenseCategoriesUpdatedAt: now,
+    }).catch(err => {
       console.warn('Firestore expense categories sync warning:', err);
     });
     showToast(`Category "${trimmed}" added`, 'success');
@@ -472,10 +664,19 @@ function AppContent() {
       showToast(`Cannot delete category "${category}" because it is in use by expenses`, 'error');
       return false;
     }
+    const now = new Date().toISOString();
     const currentCats = data.expenseCategories || defaultExpenseCategories;
     const updated = currentCats.filter(c => c !== category);
-    setData(prev => ({ ...prev, expenseCategories: updated }));
-    saveRootConfigToFirestore({ expenseCategories: updated }).catch(err => {
+    setData(prev => ({
+      ...prev,
+      lastModified: now,
+      expenseCategoriesUpdatedAt: now,
+      expenseCategories: updated,
+    }));
+    saveRootConfigToFirestore({
+      expenseCategories: updated,
+      expenseCategoriesUpdatedAt: now,
+    }).catch(err => {
       console.warn('Firestore expense categories sync warning:', err);
     });
     showToast(`Category "${category}" deleted`, 'info');
@@ -497,6 +698,7 @@ function AppContent() {
       return false;
     }
 
+    const now = new Date().toISOString();
     const prevCats = data.expenseCategories || defaultExpenseCategories;
     const updatedCats = prevCats.map(c => (c.toLowerCase() === cleanOld.toLowerCase() ? cleanNew : c));
     if (!updatedCats.some(c => c.toLowerCase() === cleanNew.toLowerCase())) {
@@ -506,21 +708,26 @@ function AppContent() {
     const updatedExpensesToSync: ExpenseItem[] = [];
     (data.expenses || []).forEach(exp => {
       if ((exp.category || '').trim().toLowerCase() === cleanOld.toLowerCase()) {
-        updatedExpensesToSync.push({ ...exp, category: cleanNew });
+        updatedExpensesToSync.push({ ...exp, category: cleanNew, updatedAt: now });
       }
     });
 
     setData(prev => ({
       ...prev,
+      lastModified: now,
+      expenseCategoriesUpdatedAt: now,
       expenseCategories: updatedCats,
       expenses: (prev.expenses || []).map(exp =>
         (exp.category || '').trim().toLowerCase() === cleanOld.toLowerCase()
-          ? { ...exp, category: cleanNew }
+          ? { ...exp, category: cleanNew, updatedAt: now }
           : exp
       ),
     }));
 
-    saveRootConfigToFirestore({ expenseCategories: updatedCats }).catch(err => {
+    saveRootConfigToFirestore({
+      expenseCategories: updatedCats,
+      expenseCategoriesUpdatedAt: now,
+    }).catch(err => {
       console.warn('Firestore expense category rename sync warning:', err);
     });
     updatedExpensesToSync.forEach(exp => {
@@ -546,6 +753,7 @@ function AppContent() {
       return;
     }
 
+    const now = new Date().toISOString();
     const newRecordId = generateEntityId('DCL');
     const existingList = data.dailyClosings || [];
     const existingIndex = existingList.findIndex(r => r.date === record.date);
@@ -553,20 +761,20 @@ function AppContent() {
     let syncedClosings: DailyClosingRecord[];
 
     if (existingIndex >= 0) {
-      savedRecord = { ...existingList[existingIndex], ...record };
+      savedRecord = { ...existingList[existingIndex], ...record, updatedAt: now };
       syncedClosings = existingList.map((r, idx) => (idx === existingIndex ? savedRecord : r));
     } else {
-      savedRecord = { id: newRecordId, ...record };
+      savedRecord = { id: newRecordId, ...record, updatedAt: now };
       syncedClosings = [savedRecord, ...existingList];
     }
 
     setData(prev => ({
       ...prev,
+      lastModified: now,
       dailyClosings: syncedClosings,
     }));
 
     saveDailyClosingToFirestore(savedRecord, DEFAULT_STORE_ID).catch(() => {});
-    saveRootConfigToFirestore({ dailyClosings: syncedClosings }, DEFAULT_STORE_ID).catch(() => {});
 
     logActivity(
       'Closing',
@@ -584,19 +792,46 @@ function AppContent() {
       return;
     }
 
-    const remainingClosings = (data.dailyClosings || []).filter(r => r.id !== id);
-    setData(prev => ({
-      ...prev,
-      dailyClosings: remainingClosings,
-    }));
+    const now = new Date().toISOString();
+    const target = (data.dailyClosings || []).find(r => r.id === id);
+    const idsToTombstone = Array.from(new Set([id, target?.date].filter(Boolean) as string[]));
+    const tombstoneRes = addTombstonesToMap(
+      data.deletedIds,
+      'dailyClosings',
+      idsToTombstone,
+      data.deletedInventoryIds
+    );
+
+    setData(prev => {
+      const prevTomb = addTombstonesToMap(
+        prev.deletedIds,
+        'dailyClosings',
+        idsToTombstone,
+        prev.deletedInventoryIds
+      );
+      return {
+        ...prev,
+        lastModified: now,
+        dailyClosings: (prev.dailyClosings || []).filter(r => r.id !== id),
+        deletedIds: prevTomb.deletedIds,
+        deletedInventoryIds: prevTomb.deletedInventoryIds,
+      };
+    });
 
     deleteDailyClosingFromFirestore(id, DEFAULT_STORE_ID).catch(() => {});
-    saveRootConfigToFirestore({ dailyClosings: remainingClosings }, DEFAULT_STORE_ID).catch(() => {});
+    saveRootConfigToFirestore(
+      {
+        deletedIds: tombstoneRes.deletedIds,
+        deletedInventoryIds: tombstoneRes.deletedInventoryIds,
+      },
+      DEFAULT_STORE_ID
+    ).catch(() => {});
 
     showToast('Daily closing record deleted', 'info');
   };
 
   const handleAddOnlineAccount = (acc: Omit<OnlineAccount, 'id'>) => {
+    const now = new Date().toISOString();
     const newAccount: OnlineAccount = {
       id: generateEntityId('OA'),
       ...acc,
@@ -605,10 +840,15 @@ function AppContent() {
     const updatedOnlineAccounts = [...(data.onlineAccounts || []), newAccount];
     setData(prev => ({
       ...prev,
+      lastModified: now,
+      onlineAccountsUpdatedAt: now,
       onlineAccounts: updatedOnlineAccounts,
     }));
 
-    saveRootConfigToFirestore({ onlineAccounts: updatedOnlineAccounts }).catch(err => {
+    saveRootConfigToFirestore({
+      onlineAccounts: updatedOnlineAccounts,
+      onlineAccountsUpdatedAt: now,
+    }).catch(err => {
       console.warn('Firestore online account creation sync warning:', err);
     });
 
@@ -624,14 +864,20 @@ function AppContent() {
   };
 
   const handleDeleteOnlineAccount = (id: string) => {
+    const now = new Date().toISOString();
     const acc = (data.onlineAccounts || []).find(a => a.id === id);
     const updatedOnlineAccounts = (data.onlineAccounts || []).filter(a => a.id !== id);
     setData(prev => ({
       ...prev,
+      lastModified: now,
+      onlineAccountsUpdatedAt: now,
       onlineAccounts: updatedOnlineAccounts,
     }));
 
-    saveRootConfigToFirestore({ onlineAccounts: updatedOnlineAccounts }).catch(err => {
+    saveRootConfigToFirestore({
+      onlineAccounts: updatedOnlineAccounts,
+      onlineAccountsUpdatedAt: now,
+    }).catch(err => {
       console.warn('Firestore online account deletion sync warning:', err);
     });
 
@@ -647,10 +893,12 @@ function AppContent() {
     purchaseData: Omit<SupplierPurchase, 'id'>,
     autoAddToInventory: boolean
   ) => {
+    const now = new Date().toISOString();
     const newPurchaseId = generateEntityId('PUR');
     const newPurchase: SupplierPurchase = {
       ...purchaseData,
       id: newPurchaseId,
+      updatedAt: now,
     };
 
     let updatedInventory = [...data.inventory];
@@ -725,6 +973,7 @@ function AppContent() {
             imei: combinedImeis[0] || existing.imei,
             imeis: combinedImeis.length > 0 ? combinedImeis : undefined,
             status: existing.status || 'ACTIVE',
+            updatedAt: now,
           };
 
           updatedInventory[matchIndex] = updatedItem;
@@ -770,7 +1019,8 @@ function AppContent() {
             imei: purchaseItem.imei,
             imeis: purchaseItem.imeis,
             status: 'ACTIVE',
-            createdAt: new Date().toISOString(),
+            createdAt: now,
+            updatedAt: now,
           };
           updatedInventory = [newItem, ...updatedInventory];
           changedMap.set(newItem.id, newItem);
@@ -789,6 +1039,7 @@ function AppContent() {
     const newLedgerEntries = newPurchase.items.map(item => ({
       id: generateEntityId('PL'),
       date: newPurchase.date,
+      updatedAt: now,
       itemTitle: `${item.name} (${newPurchase.partyName})`,
       qty: item.qty,
       costPrice: item.costPrice,
@@ -801,11 +1052,10 @@ function AppContent() {
       purchaseBillNo: newPurchase.billNo,
       purchaseParty: newPurchase.partyName,
     });
-    const syncedPurchases = [newPurchase, ...(data.supplierPurchases || [])];
-    const syncedLedger = [...newLedgerEntries, ...(data.purchasesLedger || [])];
 
     setData(prev => ({
       ...prev,
+      lastModified: now,
       inventory: updatedInventory,
       supplierPurchases: [newPurchase, ...(prev.supplierPurchases || [])],
       purchasesLedger: [...newLedgerEntries, ...(prev.purchasesLedger || [])],
@@ -822,7 +1072,7 @@ function AppContent() {
 
     showToast(`Purchase bill #${newPurchase.billNo} registered!`, 'success');
 
-    // Immediately persist to dedicated Firestore subcollections + compact root doc
+    // Immediately persist to dedicated Firestore subcollections ONLY (single source of truth)
     if (autoAddToInventory && affectedInventoryItems.length > 0) {
       affectedInventoryItems.forEach(item => {
         saveInventoryItemToFirestore(item, DEFAULT_STORE_ID).catch(() => {});
@@ -831,14 +1081,6 @@ function AppContent() {
     savePurchaseToFirestore(newPurchase, DEFAULT_STORE_ID).catch(() => {});
     savePurchasesLedgerBatchToFirestore(newLedgerEntries, DEFAULT_STORE_ID).catch(() => {});
     saveImeiRecordsBatchToFirestore(syncedImeis, DEFAULT_STORE_ID).catch(() => {});
-    saveRootConfigToFirestore(
-      {
-        supplierPurchases: syncedPurchases,
-        purchasesLedger: syncedLedger,
-        imeiRecords: syncedImeis,
-      },
-      DEFAULT_STORE_ID
-    ).catch(() => {});
   };
 
   const handleUpdatePurchase = (
@@ -849,10 +1091,12 @@ function AppContent() {
     const oldPurchase = (data.supplierPurchases || []).find(p => p.id === purchaseId);
     if (!oldPurchase) return;
 
+    const now = new Date().toISOString();
     const updatedPurchase: SupplierPurchase = {
       ...updatedPurchaseData,
       id: purchaseId,
       status: oldPurchase.status,
+      updatedAt: now,
     };
 
     const changedInventoryMap = new Map<string, InventoryItem>();
@@ -904,6 +1148,7 @@ function AppContent() {
           variants: updatedVariants && updatedVariants.length > 0 ? updatedVariants : existing.variants,
           imei: remainingImeis[0] || undefined,
           imeis: remainingImeis.length > 0 ? remainingImeis : undefined,
+          updatedAt: now,
         };
 
         updatedInventory[matchIndex] = rolledBackItem;
@@ -987,6 +1232,7 @@ function AppContent() {
             imei: combinedImeis[0] || existing.imei,
             imeis: combinedImeis.length > 0 ? combinedImeis : undefined,
             status: existing.status || 'ACTIVE',
+            updatedAt: now,
           };
 
           updatedInventory[matchIndex] = updatedItem;
@@ -1032,7 +1278,8 @@ function AppContent() {
             imei: purchaseItem.imei,
             imeis: purchaseItem.imeis,
             status: 'ACTIVE',
-            createdAt: new Date().toISOString(),
+            createdAt: now,
+            updatedAt: now,
           };
           updatedInventory = [newItem, ...updatedInventory];
           changedInventoryMap.set(newItem.id, newItem);
@@ -1063,17 +1310,18 @@ function AppContent() {
     const newLedgerEntries = updatedPurchase.items.map(item => ({
       id: generateEntityId('PL'),
       date: updatedPurchase.date,
+      updatedAt: now,
       itemTitle: `${item.name} (${updatedPurchase.partyName})`,
       qty: item.qty,
       costPrice: item.costPrice,
       total: item.costPrice * item.qty,
     }));
 
-    const syncedPurchases = (data.supplierPurchases || []).map(p => (p.id === purchaseId ? updatedPurchase : p));
     const syncedLedger = [...newLedgerEntries, ...filteredOldLedger];
 
     setData(prev => ({
       ...prev,
+      lastModified: now,
       inventory: updatedInventory,
       supplierPurchases: (prev.supplierPurchases || []).map(p => (p.id === purchaseId ? updatedPurchase : p)),
       purchasesLedger: syncedLedger,
@@ -1096,14 +1344,6 @@ function AppContent() {
     savePurchaseToFirestore(updatedPurchase, DEFAULT_STORE_ID).catch(() => {});
     savePurchasesLedgerBatchToFirestore(syncedLedger, DEFAULT_STORE_ID).catch(() => {});
     saveImeiRecordsBatchToFirestore(syncedImeis, DEFAULT_STORE_ID).catch(() => {});
-    saveRootConfigToFirestore(
-      {
-        supplierPurchases: syncedPurchases,
-        purchasesLedger: syncedLedger,
-        imeiRecords: syncedImeis,
-      },
-      DEFAULT_STORE_ID
-    ).catch(() => {});
   };
 
   const handleDeletePurchase = () => {
@@ -1156,17 +1396,20 @@ function AppContent() {
           im => !itemImeis.some(pIm => pIm.toLowerCase().trim() === im.toLowerCase().trim())
         );
 
+        const now = new Date().toISOString();
         const updatedItem: InventoryItem = {
           ...existing,
           qty: Math.max(0, existing.qty - purchaseItem.qty),
           imei: remainingImeis.length > 0 ? remainingImeis.join(', ') : undefined,
           imeis: remainingImeis.length > 0 ? remainingImeis : undefined,
+          updatedAt: now,
         };
         updatedInventory[matchIndex] = updatedItem;
         changedInventory.push(updatedItem);
       }
     });
 
+    const revNow = new Date().toISOString();
     const syncedImeis = recordImeisReversed({
       purchaseBillNo: purchase.billNo,
       reversedImeis: allPurchaseImeis,
@@ -1175,7 +1418,7 @@ function AppContent() {
 
     const syncedLedger = (data.purchasesLedger || []).map(entry => {
       if (entry.itemTitle.includes(purchase.partyName) || entry.id.includes(purchase.id)) {
-        return { ...entry, isReversed: true };
+        return { ...entry, isReversed: true, updatedAt: revNow };
       }
       return entry;
     });
@@ -1183,15 +1426,16 @@ function AppContent() {
     const reversedPurchase: SupplierPurchase = {
       ...purchase,
       status: 'REVERSED' as const,
-      reversedAt: new Date().toISOString(),
+      reversedAt: revNow,
+      updatedAt: revNow,
       reversedBy,
       reversalReason: reason,
       reversalNotes: notes,
     };
-    const syncedPurchases = (data.supplierPurchases || []).map(p => (p.id === purchaseId ? reversedPurchase : p));
 
     setData(prev => ({
       ...prev,
+      lastModified: revNow,
       inventory: updatedInventory,
       imeiRecords: syncedImeis,
       purchasesLedger: syncedLedger,
@@ -1204,14 +1448,6 @@ function AppContent() {
     savePurchaseToFirestore(reversedPurchase, DEFAULT_STORE_ID).catch(() => {});
     savePurchasesLedgerBatchToFirestore(syncedLedger, DEFAULT_STORE_ID).catch(() => {});
     saveImeiRecordsBatchToFirestore(syncedImeis, DEFAULT_STORE_ID).catch(() => {});
-    saveRootConfigToFirestore(
-      {
-        supplierPurchases: syncedPurchases,
-        purchasesLedger: syncedLedger,
-        imeiRecords: syncedImeis,
-      },
-      DEFAULT_STORE_ID
-    ).catch(() => {});
 
     logActivity(
       'Purchase',
@@ -1248,23 +1484,24 @@ function AppContent() {
       return;
     }
 
+    const now = new Date().toISOString();
     const newPaidAmount = (purchase.paidAmount || 0) + paymentAmount;
     const newBalanceDue = Math.max(0, purchase.totalAmount - newPaidAmount);
     const settledPurchase: SupplierPurchase = {
       ...purchase,
       paidAmount: newPaidAmount,
       balanceDue: newBalanceDue,
+      updatedAt: now,
       notes: notes ? `${purchase.notes || ''}\n[Payment ${paymentMethod}: ${data.settings.currency} ${paymentAmount.toLocaleString()} - ${notes}]`.trim() : purchase.notes,
     };
-    const syncedPurchases = (data.supplierPurchases || []).map(p => (p.id === purchaseId ? settledPurchase : p));
 
     setData(prev => ({
       ...prev,
+      lastModified: now,
       supplierPurchases: (prev.supplierPurchases || []).map(p => (p.id === purchaseId ? settledPurchase : p)),
     }));
 
     savePurchaseToFirestore(settledPurchase, DEFAULT_STORE_ID).catch(() => {});
-    saveRootConfigToFirestore({ supplierPurchases: syncedPurchases }, DEFAULT_STORE_ID).catch(() => {});
 
     logActivity(
       'Purchase',
@@ -1284,12 +1521,18 @@ function AppContent() {
       return;
     }
 
+    const now = new Date().toISOString();
     setData(prev => ({
       ...prev,
+      lastModified: now,
+      settingsUpdatedAt: now,
       settings: newSettings,
     }));
 
-    saveRootConfigToFirestore({ settings: newSettings }).catch(err => {
+    saveRootConfigToFirestore({
+      settings: newSettings,
+      settingsUpdatedAt: now,
+    }).catch(err => {
       console.warn('Firestore settings update warning:', err);
     });
 
@@ -1298,17 +1541,28 @@ function AppContent() {
   };
 
   const handleToggleTheme = () => {
-    setData(prev => {
-      const currentTheme = prev.settings?.theme || 'blue-white';
-      const newTheme = currentTheme === 'dark' ? 'blue-white' : 'dark';
-      return {
-        ...prev,
-        settings: {
-          ...prev.settings,
-          theme: newTheme,
-        },
-      };
-    });
+    const now = new Date().toISOString();
+    const currentTheme = dataRef.current.settings?.theme || 'blue-white';
+    const newTheme = currentTheme === 'dark' ? 'blue-white' : 'dark';
+    const nextSettings: ShopSettings = {
+      ...dataRef.current.settings,
+      theme: newTheme,
+    };
+
+    setData(prev => ({
+      ...prev,
+      lastModified: now,
+      settingsUpdatedAt: now,
+      settings: {
+        ...prev.settings,
+        theme: newTheme,
+      },
+    }));
+
+    saveRootConfigToFirestore({
+      settings: nextSettings,
+      settingsUpdatedAt: now,
+    }).catch(() => {});
   };
 
   const handleOpenModal = (modal: 'stock' | 'khata' | 'expense') => {
@@ -1424,11 +1678,8 @@ function AppContent() {
                     };
                     saveStoredData(finalData, activeStoreId);
 
-                    const prevTime = Date.parse(prev.lastModified || '') || 0;
-                    const remoteTime = Date.parse(remoteData?.lastModified || '') || 0;
-                    if (shadowRemote || (remoteData && prevTime > remoteTime)) {
-                      saveAppDataToFirestore(finalData, activeStoreId).catch(() => {});
-                    }
+                    // Flush only pending offline writes (never bulk upload entire local state on login!)
+                    processPendingWritesQueue().catch(() => {});
 
                     return finalData;
                   });
@@ -1496,6 +1747,7 @@ function AppContent() {
           currentUser={data.currentUser}
           onLogout={handleLogout}
           onRefreshData={handleManualSyncData}
+          appData={data}
         />
 
         {/* Scrollable Tab Content - Optimized with Conditional Rendering (Unmounts Inactive Tabs) */}
@@ -1739,17 +1991,42 @@ function AppContent() {
         settings={data.settings}
         onSaveSettings={handleSaveSettings}
         fullData={data}
+        onRecoverMissingData={handleRecoverMissingData}
         onReplaceData={(newData: AppData) => {
-          setData(newData);
-          saveStoredData(newData);
+          const now = new Date().toISOString();
+          const stamped: AppData = {
+            ...newData,
+            lastModified: now,
+            settingsUpdatedAt: now,
+            categoriesUpdatedAt: now,
+            expenseCategoriesUpdatedAt: now,
+            onlineAccountsUpdatedAt: now,
+            tabPreferencesUpdatedAt: now,
+            usersUpdatedAt: now,
+            migrationDone: true,
+            currentUser: data.currentUser,
+            currentRole: data.currentRole || data.currentUser?.role || 'admin',
+          };
+          setData(stamped);
+          saveStoredData(stamped, DEFAULT_STORE_ID);
+          saveAppDataToFirestore(stamped, DEFAULT_STORE_ID).catch(() => {});
           showToast('Backup restored successfully', 'success');
         }}
         onUpdateUsers={(users: UserAccount[]) => {
+          const now = new Date().toISOString();
           const activeSid = DEFAULT_STORE_ID;
-          const updatedData = { ...data, users };
+          const updatedData = {
+            ...data,
+            users,
+            usersUpdatedAt: now,
+            lastModified: now,
+          };
           setData(updatedData);
           saveStoredData(updatedData, activeSid);
-          saveRootConfigToFirestore({ users }, activeSid).catch(err => {
+          saveRootConfigToFirestore(
+            { users, usersUpdatedAt: now },
+            activeSid
+          ).catch(err => {
             console.warn('Firestore users sync warning:', err);
           });
           users.forEach(u => saveUserToFirestore(u, activeSid).catch(() => {}));
@@ -1762,18 +2039,23 @@ function AppContent() {
         activeTab={activeTab}
         preferences={data.tabPreferences || {}}
         onSavePreferences={(tabId: string, prefs: Record<string, unknown>) => {
+          const now = new Date().toISOString();
+          const nextTabPreferences = {
+            ...(dataRef.current.tabPreferences || {}),
+            [tabId]: prefs,
+          };
           setData(prev => ({
             ...prev,
+            lastModified: now,
+            tabPreferencesUpdatedAt: now,
             tabPreferences: {
               ...(prev.tabPreferences || {}),
               [tabId]: prefs,
             },
           }));
           saveRootConfigToFirestore({
-            tabPreferences: {
-              ...(data.tabPreferences || {}),
-              [tabId]: prefs,
-            },
+            tabPreferences: nextTabPreferences,
+            tabPreferencesUpdatedAt: now,
           }).catch(err => {
             console.warn('Firestore tab preferences sync warning:', err);
           });

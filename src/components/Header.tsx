@@ -14,7 +14,7 @@ import {
   LogOut,
   Download
 } from 'lucide-react';
-import { ShopSettings, UserRole, UserAccount } from '../types';
+import { AppData, ShopSettings, UserRole, UserAccount } from '../types';
 import { OnlineStatusBadge } from './OnlineStatusBadge';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 
@@ -32,6 +32,7 @@ interface HeaderProps {
   currentUser?: UserAccount;
   onLogout?: () => void;
   onRefreshData?: () => void;
+  appData?: AppData;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -48,6 +49,7 @@ export const Header: React.FC<HeaderProps> = ({
   currentUser,
   onLogout,
   onRefreshData,
+  appData,
 }) => {
   const titles: Record<string, { title: string; subtitle: string }> = {
     dashboard: { title: 'Dashboard Overview', subtitle: 'Live business metrics & real-time cash drawer' },
@@ -138,7 +140,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Global Online/Offline Status Indicator Pill with Manual Refresh */}
         <div className="block">
-          <OnlineStatusBadge onRefreshData={onRefreshData} />
+          <OnlineStatusBadge onRefreshData={onRefreshData} appData={appData} />
         </div>
 
         {/* Desktop / Mobile PWA One-Click Install Button */}

@@ -1,6 +1,12 @@
 import { useState, Dispatch, SetStateAction } from 'react';
 import { AppData, KhataCustomer, ActivityLog } from '../types';
-import { saveKhataCustomerToFirestore, deleteKhataCustomerFromFirestore } from '../utils/storage';
+import {
+  saveKhataCustomerToFirestore,
+  deleteKhataCustomerFromFirestore,
+  saveRootConfigToFirestore,
+  addTombstonesToMap,
+  removeTombstoneFromMap,
+} from '../utils/storage';
 import { hasPermission } from '../utils/permissions';
 import { generateEntityId } from '../utils/id';
 
@@ -84,6 +90,7 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
 
     const actualOpeningBalance =
       initialBalanceType === 'payable' ? -Math.abs(openingBalance) : Math.abs(openingBalance);
+    const now = new Date().toISOString();
 
     if (id) {
       // Editing existing customer
@@ -111,11 +118,13 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
         guarantorName: guarantorName?.trim() || undefined,
         guarantorPhone: guarantorPhone?.trim() || undefined,
         notes: notes?.trim() || undefined,
-        lastUpdated: new Date().toISOString(),
+        lastUpdated: now,
+        updatedAt: now,
       };
 
       setData(prev => ({
         ...prev,
+        lastModified: now,
         khata: prev.khata.map(c => (c.id === id ? updatedCustomer : c)),
       }));
 
@@ -128,7 +137,6 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
     } else {
       // Adding new customer
       const newCustomerId = generateEntityId('KHT');
-      const now = new Date().toISOString();
 
       const newCustomer: KhataCustomer = {
         id: newCustomerId,
@@ -153,6 +161,7 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
         notes: notes?.trim() || undefined,
         balance: actualOpeningBalance,
         lastUpdated: now,
+        updatedAt: now,
         history:
           actualOpeningBalance !== 0
             ? [
@@ -167,10 +176,21 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
             : [],
       };
 
-      setData(prev => ({
-        ...prev,
-        khata: [newCustomer, ...prev.khata],
-      }));
+      setData(prev => {
+        const cleanedTomb = removeTombstoneFromMap(
+          prev.deletedIds,
+          'khata',
+          newCustomerId,
+          prev.deletedInventoryIds
+        );
+        return {
+          ...prev,
+          lastModified: now,
+          khata: [newCustomer, ...prev.khata],
+          deletedIds: cleanedTomb.deletedIds,
+          deletedInventoryIds: cleanedTomb.deletedInventoryIds,
+        };
+      });
 
       saveKhataCustomerToFirestore(newCustomer).catch(err => {
         console.warn('Firestore Khata create warning:', err);
@@ -217,11 +237,13 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
       ...existingCust,
       balance: existingCust.balance - amount,
       lastUpdated: now,
+      updatedAt: now,
       history: [newTx, ...existingCust.history],
     };
 
     setData(prev => ({
       ...prev,
+      lastModified: now,
       khata: prev.khata.map(c => (c.id === customerId ? updatedCustomer : c)),
     }));
 
@@ -272,11 +294,13 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
       ...existingCust,
       balance: newBal,
       lastUpdated: now,
+      updatedAt: now,
       history: [newTx, ...existingCust.history],
     };
 
     setData(prev => ({
       ...prev,
+      lastModified: now,
       khata: prev.khata.map(c => (c.id === customerId ? updatedCustomer : c)),
     }));
 
@@ -307,6 +331,7 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
     const target = existingCust.history.find(t => t.id === txId);
     if (!target) return;
 
+    const now = new Date().toISOString();
     const removedAmount = target.amount;
     const nextHistory = existingCust.history.filter(t => t.id !== txId);
     const recalculatedBalance = nextHistory.reduce((acc, t) => {
@@ -316,12 +341,14 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
     const updatedCustomer: KhataCustomer = {
       ...existingCust,
       balance: recalculatedBalance,
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: now,
+      updatedAt: now,
       history: nextHistory,
     };
 
     setData(prev => ({
       ...prev,
+      lastModified: now,
       khata: prev.khata.map(c => (c.id === customerId ? updatedCustomer : c)),
     }));
 
@@ -339,7 +366,7 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
   };
 
   /**
-   * Delete customer account from ledger
+   * Delete customer account from ledger (with tombstone)
    */
   const handleDeleteKhataCustomer = (customerId: string) => {
     if (!hasPermission(data.currentRole || 'admin', 'canDeleteKhata')) {
@@ -347,15 +374,38 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
       return;
     }
 
+    const now = new Date().toISOString();
     const targetCust = data.khata.find(c => c.id === customerId);
-    setData(prev => ({
-      ...prev,
-      khata: prev.khata.filter(c => c.id !== customerId),
-    }));
+    const tombstoneRes = addTombstonesToMap(
+      data.deletedIds,
+      'khata',
+      [customerId],
+      data.deletedInventoryIds
+    );
+
+    setData(prev => {
+      const prevTomb = addTombstonesToMap(
+        prev.deletedIds,
+        'khata',
+        [customerId],
+        prev.deletedInventoryIds
+      );
+      return {
+        ...prev,
+        lastModified: now,
+        khata: prev.khata.filter(c => c.id !== customerId),
+        deletedIds: prevTomb.deletedIds,
+        deletedInventoryIds: prevTomb.deletedInventoryIds,
+      };
+    });
 
     deleteKhataCustomerFromFirestore(customerId).catch(err => {
       console.warn('Firestore delete Khata customer warning:', err);
     });
+    saveRootConfigToFirestore({
+      deletedIds: tombstoneRes.deletedIds,
+      deletedInventoryIds: tombstoneRes.deletedInventoryIds,
+    }).catch(() => {});
 
     if (targetCust) {
       logActivity(

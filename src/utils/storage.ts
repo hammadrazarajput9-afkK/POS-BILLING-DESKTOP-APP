@@ -17,8 +17,25 @@ import {
   UserRole,
   PaymentMethod,
   DailyClosingRecord,
+  DeletedTombstone,
+  DeletedIdsMap,
+  SyncCollectionKey,
+  PendingWriteOp,
+  DailyBackupSnapshot,
 } from '../types';
-import { db, handleFirestoreError, OperationType, isQuotaError, setQuotaExceededFlag, getQuotaExceededFlag } from './firebase';
+import {
+  db,
+  handleFirestoreError,
+  OperationType,
+  isQuotaError,
+  setQuotaExceededFlag,
+  getQuotaExceededFlag,
+  ensureAnonymousAuth,
+  subscribeQuotaState,
+  subscribeCloudError,
+  getLastCloudError,
+  setLastCloudError,
+} from './firebase';
 import {
   doc,
   getDoc,
@@ -35,25 +52,10 @@ import {
 import { generateEntityId } from './id';
 import { openDB, IDBPDatabase } from 'idb';
 
-/**
- * Hierarchical Multi-Tenant Store Configuration:
- * - Master Store Collection: 'stores'
- * - Store Document: /stores/{adminStoreId}
- * - Isolated Sub-collections:
- *     /stores/{adminStoreId}/sales/{invNo}
- *     /stores/{adminStoreId}/inventory/{itemId}
- *     /stores/{adminStoreId}/khata/{customerId}
- *     /stores/{adminStoreId}/expenses/{expenseId}
- *     /stores/{adminStoreId}/activities/{activityId}
- *     /stores/{adminStoreId}/users/{userId}
- * - Global User Registry for cross-device authentication:
- *     /users/{userId}
- */
 export const STORES_COLLECTION = 'stores';
 export const LEGACY_FIRESTORE_COLLECTION = 'pos_data';
 export const DEFAULT_STORE_ID = 'main_store';
 
-// Aliases for backwards compatibility
 export const FIRESTORE_COLLECTION = STORES_COLLECTION;
 export const FIRESTORE_DOCUMENT_ID = DEFAULT_STORE_ID;
 
@@ -72,7 +74,6 @@ export const SUB_COLLECTIONS = {
   IMEI_RECORDS: 'imei_records',
 } as const;
 
-// Legacy storage keys
 export const STORAGE_KEY = 'MOBILE_POS_PRO_DATA_V10';
 export const LEGACY_STORAGE_KEYS = [
   'MOBILE_POS_PRO_DATA_V9',
@@ -82,7 +83,9 @@ export const LEGACY_STORAGE_KEYS = [
   'MOBILE_POS_PRO_DATA_V5',
 ];
 
-// Active runtime store context
+const TOMBSTONE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+const MAX_DAILY_BACKUPS = 7;
+
 let currentActiveStoreId: string = DEFAULT_STORE_ID;
 
 export function setActiveStoreId(storeId?: string | null): void {
@@ -95,20 +98,17 @@ export function getActiveStoreId(): string {
   return currentActiveStoreId;
 }
 
-// Partitioned LocalStorage key per store to ensure 100% zero data leakage between admins on the same browser
 export function getLocalStorageKey(storeId?: string): string {
   const sid = storeId || currentActiveStoreId || DEFAULT_STORE_ID;
   return `MOBILE_POS_STORE_${sid}_V10`;
 }
 
-// Session persistence for active logged-in user and store
 export const SESSION_STORAGE_KEY = 'MOBILE_POS_ACTIVE_USER_SESSION';
 
 export function saveCurrentSession(user?: UserAccount | null): void {
   try {
     if (user) {
       localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(user));
-      // Keep active store unified to DEFAULT_STORE_ID so writes and real-time listeners always share the same store path
       setActiveStoreId(DEFAULT_STORE_ID);
     } else {
       localStorage.removeItem(SESSION_STORAGE_KEY);
@@ -211,9 +211,209 @@ export const initialCleanData: AppData = {
   currentRole: 'admin',
   users: [],
   currentUser: undefined,
+  deletedIds: {},
+  deletedInventoryIds: [],
 };
 
 export const sampleSeedData: AppData = initialCleanData;
+
+// ==================== TOMBSTONE HELPERS ====================
+
+const ALL_TOMBSTONE_KEYS: SyncCollectionKey[] = [
+  'sales',
+  'inventory',
+  'khata',
+  'expenses',
+  'supplierPurchases',
+  'purchasesLedger',
+  'imeiRecords',
+  'salesReturns',
+  'stockAdjustments',
+  'dailyClosings',
+  'activities',
+];
+
+function parseTimeMs(val?: string): number {
+  if (!val) return 0;
+  const t = Date.parse(val);
+  return Number.isFinite(t) ? t : 0;
+}
+
+export function pruneTombstones(list?: DeletedTombstone[]): DeletedTombstone[] {
+  if (!Array.isArray(list) || list.length === 0) return [];
+  const cutoff = Date.now() - TOMBSTONE_RETENTION_MS;
+  const map = new Map<string, string>();
+  for (const entry of list) {
+    if (!entry || typeof entry.id !== 'string' || !entry.id.trim()) continue;
+    const ts = parseTimeMs(entry.deletedAt);
+    if (ts > 0 && ts < cutoff) continue; // prune > 90 days
+    const existing = map.get(entry.id);
+    const deletedAt = entry.deletedAt || new Date().toISOString();
+    if (!existing || parseTimeMs(deletedAt) >= parseTimeMs(existing)) {
+      map.set(entry.id, deletedAt);
+    }
+  }
+  return Array.from(map.entries()).map(([id, deletedAt]) => ({ id, deletedAt }));
+}
+
+export function normalizeDeletedIds(
+  source?: Partial<AppData> | null
+): DeletedIdsMap {
+  const base: DeletedIdsMap = {};
+  const raw = source?.deletedIds || {};
+  for (const key of ALL_TOMBSTONE_KEYS) {
+    const arr = Array.isArray(raw[key]) ? raw[key] : [];
+    const pruned = pruneTombstones(arr);
+    if (pruned.length > 0) {
+      base[key] = pruned;
+    }
+  }
+
+  // Normalize legacy string arrays into tombstones
+  const legacyMappings: Array<{ legacy?: string[]; target: SyncCollectionKey }> = [
+    { legacy: source?.deletedInventoryIds, target: 'inventory' },
+    { legacy: source?.deletedSalesIds, target: 'sales' },
+    { legacy: source?.deletedKhataIds, target: 'khata' },
+    { legacy: source?.deletedExpensesIds, target: 'expenses' },
+    { legacy: source?.deletedPurchasesIds, target: 'supplierPurchases' },
+  ];
+
+  const fallbackLegacyDeletedAt =
+    source?.lastModified && parseTimeMs(source.lastModified) > 0
+      ? source.lastModified
+      : new Date().toISOString();
+
+  for (const { legacy, target } of legacyMappings) {
+    if (!Array.isArray(legacy) || legacy.length === 0) continue;
+    const existing = base[target] || [];
+    const map = new Map(existing.map(t => [t.id, t.deletedAt]));
+    for (const id of legacy) {
+      if (typeof id === 'string' && id.trim() && !map.has(id)) {
+        map.set(id, fallbackLegacyDeletedAt);
+      }
+    }
+    const merged = pruneTombstones(
+      Array.from(map.entries()).map(([id, deletedAt]) => ({ id, deletedAt }))
+    );
+    if (merged.length > 0) {
+      base[target] = merged;
+    }
+  }
+
+  return base;
+}
+
+export function mergeDeletedIds(
+  localData?: Partial<AppData> | null,
+  remoteData?: Partial<AppData> | null
+): { deletedIds: DeletedIdsMap; deletedInventoryIds: string[] } {
+  const normLocal = normalizeDeletedIds(localData);
+  const normRemote = normalizeDeletedIds(remoteData);
+  const result: DeletedIdsMap = {};
+
+  for (const key of ALL_TOMBSTONE_KEYS) {
+    const combined = [...(normLocal[key] || []), ...(normRemote[key] || [])];
+    const pruned = pruneTombstones(combined);
+    if (pruned.length > 0) {
+      result[key] = pruned;
+    }
+  }
+
+  return {
+    deletedIds: result,
+    deletedInventoryIds: (result.inventory || []).map(t => t.id),
+  };
+}
+
+export function addTombstonesToMap(
+  current: DeletedIdsMap | undefined,
+  collectionKey: SyncCollectionKey,
+  ids: string[],
+  legacyInventoryIds?: string[]
+): { deletedIds: DeletedIdsMap; deletedInventoryIds: string[] } {
+  const normalized = normalizeDeletedIds({
+    deletedIds: current,
+    deletedInventoryIds: legacyInventoryIds,
+  });
+  const now = new Date().toISOString();
+  const existingList = normalized[collectionKey] || [];
+  const map = new Map(existingList.map(t => [t.id, t.deletedAt]));
+  for (const id of ids) {
+    if (id && id.trim()) {
+      map.set(id.trim(), now);
+    }
+  }
+  normalized[collectionKey] = pruneTombstones(
+    Array.from(map.entries()).map(([id, deletedAt]) => ({ id, deletedAt }))
+  );
+
+  return {
+    deletedIds: normalized,
+    deletedInventoryIds: (normalized.inventory || []).map(t => t.id),
+  };
+}
+
+export function removeTombstoneFromMap(
+  current: DeletedIdsMap | undefined,
+  collectionKey: SyncCollectionKey,
+  id: string,
+  legacyInventoryIds?: string[]
+): { deletedIds: DeletedIdsMap; deletedInventoryIds: string[] } {
+  const normalized = normalizeDeletedIds({
+    deletedIds: current,
+    deletedInventoryIds: legacyInventoryIds,
+  });
+  if (normalized[collectionKey]) {
+    normalized[collectionKey] = normalized[collectionKey]!.filter(t => t.id !== id);
+  }
+  return {
+    deletedIds: normalized,
+    deletedInventoryIds: (normalized.inventory || []).map(t => t.id),
+  };
+}
+
+export function isItemTombstoned(
+  id: string | undefined,
+  itemUpdatedAt: string | undefined,
+  tombstones?: DeletedTombstone[]
+): boolean {
+  if (!id || !Array.isArray(tombstones) || tombstones.length === 0) return false;
+  const match = tombstones.find(t => t.id === id);
+  if (!match) return false;
+  const itemMs = parseTimeMs(itemUpdatedAt);
+  const delMs = parseTimeMs(match.deletedAt);
+  // Only resurrect if item was explicitly updated/re-created strictly AFTER deletion
+  if (itemMs > 0 && delMs > 0 && itemMs > delMs) {
+    return false;
+  }
+  return true;
+}
+
+// ==================== JSON DOWNLOAD & AUTOMATIC BACKUPS ====================
+
+export function downloadJsonBackup(data: AppData, filenamePrefix = 'mobile_pos_pro_backup_'): void {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  try {
+    const exportPayload: AppData = {
+      ...data,
+      backupVersion: CURRENT_BACKUP_VERSION,
+      lastModified: new Date().toISOString(),
+    };
+    const jsonStr = JSON.stringify(exportPayload, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    a.download = `${filenamePrefix}${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (err) {
+    console.warn('Automatic JSON backup download notice:', err);
+  }
+}
 
 export interface BackupValidationResult {
   valid: boolean;
@@ -231,9 +431,6 @@ export interface BackupValidationResult {
   };
 }
 
-/**
- * Validates a JSON backup object before restore with strict TypeScript typing.
- */
 export function validateBackupData(parsed: unknown): BackupValidationResult {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     return {
@@ -265,17 +462,29 @@ export function validateBackupData(parsed: unknown): BackupValidationResult {
     currency: rawSettings.currency || defaultSettings.currency,
   };
 
+  const normalizedTombstones = normalizeDeletedIds(raw as Partial<AppData>);
+
   const sanitizedData: AppData = {
     backupVersion: CURRENT_BACKUP_VERSION,
     lastModified: typeof raw.lastModified === 'string' ? raw.lastModified : new Date().toISOString(),
+    migrationDone: typeof raw.migrationDone === 'boolean' ? raw.migrationDone : undefined,
+    settingsUpdatedAt: typeof raw.settingsUpdatedAt === 'string' ? raw.settingsUpdatedAt : undefined,
+    categoriesUpdatedAt: typeof raw.categoriesUpdatedAt === 'string' ? raw.categoriesUpdatedAt : undefined,
+    expenseCategoriesUpdatedAt: typeof raw.expenseCategoriesUpdatedAt === 'string' ? raw.expenseCategoriesUpdatedAt : undefined,
+    onlineAccountsUpdatedAt: typeof raw.onlineAccountsUpdatedAt === 'string' ? raw.onlineAccountsUpdatedAt : undefined,
+    tabPreferencesUpdatedAt: typeof raw.tabPreferencesUpdatedAt === 'string' ? raw.tabPreferencesUpdatedAt : undefined,
+    usersUpdatedAt: typeof raw.usersUpdatedAt === 'string' ? raw.usersUpdatedAt : undefined,
     inventory: rawInventory.map((item, idx) => ({
       id: typeof item.id === 'string' ? item.id : generateEntityId('STK'),
       name: String(item.name || 'Unnamed Product'),
       category: String(item.category || defaultCategories[0]),
       costPrice: Number(item.costPrice) || 0,
       salePrice: Number(item.salePrice) || 0,
+      wholesalePrice: typeof item.wholesalePrice === 'number' ? item.wholesalePrice : undefined,
+      boxSize: typeof item.boxSize === 'number' ? item.boxSize : undefined,
       qty: Number(item.qty) || 0,
       createdAt: typeof item.createdAt === 'string' ? item.createdAt : new Date(Date.now() + idx).toISOString(),
+      updatedAt: typeof item.updatedAt === 'string' ? item.updatedAt : undefined,
       barcode: typeof item.barcode === 'string' ? item.barcode : undefined,
       imei: typeof item.imei === 'string' ? item.imei : undefined,
       imeis: Array.isArray(item.imeis) ? (item.imeis.filter(i => typeof i === 'string') as string[]) : undefined,
@@ -292,9 +501,24 @@ export function validateBackupData(parsed: unknown): BackupValidationResult {
       phone: String(cust.phone || ''),
       phone2: typeof cust.phone2 === 'string' ? cust.phone2 : undefined,
       address: typeof cust.address === 'string' ? cust.address : undefined,
+      lat: typeof cust.lat === 'number' ? cust.lat : undefined,
+      lng: typeof cust.lng === 'number' ? cust.lng : undefined,
+      placeId: typeof cust.placeId === 'string' ? cust.placeId : undefined,
+      mapUrl: typeof cust.mapUrl === 'string' ? cust.mapUrl : undefined,
       image: typeof cust.image === 'string' ? cust.image : undefined,
+      customerType: cust.customerType as KhataCustomer['customerType'],
+      shopName: typeof cust.shopName === 'string' ? cust.shopName : undefined,
+      city: typeof cust.city === 'string' ? cust.city : undefined,
+      ntnNumber: typeof cust.ntnNumber === 'string' ? cust.ntnNumber : undefined,
+      cnic: typeof cust.cnic === 'string' ? cust.cnic : undefined,
+      creditLimit: typeof cust.creditLimit === 'number' ? cust.creditLimit : undefined,
+      dueDate: typeof cust.dueDate === 'string' ? cust.dueDate : undefined,
+      guarantorName: typeof cust.guarantorName === 'string' ? cust.guarantorName : undefined,
+      guarantorPhone: typeof cust.guarantorPhone === 'string' ? cust.guarantorPhone : undefined,
+      notes: typeof cust.notes === 'string' ? cust.notes : undefined,
       balance: Number(cust.balance) || 0,
       lastUpdated: typeof cust.lastUpdated === 'string' ? cust.lastUpdated : new Date().toISOString(),
+      updatedAt: typeof cust.updatedAt === 'string' ? cust.updatedAt : undefined,
       history: Array.isArray(cust.history) ? cust.history : [],
     })),
     expenses: (Array.isArray(raw.expenses) ? (raw.expenses as Record<string, unknown>[]) : []).map((exp) => ({
@@ -306,12 +530,18 @@ export function validateBackupData(parsed: unknown): BackupValidationResult {
       paymentMethod: typeof exp.paymentMethod === 'string' ? exp.paymentMethod : 'Cash',
       image: typeof exp.image === 'string' ? exp.image : undefined,
       accountId: typeof exp.accountId === 'string' ? exp.accountId : undefined,
+      updatedAt: typeof exp.updatedAt === 'string' ? exp.updatedAt : undefined,
     })),
     sales: rawSales.map((s) => ({
       invNo: String(s.invNo || generateEntityId('INV')),
       custName: String(s.custName || 'Walk-in Customer'),
       custPhone: typeof s.custPhone === 'string' ? s.custPhone : undefined,
       invoiceType: s.invoiceType === 'credit' ? 'credit' : 'cash',
+      saleMode: s.saleMode === 'wholesale' ? 'wholesale' : s.saleMode === 'retail' ? 'retail' : undefined,
+      retailerShopName: typeof s.retailerShopName === 'string' ? s.retailerShopName : undefined,
+      retailerCity: typeof s.retailerCity === 'string' ? s.retailerCity : undefined,
+      retailerNtn: typeof s.retailerNtn === 'string' ? s.retailerNtn : undefined,
+      wholesaleSavings: typeof s.wholesaleSavings === 'number' ? s.wholesaleSavings : undefined,
       amountPaid: typeof s.amountPaid === 'number' ? s.amountPaid : undefined,
       amountDue: typeof s.amountDue === 'number' ? s.amountDue : undefined,
       khataCustomerId: typeof s.khataCustomerId === 'string' ? s.khataCustomerId : undefined,
@@ -321,13 +551,14 @@ export function validateBackupData(parsed: unknown): BackupValidationResult {
       grandTotal: Number(s.grandTotal) || 0,
       totalCost: Number(s.totalCost) || 0,
       netProfit: Number(s.netProfit) || 0,
-      paymentMethod: (typeof s.paymentMethod === 'string' ? (s.paymentMethod as PaymentMethod) : 'Cash'),
+      paymentMethod: typeof s.paymentMethod === 'string' ? (s.paymentMethod as PaymentMethod) : 'Cash',
       accountId: typeof s.accountId === 'string' ? s.accountId : undefined,
       date: typeof s.date === 'string' ? s.date : new Date().toISOString(),
       returnStatus: s.returnStatus === 'FULL' || s.returnStatus === 'PARTIAL' ? s.returnStatus : 'NONE',
       totalRefunded: typeof s.totalRefunded === 'number' ? s.totalRefunded : 0,
       status: s.status === 'CANCELLED' ? 'CANCELLED' : 'COMPLETED',
       notes: typeof s.notes === 'string' ? s.notes : undefined,
+      updatedAt: typeof s.updatedAt === 'string' ? s.updatedAt : undefined,
     })),
     salesReturns: Array.isArray(raw.salesReturns) ? (raw.salesReturns as SalesReturnRecord[]) : [],
     purchasesLedger: Array.isArray(raw.purchasesLedger) ? (raw.purchasesLedger as PurchaseLedgerEntry[]) : [],
@@ -344,6 +575,8 @@ export function validateBackupData(parsed: unknown): BackupValidationResult {
     currentRole: raw.currentRole === 'salesman' ? 'salesman' : 'admin',
     users: Array.isArray(raw.users) ? (raw.users as UserAccount[]) : [],
     currentUser: raw.currentUser && typeof raw.currentUser === 'object' ? (raw.currentUser as UserAccount) : undefined,
+    deletedIds: normalizedTombstones,
+    deletedInventoryIds: (normalizedTombstones.inventory || []).map(t => t.id),
   };
 
   return {
@@ -362,9 +595,6 @@ export function validateBackupData(parsed: unknown): BackupValidationResult {
   };
 }
 
-/**
- * Sanitizes object to be safely stored in Firestore (replaces undefined with null or removes undefined keys).
- */
 export function sanitizeForFirestore<T>(obj: T): unknown {
   if (obj === undefined) return null;
   if (obj === null) return null;
@@ -384,22 +614,444 @@ export function sanitizeForFirestore<T>(obj: T): unknown {
   return obj;
 }
 
-/**
- * Resolves the active store document reference.
- */
-function getStoreDocRef(storeId?: string) {
-  const sid = storeId || currentActiveStoreId || DEFAULT_STORE_ID;
-  return doc(db, STORES_COLLECTION, sid);
+export function toValidFirestoreDocId(rawId: string | undefined, fallbackPrefix = 'DOC'): string {
+  const cleaned = String(rawId || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, '_');
+  if (!cleaned) {
+    return generateEntityId(fallbackPrefix);
+  }
+  return cleaned.slice(0, 128);
 }
 
-/**
- * Saves a sale atomically using Firestore writeBatch inside the isolated store:
- * - Writes Sale to `/stores/{storeId}/sales/{invNo}`
- * - Updates affected inventory items in `/stores/{storeId}/inventory/{itemId}`
- * - Updates customer balance in `/stores/{storeId}/khata/{customerId}` if credit sale
- * - Records activity in `/stores/{storeId}/activities/{actId}`
- * - Updates store root metadata
- */
+// ==================== INDEXEDDB + PENDING WRITES QUEUE + DAILY BACKUPS ====================
+
+const IDB_NAME = 'FMZ_POS_LOCAL_DATABASE';
+const IDB_STORE_NAME = 'store_data';
+const IDB_PENDING_WRITES_STORE = 'pending_writes';
+const IDB_BACKUPS_STORE = 'backups';
+const IDB_VERSION = 2;
+
+let dbPromise: Promise<IDBPDatabase> | null = null;
+
+function getIDB(): Promise<IDBPDatabase> {
+  if (!dbPromise) {
+    dbPromise = openDB(IDB_NAME, IDB_VERSION, {
+      upgrade(database) {
+        if (!database.objectStoreNames.contains(IDB_STORE_NAME)) {
+          database.createObjectStore(IDB_STORE_NAME, { keyPath: 'storeId' });
+        }
+        if (!database.objectStoreNames.contains(IDB_PENDING_WRITES_STORE)) {
+          database.createObjectStore(IDB_PENDING_WRITES_STORE, { keyPath: 'id' });
+        }
+        if (!database.objectStoreNames.contains(IDB_BACKUPS_STORE)) {
+          database.createObjectStore(IDB_BACKUPS_STORE, { keyPath: 'id' });
+        }
+      },
+    });
+  }
+  return dbPromise;
+}
+
+export interface SyncStatusSnapshot {
+  isOnline: boolean;
+  isSyncing: boolean;
+  pendingCount: number;
+  pendingOps: PendingWriteOp[];
+  lastError: string | null;
+  isQuotaExceeded: boolean;
+}
+
+const syncStatusListeners: Array<(snap: SyncStatusSnapshot) => void> = [];
+let currentPendingOps: PendingWriteOp[] = [];
+let isQueueFlushing = false;
+
+export function getSyncStatusSnapshot(): SyncStatusSnapshot {
+  return {
+    isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
+    isSyncing: isQueueFlushing,
+    pendingCount: currentPendingOps.length,
+    pendingOps: currentPendingOps,
+    lastError: getLastCloudError(),
+    isQuotaExceeded: getQuotaExceededFlag(),
+  };
+}
+
+function notifySyncStatusListeners(): void {
+  const snap = getSyncStatusSnapshot();
+  syncStatusListeners.forEach(l => l(snap));
+}
+
+export function subscribeSyncStatus(listener: (snap: SyncStatusSnapshot) => void): () => void {
+  syncStatusListeners.push(listener);
+  listener(getSyncStatusSnapshot());
+  return () => {
+    const idx = syncStatusListeners.indexOf(listener);
+    if (idx >= 0) syncStatusListeners.splice(idx, 1);
+  };
+}
+
+export async function getPendingWrites(): Promise<PendingWriteOp[]> {
+  try {
+    const idb = await getIDB();
+    const all = (await idb.getAll(IDB_PENDING_WRITES_STORE)) as PendingWriteOp[];
+    all.sort((a, b) => parseTimeMs(a.createdAt) - parseTimeMs(b.createdAt));
+    currentPendingOps = all;
+    return all;
+  } catch {
+    return currentPendingOps;
+  }
+}
+
+export async function enqueuePendingWrite(params: {
+  op: 'set' | 'delete';
+  path: string;
+  data?: Record<string, unknown>;
+  merge?: boolean;
+  lastError?: string;
+}): Promise<void> {
+  try {
+    const idb = await getIDB();
+    const all = (await idb.getAll(IDB_PENDING_WRITES_STORE)) as PendingWriteOp[];
+    const existingForPath = all.find(p => p.path === params.path);
+    const now = new Date().toISOString();
+
+    if (existingForPath) {
+      if (params.op === 'delete') {
+        await idb.put(IDB_PENDING_WRITES_STORE, {
+          ...existingForPath,
+          op: 'delete',
+          data: undefined,
+          merge: undefined,
+          createdAt: now,
+          lastError: params.lastError || existingForPath.lastError,
+        });
+      } else if (existingForPath.op === 'set' && params.merge !== false && existingForPath.data && params.data) {
+        // Merge root or partial updates cleanly
+        await idb.put(IDB_PENDING_WRITES_STORE, {
+          ...existingForPath,
+          op: 'set',
+          data: { ...existingForPath.data, ...params.data },
+          merge: true,
+          lastError: params.lastError || existingForPath.lastError,
+        });
+      } else {
+        await idb.put(IDB_PENDING_WRITES_STORE, {
+          ...existingForPath,
+          op: 'set',
+          data: params.data,
+          merge: params.merge,
+          createdAt: now,
+          lastError: params.lastError || existingForPath.lastError,
+        });
+      }
+    } else {
+      const newOp: PendingWriteOp = {
+        id: generateEntityId('PW'),
+        op: params.op,
+        path: params.path,
+        data: params.data,
+        merge: params.merge,
+        createdAt: now,
+        retryCount: 0,
+        lastError: params.lastError,
+      };
+      await idb.put(IDB_PENDING_WRITES_STORE, newOp);
+    }
+
+    await getPendingWrites();
+    notifySyncStatusListeners();
+  } catch (err) {
+    console.warn('Failed to enqueue pending write in IndexedDB:', err);
+  }
+}
+
+async function awaitWriteWithQuotaAndTimeout(
+  writePromise: Promise<void>,
+  timeoutMs = 10000
+): Promise<void> {
+  if (getQuotaExceededFlag()) {
+    throw new Error(
+      'Daily Firestore free write quota exceeded. Changes are safely saved locally and will auto-retry after quota reset.'
+    );
+  }
+
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let rejectRace: ((err: Error) => void) | null = null;
+
+  const racePromise = new Promise<never>((_, reject) => {
+    rejectRace = reject;
+  });
+
+  const unsubQuota = subscribeQuotaState((exceeded) => {
+    if (exceeded && rejectRace) {
+      rejectRace(
+        new Error(
+          'Daily Firestore free write quota exceeded. Changes are safely saved locally and will auto-retry after quota reset.'
+        )
+      );
+    }
+  });
+
+  timer = setTimeout(() => {
+    if (rejectRace) {
+      rejectRace(
+        new Error(
+          'Cloud write timed out (network or Firestore backoff) — saved locally and queued for auto-retry.'
+        )
+      );
+    }
+  }, timeoutMs);
+
+  try {
+    await Promise.race([writePromise, racePromise]);
+  } finally {
+    clearTimeout(timer);
+    unsubQuota();
+  }
+}
+
+async function executeDocWriteOrQueue(params: {
+  op: 'set' | 'delete';
+  path: string;
+  data?: Record<string, unknown>;
+  merge?: boolean;
+}): Promise<void> {
+  const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+  if (isOffline || getQuotaExceededFlag()) {
+    await enqueuePendingWrite({
+      ...params,
+      lastError: isOffline
+        ? 'Device offline — queued locally'
+        : 'Daily cloud write quota exceeded — saved locally for auto-retry',
+    });
+    return;
+  }
+
+  try {
+    const user = await ensureAnonymousAuth();
+    if (!user) {
+      await enqueuePendingWrite({
+        ...params,
+        lastError: getLastCloudError() || 'Firebase Auth unavailable — queued locally',
+      });
+      return;
+    }
+
+    const segments = params.path.split('/').filter(Boolean);
+    const ref = doc(db, ...(segments as [string, ...string[]]));
+
+    if (params.op === 'delete') {
+      await awaitWriteWithQuotaAndTimeout(deleteDoc(ref));
+    } else {
+      const payload = sanitizeForFirestore(params.data || {}) as Record<string, unknown>;
+      const writeOp =
+        params.merge === false ? setDoc(ref, payload) : setDoc(ref, payload, { merge: true });
+      await awaitWriteWithQuotaAndTimeout(writeOp);
+    }
+    setLastCloudError(null);
+    notifySyncStatusListeners();
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    if (isQuotaError(err)) {
+      setQuotaExceededFlag(true);
+    } else {
+      setLastCloudError(`Cloud sync error (${params.path}): ${errMsg}`);
+    }
+    await enqueuePendingWrite({
+      ...params,
+      lastError: errMsg,
+    });
+  }
+}
+
+export async function processPendingWritesQueue(): Promise<{ processed: number; failed: number }> {
+  if (isQueueFlushing) return { processed: 0, failed: 0 };
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    notifySyncStatusListeners();
+    return { processed: 0, failed: 0 };
+  }
+  if (getQuotaExceededFlag()) {
+    notifySyncStatusListeners();
+    return { processed: 0, failed: 0 };
+  }
+
+  isQueueFlushing = true;
+  notifySyncStatusListeners();
+
+  let processed = 0;
+  let failed = 0;
+
+  try {
+    const ops = await getPendingWrites();
+    if (ops.length === 0) {
+      return { processed: 0, failed: 0 };
+    }
+
+    const user = await ensureAnonymousAuth();
+    if (!user) {
+      const authErr =
+        getLastCloudError() ||
+        'Firebase Anonymous Auth is not enabled. Please enable Anonymous Sign-in in Firebase Console → Authentication.';
+      setLastCloudError(authErr);
+      return { processed: 0, failed: ops.length };
+    }
+
+    const idb = await getIDB();
+    for (const op of ops) {
+      if (getQuotaExceededFlag() || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+        if (op.lastError?.includes('Anonymous Auth')) {
+          await idb.put(IDB_PENDING_WRITES_STORE, {
+            ...op,
+            lastError:
+              getQuotaExceededFlag()
+                ? 'Daily Firestore free write quota exceeded — saved locally, auto-retries after reset'
+                : 'Device offline — queued locally',
+          });
+        }
+        continue;
+      }
+      try {
+        const segments = op.path.split('/').filter(Boolean);
+        const ref = doc(db, ...(segments as [string, ...string[]]));
+        if (op.op === 'delete') {
+          await awaitWriteWithQuotaAndTimeout(deleteDoc(ref));
+        } else {
+          const payload = sanitizeForFirestore(op.data || {}) as Record<string, unknown>;
+          const writeOp =
+            op.merge === false ? setDoc(ref, payload) : setDoc(ref, payload, { merge: true });
+          await awaitWriteWithQuotaAndTimeout(writeOp);
+        }
+        await idb.delete(IDB_PENDING_WRITES_STORE, op.id);
+        processed++;
+      } catch (err) {
+        failed++;
+        const errMsg = err instanceof Error ? err.message : String(err);
+        await idb.put(IDB_PENDING_WRITES_STORE, {
+          ...op,
+          retryCount: (op.retryCount || 0) + 1,
+          lastError: errMsg,
+        });
+        if (isQuotaError(err)) {
+          setQuotaExceededFlag(true);
+        } else {
+          setLastCloudError(`Cloud sync error (${op.path}): ${errMsg}`);
+        }
+      }
+    }
+
+    if (processed > 0 && failed === 0) {
+      setLastCloudError(null);
+    }
+    await getPendingWrites();
+  } finally {
+    isQueueFlushing = false;
+    notifySyncStatusListeners();
+  }
+
+  return { processed, failed };
+}
+
+let syncEngineStarted = false;
+export function startSyncBackgroundLoop(): void {
+  if (syncEngineStarted || typeof window === 'undefined') return;
+  syncEngineStarted = true;
+
+  getPendingWrites().then(() => {
+    notifySyncStatusListeners();
+    processPendingWritesQueue().catch(() => {});
+  });
+
+  setInterval(() => {
+    if (navigator.onLine && !getQuotaExceededFlag()) {
+      processPendingWritesQueue().catch(() => {});
+    }
+  }, 30_000);
+
+  window.addEventListener('online', () => {
+    setLastCloudError(null);
+    notifySyncStatusListeners();
+    processPendingWritesQueue().catch(() => {});
+  });
+
+  window.addEventListener('offline', () => {
+    notifySyncStatusListeners();
+  });
+
+  subscribeQuotaState(() => notifySyncStatusListeners());
+  subscribeCloudError(() => notifySyncStatusListeners());
+}
+
+// ==================== AUTOMATIC 7-DAY BACKUPS IN IDB ====================
+
+let lastBackupSavedStamp = 0;
+
+export async function saveDailyAutomaticBackup(storeId: string, data: AppData, force = false): Promise<void> {
+  try {
+    const hasMeaningfulData =
+      (data.inventory?.length || 0) > 0 ||
+      (data.sales?.length || 0) > 0 ||
+      (data.khata?.length || 0) > 0 ||
+      (data.expenses?.length || 0) > 0 ||
+      (data.supplierPurchases?.length || 0) > 0;
+    if (!hasMeaningfulData) return;
+
+    const nowMs = Date.now();
+    if (!force && nowMs - lastBackupSavedStamp < 5 * 60 * 1000) {
+      return; // throttle frequent updates
+    }
+    lastBackupSavedStamp = nowMs;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const id = `${storeId}_${today}`;
+    const idb = await getIDB();
+
+    const snapshot: DailyBackupSnapshot = {
+      id,
+      storeId,
+      date: today,
+      createdAt: new Date().toISOString(),
+      data: {
+        ...data,
+        backupVersion: CURRENT_BACKUP_VERSION,
+        lastModified: data.lastModified || new Date().toISOString(),
+      },
+    };
+    await idb.put(IDB_BACKUPS_STORE, snapshot);
+
+    // Keep only the latest 7 daily backups for this store
+    const allBackups = (await idb.getAll(IDB_BACKUPS_STORE)) as DailyBackupSnapshot[];
+    const storeBackups = allBackups
+      .filter(b => b.storeId === storeId)
+      .sort((a, b) => b.date.localeCompare(a.date));
+    if (storeBackups.length > MAX_DAILY_BACKUPS) {
+      const toDelete = storeBackups.slice(MAX_DAILY_BACKUPS);
+      for (const old of toDelete) {
+        await idb.delete(IDB_BACKUPS_STORE, old.id);
+      }
+    }
+  } catch (err) {
+    console.warn('Automatic daily backup notice:', err);
+  }
+}
+
+export async function listAutomaticBackups(storeId?: string): Promise<DailyBackupSnapshot[]> {
+  const sid = storeId || currentActiveStoreId || DEFAULT_STORE_ID;
+  try {
+    const idb = await getIDB();
+    const allBackups = (await idb.getAll(IDB_BACKUPS_STORE)) as DailyBackupSnapshot[];
+    return allBackups
+      .filter(b => b.storeId === sid)
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, MAX_DAILY_BACKUPS);
+  } catch (err) {
+    console.warn('List automatic backups notice:', err);
+    return [];
+  }
+}
+
+// ==================== FIRESTORE CRUD WITH PENDING-WRITES QUEUE ====================
+
 export async function saveSaleAtomic(
   params: {
     sale: SaleRecord;
@@ -407,6 +1059,7 @@ export async function saveSaleAtomic(
       id: string;
       newQty: number;
       remainingImeis?: string[];
+      updatedAt?: string;
     }>;
     khataUpdate?: {
       customerId: string;
@@ -423,22 +1076,86 @@ export async function saveSaleAtomic(
   },
   targetStoreId?: string
 ): Promise<void> {
-  if (getQuotaExceededFlag()) return;
-  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
+  const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
   const { sale, inventoryUpdates, khataUpdate, activity } = params;
+  const now = new Date().toISOString();
+  const saleWithTs: SaleRecord = { ...sale, updatedAt: sale.updatedAt || now };
+  const saleDocId = toValidFirestoreDocId(sale.invNo, 'INV');
 
-  try {
-    const batch = writeBatch(db);
-
-    // 1. Write sale document into isolated store
-    const saleDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.SALES, sale.invNo);
-    batch.set(saleDocRef, sanitizeForFirestore(sale) as Record<string, unknown>);
-
-    // 2. Atomic update to inventory subcollection
+  const enqueueIndividualOps = async (reason?: string) => {
+    await enqueuePendingWrite({
+      op: 'set',
+      path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.SALES}/${saleDocId}`,
+      data: sanitizeForFirestore(saleWithTs) as Record<string, unknown>,
+      merge: true,
+      lastError: reason,
+    });
     for (const invUpdate of inventoryUpdates) {
-      const invDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.INVENTORY, invUpdate.id);
+      const invId = toValidFirestoreDocId(invUpdate.id, 'STK');
       const updateData: Record<string, unknown> = {
         qty: invUpdate.newQty,
+        updatedAt: invUpdate.updatedAt || now,
+      };
+      if (invUpdate.remainingImeis) {
+        updateData.imeis = invUpdate.remainingImeis;
+        updateData.imei = invUpdate.remainingImeis.join(', ');
+      }
+      await enqueuePendingWrite({
+        op: 'set',
+        path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.INVENTORY}/${invId}`,
+        data: sanitizeForFirestore(updateData) as Record<string, unknown>,
+        merge: true,
+        lastError: reason,
+      });
+    }
+    if (khataUpdate) {
+      const kId = toValidFirestoreDocId(khataUpdate.customerId, 'KHT');
+      await enqueuePendingWrite({
+        op: 'set',
+        path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.KHATA}/${kId}`,
+        data: sanitizeForFirestore({
+          balance: khataUpdate.newBalance,
+          lastUpdated: now,
+          updatedAt: now,
+        }) as Record<string, unknown>,
+        merge: true,
+        lastError: reason,
+      });
+    }
+    if (activity) {
+      const actId = toValidFirestoreDocId(activity.id, 'ACT');
+      await enqueuePendingWrite({
+        op: 'set',
+        path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.ACTIVITIES}/${actId}`,
+        data: sanitizeForFirestore(activity) as Record<string, unknown>,
+        merge: true,
+        lastError: reason,
+      });
+    }
+  };
+
+  if ((typeof navigator !== 'undefined' && !navigator.onLine) || getQuotaExceededFlag()) {
+    await enqueueIndividualOps('Offline or quota cooldown');
+    return;
+  }
+
+  try {
+    const user = await ensureAnonymousAuth();
+    if (!user) {
+      await enqueueIndividualOps(getLastCloudError() || 'Firebase Auth unavailable');
+      return;
+    }
+
+    const batch = writeBatch(db);
+
+    const saleDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.SALES, saleDocId);
+    batch.set(saleDocRef, sanitizeForFirestore(saleWithTs) as Record<string, unknown>, { merge: true });
+
+    for (const invUpdate of inventoryUpdates) {
+      const invDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.INVENTORY, toValidFirestoreDocId(invUpdate.id, 'STK'));
+      const updateData: Record<string, unknown> = {
+        qty: invUpdate.newQty,
+        updatedAt: invUpdate.updatedAt || now,
       };
       if (invUpdate.remainingImeis) {
         updateData.imeis = invUpdate.remainingImeis;
@@ -447,9 +1164,8 @@ export async function saveSaleAtomic(
       batch.set(invDocRef, sanitizeForFirestore(updateData) as Record<string, unknown>, { merge: true });
     }
 
-    // 3. Atomic update to Khata customer if credit sale
     if (khataUpdate) {
-      const khataDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.KHATA, khataUpdate.customerId);
+      const khataDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.KHATA, toValidFirestoreDocId(khataUpdate.customerId, 'KHT'));
       const custSnap = await getDoc(khataDocRef);
       if (custSnap.exists()) {
         const currentData = custSnap.data() as KhataCustomer;
@@ -458,7 +1174,8 @@ export async function saveSaleAtomic(
           khataDocRef,
           sanitizeForFirestore({
             balance: khataUpdate.newBalance,
-            lastUpdated: new Date().toISOString(),
+            lastUpdated: now,
+            updatedAt: now,
             history: [khataUpdate.transaction, ...currentHistory],
           }) as Record<string, unknown>,
           { merge: true }
@@ -466,628 +1183,548 @@ export async function saveSaleAtomic(
       }
     }
 
-    // 4. Activity logging
     if (activity) {
-      const actDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.ACTIVITIES, activity.id);
+      const actDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.ACTIVITIES, toValidFirestoreDocId(activity.id, 'ACT'));
       batch.set(actDocRef, sanitizeForFirestore(activity) as Record<string, unknown>);
     }
 
-    // 5. Update store root document timestamp
     const rootDocRef = doc(db, STORES_COLLECTION, storeId);
     batch.set(
       rootDocRef,
       {
-        lastModified: new Date().toISOString(),
+        lastModified: now,
         backupVersion: CURRENT_BACKUP_VERSION,
       },
       { merge: true }
     );
 
-    await batch.commit();
+    await awaitWriteWithQuotaAndTimeout(batch.commit());
+    setLastCloudError(null);
+    notifySyncStatusListeners();
   } catch (err) {
-    console.error(`Failed to commit atomic sale in Firestore for store [${storeId}]:`, err);
-    throw err;
-  }
-}
-
-/**
- * Deletes a sale document from `/stores/{storeId}/sales/{invNo}`
- */
-export async function deleteSaleFromFirestore(invNo: string, targetStoreId?: string): Promise<void> {
-  if (getQuotaExceededFlag()) return;
-  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
-  try {
-    const saleDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.SALES, invNo);
-    await deleteDoc(saleDocRef);
-  } catch (err) {
-    console.warn(`Failed to delete sale [${invNo}] from store [${storeId}]:`, err);
-  }
-}
-
-/**
- * Updates a sale document in `/stores/{storeId}/sales/{invNo}`
- */
-export async function updateSaleInFirestore(sale: SaleRecord, targetStoreId?: string): Promise<void> {
-  if (getQuotaExceededFlag()) return;
-  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
-  try {
-    const saleDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.SALES, sale.invNo);
-    await setDoc(saleDocRef, sanitizeForFirestore(sale) as Record<string, unknown>, { merge: true });
-  } catch (err) {
-    console.warn(`Failed to update sale [${sale.invNo}] in store [${storeId}]:`, err);
-  }
-}
-
-/**
- * Saves a single inventory item to `/stores/{storeId}/inventory/{id}`
- */
-export async function saveInventoryItemToFirestore(item: InventoryItem, targetStoreId?: string): Promise<void> {
-  if (getQuotaExceededFlag()) return;
-  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
-  try {
-    const itemDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.INVENTORY, item.id);
-    await setDoc(itemDocRef, sanitizeForFirestore(item) as Record<string, unknown>, { merge: true });
-  } catch (err) {
-    console.warn(`Failed to save inventory item [${item.id}] to store [${storeId}]:`, err);
-  }
-}
-
-/**
- * Deletes an inventory item from `/stores/{storeId}/inventory/{id}`
- */
-export async function deleteInventoryItemFromFirestore(id: string, targetStoreId?: string): Promise<void> {
-  if (getQuotaExceededFlag()) return;
-  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
-  try {
-    const itemDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.INVENTORY, id);
-    await deleteDoc(itemDocRef);
-  } catch (err) {
-    console.warn(`Failed to delete inventory item [${id}] from store [${storeId}]:`, err);
-  }
-}
-
-/**
- * Saves a single Khata customer to `/stores/{storeId}/khata/{id}`
- */
-export async function saveKhataCustomerToFirestore(customer: KhataCustomer, targetStoreId?: string): Promise<void> {
-  if (getQuotaExceededFlag()) return;
-  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
-  try {
-    const custDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.KHATA, customer.id);
-    await setDoc(custDocRef, sanitizeForFirestore(customer) as Record<string, unknown>, { merge: true });
-  } catch (err) {
-    console.warn(`Failed to save Khata customer [${customer.id}] to store [${storeId}]:`, err);
-  }
-}
-
-/**
- * Deletes a Khata customer from `/stores/{storeId}/khata/{id}`
- */
-export async function deleteKhataCustomerFromFirestore(id: string, targetStoreId?: string): Promise<void> {
-  if (getQuotaExceededFlag()) return;
-  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
-  try {
-    const custDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.KHATA, id);
-    await deleteDoc(custDocRef);
-  } catch (err) {
-    console.warn(`Failed to delete Khata customer [${id}] from store [${storeId}]:`, err);
-  }
-}
-
-/**
- * Saves an expense item to `/stores/{storeId}/expenses/{id}`
- */
-export async function saveExpenseItemToFirestore(expense: ExpenseItem, targetStoreId?: string): Promise<void> {
-  if (getQuotaExceededFlag()) return;
-  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
-  try {
-    const expDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.EXPENSES, expense.id);
-    await setDoc(expDocRef, sanitizeForFirestore(expense) as Record<string, unknown>, { merge: true });
-  } catch (err) {
-    console.warn(`Failed to save expense item [${expense.id}] to store [${storeId}]:`, err);
-  }
-}
-
-/**
- * Deletes an expense item from `/stores/{storeId}/expenses/{id}`
- */
-export async function deleteExpenseItemFromFirestore(id: string, targetStoreId?: string): Promise<void> {
-  if (getQuotaExceededFlag()) return;
-  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
-  try {
-    const expDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.EXPENSES, id);
-    await deleteDoc(expDocRef);
-  } catch (err) {
-    console.warn(`Failed to delete expense item [${id}] from store [${storeId}]:`, err);
-  }
-}
-
-/**
- * Saves an activity log to `/stores/{storeId}/activities/{id}`
- */
-export async function saveActivityLogToFirestore(activity: ActivityLog, targetStoreId?: string): Promise<void> {
-  if (getQuotaExceededFlag()) return;
-  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
-  try {
-    const actDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.ACTIVITIES, toValidFirestoreDocId(activity.id, 'ACT'));
-    await setDoc(actDocRef, sanitizeForFirestore(activity) as Record<string, unknown>);
-  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
     if (isQuotaError(err)) {
       setQuotaExceededFlag(true);
-      return;
+    } else {
+      setLastCloudError(`Atomic sale sync failed: ${errMsg}`);
     }
-    console.warn(`Failed to save activity log [${activity.id}] to store [${storeId}]:`, err);
+    await enqueueIndividualOps(errMsg);
   }
 }
 
-/**
- * Ensures any document ID written to Firestore strictly complies with firestore.rules `isValidId` (`^[a-zA-Z0-9_-]{1,128}$`).
- */
-export function toValidFirestoreDocId(rawId: string | undefined, fallbackPrefix = 'DOC'): string {
-  const cleaned = String(rawId || '')
-    .trim()
-    .replace(/[^a-zA-Z0-9_-]/g, '_');
-  if (!cleaned) {
-    return generateEntityId(fallbackPrefix);
-  }
-  return cleaned.slice(0, 128);
+export async function deleteSaleFromFirestore(invNo: string, targetStoreId?: string): Promise<void> {
+  const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
+  const docId = toValidFirestoreDocId(invNo, 'INV');
+  await executeDocWriteOrQueue({
+    op: 'delete',
+    path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.SALES}/${docId}`,
+  });
 }
 
-/**
- * Saves a single supplier purchase bill to `/stores/{storeId}/purchases/{id}`
- */
+export async function updateSaleInFirestore(sale: SaleRecord, targetStoreId?: string): Promise<void> {
+  const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
+  const docId = toValidFirestoreDocId(sale.invNo, 'INV');
+  const payload = { ...sale, updatedAt: sale.updatedAt || new Date().toISOString() };
+  await executeDocWriteOrQueue({
+    op: 'set',
+    path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.SALES}/${docId}`,
+    data: payload as unknown as Record<string, unknown>,
+    merge: true,
+  });
+}
+
+export async function saveInventoryItemToFirestore(item: InventoryItem, targetStoreId?: string): Promise<void> {
+  const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
+  const docId = toValidFirestoreDocId(item.id, 'STK');
+  const payload = { ...item, updatedAt: item.updatedAt || new Date().toISOString() };
+  await executeDocWriteOrQueue({
+    op: 'set',
+    path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.INVENTORY}/${docId}`,
+    data: payload as unknown as Record<string, unknown>,
+    merge: true,
+  });
+}
+
+export async function deleteInventoryItemFromFirestore(id: string, targetStoreId?: string): Promise<void> {
+  const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
+  const docId = toValidFirestoreDocId(id, 'STK');
+  await executeDocWriteOrQueue({
+    op: 'delete',
+    path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.INVENTORY}/${docId}`,
+  });
+}
+
+export async function saveKhataCustomerToFirestore(customer: KhataCustomer, targetStoreId?: string): Promise<void> {
+  const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
+  const docId = toValidFirestoreDocId(customer.id, 'KHT');
+  const payload = { ...customer, updatedAt: customer.updatedAt || customer.lastUpdated || new Date().toISOString() };
+  await executeDocWriteOrQueue({
+    op: 'set',
+    path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.KHATA}/${docId}`,
+    data: payload as unknown as Record<string, unknown>,
+    merge: true,
+  });
+}
+
+export async function deleteKhataCustomerFromFirestore(id: string, targetStoreId?: string): Promise<void> {
+  const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
+  const docId = toValidFirestoreDocId(id, 'KHT');
+  await executeDocWriteOrQueue({
+    op: 'delete',
+    path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.KHATA}/${docId}`,
+  });
+}
+
+export async function saveExpenseItemToFirestore(expense: ExpenseItem, targetStoreId?: string): Promise<void> {
+  const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
+  const docId = toValidFirestoreDocId(expense.id, 'EXP');
+  const payload = { ...expense, updatedAt: expense.updatedAt || new Date().toISOString() };
+  await executeDocWriteOrQueue({
+    op: 'set',
+    path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.EXPENSES}/${docId}`,
+    data: payload as unknown as Record<string, unknown>,
+    merge: true,
+  });
+}
+
+export async function deleteExpenseItemFromFirestore(id: string, targetStoreId?: string): Promise<void> {
+  const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
+  const docId = toValidFirestoreDocId(id, 'EXP');
+  await executeDocWriteOrQueue({
+    op: 'delete',
+    path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.EXPENSES}/${docId}`,
+  });
+}
+
+export async function saveActivityLogToFirestore(activity: ActivityLog, targetStoreId?: string): Promise<void> {
+  const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
+  const docId = toValidFirestoreDocId(activity.id, 'ACT');
+  const payload = { ...activity, updatedAt: activity.updatedAt || activity.timestamp || new Date().toISOString() };
+  await executeDocWriteOrQueue({
+    op: 'set',
+    path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.ACTIVITIES}/${docId}`,
+    data: payload as unknown as Record<string, unknown>,
+    merge: true,
+  });
+}
+
 export async function savePurchaseToFirestore(purchase: SupplierPurchase, targetStoreId?: string): Promise<void> {
-  if (getQuotaExceededFlag()) return;
   const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
   const docId = toValidFirestoreDocId(purchase.id || purchase.billNo, 'PUR');
-  try {
-    const purDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.PURCHASES, docId);
-    await setDoc(purDocRef, sanitizeForFirestore(purchase) as Record<string, unknown>, { merge: true });
-  } catch (err) {
-    if (isQuotaError(err)) {
-      setQuotaExceededFlag(true);
-      return;
-    }
-    console.warn(`Failed to save supplier purchase [${docId}] to store [${storeId}]:`, err);
-  }
+  const payload = { ...purchase, updatedAt: purchase.updatedAt || new Date().toISOString() };
+  await executeDocWriteOrQueue({
+    op: 'set',
+    path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.PURCHASES}/${docId}`,
+    data: payload as unknown as Record<string, unknown>,
+    merge: true,
+  });
 }
 
-/**
- * Saves a daily closing record to `/stores/{storeId}/daily_closings/{id}`
- */
+export async function deletePurchaseFromFirestore(id: string, targetStoreId?: string): Promise<void> {
+  const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
+  const docId = toValidFirestoreDocId(id, 'PUR');
+  await executeDocWriteOrQueue({
+    op: 'delete',
+    path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.PURCHASES}/${docId}`,
+  });
+}
+
 export async function saveDailyClosingToFirestore(record: DailyClosingRecord, targetStoreId?: string): Promise<void> {
-  if (getQuotaExceededFlag()) return;
   const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
   const docId = toValidFirestoreDocId(record.id || record.date, 'DCL');
-  try {
-    const closingDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.DAILY_CLOSINGS, docId);
-    await setDoc(closingDocRef, sanitizeForFirestore(record) as Record<string, unknown>, { merge: true });
-  } catch (err) {
-    if (isQuotaError(err)) {
-      setQuotaExceededFlag(true);
-      return;
-    }
-    console.warn(`Failed to save daily closing [${docId}] to store [${storeId}]:`, err);
-  }
+  const payload = { ...record, updatedAt: record.updatedAt || new Date().toISOString() };
+  await executeDocWriteOrQueue({
+    op: 'set',
+    path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.DAILY_CLOSINGS}/${docId}`,
+    data: payload as unknown as Record<string, unknown>,
+    merge: true,
+  });
 }
 
-/**
- * Deletes a daily closing record from `/stores/{storeId}/daily_closings/{id}`
- */
 export async function deleteDailyClosingFromFirestore(id: string, targetStoreId?: string): Promise<void> {
-  if (getQuotaExceededFlag()) return;
   const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
   const docId = toValidFirestoreDocId(id, 'DCL');
-  try {
-    const closingDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.DAILY_CLOSINGS, docId);
-    await deleteDoc(closingDocRef);
-  } catch (err) {
-    if (isQuotaError(err)) {
-      setQuotaExceededFlag(true);
-      return;
-    }
-    console.warn(`Failed to delete daily closing [${docId}] from store [${storeId}]:`, err);
-  }
+  await executeDocWriteOrQueue({
+    op: 'delete',
+    path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.DAILY_CLOSINGS}/${docId}`,
+  });
 }
 
-/**
- * Saves a stock adjustment record to `/stores/{storeId}/stock_adjustments/{id}`
- */
 export async function saveStockAdjustmentToFirestore(adj: StockAdjustment, targetStoreId?: string): Promise<void> {
-  if (getQuotaExceededFlag()) return;
   const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
   const docId = toValidFirestoreDocId(adj.id, 'ADJ');
-  try {
-    const adjDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.STOCK_ADJUSTMENTS, docId);
-    await setDoc(adjDocRef, sanitizeForFirestore(adj) as Record<string, unknown>, { merge: true });
-  } catch (err) {
-    if (isQuotaError(err)) {
-      setQuotaExceededFlag(true);
-      return;
-    }
-    console.warn(`Failed to save stock adjustment [${docId}] to store [${storeId}]:`, err);
-  }
+  const payload = { ...adj, updatedAt: adj.updatedAt || adj.adjustedAt || new Date().toISOString() };
+  await executeDocWriteOrQueue({
+    op: 'set',
+    path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.STOCK_ADJUSTMENTS}/${docId}`,
+    data: payload as unknown as Record<string, unknown>,
+    merge: true,
+  });
 }
 
-/**
- * Saves a sales return record to `/stores/{storeId}/sales_returns/{id}`
- */
 export async function saveSalesReturnToFirestore(ret: SalesReturnRecord, targetStoreId?: string): Promise<void> {
-  if (getQuotaExceededFlag()) return;
   const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
   const docId = toValidFirestoreDocId(ret.id || ret.returnNo, 'RET');
-  try {
-    const retDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.SALES_RETURNS, docId);
-    await setDoc(retDocRef, sanitizeForFirestore(ret) as Record<string, unknown>, { merge: true });
-  } catch (err) {
-    if (isQuotaError(err)) {
-      setQuotaExceededFlag(true);
-      return;
-    }
-    console.warn(`Failed to save sales return [${docId}] to store [${storeId}]:`, err);
-  }
+  const payload = { ...ret, updatedAt: ret.updatedAt || ret.returnDate || new Date().toISOString() };
+  await executeDocWriteOrQueue({
+    op: 'set',
+    path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.SALES_RETURNS}/${docId}`,
+    data: payload as unknown as Record<string, unknown>,
+    merge: true,
+  });
 }
 
-/**
- * Saves a batch of purchase ledger entries to `/stores/{storeId}/purchases_ledger/{id}`
- */
 export async function savePurchasesLedgerBatchToFirestore(
   entries: PurchaseLedgerEntry[],
   targetStoreId?: string
 ): Promise<void> {
-  if (getQuotaExceededFlag() || !entries || entries.length === 0) return;
+  if (!entries || entries.length === 0) return;
   const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
+  const now = new Date().toISOString();
+
+  if ((typeof navigator !== 'undefined' && !navigator.onLine) || getQuotaExceededFlag()) {
+    for (const entry of entries) {
+      const docId = toValidFirestoreDocId(entry.id, 'PL');
+      await enqueuePendingWrite({
+        op: 'set',
+        path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.PURCHASES_LEDGER}/${docId}`,
+        data: { ...entry, updatedAt: entry.updatedAt || now } as unknown as Record<string, unknown>,
+        merge: true,
+      });
+    }
+    return;
+  }
+
   try {
+    const user = await ensureAnonymousAuth();
+    if (!user) {
+      for (const entry of entries) {
+        const docId = toValidFirestoreDocId(entry.id, 'PL');
+        await enqueuePendingWrite({
+          op: 'set',
+          path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.PURCHASES_LEDGER}/${docId}`,
+          data: { ...entry, updatedAt: entry.updatedAt || now } as unknown as Record<string, unknown>,
+          merge: true,
+        });
+      }
+      return;
+    }
+
     const chunks = chunkArray(entries, 450);
     for (const chunk of chunks) {
       const batch = writeBatch(db);
       for (const entry of chunk) {
         const docId = toValidFirestoreDocId(entry.id, 'PL');
         const ref = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.PURCHASES_LEDGER, docId);
-        batch.set(ref, sanitizeForFirestore(entry) as Record<string, unknown>, { merge: true });
+        batch.set(ref, sanitizeForFirestore({ ...entry, updatedAt: entry.updatedAt || now }) as Record<string, unknown>, { merge: true });
       }
-      await batch.commit();
+      await awaitWriteWithQuotaAndTimeout(batch.commit());
     }
+    setLastCloudError(null);
   } catch (err) {
-    if (isQuotaError(err)) {
-      setQuotaExceededFlag(true);
-      return;
+    const msg = err instanceof Error ? err.message : String(err);
+    if (isQuotaError(err)) setQuotaExceededFlag(true);
+    else setLastCloudError(`Purchases ledger batch sync failed: ${msg}`);
+    for (const entry of entries) {
+      const docId = toValidFirestoreDocId(entry.id, 'PL');
+      await enqueuePendingWrite({
+        op: 'set',
+        path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.PURCHASES_LEDGER}/${docId}`,
+        data: { ...entry, updatedAt: entry.updatedAt || now } as unknown as Record<string, unknown>,
+        merge: true,
+        lastError: msg,
+      });
     }
-    console.warn(`Failed to batch-save purchases ledger to store [${storeId}]:`, err);
   }
 }
 
-/**
- * Saves a batch of IMEI tracking records to `/stores/{storeId}/imei_records/{id}`
- */
 export async function saveImeiRecordsBatchToFirestore(
   records: ImeiRecord[],
   targetStoreId?: string
 ): Promise<void> {
-  if (getQuotaExceededFlag() || !records || records.length === 0) return;
+  if (!records || records.length === 0) return;
   const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
+  const now = new Date().toISOString();
+
+  if ((typeof navigator !== 'undefined' && !navigator.onLine) || getQuotaExceededFlag()) {
+    for (const rec of records) {
+      const docId = toValidFirestoreDocId(rec.id || rec.imei, 'IMEI');
+      await enqueuePendingWrite({
+        op: 'set',
+        path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.IMEI_RECORDS}/${docId}`,
+        data: { ...rec, updatedAt: rec.updatedAt || now } as unknown as Record<string, unknown>,
+        merge: true,
+      });
+    }
+    return;
+  }
+
   try {
+    const user = await ensureAnonymousAuth();
+    if (!user) {
+      for (const rec of records) {
+        const docId = toValidFirestoreDocId(rec.id || rec.imei, 'IMEI');
+        await enqueuePendingWrite({
+          op: 'set',
+          path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.IMEI_RECORDS}/${docId}`,
+          data: { ...rec, updatedAt: rec.updatedAt || now } as unknown as Record<string, unknown>,
+          merge: true,
+        });
+      }
+      return;
+    }
+
     const chunks = chunkArray(records, 450);
     for (const chunk of chunks) {
       const batch = writeBatch(db);
       for (const rec of chunk) {
         const docId = toValidFirestoreDocId(rec.id || rec.imei, 'IMEI');
         const ref = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.IMEI_RECORDS, docId);
-        batch.set(ref, sanitizeForFirestore(rec) as Record<string, unknown>, { merge: true });
+        batch.set(ref, sanitizeForFirestore({ ...rec, updatedAt: rec.updatedAt || now }) as Record<string, unknown>, { merge: true });
       }
-      await batch.commit();
+      await awaitWriteWithQuotaAndTimeout(batch.commit());
     }
+    setLastCloudError(null);
   } catch (err) {
-    if (isQuotaError(err)) {
-      setQuotaExceededFlag(true);
-      return;
+    const msg = err instanceof Error ? err.message : String(err);
+    if (isQuotaError(err)) setQuotaExceededFlag(true);
+    else setLastCloudError(`IMEI batch sync failed: ${msg}`);
+    for (const rec of records) {
+      const docId = toValidFirestoreDocId(rec.id || rec.imei, 'IMEI');
+      await enqueuePendingWrite({
+        op: 'set',
+        path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.IMEI_RECORDS}/${docId}`,
+        data: { ...rec, updatedAt: rec.updatedAt || now } as unknown as Record<string, unknown>,
+        merge: true,
+        lastError: msg,
+      });
     }
-    console.warn(`Failed to batch-save IMEI records to store [${storeId}]:`, err);
   }
 }
 
 /**
- * Saves root configuration and settings to `/stores/{storeId}`
+ * Saves root configuration, settings, tombstones, and config timestamps ONLY to `/stores/{storeId}`.
+ * Sub-collections are strictly single source of truth — NO record arrays are saved to the root doc.
  */
 export async function saveRootConfigToFirestore(data: Partial<AppData>, targetStoreId?: string): Promise<void> {
-  if (getQuotaExceededFlag()) return;
-  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
-  try {
-    const rootDocRef = doc(db, STORES_COLLECTION, storeId);
-    const configToSave: Record<string, unknown> = {
-      backupVersion: CURRENT_BACKUP_VERSION,
-      lastModified: new Date().toISOString(),
-      storeId,
-    };
+  const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
+  const now = new Date().toISOString();
+  const configToSave: Record<string, unknown> = {
+    backupVersion: CURRENT_BACKUP_VERSION,
+    lastModified: now,
+    storeId,
+  };
 
-    if (data.settings !== undefined) configToSave.settings = data.settings;
-    if (data.categories !== undefined) configToSave.categories = data.categories;
-    if (data.expenseCategories !== undefined) configToSave.expenseCategories = data.expenseCategories;
-    if (data.onlineAccounts !== undefined) configToSave.onlineAccounts = data.onlineAccounts;
-    if (data.dailyClosings !== undefined) configToSave.dailyClosings = data.dailyClosings;
-    if (data.imeiRecords !== undefined) configToSave.imeiRecords = data.imeiRecords;
-    if (data.stockAdjustments !== undefined) configToSave.stockAdjustments = data.stockAdjustments;
-    if (data.purchasesLedger !== undefined) configToSave.purchasesLedger = data.purchasesLedger;
-    if (data.supplierPurchases !== undefined) configToSave.supplierPurchases = data.supplierPurchases;
-    if (data.salesReturns !== undefined) configToSave.salesReturns = data.salesReturns;
-    if (data.tabPreferences !== undefined) configToSave.tabPreferences = data.tabPreferences;
-    if (data.currentRole !== undefined) configToSave.currentRole = data.currentRole;
-    if (data.users !== undefined && data.users.length > 0) configToSave.users = data.users;
-    if (data.deletedInventoryIds !== undefined) configToSave.deletedInventoryIds = data.deletedInventoryIds;
-
-    await setDoc(rootDocRef, sanitizeForFirestore(configToSave) as Record<string, unknown>, { merge: true });
-  } catch (err) {
-    console.warn(`Failed to save root config for store [${storeId}]:`, err);
+  if (data.migrationDone !== undefined) configToSave.migrationDone = data.migrationDone;
+  if (data.settings !== undefined) {
+    configToSave.settings = data.settings;
+    configToSave.settingsUpdatedAt = data.settingsUpdatedAt || now;
+  } else if (data.settingsUpdatedAt !== undefined) {
+    configToSave.settingsUpdatedAt = data.settingsUpdatedAt;
   }
+
+  if (data.categories !== undefined) {
+    configToSave.categories = data.categories;
+    configToSave.categoriesUpdatedAt = data.categoriesUpdatedAt || now;
+  } else if (data.categoriesUpdatedAt !== undefined) {
+    configToSave.categoriesUpdatedAt = data.categoriesUpdatedAt;
+  }
+
+  if (data.expenseCategories !== undefined) {
+    configToSave.expenseCategories = data.expenseCategories;
+    configToSave.expenseCategoriesUpdatedAt = data.expenseCategoriesUpdatedAt || now;
+  } else if (data.expenseCategoriesUpdatedAt !== undefined) {
+    configToSave.expenseCategoriesUpdatedAt = data.expenseCategoriesUpdatedAt;
+  }
+
+  if (data.onlineAccounts !== undefined) {
+    configToSave.onlineAccounts = data.onlineAccounts;
+    configToSave.onlineAccountsUpdatedAt = data.onlineAccountsUpdatedAt || now;
+  } else if (data.onlineAccountsUpdatedAt !== undefined) {
+    configToSave.onlineAccountsUpdatedAt = data.onlineAccountsUpdatedAt;
+  }
+
+  if (data.tabPreferences !== undefined) {
+    configToSave.tabPreferences = data.tabPreferences;
+    configToSave.tabPreferencesUpdatedAt = data.tabPreferencesUpdatedAt || now;
+  } else if (data.tabPreferencesUpdatedAt !== undefined) {
+    configToSave.tabPreferencesUpdatedAt = data.tabPreferencesUpdatedAt;
+  }
+
+  if (data.users !== undefined && data.users.length > 0) {
+    configToSave.users = data.users;
+    configToSave.usersUpdatedAt = data.usersUpdatedAt || now;
+  } else if (data.usersUpdatedAt !== undefined) {
+    configToSave.usersUpdatedAt = data.usersUpdatedAt;
+  }
+
+  if (data.deletedIds !== undefined) {
+    const pruned = normalizeDeletedIds({ deletedIds: data.deletedIds, deletedInventoryIds: data.deletedInventoryIds });
+    configToSave.deletedIds = pruned;
+    configToSave.deletedInventoryIds = (pruned.inventory || []).map(t => t.id);
+  } else if (data.deletedInventoryIds !== undefined) {
+    configToSave.deletedInventoryIds = data.deletedInventoryIds;
+  }
+
+  if (data.currentRole !== undefined) configToSave.currentRole = data.currentRole;
+
+  await executeDocWriteOrQueue({
+    op: 'set',
+    path: `${STORES_COLLECTION}/${storeId}`,
+    data: configToSave,
+    merge: true,
+  });
 }
 
-/**
- * Real-time subscription to root store settings, categories, and config changes across devices.
- */
+// ==================== INCREMENTAL REAL-TIME LISTENERS ====================
+
+export interface CollectionDeltaEvent {
+  collection: SyncCollectionKey;
+  upserts: Array<{ docId: string; item: Record<string, unknown> }>;
+  removals: string[];
+}
+
 export function subscribeToStoreRootConfig(
   targetStoreId: string,
   onUpdate: (updatedRoot: Partial<AppData>) => void
 ): () => void {
-  if (getQuotaExceededFlag()) {
-    return () => {};
-  }
-  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
+  const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
   const rootDocRef = doc(db, STORES_COLLECTION, storeId);
+  let active = true;
+  let unsub: (() => void) | null = null;
 
-  return onSnapshot(
-    rootDocRef,
-    (docSnap) => {
-      if (docSnap.exists()) {
+  ensureAnonymousAuth().then((user) => {
+    if (!active || !user) return;
+    unsub = onSnapshot(
+      rootDocRef,
+      (docSnap) => {
+        if (docSnap.metadata.hasPendingWrites) return;
+        if (!docSnap.exists()) return;
+
         const rootData = docSnap.data() as Record<string, unknown>;
-        const patch: Partial<AppData> = {};
+        const patch: Partial<AppData> = {
+          lastModified: typeof rootData.lastModified === 'string' ? rootData.lastModified : undefined,
+          migrationDone: typeof rootData.migrationDone === 'boolean' ? rootData.migrationDone : undefined,
+          settingsUpdatedAt: typeof rootData.settingsUpdatedAt === 'string' ? rootData.settingsUpdatedAt : undefined,
+          categoriesUpdatedAt: typeof rootData.categoriesUpdatedAt === 'string' ? rootData.categoriesUpdatedAt : undefined,
+          expenseCategoriesUpdatedAt: typeof rootData.expenseCategoriesUpdatedAt === 'string' ? rootData.expenseCategoriesUpdatedAt : undefined,
+          onlineAccountsUpdatedAt: typeof rootData.onlineAccountsUpdatedAt === 'string' ? rootData.onlineAccountsUpdatedAt : undefined,
+          tabPreferencesUpdatedAt: typeof rootData.tabPreferencesUpdatedAt === 'string' ? rootData.tabPreferencesUpdatedAt : undefined,
+          usersUpdatedAt: typeof rootData.usersUpdatedAt === 'string' ? rootData.usersUpdatedAt : undefined,
+        };
 
         if (rootData.settings !== undefined) patch.settings = rootData.settings as ShopSettings;
         if (rootData.categories !== undefined) patch.categories = rootData.categories as string[];
         if (rootData.expenseCategories !== undefined) patch.expenseCategories = rootData.expenseCategories as string[];
         if (rootData.onlineAccounts !== undefined) patch.onlineAccounts = rootData.onlineAccounts as OnlineAccount[];
-        if (rootData.dailyClosings !== undefined) patch.dailyClosings = rootData.dailyClosings as DailyClosingRecord[];
-        if (rootData.imeiRecords !== undefined) patch.imeiRecords = rootData.imeiRecords as ImeiRecord[];
-        if (rootData.stockAdjustments !== undefined) patch.stockAdjustments = rootData.stockAdjustments as StockAdjustment[];
-        if (rootData.purchasesLedger !== undefined) patch.purchasesLedger = rootData.purchasesLedger as PurchaseLedgerEntry[];
-        if (rootData.supplierPurchases !== undefined) patch.supplierPurchases = rootData.supplierPurchases as SupplierPurchase[];
-        if (rootData.salesReturns !== undefined) patch.salesReturns = rootData.salesReturns as SalesReturnRecord[];
         if (rootData.tabPreferences !== undefined) patch.tabPreferences = rootData.tabPreferences as TabPreferences;
         if (rootData.users !== undefined) patch.users = rootData.users as UserAccount[];
+        if (rootData.deletedIds !== undefined || rootData.deletedInventoryIds !== undefined) {
+          const norm = normalizeDeletedIds(rootData as Partial<AppData>);
+          patch.deletedIds = norm;
+          patch.deletedInventoryIds = (norm.inventory || []).map(t => t.id);
+        }
 
         onUpdate(patch);
+      },
+      (err) => {
+        if (isQuotaError(err)) setQuotaExceededFlag(true);
+        else setLastCloudError(`Root config listener error: ${err.message}`);
+        console.warn(`Real-time root config subscription warning for store [${storeId}]:`, err);
       }
-    },
-    (err) => {
-      console.warn(`Real-time root config subscription warning for store [${storeId}]:`, err);
-    }
-  );
-}
-
-/**
- * Universal Real-Time Multi-Device Store Synchronization Listener.
- * Listens to root document AND sub-collections (Inventory, Sales, Khata, Expenses).
- */
-export function subscribeToStoreFullData(
-  targetStoreId: string,
-  onUpdate: (patch: Partial<AppData>) => void
-): () => void {
-  if (getQuotaExceededFlag()) {
-    return () => {};
-  }
-  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
-  const unsubs: (() => void)[] = [];
-
-  // 1. Root Config & Root Arrays Listener
-  unsubs.push(subscribeToStoreRootConfig(storeId, onUpdate));
-
-  // 2. Inventory Subcollection Real-time Listener
-  try {
-    const invColRef = collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.INVENTORY);
-    unsubs.push(
-      onSnapshot(
-        invColRef,
-        (snapshot) => {
-          if (!snapshot.empty) {
-            const items: InventoryItem[] = [];
-            snapshot.forEach(d => items.push(d.data() as InventoryItem));
-            onUpdate({ inventory: items });
-          }
-        },
-        (err) => console.warn(`Inventory real-time sync notice [${storeId}]:`, err)
-      )
     );
-  } catch (err) {
-    console.warn(`Inventory listener initialization error [${storeId}]:`, err);
-  }
-
-  // 3. Sales Subcollection Real-time Listener
-  try {
-    const salesColRef = collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.SALES);
-    unsubs.push(
-      onSnapshot(
-        salesColRef,
-        (snapshot) => {
-          if (!snapshot.empty) {
-            const sales: SaleRecord[] = [];
-            snapshot.forEach(d => sales.push(d.data() as SaleRecord));
-            sales.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-            onUpdate({ sales });
-          }
-        },
-        (err) => console.warn(`Sales real-time sync notice [${storeId}]:`, err)
-      )
-    );
-  } catch (err) {
-    console.warn(`Sales listener initialization error [${storeId}]:`, err);
-  }
-
-  // 4. Khata Subcollection Real-time Listener
-  try {
-    const khataColRef = collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.KHATA);
-    unsubs.push(
-      onSnapshot(
-        khataColRef,
-        (snapshot) => {
-          if (!snapshot.empty) {
-            const khata: KhataCustomer[] = [];
-            snapshot.forEach(d => khata.push(d.data() as KhataCustomer));
-            onUpdate({ khata });
-          }
-        },
-        (err) => console.warn(`Khata real-time sync notice [${storeId}]:`, err)
-      )
-    );
-  } catch (err) {
-    console.warn(`Khata listener initialization error [${storeId}]:`, err);
-  }
-
-  // 5. Expenses Subcollection Real-time Listener
-  try {
-    const expColRef = collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.EXPENSES);
-    unsubs.push(
-      onSnapshot(
-        expColRef,
-        (snapshot) => {
-          if (!snapshot.empty) {
-            const expenses: ExpenseItem[] = [];
-            snapshot.forEach(d => expenses.push(d.data() as ExpenseItem));
-            expenses.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-            onUpdate({ expenses });
-          }
-        },
-        (err) => console.warn(`Expenses real-time sync notice [${storeId}]:`, err)
-      )
-    );
-  } catch (err) {
-    console.warn(`Expenses listener initialization error [${storeId}]:`, err);
-  }
-
-  // 6. Supplier Purchases Subcollection Real-time Listener
-  try {
-    const purColRef = collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.PURCHASES);
-    unsubs.push(
-      onSnapshot(
-        purColRef,
-        (snapshot) => {
-          if (!snapshot.empty) {
-            const supplierPurchases: SupplierPurchase[] = [];
-            snapshot.forEach(d => supplierPurchases.push(d.data() as SupplierPurchase));
-            supplierPurchases.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-            onUpdate({ supplierPurchases });
-          }
-        },
-        (err) => console.warn(`Purchases real-time sync notice [${storeId}]:`, err)
-      )
-    );
-  } catch (err) {
-    console.warn(`Purchases listener initialization error [${storeId}]:`, err);
-  }
-
-  // 7. Daily Closings Subcollection Real-time Listener
-  try {
-    const closingColRef = collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.DAILY_CLOSINGS);
-    unsubs.push(
-      onSnapshot(
-        closingColRef,
-        (snapshot) => {
-          if (!snapshot.empty) {
-            const dailyClosings: DailyClosingRecord[] = [];
-            snapshot.forEach(d => dailyClosings.push(d.data() as DailyClosingRecord));
-            dailyClosings.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-            onUpdate({ dailyClosings });
-          }
-        },
-        (err) => console.warn(`Daily closings real-time sync notice [${storeId}]:`, err)
-      )
-    );
-  } catch (err) {
-    console.warn(`Daily closings listener initialization error [${storeId}]:`, err);
-  }
-
-  // 8. Sales Returns Subcollection Real-time Listener
-  try {
-    const retColRef = collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.SALES_RETURNS);
-    unsubs.push(
-      onSnapshot(
-        retColRef,
-        (snapshot) => {
-          if (!snapshot.empty) {
-            const salesReturns: SalesReturnRecord[] = [];
-            snapshot.forEach(d => salesReturns.push(d.data() as SalesReturnRecord));
-            salesReturns.sort((a, b) => new Date(b.returnDate).getTime() - new Date(a.returnDate).getTime());
-            onUpdate({ salesReturns });
-          }
-        },
-        (err) => console.warn(`Sales returns real-time sync notice [${storeId}]:`, err)
-      )
-    );
-  } catch (err) {
-    console.warn(`Sales returns listener initialization error [${storeId}]:`, err);
-  }
-
-  // 9. Stock Adjustments Subcollection Real-time Listener
-  try {
-    const adjColRef = collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.STOCK_ADJUSTMENTS);
-    unsubs.push(
-      onSnapshot(
-        adjColRef,
-        (snapshot) => {
-          if (!snapshot.empty) {
-            const stockAdjustments: StockAdjustment[] = [];
-            snapshot.forEach(d => stockAdjustments.push(d.data() as StockAdjustment));
-            stockAdjustments.sort((a, b) => new Date(b.adjustedAt).getTime() - new Date(a.adjustedAt).getTime());
-            onUpdate({ stockAdjustments });
-          }
-        },
-        (err) => console.warn(`Stock adjustments real-time sync notice [${storeId}]:`, err)
-      )
-    );
-  } catch (err) {
-    console.warn(`Stock adjustments listener initialization error [${storeId}]:`, err);
-  }
-
-  // 10. Purchases Ledger Subcollection Real-time Listener
-  try {
-    const ledgerColRef = collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.PURCHASES_LEDGER);
-    unsubs.push(
-      onSnapshot(
-        ledgerColRef,
-        (snapshot) => {
-          if (!snapshot.empty) {
-            const purchasesLedger: PurchaseLedgerEntry[] = [];
-            snapshot.forEach(d => purchasesLedger.push(d.data() as PurchaseLedgerEntry));
-            purchasesLedger.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-            onUpdate({ purchasesLedger });
-          }
-        },
-        (err) => console.warn(`Purchases ledger real-time sync notice [${storeId}]:`, err)
-      )
-    );
-  } catch (err) {
-    console.warn(`Purchases ledger listener initialization error [${storeId}]:`, err);
-  }
-
-  // 11. IMEI Records Subcollection Real-time Listener
-  try {
-    const imeiColRef = collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.IMEI_RECORDS);
-    unsubs.push(
-      onSnapshot(
-        imeiColRef,
-        (snapshot) => {
-          if (!snapshot.empty) {
-            const imeiRecords: ImeiRecord[] = [];
-            snapshot.forEach(d => imeiRecords.push(d.data() as ImeiRecord));
-            onUpdate({ imeiRecords });
-          }
-        },
-        (err) => console.warn(`IMEI records real-time sync notice [${storeId}]:`, err)
-      )
-    );
-  } catch (err) {
-    console.warn(`IMEI records listener initialization error [${storeId}]:`, err);
-  }
+  });
 
   return () => {
+    active = false;
+    if (unsub) unsub();
+  };
+}
+
+export function subscribeToStoreFullData(
+  targetStoreId: string,
+  callbacks: {
+    onRootConfig: (patch: Partial<AppData>) => void;
+    onCollectionDelta: (delta: CollectionDeltaEvent) => void;
+  }
+): () => void {
+  const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
+  const unsubs: (() => void)[] = [];
+  let active = true;
+
+  // 1. Root Config & Tombstones Listener
+  unsubs.push(subscribeToStoreRootConfig(storeId, callbacks.onRootConfig));
+
+  // 2. Sub-collections incremental listeners using snapshot.docChanges() (NO `if (!snapshot.empty)`)
+  const subCollectionSpecs: Array<{ subCol: string; key: SyncCollectionKey }> = [
+    { subCol: SUB_COLLECTIONS.INVENTORY, key: 'inventory' },
+    { subCol: SUB_COLLECTIONS.SALES, key: 'sales' },
+    { subCol: SUB_COLLECTIONS.KHATA, key: 'khata' },
+    { subCol: SUB_COLLECTIONS.EXPENSES, key: 'expenses' },
+    { subCol: SUB_COLLECTIONS.PURCHASES, key: 'supplierPurchases' },
+    { subCol: SUB_COLLECTIONS.DAILY_CLOSINGS, key: 'dailyClosings' },
+    { subCol: SUB_COLLECTIONS.SALES_RETURNS, key: 'salesReturns' },
+    { subCol: SUB_COLLECTIONS.STOCK_ADJUSTMENTS, key: 'stockAdjustments' },
+    { subCol: SUB_COLLECTIONS.PURCHASES_LEDGER, key: 'purchasesLedger' },
+    { subCol: SUB_COLLECTIONS.IMEI_RECORDS, key: 'imeiRecords' },
+    { subCol: SUB_COLLECTIONS.ACTIVITIES, key: 'activities' },
+  ];
+
+  ensureAnonymousAuth().then((user) => {
+    if (!active || !user) return;
+
+    for (const { subCol, key } of subCollectionSpecs) {
+      try {
+        const colRef = collection(db, STORES_COLLECTION, storeId, subCol);
+        const qRef =
+          key === 'activities'
+            ? query(colRef, orderBy('timestamp', 'desc'), limit(200))
+            : colRef;
+
+        const unsub = onSnapshot(
+          qRef,
+          (snapshot) => {
+            if (snapshot.metadata.hasPendingWrites) return;
+
+            const upserts: Array<{ docId: string; item: Record<string, unknown> }> = [];
+            const removals: string[] = [];
+
+            snapshot.docChanges().forEach((change) => {
+              if (change.doc.metadata.hasPendingWrites) return;
+              if (change.type === 'added' || change.type === 'modified') {
+                upserts.push({
+                  docId: change.doc.id,
+                  item: change.doc.data() as Record<string, unknown>,
+                });
+              } else if (change.type === 'removed') {
+                removals.push(change.doc.id);
+              }
+            });
+
+            if (upserts.length > 0 || removals.length > 0) {
+              callbacks.onCollectionDelta({
+                collection: key,
+                upserts,
+                removals,
+              });
+            }
+          },
+          (err) => {
+            if (isQuotaError(err)) setQuotaExceededFlag(true);
+            else setLastCloudError(`Listener error (${subCol}): ${err.message}`);
+            console.warn(`${subCol} real-time sync notice [${storeId}]:`, err);
+          }
+        );
+
+        unsubs.push(unsub);
+      } catch (err) {
+        console.warn(`${subCol} listener initialization error [${storeId}]:`, err);
+      }
+    }
+  });
+
+  return () => {
+    active = false;
     unsubs.forEach(unsub => {
       try {
         unsub();
@@ -1098,109 +1735,119 @@ export function subscribeToStoreFullData(
   };
 }
 
-/**
- * Dual Persistence for User Accounts:
- * 1. Global registry at `/users/{user.id}` (enables instant multi-device login discovery)
- * 2. Store sub-collection at `/stores/{storeId}/users/{user.id}`
- * 3. Store root document `users` array
- */
+// ==================== USER ACCOUNTS PERSISTENCE ====================
+
 export async function saveUserToFirestore(user: UserAccount, targetStoreId?: string): Promise<void> {
-  if (getQuotaExceededFlag()) return;
-  const effectiveStoreId = user.storeId || targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
+  const effectiveStoreId = toValidFirestoreDocId(
+    user.storeId || targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID,
+    'STR'
+  );
+  const userDocId = toValidFirestoreDocId(user.id, 'USR');
   const userWithStore: UserAccount = {
     ...user,
     storeId: effectiveStoreId,
   };
 
+  await executeDocWriteOrQueue({
+    op: 'set',
+    path: `users/${userDocId}`,
+    data: userWithStore as unknown as Record<string, unknown>,
+    merge: true,
+  });
+
+  await executeDocWriteOrQueue({
+    op: 'set',
+    path: `${STORES_COLLECTION}/${effectiveStoreId}/${SUB_COLLECTIONS.USERS}/${userDocId}`,
+    data: userWithStore as unknown as Record<string, unknown>,
+    merge: true,
+  });
+
+  // Also update root doc users array cleanly if root doc exists
   try {
-    // 1. Save to global authentication registry so ANY device can look up this account
-    const globalUserDocRef = doc(db, 'users', userWithStore.id);
-    await setDoc(globalUserDocRef, sanitizeForFirestore(userWithStore) as Record<string, unknown>, { merge: true });
-
-    // 2. Save into the tenant store's users sub-collection
-    const storeUserDocRef = doc(db, STORES_COLLECTION, effectiveStoreId, SUB_COLLECTIONS.USERS, userWithStore.id);
-    await setDoc(storeUserDocRef, sanitizeForFirestore(userWithStore) as Record<string, unknown>, { merge: true });
-
-    // 3. Update users list in store root document
-    const rootDocRef = doc(db, STORES_COLLECTION, effectiveStoreId);
-    const rootSnap = await getDoc(rootDocRef);
-    if (rootSnap.exists()) {
-      const curUsers = (rootSnap.data()?.users as UserAccount[]) || [];
-      const idx = curUsers.findIndex(u => u.id === userWithStore.id);
-      const updated = idx >= 0 ? curUsers.map(u => (u.id === userWithStore.id ? userWithStore : u)) : [...curUsers, userWithStore];
-      await setDoc(rootDocRef, { users: sanitizeForFirestore(updated) }, { merge: true });
+    const authUser = await ensureAnonymousAuth();
+    if (authUser && !getQuotaExceededFlag()) {
+      const rootDocRef = doc(db, STORES_COLLECTION, effectiveStoreId);
+      const rootSnap = await getDoc(rootDocRef);
+      if (rootSnap.exists()) {
+        const curUsers = (rootSnap.data()?.users as UserAccount[]) || [];
+        const idx = curUsers.findIndex(u => u.id === userWithStore.id);
+        const updated =
+          idx >= 0
+            ? curUsers.map(u => (u.id === userWithStore.id ? userWithStore : u))
+            : [...curUsers, userWithStore];
+        await saveRootConfigToFirestore(
+          { users: updated, usersUpdatedAt: new Date().toISOString() },
+          effectiveStoreId
+        );
+      }
     }
   } catch (err) {
-    console.warn('Failed to save user account to Firestore:', err);
+    console.warn('Root user list sync warning:', err);
   }
 }
 
-/**
- * Deletes an individual user document from global registry and store
- */
 export async function deleteUserFromFirestore(userId: string, targetStoreId?: string): Promise<void> {
-  if (getQuotaExceededFlag()) return;
-  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
-  try {
-    // 1. Delete from global registry
-    const globalUserDocRef = doc(db, 'users', userId);
-    await deleteDoc(globalUserDocRef).catch(() => {});
+  const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
+  const userDocId = toValidFirestoreDocId(userId, 'USR');
 
-    // 2. Delete across all known store paths to avoid orphaned subcollection docs
-    const storeIdsToCheck = Array.from(
-      new Set([storeId, currentActiveStoreId, DEFAULT_STORE_ID, 'USR-ADM-1793988681742', 'USR-ADM-1793966178251'])
-    ).filter(Boolean);
+  await executeDocWriteOrQueue({
+    op: 'delete',
+    path: `users/${userDocId}`,
+  });
 
-    for (const sid of storeIdsToCheck) {
-      const storeUserDocRef = doc(db, STORES_COLLECTION, sid, SUB_COLLECTIONS.USERS, userId);
-      await deleteDoc(storeUserDocRef).catch(() => {});
+  const storeIdsToCheck = Array.from(
+    new Set([storeId, currentActiveStoreId, DEFAULT_STORE_ID])
+  ).filter(Boolean);
 
-      // 3. Update store root doc users list
-      const rootDocRef = doc(db, STORES_COLLECTION, sid);
+  for (const sid of storeIdsToCheck) {
+    const safeSid = toValidFirestoreDocId(sid, 'STR');
+    await executeDocWriteOrQueue({
+      op: 'delete',
+      path: `${STORES_COLLECTION}/${safeSid}/${SUB_COLLECTIONS.USERS}/${userDocId}`,
+    });
+
+    try {
+      const rootDocRef = doc(db, STORES_COLLECTION, safeSid);
       const rootSnap = await getDoc(rootDocRef).catch(() => null);
       if (rootSnap && rootSnap.exists()) {
         const curUsers = (rootSnap.data()?.users as UserAccount[]) || [];
         const updated = curUsers.filter(u => u.id !== userId);
-        await setDoc(rootDocRef, { users: sanitizeForFirestore(updated) }, { merge: true }).catch(() => {});
+        await saveRootConfigToFirestore(
+          { users: updated, usersUpdatedAt: new Date().toISOString() },
+          safeSid
+        );
       }
+    } catch {
+      // ignore
     }
-  } catch (err) {
-    console.warn(`Failed to delete user [${userId}] from Firestore:`, err);
   }
 }
 
-/**
- * Fetches all registered live user profiles from Firestore for multi-device authentication.
- * Searches global `/users` collection and checks legacy paths if needed.
- */
 export async function fetchLiveUsersFromFirestore(): Promise<UserAccount[]> {
   if (getQuotaExceededFlag()) return [];
   try {
-    const usersMap = new Map<string, UserAccount>();
-    const sid = currentActiveStoreId || DEFAULT_STORE_ID;
+    const authUser = await ensureAnonymousAuth();
+    if (!authUser) return [];
 
-    // Fetch all user registries in parallel to minimize login latency
-    const [globalSnap, storeUsersSnap, legacySnap, legacyRootSnap] = await Promise.all([
+    const usersMap = new Map<string, UserAccount>();
+    const sid = toValidFirestoreDocId(currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
+
+    const [globalSnap, storeUsersSnap, rootSnap] = await Promise.all([
       getDocs(collection(db, 'users')).catch(() => null),
       getDocs(collection(db, STORES_COLLECTION, sid, SUB_COLLECTIONS.USERS)).catch(() => null),
-      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.USERS)).catch(() => null),
-      getDoc(doc(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID)).catch(() => null),
+      getDoc(doc(db, STORES_COLLECTION, sid)).catch(() => null),
     ]);
 
-    // 1. Global registry
     if (globalSnap) {
       globalSnap.forEach(d => {
         const u = d.data() as UserAccount;
         if (u && u.id) {
-          if (!u.storeId) {
-            u.storeId = u.role === 'admin' ? u.id : DEFAULT_STORE_ID;
-          }
+          if (!u.storeId) u.storeId = u.role === 'admin' ? u.id : DEFAULT_STORE_ID;
           usersMap.set(u.id, u);
         }
       });
     }
 
-    // 2. Store users sub-collection
     if (storeUsersSnap) {
       storeUsersSnap.forEach(d => {
         const u = d.data() as UserAccount;
@@ -1211,31 +1858,18 @@ export async function fetchLiveUsersFromFirestore(): Promise<UserAccount[]> {
       });
     }
 
-    // 3. Legacy compatibility fallback
-    if (legacySnap) {
-      legacySnap.forEach(d => {
-        const u = d.data() as UserAccount;
+    if (rootSnap && rootSnap.exists()) {
+      const rootUsers = (rootSnap.data()?.users as UserAccount[]) || [];
+      rootUsers.forEach(u => {
         if (u && u.id && !usersMap.has(u.id)) {
-          if (!u.storeId) u.storeId = u.role === 'admin' ? u.id : DEFAULT_STORE_ID;
-          usersMap.set(u.id, u);
-        }
-      });
-    }
-    if (legacyRootSnap && legacyRootSnap.exists()) {
-      const legacyRootUsers = (legacyRootSnap.data()?.users as UserAccount[]) || [];
-      legacyRootUsers.forEach(u => {
-        if (u && u.id && !usersMap.has(u.id)) {
-          if (!u.storeId) u.storeId = u.role === 'admin' ? u.id : DEFAULT_STORE_ID;
+          if (!u.storeId) u.storeId = sid;
           usersMap.set(u.id, u);
         }
       });
     }
 
-    // 4. Strict Deduplication: An admin email must only ever yield a single master record
     const deduplicatedMap = new Map<string, UserAccount>();
     const seenAdminEmails = new Set<string>();
-    
-    // Sort so admins with is2faEnabled are prioritized first
     const sorted = Array.from(usersMap.values()).sort((a, b) => {
       if (a.role === 'admin' && b.role === 'admin') {
         const aScore = (a.is2faEnabled ? 2 : 0) + (a.totpSecret ? 1 : 0);
@@ -1262,122 +1896,50 @@ export async function fetchLiveUsersFromFirestore(): Promise<UserAccount[]> {
   }
 }
 
-/**
- * Saves complete AppData to Firestore under `/stores/{storeId}` using chunked write batches.
- */
+// ==================== BULK WRITE (EXPLICIT RESTORE / CLEAR ONLY) ====================
+
 export async function saveAppDataToFirestore(data: AppData, targetStoreId?: string): Promise<void> {
-  if (getQuotaExceededFlag()) return;
-  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
+  if (getQuotaExceededFlag()) {
+    throw new Error('Quota exceeded cooldown active');
+  }
+  const user = await ensureAnonymousAuth();
+  if (!user) {
+    throw new Error(getLastCloudError() || 'Firebase Anonymous Auth unavailable');
+  }
+
+  const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
 
   try {
-    // 1. Save root document
     await saveRootConfigToFirestore(data, storeId);
 
-    // 2. Save Inventory in batches
-    const inventoryChunks = chunkArray(data.inventory || [], 450);
-    for (const chunk of inventoryChunks) {
-      const batch = writeBatch(db);
-      for (const item of chunk) {
-        const itemRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.INVENTORY, item.id);
-        batch.set(itemRef, sanitizeForFirestore(item) as Record<string, unknown>);
-      }
-      await batch.commit();
-    }
-
-    // 3. Save Sales in batches
-    const salesChunks = chunkArray(data.sales || [], 450);
-    for (const chunk of salesChunks) {
-      const batch = writeBatch(db);
-      for (const sale of chunk) {
-        const saleRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.SALES, sale.invNo);
-        batch.set(saleRef, sanitizeForFirestore(sale) as Record<string, unknown>);
-      }
-      await batch.commit();
-    }
-
-    // 4. Save Khata in batches
-    const khataChunks = chunkArray(data.khata || [], 450);
-    for (const chunk of khataChunks) {
-      const batch = writeBatch(db);
-      for (const cust of chunk) {
-        const custRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.KHATA, cust.id);
-        batch.set(custRef, sanitizeForFirestore(cust) as Record<string, unknown>);
-      }
-      await batch.commit();
-    }
-
-    // 5. Save Expenses in batches
-    const expenseChunks = chunkArray(data.expenses || [], 450);
-    for (const chunk of expenseChunks) {
-      const batch = writeBatch(db);
-      for (const exp of chunk) {
-        const expRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.EXPENSES, exp.id);
-        batch.set(expRef, sanitizeForFirestore(exp) as Record<string, unknown>);
-      }
-      await batch.commit();
-    }
-
-    // 6. Save Activities (recent 200)
-    const recentActivities = (data.activities || []).slice(0, 200);
-    if (recentActivities.length > 0) {
-      const batch = writeBatch(db);
-      for (const act of recentActivities) {
-        const actRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.ACTIVITIES, toValidFirestoreDocId(act.id, 'ACT'));
-        batch.set(actRef, sanitizeForFirestore(act) as Record<string, unknown>);
-      }
-      await batch.commit();
-    }
-
-    // 7. Save Supplier Purchases in batches
-    const purchaseChunks = chunkArray(data.supplierPurchases || [], 450);
-    for (const chunk of purchaseChunks) {
-      const batch = writeBatch(db);
-      for (const pur of chunk) {
-        const purRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.PURCHASES, toValidFirestoreDocId(pur.id || pur.billNo, 'PUR'));
-        batch.set(purRef, sanitizeForFirestore(pur) as Record<string, unknown>, { merge: true });
-      }
-      await batch.commit();
-    }
-
-    // 8. Save Daily Closings, Sales Returns, Stock Adjustments, Purchases Ledger, and IMEI Records
-    if (data.dailyClosings && data.dailyClosings.length > 0) {
-      const closingChunks = chunkArray(data.dailyClosings, 450);
-      for (const chunk of closingChunks) {
+    const writeSubCollection = async <T>(
+      subCol: string,
+      items: T[],
+      idFn: (item: T) => string,
+      prefix: string
+    ) => {
+      const chunks = chunkArray(items || [], 450);
+      for (const chunk of chunks) {
         const batch = writeBatch(db);
-        for (const rec of chunk) {
-          const ref = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.DAILY_CLOSINGS, toValidFirestoreDocId(rec.id || rec.date, 'DCL'));
-          batch.set(ref, sanitizeForFirestore(rec) as Record<string, unknown>, { merge: true });
+        for (const item of chunk) {
+          const ref = doc(db, STORES_COLLECTION, storeId, subCol, toValidFirestoreDocId(idFn(item), prefix));
+          batch.set(ref, sanitizeForFirestore(item) as Record<string, unknown>, { merge: true });
         }
         await batch.commit();
       }
-    }
+    };
 
-    if (data.salesReturns && data.salesReturns.length > 0) {
-      const returnChunks = chunkArray(data.salesReturns, 450);
-      for (const chunk of returnChunks) {
-        const batch = writeBatch(db);
-        for (const ret of chunk) {
-          const ref = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.SALES_RETURNS, toValidFirestoreDocId(ret.id || ret.returnNo, 'RET'));
-          batch.set(ref, sanitizeForFirestore(ret) as Record<string, unknown>, { merge: true });
-        }
-        await batch.commit();
-      }
-    }
-
-    if (data.stockAdjustments && data.stockAdjustments.length > 0) {
-      const adjChunks = chunkArray(data.stockAdjustments, 450);
-      for (const chunk of adjChunks) {
-        const batch = writeBatch(db);
-        for (const adj of chunk) {
-          const ref = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.STOCK_ADJUSTMENTS, toValidFirestoreDocId(adj.id, 'ADJ'));
-          batch.set(ref, sanitizeForFirestore(adj) as Record<string, unknown>, { merge: true });
-        }
-        await batch.commit();
-      }
-    }
-
-    await savePurchasesLedgerBatchToFirestore(data.purchasesLedger || [], storeId);
-    await saveImeiRecordsBatchToFirestore(data.imeiRecords || [], storeId);
+    await writeSubCollection(SUB_COLLECTIONS.INVENTORY, data.inventory || [], i => i.id, 'STK');
+    await writeSubCollection(SUB_COLLECTIONS.SALES, data.sales || [], s => s.invNo, 'INV');
+    await writeSubCollection(SUB_COLLECTIONS.KHATA, data.khata || [], k => k.id, 'KHT');
+    await writeSubCollection(SUB_COLLECTIONS.EXPENSES, data.expenses || [], e => e.id, 'EXP');
+    await writeSubCollection(SUB_COLLECTIONS.ACTIVITIES, (data.activities || []).slice(0, 200), a => a.id, 'ACT');
+    await writeSubCollection(SUB_COLLECTIONS.PURCHASES, data.supplierPurchases || [], p => p.id || p.billNo, 'PUR');
+    await writeSubCollection(SUB_COLLECTIONS.DAILY_CLOSINGS, data.dailyClosings || [], d => d.id || d.date, 'DCL');
+    await writeSubCollection(SUB_COLLECTIONS.SALES_RETURNS, data.salesReturns || [], r => r.id || r.returnNo, 'RET');
+    await writeSubCollection(SUB_COLLECTIONS.STOCK_ADJUSTMENTS, data.stockAdjustments || [], a => a.id, 'ADJ');
+    await writeSubCollection(SUB_COLLECTIONS.PURCHASES_LEDGER, data.purchasesLedger || [], l => l.id, 'PL');
+    await writeSubCollection(SUB_COLLECTIONS.IMEI_RECORDS, data.imeiRecords || [], r => r.id || r.imei, 'IMEI');
   } catch (error) {
     console.warn(`Firebase Firestore save notice for store [${storeId}]:`, error);
     if (isQuotaError(error)) {
@@ -1386,7 +1948,7 @@ export async function saveAppDataToFirestore(data: AppData, targetStoreId?: stri
     }
     if (
       error instanceof Error &&
-      (error.message.includes('permission') || (error as any).code === 'permission-denied')
+      (error.message.includes('permission') || (error as { code?: string }).code === 'permission-denied')
     ) {
       handleFirestoreError(error, OperationType.WRITE, `${STORES_COLLECTION}/${storeId}`);
     }
@@ -1394,39 +1956,26 @@ export async function saveAppDataToFirestore(data: AppData, targetStoreId?: stri
   }
 }
 
-/**
- * Loads isolated POS store data from Firebase Firestore.
- * Supports automatic fallback migration from legacy pos_data/main_store if the primary store is not yet initialized.
- */
+// ==================== SINGLE SOURCE OF TRUTH LOAD FROM FIRESTORE ====================
+
 export async function loadAppDataFromFirestore(targetStoreId?: string): Promise<AppData | null> {
   if (getQuotaExceededFlag()) return null;
-  const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
+  const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
 
   try {
-    let rootDocRef = doc(db, STORES_COLLECTION, storeId);
-    let rootDocSnap = await getDoc(rootDocRef);
+    const authUser = await ensureAnonymousAuth();
+    if (!authUser) return null;
 
-    // If store document does not exist yet, check if legacy pos_data/main_store exists for backward compatibility
+    const rootDocRef = doc(db, STORES_COLLECTION, storeId);
+    const rootDocSnap = await getDoc(rootDocRef);
+
     if (!rootDocSnap.exists()) {
-      const legacyRef = doc(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID);
-      const legacySnap = await getDoc(legacyRef);
-
-      if (legacySnap.exists() && (storeId === DEFAULT_STORE_ID || storeId.startsWith('USR-ADM-'))) {
-        console.info(`Migrating legacy store data from [${LEGACY_FIRESTORE_COLLECTION}/${DEFAULT_STORE_ID}] to [${STORES_COLLECTION}/${storeId}]...`);
-        // Load legacy sub-collections and migrate
-        const legacyData = await loadAppDataFromLegacyFirestore();
-        if (legacyData) {
-          await saveAppDataToFirestore(legacyData, storeId);
-          return legacyData;
-        }
-      }
-
       return null;
     }
 
     const rootData = rootDocSnap.data() as Record<string, unknown>;
+    const normalizedDeleted = normalizeDeletedIds(rootData as Partial<AppData>);
 
-    // Load sub-collections for this isolated store in parallel
     const emptySnap = { docs: [], forEach: () => {} } as any;
     const [
       salesSnap,
@@ -1462,128 +2011,89 @@ export async function loadAppDataFromFirestore(targetStoreId?: string): Promise<
       getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.IMEI_RECORDS)).catch(() => emptySnap),
     ]);
 
-    const sales: SaleRecord[] = [];
-    salesSnap.forEach(docSnap => sales.push(docSnap.data() as SaleRecord));
-
-    if (sales.length === 0) {
-      const storesToCheck = ['USR-ADM-1793988681742', 'USR-ADM-1793966178251'];
-      for (const altSid of storesToCheck) {
-        if (sales.length > 0) break;
-        try {
-          const altSales = await getDocs(collection(db, STORES_COLLECTION, altSid, SUB_COLLECTIONS.SALES));
-          altSales.forEach(docSnap => sales.push(docSnap.data() as SaleRecord));
-        } catch {
-          // ignore
-        }
-      }
-    }
-
-    const inventory: InventoryItem[] = [];
-    invSnap.forEach(docSnap => inventory.push(docSnap.data() as InventoryItem));
-
-    // Fallback migration: If main_store has 0 inventory items, check previous admin stores or legacy
-    if (inventory.length === 0) {
-      const storesToCheck = ['USR-ADM-1793988681742', 'USR-ADM-1793966178251'];
-      for (const altSid of storesToCheck) {
-        if (inventory.length > 0) break;
-        try {
-          const altSnap = await getDocs(collection(db, STORES_COLLECTION, altSid, SUB_COLLECTIONS.INVENTORY));
-          altSnap.forEach(docSnap => inventory.push(docSnap.data() as InventoryItem));
-        } catch {
-          // ignore
-        }
-      }
-      if (inventory.length === 0) {
-        try {
-          const legacyInvSnap = await getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.INVENTORY));
-          legacyInvSnap.forEach(docSnap => inventory.push(docSnap.data() as InventoryItem));
-        } catch {
-          // ignore
-        }
-      }
-      // If found in fallback, migrate to main_store immediately
-      if (inventory.length > 0 && storeId === DEFAULT_STORE_ID) {
-        for (const item of inventory) {
-          await saveInventoryItemToFirestore(item, DEFAULT_STORE_ID);
-        }
-      }
-    }
-
-    const khata: KhataCustomer[] = [];
-    khataSnap.forEach(docSnap => khata.push(docSnap.data() as KhataCustomer));
-
-    const expenses: ExpenseItem[] = [];
-    expSnap.forEach(docSnap => expenses.push(docSnap.data() as ExpenseItem));
-
-    const activities: ActivityLog[] = [];
-    actSnap.forEach(docSnap => activities.push(docSnap.data() as ActivityLog));
-
-    const mergeSubAndRoot = <T>(rootArr: T[] = [], snap: any, keyFn: (item: T) => string | undefined): T[] => {
-      const map = new Map<string, T>();
-      (Array.isArray(rootArr) ? rootArr : []).forEach(item => {
-        const k = keyFn(item);
-        if (k) map.set(k, item);
-      });
+    const readSubCollection = <T>(
+      snap: any,
+      key: SyncCollectionKey,
+      idFn: (item: T) => string | undefined,
+      timeFn: (item: T) => string | undefined
+    ): T[] => {
+      const tombstones = normalizedDeleted[key] || [];
+      const arr: T[] = [];
       if (snap && typeof snap.forEach === 'function') {
         snap.forEach((docSnap: any) => {
           const item = docSnap.data() as T;
-          const k = keyFn(item);
-          if (k) map.set(k, item);
+          const id = idFn(item) || docSnap.id;
+          if (!isItemTombstoned(id, timeFn(item), tombstones)) {
+            arr.push(item);
+          }
         });
       }
-      return Array.from(map.values());
+      return arr;
     };
 
-    const supplierPurchases = mergeSubAndRoot(
-      (rootData.supplierPurchases as SupplierPurchase[]) || [],
+    const sales = readSubCollection<SaleRecord>(salesSnap, 'sales', s => s.invNo, s => s.updatedAt || s.date)
+      .sort((a, b) => parseTimeMs(b.date) - parseTimeMs(a.date));
+
+    const inventory = readSubCollection<InventoryItem>(invSnap, 'inventory', i => i.id, i => i.updatedAt || i.createdAt);
+
+    const khata = readSubCollection<KhataCustomer>(khataSnap, 'khata', k => k.id, k => k.updatedAt || k.lastUpdated);
+
+    const expenses = readSubCollection<ExpenseItem>(expSnap, 'expenses', e => e.id, e => e.updatedAt || e.date)
+      .sort((a, b) => parseTimeMs(b.date) - parseTimeMs(a.date));
+
+    const activities = readSubCollection<ActivityLog>(actSnap, 'activities', a => a.id, a => a.updatedAt || a.timestamp);
+
+    const supplierPurchases = readSubCollection<SupplierPurchase>(
       purSnap,
-      p => p.id || p.billNo
-    ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      'supplierPurchases',
+      p => p.id || p.billNo,
+      p => p.updatedAt || p.reversedAt || p.date
+    ).sort((a, b) => parseTimeMs(b.date) - parseTimeMs(a.date));
 
-    const dailyClosings = mergeSubAndRoot(
-      (rootData.dailyClosings as DailyClosingRecord[]) || [],
+    const dailyClosings = readSubCollection<DailyClosingRecord>(
       closingSnap,
-      d => d.id || d.date
-    ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      'dailyClosings',
+      d => d.id || d.date,
+      d => d.updatedAt || d.createdAt || d.date
+    ).sort((a, b) => parseTimeMs(b.date) - parseTimeMs(a.date));
 
-    const salesReturns = mergeSubAndRoot(
-      (rootData.salesReturns as SalesReturnRecord[]) || [],
+    const salesReturns = readSubCollection<SalesReturnRecord>(
       returnsSnap,
-      r => r.returnNo || r.id
-    ).sort((a, b) => new Date(b.returnDate).getTime() - new Date(a.returnDate).getTime());
+      'salesReturns',
+      r => r.returnNo || r.id,
+      r => r.updatedAt || r.returnDate
+    ).sort((a, b) => parseTimeMs(b.returnDate) - parseTimeMs(a.returnDate));
 
-    const stockAdjustments = mergeSubAndRoot(
-      (rootData.stockAdjustments as StockAdjustment[]) || [],
+    const stockAdjustments = readSubCollection<StockAdjustment>(
       adjSnap,
-      a => a.id
-    ).sort((a, b) => new Date(b.adjustedAt).getTime() - new Date(a.adjustedAt).getTime());
+      'stockAdjustments',
+      a => a.id,
+      a => a.updatedAt || a.adjustedAt
+    ).sort((a, b) => parseTimeMs(b.adjustedAt) - parseTimeMs(a.adjustedAt));
 
-    const purchasesLedger = mergeSubAndRoot(
-      (rootData.purchasesLedger as PurchaseLedgerEntry[]) || [],
+    const purchasesLedger = readSubCollection<PurchaseLedgerEntry>(
       ledgerSnap,
-      l => l.id
-    ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      'purchasesLedger',
+      l => l.id,
+      l => l.updatedAt || l.date
+    ).sort((a, b) => parseTimeMs(b.date) - parseTimeMs(a.date));
 
-    const imeiRecords = mergeSubAndRoot(
-      (rootData.imeiRecords as ImeiRecord[]) || [],
+    const imeiRecords = readSubCollection<ImeiRecord>(
       imeiSnap,
-      r => r.id || r.imei
+      'imeiRecords',
+      r => r.id || r.imei,
+      r => r.updatedAt || r.createdAt
     );
 
-    // Reconcile users for this store
     const subUsers: UserAccount[] = [];
     if (usersSnap && usersSnap.docs) {
       usersSnap.forEach((docSnap: any) => subUsers.push(docSnap.data() as UserAccount));
     }
     const rootUsers = (rootData.users as UserAccount[]) || [];
     const usersMap = new Map<string, UserAccount>();
-    rootUsers.forEach(u => {
-      if (u && u.id) usersMap.set(u.id, u);
-    });
-    subUsers.forEach(u => {
-      if (u && u.id) usersMap.set(u.id, u);
-    });
-    // Deduplicate admin accounts by email so duplicate ghosts never appear
+    rootUsers.forEach(u => u && u.id && usersMap.set(u.id, u));
+    subUsers.forEach(u => u && u.id && usersMap.set(u.id, u));
+
     const deduplicatedUsersMap = new Map<string, UserAccount>();
     const seenAdminEmails = new Set<string>();
     for (const u of usersMap.values()) {
@@ -1594,25 +2104,33 @@ export async function loadAppDataFromFirestore(targetStoreId?: string): Promise<
       }
       deduplicatedUsersMap.set(u.id, u);
     }
-    const assembledUsers = Array.from(deduplicatedUsersMap.values());
 
     const assembledData: AppData = {
       backupVersion: CURRENT_BACKUP_VERSION,
-      lastModified: typeof rootData.lastModified === 'string' ? rootData.lastModified : new Date().toISOString(),
+      lastModified: typeof rootData.lastModified === 'string' ? rootData.lastModified : undefined,
+      migrationDone: Boolean(rootData.migrationDone),
+      settingsUpdatedAt: typeof rootData.settingsUpdatedAt === 'string' ? rootData.settingsUpdatedAt : undefined,
+      categoriesUpdatedAt: typeof rootData.categoriesUpdatedAt === 'string' ? rootData.categoriesUpdatedAt : undefined,
+      expenseCategoriesUpdatedAt: typeof rootData.expenseCategoriesUpdatedAt === 'string' ? rootData.expenseCategoriesUpdatedAt : undefined,
+      onlineAccountsUpdatedAt: typeof rootData.onlineAccountsUpdatedAt === 'string' ? rootData.onlineAccountsUpdatedAt : undefined,
+      tabPreferencesUpdatedAt: typeof rootData.tabPreferencesUpdatedAt === 'string' ? rootData.tabPreferencesUpdatedAt : undefined,
+      usersUpdatedAt: typeof rootData.usersUpdatedAt === 'string' ? rootData.usersUpdatedAt : undefined,
       settings: (rootData.settings as ShopSettings) || defaultSettings,
-      categories: cleanCategories(rootData.categories),
+      categories: Array.isArray(rootData.categories) ? cleanCategories(rootData.categories) : [],
       expenseCategories: Array.isArray(rootData.expenseCategories) ? (rootData.expenseCategories as string[]) : defaultExpenseCategories,
       onlineAccounts: Array.isArray(rootData.onlineAccounts) ? (rootData.onlineAccounts as OnlineAccount[]) : defaultOnlineAccounts,
+      tabPreferences: (rootData.tabPreferences as TabPreferences) || {},
+      users: Array.from(deduplicatedUsersMap.values()),
+      currentRole: (rootData.currentRole as UserRole) || 'admin',
+      currentUser: (rootData.currentUser as UserAccount) || undefined,
+      deletedIds: normalizedDeleted,
+      deletedInventoryIds: (normalizedDeleted.inventory || []).map(t => t.id),
       dailyClosings,
       imeiRecords,
       stockAdjustments,
       purchasesLedger,
       supplierPurchases,
       salesReturns,
-      tabPreferences: (rootData.tabPreferences as TabPreferences) || {},
-      users: assembledUsers,
-      currentRole: (rootData.currentRole as UserRole) || 'admin',
-      currentUser: (rootData.currentUser as UserAccount) || undefined,
       inventory,
       sales,
       khata,
@@ -1620,6 +2138,9 @@ export async function loadAppDataFromFirestore(targetStoreId?: string): Promise<
       activities,
     };
 
+    if (currentPendingOps.length === 0) {
+      setLastCloudError(null);
+    }
     return assembledData;
   } catch (error) {
     console.warn(`Firebase Firestore load notice for store [${storeId}]:`, error);
@@ -1627,9 +2148,11 @@ export async function loadAppDataFromFirestore(targetStoreId?: string): Promise<
       setQuotaExceededFlag(true);
       return null;
     }
+    const errMsg = error instanceof Error ? error.message : String(error);
+    setLastCloudError(`Cloud load failed: ${errMsg}`);
     if (
       error instanceof Error &&
-      (error.message.includes('permission') || (error as any).code === 'permission-denied')
+      (error.message.includes('permission') || (error as { code?: string }).code === 'permission-denied')
     ) {
       handleFirestoreError(error, OperationType.GET, `${STORES_COLLECTION}/${storeId}`);
     }
@@ -1637,69 +2160,65 @@ export async function loadAppDataFromFirestore(targetStoreId?: string): Promise<
   }
 }
 
-/**
- * Internal helper to read legacy pos_data/main_store for migration
- */
-async function loadAppDataFromLegacyFirestore(): Promise<AppData | null> {
+async function loadAppDataFromLegacyFirestore(): Promise<Partial<AppData> | null> {
   if (getQuotaExceededFlag()) return null;
   try {
+    const authUser = await ensureAnonymousAuth();
+    if (!authUser) return null;
+
     const rootDocRef = doc(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID);
     const rootDocSnap = await getDoc(rootDocRef);
     if (!rootDocSnap.exists()) return null;
     const rootData = rootDocSnap.data() as Record<string, unknown>;
 
-    const [salesSnap, invSnap, khataSnap, expSnap, actSnap, usersSnap] = await Promise.all([
-      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.SALES)).catch(() => ({ docs: [], forEach: () => {} } as any)),
-      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.INVENTORY)).catch(() => ({ docs: [], forEach: () => {} } as any)),
-      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.KHATA)).catch(() => ({ docs: [], forEach: () => {} } as any)),
-      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.EXPENSES)).catch(() => ({ docs: [], forEach: () => {} } as any)),
-      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.ACTIVITIES)).catch(() => ({ docs: [], forEach: () => {} } as any)),
-      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.USERS)).catch(() => ({ docs: [], forEach: () => {} } as any)),
+    const [
+      salesSnap,
+      invSnap,
+      khataSnap,
+      expSnap,
+      actSnap,
+      usersSnap,
+      purSnap,
+      ledgerSnap,
+      imeiSnap,
+    ] = await Promise.all([
+      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.SALES)).catch(() => null),
+      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.INVENTORY)).catch(() => null),
+      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.KHATA)).catch(() => null),
+      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.EXPENSES)).catch(() => null),
+      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.ACTIVITIES)).catch(() => null),
+      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.USERS)).catch(() => null),
+      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.PURCHASES)).catch(() => null),
+      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.PURCHASES_LEDGER)).catch(() => null),
+      getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.IMEI_RECORDS)).catch(() => null),
     ]);
 
-    const sales: SaleRecord[] = [];
-    salesSnap.forEach((d: any) => sales.push(d.data()));
-
-    const inventory: InventoryItem[] = [];
-    invSnap.forEach((d: any) => inventory.push(d.data()));
-
-    const khata: KhataCustomer[] = [];
-    khataSnap.forEach((d: any) => khata.push(d.data()));
-
-    const expenses: ExpenseItem[] = [];
-    expSnap.forEach((d: any) => expenses.push(d.data()));
-
-    const activities: ActivityLog[] = [];
-    actSnap.forEach((d: any) => activities.push(d.data()));
-
-    const users: UserAccount[] = [];
-    usersSnap.forEach((d: any) => users.push(d.data()));
-    const rootUsers = (rootData.users as UserAccount[]) || [];
-    const usersMap = new Map<string, UserAccount>();
-    rootUsers.forEach(u => u && u.id && usersMap.set(u.id, u));
-    users.forEach(u => u && u.id && usersMap.set(u.id, u));
+    const readSnap = <T>(snap: any, fallbackArr: T[] = []): T[] => {
+      const list: T[] = [...(Array.isArray(fallbackArr) ? fallbackArr : [])];
+      if (snap && typeof snap.forEach === 'function') {
+        snap.forEach((d: any) => list.push(d.data()));
+      }
+      return list;
+    };
 
     return {
-      backupVersion: CURRENT_BACKUP_VERSION,
-      lastModified: new Date().toISOString(),
-      settings: (rootData.settings as ShopSettings) || defaultSettings,
-      categories: cleanCategories(rootData.categories),
-      expenseCategories: Array.isArray(rootData.expenseCategories) ? (rootData.expenseCategories as string[]) : defaultExpenseCategories,
-      onlineAccounts: Array.isArray(rootData.onlineAccounts) ? (rootData.onlineAccounts as OnlineAccount[]) : defaultOnlineAccounts,
+      settings: (rootData.settings as ShopSettings) || undefined,
+      categories: Array.isArray(rootData.categories) ? cleanCategories(rootData.categories) : undefined,
+      expenseCategories: Array.isArray(rootData.expenseCategories) ? (rootData.expenseCategories as string[]) : undefined,
+      onlineAccounts: Array.isArray(rootData.onlineAccounts) ? (rootData.onlineAccounts as OnlineAccount[]) : undefined,
       dailyClosings: (rootData.dailyClosings as DailyClosingRecord[]) || [],
-      imeiRecords: (rootData.imeiRecords as ImeiRecord[]) || [],
+      imeiRecords: readSnap<ImeiRecord>(imeiSnap, (rootData.imeiRecords as ImeiRecord[]) || []),
       stockAdjustments: (rootData.stockAdjustments as StockAdjustment[]) || [],
-      purchasesLedger: (rootData.purchasesLedger as PurchaseLedgerEntry[]) || [],
-      supplierPurchases: (rootData.supplierPurchases as SupplierPurchase[]) || [],
+      purchasesLedger: readSnap<PurchaseLedgerEntry>(ledgerSnap, (rootData.purchasesLedger as PurchaseLedgerEntry[]) || []),
+      supplierPurchases: readSnap<SupplierPurchase>(purSnap, (rootData.supplierPurchases as SupplierPurchase[]) || []),
       salesReturns: (rootData.salesReturns as SalesReturnRecord[]) || [],
-      tabPreferences: (rootData.tabPreferences as TabPreferences) || {},
-      users: Array.from(usersMap.values()),
-      currentRole: 'admin',
-      inventory,
-      sales,
-      khata,
-      expenses,
-      activities,
+      users: readSnap<UserAccount>(usersSnap, (rootData.users as UserAccount[]) || []),
+      inventory: readSnap<InventoryItem>(invSnap, (rootData.inventory as InventoryItem[]) || []),
+      sales: readSnap<SaleRecord>(salesSnap, (rootData.sales as SaleRecord[]) || []),
+      khata: readSnap<KhataCustomer>(khataSnap, (rootData.khata as KhataCustomer[]) || []),
+      expenses: readSnap<ExpenseItem>(expSnap, (rootData.expenses as ExpenseItem[]) || []),
+      activities: readSnap<ActivityLog>(actSnap, (rootData.activities as ActivityLog[]) || []),
+      deletedIds: normalizeDeletedIds(rootData as Partial<AppData>),
     };
   } catch {
     return null;
@@ -1707,8 +2226,232 @@ async function loadAppDataFromLegacyFirestore(): Promise<AppData | null> {
 }
 
 /**
- * Helper to fetch fallback cached inventory across local keys
+ * ONE-TIME migration:
+ * 1) Automatically downloads a JSON backup of all current local data first.
+ * 2) Reads old arrays on root doc `/stores/{storeId}` and legacy `/pos_data/main_store`.
+ * 3) Copies missing records into sub-collections (respecting tombstones).
+ * 4) Sets `migrationDone: true` on `/stores/{storeId}`.
  */
+export async function runOneTimeSubcollectionMigration(
+  currentLocalData: AppData,
+  remoteData: AppData | null,
+  targetStoreId?: string
+): Promise<AppData | null> {
+  if (getQuotaExceededFlag() || (typeof navigator !== 'undefined' && !navigator.onLine)) return null;
+  const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
+
+  try {
+    const authUser = await ensureAnonymousAuth();
+    if (!authUser) return null;
+
+    const rootDocRef = doc(db, STORES_COLLECTION, storeId);
+    const rootSnap = await getDoc(rootDocRef);
+    const rootData = rootSnap.exists() ? (rootSnap.data() as Record<string, unknown>) : null;
+    if (rootData?.migrationDone === true) {
+      return null;
+    }
+
+    const oldRootArrays: Partial<AppData> = rootData
+      ? {
+          inventory: Array.isArray(rootData.inventory) ? (rootData.inventory as InventoryItem[]) : [],
+          sales: Array.isArray(rootData.sales) ? (rootData.sales as SaleRecord[]) : [],
+          khata: Array.isArray(rootData.khata) ? (rootData.khata as KhataCustomer[]) : [],
+          expenses: Array.isArray(rootData.expenses) ? (rootData.expenses as ExpenseItem[]) : [],
+          supplierPurchases: Array.isArray(rootData.supplierPurchases) ? (rootData.supplierPurchases as SupplierPurchase[]) : [],
+          purchasesLedger: Array.isArray(rootData.purchasesLedger) ? (rootData.purchasesLedger as PurchaseLedgerEntry[]) : [],
+          imeiRecords: Array.isArray(rootData.imeiRecords) ? (rootData.imeiRecords as ImeiRecord[]) : [],
+          salesReturns: Array.isArray(rootData.salesReturns) ? (rootData.salesReturns as SalesReturnRecord[]) : [],
+          stockAdjustments: Array.isArray(rootData.stockAdjustments) ? (rootData.stockAdjustments as StockAdjustment[]) : [],
+          dailyClosings: Array.isArray(rootData.dailyClosings) ? (rootData.dailyClosings as DailyClosingRecord[]) : [],
+          activities: Array.isArray(rootData.activities) ? (rootData.activities as ActivityLog[]) : [],
+        }
+      : {};
+
+    const legacyData = await loadAppDataFromLegacyFirestore();
+
+    const hasOldDataToMigrate =
+      Object.values(oldRootArrays).some(arr => Array.isArray(arr) && arr.length > 0) ||
+      Boolean(
+        legacyData &&
+          ((legacyData.inventory?.length || 0) > 0 ||
+            (legacyData.sales?.length || 0) > 0 ||
+            (legacyData.khata?.length || 0) > 0 ||
+            (legacyData.expenses?.length || 0) > 0 ||
+            (legacyData.supplierPurchases?.length || 0) > 0)
+      );
+
+    if (!hasOldDataToMigrate) {
+      if (rootSnap.exists()) {
+        await setDoc(rootDocRef, { migrationDone: true }, { merge: true });
+      }
+      return null;
+    }
+
+    // (a) Download JSON backup of current local data before migration if non-empty
+    const hasLocalRecords =
+      (currentLocalData.inventory?.length || 0) > 0 ||
+      (currentLocalData.sales?.length || 0) > 0 ||
+      (currentLocalData.khata?.length || 0) > 0 ||
+      (currentLocalData.expenses?.length || 0) > 0 ||
+      (currentLocalData.supplierPurchases?.length || 0) > 0;
+    if (hasLocalRecords) {
+      downloadJsonBackup(currentLocalData, 'pre_migration_backup_');
+    }
+
+    // Merge old arrays & legacy into current data while strictly respecting tombstones
+    let baseData = remoteData ? mergeAppData(currentLocalData, remoteData) : currentLocalData;
+    const mergedTombstones = mergeDeletedIds(baseData, legacyData || undefined);
+
+    const copyMissing = async <T>(
+      candidates: T[],
+      existing: T[],
+      subCol: string,
+      key: SyncCollectionKey,
+      idFn: (item: T) => string | undefined,
+      timeFn: (item: T) => string | undefined,
+      prefix: string
+    ): Promise<T[]> => {
+      const existingIds = new Set(existing.map(x => idFn(x)).filter(Boolean) as string[]);
+      const tombstones = mergedTombstones.deletedIds[key] || [];
+      const missing: T[] = [];
+      for (const item of candidates) {
+        const id = idFn(item);
+        if (!id || existingIds.has(id)) continue;
+        if (isItemTombstoned(id, timeFn(item), tombstones)) continue;
+        existingIds.add(id);
+        missing.push(item);
+      }
+      if (missing.length > 0) {
+        const chunks = chunkArray(missing, 450);
+        for (const chunk of chunks) {
+          const batch = writeBatch(db);
+          for (const item of chunk) {
+            const ref = doc(db, STORES_COLLECTION, storeId, subCol, toValidFirestoreDocId(idFn(item), prefix));
+            batch.set(ref, sanitizeForFirestore(item) as Record<string, unknown>, { merge: true });
+          }
+          await batch.commit();
+        }
+      }
+      return [...existing, ...missing];
+    };
+
+    const nextInv = await copyMissing(
+      [...(oldRootArrays.inventory || []), ...(legacyData?.inventory || [])],
+      baseData.inventory || [],
+      SUB_COLLECTIONS.INVENTORY,
+      'inventory',
+      i => i.id,
+      i => i.updatedAt || i.createdAt,
+      'STK'
+    );
+    const nextSales = await copyMissing(
+      [...(oldRootArrays.sales || []), ...(legacyData?.sales || [])],
+      baseData.sales || [],
+      SUB_COLLECTIONS.SALES,
+      'sales',
+      s => s.invNo,
+      s => s.updatedAt || s.date,
+      'INV'
+    );
+    const nextKhata = await copyMissing(
+      [...(oldRootArrays.khata || []), ...(legacyData?.khata || [])],
+      baseData.khata || [],
+      SUB_COLLECTIONS.KHATA,
+      'khata',
+      k => k.id,
+      k => k.updatedAt || k.lastUpdated,
+      'KHT'
+    );
+    const nextExpenses = await copyMissing(
+      [...(oldRootArrays.expenses || []), ...(legacyData?.expenses || [])],
+      baseData.expenses || [],
+      SUB_COLLECTIONS.EXPENSES,
+      'expenses',
+      e => e.id,
+      e => e.updatedAt || e.date,
+      'EXP'
+    );
+    const nextPurchases = await copyMissing(
+      [...(oldRootArrays.supplierPurchases || []), ...(legacyData?.supplierPurchases || [])],
+      baseData.supplierPurchases || [],
+      SUB_COLLECTIONS.PURCHASES,
+      'supplierPurchases',
+      p => p.id || p.billNo,
+      p => p.updatedAt || p.reversedAt || p.date,
+      'PUR'
+    );
+    const nextClosings = await copyMissing(
+      [...(oldRootArrays.dailyClosings || []), ...(legacyData?.dailyClosings || [])],
+      baseData.dailyClosings || [],
+      SUB_COLLECTIONS.DAILY_CLOSINGS,
+      'dailyClosings',
+      d => d.id || d.date,
+      d => d.updatedAt || d.createdAt || d.date,
+      'DCL'
+    );
+    const nextReturns = await copyMissing(
+      [...(oldRootArrays.salesReturns || []), ...(legacyData?.salesReturns || [])],
+      baseData.salesReturns || [],
+      SUB_COLLECTIONS.SALES_RETURNS,
+      'salesReturns',
+      r => r.id || r.returnNo,
+      r => r.updatedAt || r.returnDate,
+      'RET'
+    );
+    const nextAdj = await copyMissing(
+      [...(oldRootArrays.stockAdjustments || []), ...(legacyData?.stockAdjustments || [])],
+      baseData.stockAdjustments || [],
+      SUB_COLLECTIONS.STOCK_ADJUSTMENTS,
+      'stockAdjustments',
+      a => a.id,
+      a => a.updatedAt || a.adjustedAt,
+      'ADJ'
+    );
+    const nextLedger = await copyMissing(
+      [...(oldRootArrays.purchasesLedger || []), ...(legacyData?.purchasesLedger || [])],
+      baseData.purchasesLedger || [],
+      SUB_COLLECTIONS.PURCHASES_LEDGER,
+      'purchasesLedger',
+      l => l.id,
+      l => l.updatedAt || l.date,
+      'PL'
+    );
+    const nextImei = await copyMissing(
+      [...(oldRootArrays.imeiRecords || []), ...(legacyData?.imeiRecords || [])],
+      baseData.imeiRecords || [],
+      SUB_COLLECTIONS.IMEI_RECORDS,
+      'imeiRecords',
+      r => r.id || r.imei,
+      r => r.updatedAt || r.createdAt,
+      'IMEI'
+    );
+
+    await setDoc(rootDocRef, { migrationDone: true }, { merge: true });
+
+    return {
+      ...baseData,
+      migrationDone: true,
+      deletedIds: mergedTombstones.deletedIds,
+      deletedInventoryIds: mergedTombstones.deletedInventoryIds,
+      inventory: nextInv,
+      sales: nextSales,
+      khata: nextKhata,
+      expenses: nextExpenses,
+      supplierPurchases: nextPurchases,
+      dailyClosings: nextClosings,
+      salesReturns: nextReturns,
+      stockAdjustments: nextAdj,
+      purchasesLedger: nextLedger,
+      imeiRecords: nextImei,
+    };
+  } catch (err) {
+    console.warn('One-time subcollection migration notice:', err);
+    return null;
+  }
+}
+
+// ==================== LOCAL STORAGE & INDEXEDDB ====================
+
 function getFallbackLocalInventory(): InventoryItem[] {
   try {
     const mainKey = getLocalStorageKey(DEFAULT_STORE_ID);
@@ -1716,7 +2459,7 @@ function getFallbackLocalInventory(): InventoryItem[] {
     if (mainRaw) {
       const parsed = JSON.parse(mainRaw);
       const validation = validateBackupData(parsed);
-      if (validation.valid && validation.data && validation.data.inventory && validation.data.inventory.length > 0) {
+      if (validation.valid && validation.data && validation.data.inventory.length > 0) {
         return validation.data.inventory;
       }
     }
@@ -1724,7 +2467,7 @@ function getFallbackLocalInventory(): InventoryItem[] {
     if (legacyRaw) {
       const parsedLegacy = JSON.parse(legacyRaw);
       const validation = validateBackupData(parsedLegacy);
-      if (validation.valid && validation.data && validation.data.inventory && validation.data.inventory.length > 0) {
+      if (validation.valid && validation.data && validation.data.inventory.length > 0) {
         return validation.data.inventory;
       }
     }
@@ -1734,9 +2477,6 @@ function getFallbackLocalInventory(): InventoryItem[] {
   return [];
 }
 
-/**
- * Loads data from isolated localStorage partition with schema version migration.
- */
 export function loadStoredData(targetStoreId?: string): AppData {
   try {
     const key = getLocalStorageKey(targetStoreId);
@@ -1746,21 +2486,22 @@ export function loadStoredData(targetStoreId?: string): AppData {
       const parsed = JSON.parse(raw);
       const validation = validateBackupData(parsed);
       if (validation.valid && validation.data) {
-        if (validation.data.inventory && validation.data.inventory.length > 0) {
+        if (validation.data.inventory.length > 0) {
           return validation.data;
         }
         const fallbackInv = getFallbackLocalInventory();
-        if (fallbackInv.length > 0) {
+        const deletedInv = validation.data.deletedInventoryIds || [];
+        const filteredFallback = fallbackInv.filter(item => !deletedInv.includes(item.id));
+        if (filteredFallback.length > 0) {
           return {
             ...validation.data,
-            inventory: fallbackInv,
+            inventory: filteredFallback,
           };
         }
         return validation.data;
       }
     }
 
-    // Check main store or legacy key fallback
     const mainKey = getLocalStorageKey(DEFAULT_STORE_ID);
     const mainRaw = localStorage.getItem(mainKey);
     if (mainRaw) {
@@ -1785,25 +2526,6 @@ export function loadStoredData(targetStoreId?: string): AppData {
     console.error('Failed to parse local stored data:', error);
     return initialCleanData;
   }
-}
-
-const IDB_NAME = 'FMZ_POS_LOCAL_DATABASE';
-const IDB_STORE_NAME = 'store_data';
-const IDB_VERSION = 1;
-
-let dbPromise: Promise<IDBPDatabase> | null = null;
-
-function getIDB(): Promise<IDBPDatabase> {
-  if (!dbPromise) {
-    dbPromise = openDB(IDB_NAME, IDB_VERSION, {
-      upgrade(database) {
-        if (!database.objectStoreNames.contains(IDB_STORE_NAME)) {
-          database.createObjectStore(IDB_STORE_NAME, { keyPath: 'storeId' });
-        }
-      },
-    });
-  }
-  return dbPromise;
 }
 
 export async function saveToIndexedDB(storeId: string, data: AppData): Promise<void> {
@@ -1831,10 +2553,6 @@ export async function loadFromIndexedDB(storeId: string): Promise<AppData | null
   return null;
 }
 
-/**
- * Strips heavy base64 data URLs to guarantee the synchronous localStorage mirror
- * never exceeds the browser 5MB limit. Full images are safely preserved in IndexedDB and Firestore.
- */
 function stripLargePayloadForLocalStorage(data: AppData): AppData {
   const sanitizeImg = (img?: string): string | undefined => {
     if (!img) return undefined;
@@ -1878,17 +2596,12 @@ function stripLargePayloadForLocalStorage(data: AppData): AppData {
   };
 }
 
-/**
- * Safely writes data to localStorage, handling QuotaExceededError transparently.
- */
 function safeSetLocalStorage(key: string, data: AppData): void {
   try {
     const sanitized = stripLargePayloadForLocalStorage(data);
     localStorage.setItem(key, JSON.stringify(sanitized));
   } catch {
     try {
-      // If still exceeding quota, prune historical records in the localStorage mirror
-      // (Full history remains completely intact in IndexedDB and Firestore)
       const lightweight: AppData = {
         ...stripLargePayloadForLocalStorage(data),
         sales: (data.sales || []).slice(0, 100),
@@ -1897,7 +2610,6 @@ function safeSetLocalStorage(key: string, data: AppData): void {
       localStorage.setItem(key, JSON.stringify(lightweight));
     } catch {
       try {
-        // Clear legacy storage keys to free browser quota
         for (const legacyKey of LEGACY_STORAGE_KEYS) {
           localStorage.removeItem(legacyKey);
         }
@@ -1908,44 +2620,71 @@ function safeSetLocalStorage(key: string, data: AppData): void {
         };
         localStorage.setItem(key, JSON.stringify(minimal));
       } catch {
-        // Silently suppress quota error; full data is in IndexedDB
+        // full data remains intact in IndexedDB
       }
     }
   }
 }
 
-let saveTimeout: ReturnType<typeof setTimeout> | null = null;
-
-/**
- * Primary save routine: Updates isolated local storage mirror, IndexedDB, and Firestore.
- */
 export function saveStoredData(data: AppData, targetStoreId?: string): void {
   const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   const dataWithMeta: AppData = {
     ...data,
     backupVersion: CURRENT_BACKUP_VERSION,
-    lastModified: new Date().toISOString(),
+    lastModified: data.lastModified || new Date().toISOString(),
   };
 
-  // 1. Safe local mirror update (quota-protected)
   const key = getLocalStorageKey(storeId);
   safeSetLocalStorage(key, dataWithMeta);
 
-  // 2. Full offline persistence in IndexedDB (supports hundreds of MBs + images)
   saveToIndexedDB(storeId, dataWithMeta).catch(err => {
     console.warn(`IndexedDB save error for store [${storeId}]:`, err);
   });
+
+  saveDailyAutomaticBackup(storeId, dataWithMeta).catch(() => {});
 }
 
-export function mergeAppData(local: AppData, remote: Partial<AppData>): AppData {
-  const localSnapTime = Date.parse(local.lastModified || '') || 0;
-  const remoteSnapTime = Date.parse(remote.lastModified || '') || 0;
-  const preferLocalWhenAmbiguous = localSnapTime > 0 && remoteSnapTime > 0 && localSnapTime > remoteSnapTime;
+// ==================== MERGE ENGINE WITH TOMBSTONES & FIELD TIMESTAMPS ====================
 
-  const parseTime = (val?: string): number => {
-    if (!val) return 0;
-    const t = Date.parse(val);
-    return Number.isFinite(t) ? t : 0;
+export function mergeAppData(local: AppData, remote: Partial<AppData>): AppData {
+  const localSnapTime = parseTimeMs(local.lastModified);
+  const remoteSnapTime = parseTimeMs(remote.lastModified);
+  // If remote lacks timestamp (0) or local is newer/equal, prefer local when ambiguous
+  const preferLocalWhenAmbiguous =
+    remoteSnapTime === 0 || (localSnapTime > 0 && localSnapTime >= remoteSnapTime);
+
+  const shouldPreferLocalGroup = (localGroupTs?: string, remoteGroupTs?: string): boolean => {
+    const lTs = parseTimeMs(localGroupTs);
+    const rTs = parseTimeMs(remoteGroupTs);
+    if (lTs > 0 && rTs === 0) return true;
+    if (rTs > 0 && lTs === 0) return false;
+    if (lTs > 0 && rTs > 0) return lTs >= rTs;
+    return preferLocalWhenAmbiguous;
+  };
+
+  const { deletedIds: mergedDeletedIds, deletedInventoryIds } = mergeDeletedIds(local, remote);
+
+  const filterTombstoned = <T>(
+    items: T[],
+    key: SyncCollectionKey,
+    idFn: (x: T) => string | undefined,
+    timeFn: (x: T) => string | undefined
+  ): T[] => {
+    const tombstones = mergedDeletedIds[key] || [];
+    if (tombstones.length === 0) return items;
+    return items.filter(item => !isItemTombstoned(idFn(item), timeFn(item), tombstones));
+  };
+
+  const pickByTime = <T>(
+    ex: T,
+    inc: T,
+    getTimeStr: (x: T) => string | undefined
+  ): { winner: T; loser: T } => {
+    const exTime = parseTimeMs(getTimeStr(ex));
+    const incTime = parseTimeMs(getTimeStr(inc));
+    if (exTime > incTime) return { winner: ex, loser: inc };
+    if (incTime > exTime) return { winner: inc, loser: ex };
+    return preferLocalWhenAmbiguous ? { winner: ex, loser: inc } : { winner: inc, loser: ex };
   };
 
   const mergeByField = <T>(
@@ -1969,24 +2708,29 @@ export function mergeAppData(local: AppData, remote: Partial<AppData>): AppData 
     return Array.from(map.values());
   };
 
-  const pickByTime = <T>(
-    ex: T,
-    inc: T,
-    getTimeStr: (x: T) => string | undefined
-  ): { winner: T; loser: T } => {
-    const exTime = parseTime(getTimeStr(ex));
-    const incTime = parseTime(getTimeStr(inc));
-    if (exTime > incTime) return { winner: ex, loser: inc };
-    if (incTime > exTime) return { winner: inc, loser: ex };
-    return preferLocalWhenAmbiguous ? { winner: ex, loser: inc } : { winner: inc, loser: ex };
+  const mergeCollection = <T>(
+    key: SyncCollectionKey,
+    localArr: T[] | undefined,
+    remoteArr: T[] | undefined,
+    idFn: (x: T) => string | undefined,
+    timeFn: (x: T) => string | undefined,
+    customResolve?: (ex: T, inc: T) => T
+  ): T[] => {
+    const base =
+      remoteArr !== undefined
+        ? mergeByField(
+            localArr || [],
+            remoteArr,
+            idFn,
+            customResolve || ((ex, inc) => pickByTime(ex, inc, timeFn).winner)
+          )
+        : localArr || [];
+    return filterTombstoned(base, key, idFn, timeFn);
   };
 
-  const mergeStringArrays = (arr1: string[] = [], arr2: string[] = []): string[] => {
-    return Array.from(new Set([...(arr1 || []), ...(arr2 || [])]));
-  };
-
+  const localWinsSettings = shouldPreferLocalGroup(local.settingsUpdatedAt, remote.settingsUpdatedAt);
   const mergedSettings = remote.settings
-    ? preferLocalWhenAmbiguous
+    ? localWinsSettings
       ? {
           ...remote.settings,
           ...local.settings,
@@ -2005,117 +2749,219 @@ export function mergeAppData(local: AppData, remote: Partial<AppData>): AppData 
         }
     : local.settings;
 
+  const localWinsCategories = shouldPreferLocalGroup(local.categoriesUpdatedAt, remote.categoriesUpdatedAt);
+  const mergedCategories =
+    remote.categories !== undefined
+      ? localWinsCategories && (local.categories?.length || 0) > 0
+        ? local.categories!
+        : remote.categories.length > 0
+        ? remote.categories
+        : local.categories || []
+      : local.categories || [];
+
+  const localWinsExpCategories = shouldPreferLocalGroup(
+    local.expenseCategoriesUpdatedAt,
+    remote.expenseCategoriesUpdatedAt
+  );
+  const mergedExpCategories =
+    remote.expenseCategories !== undefined
+      ? localWinsExpCategories && (local.expenseCategories?.length || 0) > 0
+        ? local.expenseCategories!
+        : remote.expenseCategories
+      : local.expenseCategories || defaultExpenseCategories;
+
+  const localWinsOnlineAccounts = shouldPreferLocalGroup(
+    local.onlineAccountsUpdatedAt,
+    remote.onlineAccountsUpdatedAt
+  );
+  const mergedOnlineAccounts =
+    remote.onlineAccounts !== undefined
+      ? localWinsOnlineAccounts && (local.onlineAccounts?.length || 0) > 0
+        ? local.onlineAccounts!
+        : remote.onlineAccounts
+      : local.onlineAccounts || defaultOnlineAccounts;
+
+  const localWinsTabPrefs = shouldPreferLocalGroup(local.tabPreferencesUpdatedAt, remote.tabPreferencesUpdatedAt);
+  const mergedTabPreferences =
+    remote.tabPreferences !== undefined
+      ? localWinsTabPrefs
+        ? { ...(remote.tabPreferences || {}), ...(local.tabPreferences || {}) }
+        : { ...(local.tabPreferences || {}), ...(remote.tabPreferences || {}) }
+      : local.tabPreferences || {};
+
+  const localWinsUsers = shouldPreferLocalGroup(local.usersUpdatedAt, remote.usersUpdatedAt);
+  const mergedUsers =
+    remote.users !== undefined
+      ? localWinsUsers && (local.users?.length || 0) >= (remote.users?.length || 0)
+        ? local.users!
+        : remote.users
+      : local.users || [];
+
+  const maxIso = (a?: string, b?: string): string | undefined => {
+    const tA = parseTimeMs(a);
+    const tB = parseTimeMs(b);
+    if (tA === 0 && tB === 0) return undefined;
+    return tA >= tB ? a : b;
+  };
+
   return {
     ...local,
     ...remote,
     backupVersion: CURRENT_BACKUP_VERSION,
-    lastModified:
-      localSnapTime > remoteSnapTime
-        ? local.lastModified || new Date().toISOString()
-        : remote.lastModified || local.lastModified || new Date().toISOString(),
+    lastModified: maxIso(local.lastModified, remote.lastModified) || new Date().toISOString(),
+    migrationDone: local.migrationDone || remote.migrationDone,
+    settingsUpdatedAt: maxIso(local.settingsUpdatedAt, remote.settingsUpdatedAt),
+    categoriesUpdatedAt: maxIso(local.categoriesUpdatedAt, remote.categoriesUpdatedAt),
+    expenseCategoriesUpdatedAt: maxIso(local.expenseCategoriesUpdatedAt, remote.expenseCategoriesUpdatedAt),
+    onlineAccountsUpdatedAt: maxIso(local.onlineAccountsUpdatedAt, remote.onlineAccountsUpdatedAt),
+    tabPreferencesUpdatedAt: maxIso(local.tabPreferencesUpdatedAt, remote.tabPreferencesUpdatedAt),
+    usersUpdatedAt: maxIso(local.usersUpdatedAt, remote.usersUpdatedAt),
     settings: mergedSettings,
-    users: remote.users !== undefined ? (preferLocalWhenAmbiguous && (local.users?.length || 0) >= (remote.users?.length || 0) ? local.users! : remote.users) : (local.users || []),
-    deletedInventoryIds: Array.from(new Set([...(local.deletedInventoryIds || []), ...(remote.deletedInventoryIds || [])])),
-    inventory: remote.inventory !== undefined
-      ? mergeByField(local.inventory, remote.inventory, i => i.id, (ex, inc) => {
-          const { winner, loser } = pickByTime(ex, inc, x => x.createdAt);
-          return {
-            ...loser,
-            ...winner,
-            image: winner.image || loser.image,
-          };
-        }).filter(item => {
-          const allDeleted = Array.from(new Set([...(local.deletedInventoryIds || []), ...(remote.deletedInventoryIds || [])]));
-          return !allDeleted.includes(item.id);
-        })
-      : (local.inventory || []).filter(item => !(local.deletedInventoryIds || []).includes(item.id)),
-    sales: remote.sales !== undefined
-      ? mergeByField(local.sales, remote.sales, s => s.invNo, (ex, inc) => pickByTime(ex, inc, x => x.date).winner)
-      : (local.sales || []),
-    khata: remote.khata !== undefined
-      ? mergeByField(local.khata, remote.khata, k => k.id, (ex, inc) => {
-          const { winner, loser } = pickByTime(ex, inc, x => x.lastUpdated);
-          return {
-            ...loser,
-            ...winner,
-            image: winner.image || loser.image,
-            history:
-              (winner.history?.length || 0) >= (loser.history?.length || 0)
-                ? winner.history
-                : loser.history,
-          };
-        })
-      : (local.khata || []),
-    expenses: remote.expenses !== undefined
-      ? mergeByField(local.expenses, remote.expenses, e => e.id, (ex, inc) => {
-          const { winner, loser } = pickByTime(ex, inc, x => x.date);
-          return {
-            ...loser,
-            ...winner,
-            image: winner.image || loser.image,
-          };
-        })
-      : (local.expenses || []),
-    supplierPurchases: remote.supplierPurchases !== undefined
-      ? mergeByField(local.supplierPurchases, remote.supplierPurchases, p => p.id || p.billNo, (ex, inc) => {
-          const { winner, loser } = pickByTime(ex, inc, x => x.reversedAt || x.date);
-          return {
-            ...loser,
-            ...winner,
-            invoiceImage: winner.invoiceImage || loser.invoiceImage,
-          };
-        })
-      : (local.supplierPurchases || []),
-    imeiRecords: remote.imeiRecords !== undefined
-      ? mergeByField(local.imeiRecords, remote.imeiRecords, r => r.id || r.imei, (ex, inc) =>
-          pickByTime(ex, inc, x => x.updatedAt || x.createdAt).winner
-        )
-      : (local.imeiRecords || []),
-    purchasesLedger: remote.purchasesLedger !== undefined
-      ? mergeByField(local.purchasesLedger, remote.purchasesLedger, l => l.id, (ex, inc) =>
-          pickByTime(ex, inc, x => x.date).winner
-        )
-      : (local.purchasesLedger || []),
-    salesReturns: remote.salesReturns !== undefined
-      ? mergeByField(local.salesReturns, remote.salesReturns, ret => ret.returnNo || ret.id, (ex, inc) =>
-          pickByTime(ex, inc, x => x.returnDate).winner
-        )
-      : (local.salesReturns || []),
-    stockAdjustments: remote.stockAdjustments !== undefined
-      ? mergeByField(local.stockAdjustments, remote.stockAdjustments, a => a.id, (ex, inc) =>
-          pickByTime(ex, inc, x => x.adjustedAt).winner
-        )
-      : (local.stockAdjustments || []),
-    dailyClosings: remote.dailyClosings !== undefined
-      ? mergeByField(local.dailyClosings, remote.dailyClosings, d => d.id || d.date, (ex, inc) =>
-          pickByTime(ex, inc, x => x.createdAt || x.date).winner
-        )
-      : (local.dailyClosings || []),
-    activities: remote.activities !== undefined
-      ? mergeByField(local.activities, remote.activities, act => act.id)
-      : (local.activities || []),
-    categories: remote.categories !== undefined
-      ? (preferLocalWhenAmbiguous && (local.categories?.length || 0) > 0 ? local.categories : mergeStringArrays(local.categories, remote.categories))
-      : (local.categories || []),
-    expenseCategories: remote.expenseCategories !== undefined
-      ? (preferLocalWhenAmbiguous && (local.expenseCategories?.length || 0) > 0 ? local.expenseCategories : mergeStringArrays(local.expenseCategories, remote.expenseCategories))
-      : (local.expenseCategories || defaultExpenseCategories),
+    categories: mergedCategories,
+    expenseCategories: mergedExpCategories,
+    onlineAccounts: mergedOnlineAccounts,
+    tabPreferences: mergedTabPreferences,
+    users: mergedUsers,
+    deletedIds: mergedDeletedIds,
+    deletedInventoryIds,
+    inventory: mergeCollection<InventoryItem>(
+      'inventory',
+      local.inventory,
+      remote.inventory,
+      i => i.id,
+      i => i.updatedAt || i.createdAt,
+      (ex, inc) => {
+        const { winner, loser } = pickByTime(ex, inc, x => x.updatedAt || x.createdAt);
+        return {
+          ...loser,
+          ...winner,
+          image: winner.image || loser.image,
+        };
+      }
+    ),
+    sales: mergeCollection<SaleRecord>(
+      'sales',
+      local.sales,
+      remote.sales,
+      s => s.invNo,
+      s => s.updatedAt || s.date
+    ),
+    khata: mergeCollection<KhataCustomer>(
+      'khata',
+      local.khata,
+      remote.khata,
+      k => k.id,
+      k => k.updatedAt || k.lastUpdated,
+      (ex, inc) => {
+        const { winner, loser } = pickByTime(ex, inc, x => x.updatedAt || x.lastUpdated);
+        return {
+          ...loser,
+          ...winner,
+          image: winner.image || loser.image,
+          history:
+            (winner.history?.length || 0) >= (loser.history?.length || 0)
+              ? winner.history
+              : loser.history,
+        };
+      }
+    ),
+    expenses: mergeCollection<ExpenseItem>(
+      'expenses',
+      local.expenses,
+      remote.expenses,
+      e => e.id,
+      e => e.updatedAt || e.date,
+      (ex, inc) => {
+        const { winner, loser } = pickByTime(ex, inc, x => x.updatedAt || x.date);
+        return {
+          ...loser,
+          ...winner,
+          image: winner.image || loser.image,
+        };
+      }
+    ),
+    supplierPurchases: mergeCollection<SupplierPurchase>(
+      'supplierPurchases',
+      local.supplierPurchases,
+      remote.supplierPurchases,
+      p => p.id || p.billNo,
+      p => p.updatedAt || p.reversedAt || p.date,
+      (ex, inc) => {
+        const { winner, loser } = pickByTime(ex, inc, x => x.updatedAt || x.reversedAt || x.date);
+        return {
+          ...loser,
+          ...winner,
+          invoiceImage: winner.invoiceImage || loser.invoiceImage,
+        };
+      }
+    ),
+    imeiRecords: mergeCollection<ImeiRecord>(
+      'imeiRecords',
+      local.imeiRecords,
+      remote.imeiRecords,
+      r => r.id || r.imei,
+      r => r.updatedAt || r.createdAt
+    ),
+    purchasesLedger: mergeCollection<PurchaseLedgerEntry>(
+      'purchasesLedger',
+      local.purchasesLedger,
+      remote.purchasesLedger,
+      l => l.id,
+      l => l.updatedAt || l.date
+    ),
+    salesReturns: mergeCollection<SalesReturnRecord>(
+      'salesReturns',
+      local.salesReturns,
+      remote.salesReturns,
+      r => r.returnNo || r.id,
+      r => r.updatedAt || r.returnDate
+    ),
+    stockAdjustments: mergeCollection<StockAdjustment>(
+      'stockAdjustments',
+      local.stockAdjustments,
+      remote.stockAdjustments,
+      a => a.id,
+      a => a.updatedAt || a.adjustedAt
+    ),
+    dailyClosings: mergeCollection<DailyClosingRecord>(
+      'dailyClosings',
+      local.dailyClosings,
+      remote.dailyClosings,
+      d => d.id || d.date,
+      d => d.updatedAt || d.createdAt || d.date
+    ),
+    activities: mergeCollection<ActivityLog>(
+      'activities',
+      local.activities,
+      remote.activities,
+      act => act.id,
+      act => act.updatedAt || act.timestamp
+    ),
   };
 }
 
+// ==================== MANUAL RECOVERY UTILITY (RESPECTS TOMBSTONES) ====================
+
 /**
- * Deep recovery utility that scans Firestore sub-collections, root docs, legacy collections,
- * IndexedDB, and all localStorage partitions to recover any missing Stock Inward / purchase / ledger / IMEI records.
+ * Manual-only recovery utility invoked when user explicitly clicks "Recover missing data".
+ * Respects `deletedIds` tombstones strictly so deleted records are NEVER resurrected.
  */
 export async function recoverAllMissingStoreData(
   currentData: AppData,
   targetStoreId?: string
-): Promise<{ mergedData: AppData; recoveredPurchasesCount: number }> {
+): Promise<{ mergedData: AppData; recoveredPurchasesCount: number; totalRecoveredCount: number }> {
   const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
+  const initialCount =
+    (currentData.supplierPurchases?.length || 0) +
+    (currentData.inventory?.length || 0) +
+    (currentData.sales?.length || 0) +
+    (currentData.khata?.length || 0) +
+    (currentData.expenses?.length || 0);
   const initialPurchaseCount = (currentData.supplierPurchases || []).length;
+
   let accumulatedData: AppData = { ...currentData };
 
-  // 1. Scan all localStorage partitions (current store, default store, legacy keys)
+  // 1. Scan localStorage partitions
   try {
     const candidateKeys = Array.from(
       new Set([
@@ -2135,14 +2981,14 @@ export async function recoverAllMissingStoreData(
           accumulatedData = mergeAppData(accumulatedData, validation.data);
         }
       } catch {
-        // ignore malformed local key
+        // ignore
       }
     }
   } catch {
-    // ignore localStorage read errors
+    // ignore
   }
 
-  // 2. Scan IndexedDB across storeId and known store keys
+  // 2. Scan IndexedDB across store keys
   const storeIdsToScan = Array.from(
     new Set([storeId, DEFAULT_STORE_ID, 'USR-ADM-1793988681742', 'USR-ADM-1793966178251'])
   ).filter(Boolean);
@@ -2158,7 +3004,7 @@ export async function recoverAllMissingStoreData(
     }
   }
 
-  // 3. Scan Firestore stores/{sid} root + subcollections (only if quota not exceeded)
+  // 3. Scan Firestore stores/{sid} + legacy pos_data (respecting tombstones via mergeAppData)
   if (!getQuotaExceededFlag()) {
     for (const sid of storeIdsToScan) {
       try {
@@ -2171,29 +3017,10 @@ export async function recoverAllMissingStoreData(
       }
     }
 
-    // 4. Scan legacy pos_data/main_store collection
     try {
       const legacyStore = await loadAppDataFromLegacyFirestore();
       if (legacyStore) {
         accumulatedData = mergeAppData(accumulatedData, legacyStore);
-      }
-      const [legacyPurSnap, legacyLedgerSnap, legacyImeiSnap] = await Promise.all([
-        getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.PURCHASES)).catch(() => null),
-        getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.PURCHASES_LEDGER)).catch(() => null),
-        getDocs(collection(db, LEGACY_FIRESTORE_COLLECTION, DEFAULT_STORE_ID, SUB_COLLECTIONS.IMEI_RECORDS)).catch(() => null),
-      ]);
-      const extraPatch: Partial<AppData> = {};
-      if (legacyPurSnap && !legacyPurSnap.empty) {
-        extraPatch.supplierPurchases = legacyPurSnap.docs.map(d => d.data() as SupplierPurchase);
-      }
-      if (legacyLedgerSnap && !legacyLedgerSnap.empty) {
-        extraPatch.purchasesLedger = legacyLedgerSnap.docs.map(d => d.data() as PurchaseLedgerEntry);
-      }
-      if (legacyImeiSnap && !legacyImeiSnap.empty) {
-        extraPatch.imeiRecords = legacyImeiSnap.docs.map(d => d.data() as ImeiRecord);
-      }
-      if (Object.keys(extraPatch).length > 0) {
-        accumulatedData = mergeAppData(accumulatedData, extraPatch);
       }
     } catch {
       // ignore
@@ -2202,40 +3029,40 @@ export async function recoverAllMissingStoreData(
 
   const finalPurchaseCount = (accumulatedData.supplierPurchases || []).length;
   const recoveredPurchasesCount = Math.max(0, finalPurchaseCount - initialPurchaseCount);
+  const finalCount =
+    (accumulatedData.supplierPurchases?.length || 0) +
+    (accumulatedData.inventory?.length || 0) +
+    (accumulatedData.sales?.length || 0) +
+    (accumulatedData.khata?.length || 0) +
+    (accumulatedData.expenses?.length || 0);
+  const totalRecoveredCount = Math.max(0, finalCount - initialCount);
 
-  // Persist recovered dataset locally and sync back to primary store sub-collections
   await saveToIndexedDB(storeId, accumulatedData);
   safeSetLocalStorage(getLocalStorageKey(storeId), accumulatedData);
 
-  if (recoveredPurchasesCount > 0 && !getQuotaExceededFlag()) {
+  if (totalRecoveredCount > 0 && !getQuotaExceededFlag()) {
     for (const pur of accumulatedData.supplierPurchases || []) {
       savePurchaseToFirestore(pur, storeId).catch(() => {});
     }
     savePurchasesLedgerBatchToFirestore(accumulatedData.purchasesLedger || [], storeId).catch(() => {});
     saveImeiRecordsBatchToFirestore(accumulatedData.imeiRecords || [], storeId).catch(() => {});
-    saveRootConfigToFirestore(
-      {
-        supplierPurchases: accumulatedData.supplierPurchases,
-        purchasesLedger: accumulatedData.purchasesLedger,
-        imeiRecords: accumulatedData.imeiRecords,
-        dailyClosings: accumulatedData.dailyClosings,
-        salesReturns: accumulatedData.salesReturns,
-        stockAdjustments: accumulatedData.stockAdjustments,
-      },
-      storeId
-    ).catch(() => {});
   }
 
   return {
     mergedData: accumulatedData,
     recoveredPurchasesCount,
+    totalRecoveredCount,
   };
 }
 
+// ==================== STARTUP INITIALIZATION ====================
+
 /**
- * Safe Data Migration and Initialization Utility:
- * Reads from localStorage for instant render, IndexedDB for high-res images,
- * and reconciles with Firestore.
+ * Exact startup order:
+ * 1) Load IndexedDB / localStorage -> show UI immediately
+ * 2) Start pending-writes queue retry engine (uploads ONLY pending local writes)
+ * 3) Fetch Firestore -> merge with tombstones -> done (NEVER bulk uploads local state)
+ * 4) If root doc exists and !migrationDone, run one-time migration cleanly.
  */
 export async function migrateAndInitializeData(
   onDataLoaded: (data: AppData) => void,
@@ -2244,12 +3071,12 @@ export async function migrateAndInitializeData(
 ): Promise<void> {
   const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   setActiveStoreId(storeId);
+  startSyncBackgroundLoop();
 
   try {
     let currentBestData: AppData;
 
     if (options?.currentState) {
-      // Already running session: start from live React state (never revert to stripped localStorage!)
       currentBestData = options.currentState;
       try {
         const idbData = await loadFromIndexedDB(storeId);
@@ -2261,12 +3088,12 @@ export async function migrateAndInitializeData(
         console.warn('Manual sync IndexedDB rehydration warning:', idbErr);
       }
     } else {
-      // Cold boot: 1. Instant zero-latency render from localStorage mirror
+      // 1. Immediate render from localStorage mirror
       const localData = loadStoredData(storeId);
       currentBestData = localData;
       onDataLoaded(localData);
 
-      // 2. Fast rehydration from IndexedDB (contains full images and full offline records)
+      // 2. Load IndexedDB -> merge with tombstones -> show UI immediately
       try {
         const idbData = await loadFromIndexedDB(storeId);
         if (idbData) {
@@ -2278,53 +3105,34 @@ export async function migrateAndInitializeData(
       }
     }
 
-    // 3. Reconcile any entries saved under the logged-in admin's USR-ADM-* storeId from prior sessions
-    const sessionUser = getSavedSessionUser();
-    if (sessionUser?.storeId && sessionUser.storeId !== storeId) {
-      try {
-        const shadowRemote = await loadAppDataFromFirestore(sessionUser.storeId);
-        if (shadowRemote) {
-          currentBestData = mergeAppData(currentBestData, shadowRemote);
-        }
-      } catch {
-        // ignore shadow store read issues
-      }
-    }
+    // Save today's automatic daily safety backup in IndexedDB
+    saveDailyAutomaticBackup(storeId, currentBestData).catch(() => {});
 
-    // 4. Remote synchronization from Firebase Firestore primary store
+    // Flush any pending writes queued while offline
+    processPendingWritesQueue().catch(() => {});
+
+    // 3. Fetch Firestore -> merge with tombstones (NO saveAppDataToFirestore upload at startup!)
     const remoteData = await loadAppDataFromFirestore(storeId);
 
     if (remoteData) {
-      const localTime = Date.parse(currentBestData.lastModified || '') || 0;
-      const remoteTime = Date.parse(remoteData.lastModified || '') || 0;
+      let mergedData = mergeAppData(currentBestData, remoteData);
 
-      // Timestamp-aware merge preserves newer local edits & product images while pulling newer cloud entries
-      const mergedData = mergeAppData(currentBestData, remoteData);
+      // 4. One-time subcollection migration if needed
+      if (!remoteData.migrationDone) {
+        const migrated = await runOneTimeSubcollectionMigration(mergedData, remoteData, storeId);
+        if (migrated) {
+          mergedData = migrated;
+        }
+      }
 
-      // Update IndexedDB (full payload) and safe localStorage mirror
       await saveToIndexedDB(storeId, mergedData);
       safeSetLocalStorage(getLocalStorageKey(storeId), mergedData);
-
       onDataLoaded(mergedData);
-
-      // If local/IDB or shadow admin store had newer/more records than primary cloud store, sync up to primary cloud store
-      const localHadNewerOrExtra =
-        localTime > remoteTime ||
-        (mergedData.inventory?.length || 0) > (remoteData.inventory?.length || 0) ||
-        (mergedData.sales?.length || 0) > (remoteData.sales?.length || 0) ||
-        (mergedData.khata?.length || 0) > (remoteData.khata?.length || 0) ||
-        (mergedData.expenses?.length || 0) > (remoteData.expenses?.length || 0) ||
-        (mergedData.supplierPurchases?.length || 0) > (remoteData.supplierPurchases?.length || 0);
-
-      if (localHadNewerOrExtra && !getQuotaExceededFlag()) {
-        saveAppDataToFirestore(mergedData, storeId).catch(() => {});
-      }
     } else {
-      // If remote store data could not be reached, preserve current best local data
       onDataLoaded(currentBestData);
     }
   } catch (err) {
-    console.error(`Error in safe data migration/sync with Firestore for store [${storeId}]:`, err);
+    console.error(`Error initializing store [${storeId}]:`, err);
     onDataLoaded(options?.currentState || loadStoredData(storeId));
   }
 }
@@ -2332,10 +3140,24 @@ export async function migrateAndInitializeData(
 export const initializeIndexedDB = migrateAndInitializeData;
 
 /**
- * Resets all stored data cleanly for the active store across localStorage, IndexedDB, and Firestore.
+ * Resets all stored data cleanly for the active store.
+ * Automatically downloads a JSON backup of current data first so nothing can be lost by mistake.
  */
-export async function clearAllStoredData(targetStoreId?: string): Promise<AppData> {
+export async function clearAllStoredData(targetStoreId?: string, currentData?: AppData): Promise<AppData> {
   const storeId = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
+
+  // Automatically download a JSON backup before destructive clear
+  const dataToBackup = currentData || (await loadFromIndexedDB(storeId)) || loadStoredData(storeId);
+  if (
+    dataToBackup &&
+    ((dataToBackup.inventory?.length || 0) > 0 ||
+      (dataToBackup.sales?.length || 0) > 0 ||
+      (dataToBackup.khata?.length || 0) > 0 ||
+      (dataToBackup.expenses?.length || 0) > 0 ||
+      (dataToBackup.supplierPurchases?.length || 0) > 0)
+  ) {
+    downloadJsonBackup(dataToBackup, 'safety_backup_before_clear_');
+  }
 
   try {
     localStorage.removeItem(getLocalStorageKey(storeId));
@@ -2356,7 +3178,17 @@ export async function clearAllStoredData(targetStoreId?: string): Promise<AppDat
     // ignore
   }
 
-  const clean: AppData = { ...initialCleanData, lastModified: new Date().toISOString() };
+  const now = new Date().toISOString();
+  const clean: AppData = {
+    ...initialCleanData,
+    lastModified: now,
+    settingsUpdatedAt: now,
+    categoriesUpdatedAt: now,
+    expenseCategoriesUpdatedAt: now,
+    onlineAccountsUpdatedAt: now,
+    tabPreferencesUpdatedAt: now,
+    migrationDone: true,
+  };
 
   try {
     await saveAppDataToFirestore(clean, storeId);
