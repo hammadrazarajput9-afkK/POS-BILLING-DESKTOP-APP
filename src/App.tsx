@@ -28,7 +28,10 @@ import {
   saveCurrentSession,
   getSavedSessionUser,
   clearCurrentSession,
-  loadAppDataFromFirestore,
+  loadAppDataFromFirestoreWithMeta,
+  reconcileWithAuthoritativeCloud,
+  getPendingWrites,
+  clearActivitiesFromFirestore,
   subscribeToStoreFullData,
   saveInventoryItemToFirestore,
   savePurchaseToFirestore,
@@ -404,9 +407,16 @@ function AppContent() {
                 mergedItem.invoiceImage = (item as any).invoiceImage || existingItem.invoiceImage;
               } else if (colKey === 'khata') {
                 mergedItem.image = (item as any).image || existingItem.image;
-                const exHist = Array.isArray(existingItem.history) ? existingItem.history : [];
+                const deletedTxIds = Array.from(
+                  new Set([
+                    ...(Array.isArray(existingItem.deletedTxIds) ? existingItem.deletedTxIds : []),
+                    ...(Array.isArray((item as any).deletedTxIds) ? (item as any).deletedTxIds : []),
+                  ])
+                );
+                const deletedTxSet = new Set(deletedTxIds);
                 const incHist = Array.isArray((item as any).history) ? (item as any).history : [];
-                mergedItem.history = incHist.length >= exHist.length ? incHist : exHist;
+                mergedItem.deletedTxIds = deletedTxIds.length > 0 ? deletedTxIds : undefined;
+                mergedItem.history = incHist.filter((tx: any) => !deletedTxSet.has(tx.id));
               }
 
               if (JSON.stringify(existingItem) !== JSON.stringify(mergedItem)) {
@@ -478,7 +488,7 @@ function AppContent() {
       await migrateAndInitializeData(
         (reloadedData) => {
           setData(prev => ({
-            ...mergeAppData(prev, reloadedData),
+            ...reloadedData,
             currentUser: prev.currentUser,
             currentRole: prev.currentRole || prev.currentUser?.role || 'admin',
           }));
@@ -1651,19 +1661,18 @@ function AppContent() {
               })
               .catch(() => {});
 
-            // 3. Background refresh & deep merge from Cloud Firestore (including any prior USR-ADM-* shadow writes)
-            Promise.all([
-              loadAppDataFromFirestore(activeStoreId).catch(() => null),
-              user.storeId && user.storeId !== activeStoreId
-                ? loadAppDataFromFirestore(user.storeId).catch(() => null)
-                : Promise.resolve(null),
-            ])
-              .then(([remoteData, shadowRemote]) => {
-                if (remoteData || shadowRemote) {
+            // 3. Background refresh & authoritative reconciliation from Cloud Firestore (main_store)
+            (async () => {
+              try {
+                await processPendingWritesQueue().catch(() => {});
+                const pendingOps = await getPendingWrites();
+                const { data: remoteData, fromServer } = await loadAppDataFromFirestoreWithMeta(activeStoreId);
+                if (remoteData) {
                   setData(prev => {
-                    let merged = prev;
-                    if (shadowRemote) merged = mergeAppData(merged, shadowRemote);
-                    if (remoteData) merged = mergeAppData(merged, remoteData);
+                    const merged =
+                      pendingOps.length === 0 && fromServer
+                        ? reconcileWithAuthoritativeCloud(prev, remoteData)
+                        : mergeAppData(prev, remoteData);
 
                     const rUsers = (merged.users || []).filter(
                       u => u && u.id && (u.role !== 'admin' || u.id === user.id)
@@ -1677,17 +1686,13 @@ function AppContent() {
                       currentRole: prev.currentRole || user.role,
                     };
                     saveStoredData(finalData, activeStoreId);
-
-                    // Flush only pending offline writes (never bulk upload entire local state on login!)
-                    processPendingWritesQueue().catch(() => {});
-
                     return finalData;
                   });
                 }
-              })
-              .catch(err => {
+              } catch (err) {
                 console.warn('Background remote load on auth notice:', err);
-              });
+              }
+            })();
 
             saveUserToFirestore(user, activeStoreId).catch(() => {});
           }}
@@ -1917,7 +1922,35 @@ function AppContent() {
               <ActivityCenterTab
                 activities={data.activities || []}
                 onClearActivities={() => {
-                  setData(prev => ({ ...prev, activities: [] }));
+                  const currentIds = (data.activities || []).map(a => a.id).filter(Boolean);
+                  const now = new Date().toISOString();
+                  const tombRes = addTombstonesToMap(
+                    data.deletedIds,
+                    'activities',
+                    currentIds,
+                    data.deletedInventoryIds
+                  );
+                  setData(prev => {
+                    const prevIds = (prev.activities || []).map(a => a.id).filter(Boolean);
+                    const prevTomb = addTombstonesToMap(
+                      prev.deletedIds,
+                      'activities',
+                      prevIds,
+                      prev.deletedInventoryIds
+                    );
+                    return {
+                      ...prev,
+                      lastModified: now,
+                      activities: [],
+                      deletedIds: prevTomb.deletedIds,
+                      deletedInventoryIds: prevTomb.deletedInventoryIds,
+                    };
+                  });
+                  clearActivitiesFromFirestore(currentIds).catch(() => {});
+                  saveRootConfigToFirestore({
+                    deletedIds: tombRes.deletedIds,
+                    deletedInventoryIds: tombRes.deletedInventoryIds,
+                  }).catch(() => {});
                   showToast('Activities log cleared', 'info');
                 }}
                 onOpenPdfReport={() => handleOpenPdfReport('activity')}

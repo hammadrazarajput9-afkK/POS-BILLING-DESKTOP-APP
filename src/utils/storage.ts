@@ -22,6 +22,7 @@ import {
   SyncCollectionKey,
   PendingWriteOp,
   DailyBackupSnapshot,
+  MobileVariant,
 } from '../types';
 import {
   db,
@@ -44,10 +45,12 @@ import {
 import {
   doc,
   getDoc,
+  getDocFromServer,
   setDoc,
   deleteDoc,
   collection,
   getDocs,
+  getDocsFromServer,
   writeBatch,
   query,
   orderBy,
@@ -161,17 +164,26 @@ export const defaultSettings: ShopSettings = {
 
 export const defaultCategories: string[] = ['Android Phone', 'Keypad Phone'];
 
+export function normalizeCategoriesList(rawCategories: unknown): string[] {
+  if (!Array.isArray(rawCategories)) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of rawCategories) {
+    const trimmed = String(raw ?? '').trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(trimmed);
+  }
+  return result;
+}
+
 export function cleanCategories(rawCategories: unknown): string[] {
-  const oldDefaults = new Set(['android mobile', 'accessories', 'chargers & cables', 'audio & airpods', 'repair parts']);
-  const list = Array.isArray(rawCategories) ? rawCategories.map(c => String(c).trim()).filter(Boolean) : [];
-  const filtered = list.filter(c => !oldDefaults.has(c.toLowerCase()));
-  if (!filtered.some(c => c.toLowerCase() === 'android phone' || c.toLowerCase() === 'android mobile')) {
-    filtered.unshift('Android Phone');
+  if (!Array.isArray(rawCategories)) {
+    return [...defaultCategories];
   }
-  if (!filtered.some(c => c.toLowerCase() === 'keypad phone')) {
-    filtered.push('Keypad Phone');
-  }
-  return filtered.map(c => (c.toLowerCase() === 'android mobile' ? 'Android Phone' : c));
+  return normalizeCategoriesList(rawCategories);
 }
 
 export const defaultExpenseCategories: string[] = [
@@ -569,7 +581,7 @@ export function validateBackupData(parsed: unknown): BackupValidationResult {
     purchasesLedger: Array.isArray(raw.purchasesLedger) ? (raw.purchasesLedger as PurchaseLedgerEntry[]) : [],
     supplierPurchases: Array.isArray(raw.supplierPurchases) ? (raw.supplierPurchases as SupplierPurchase[]) : [],
     settings: mergedSettings,
-    categories: cleanCategories(raw.categories),
+    categories: Array.isArray(raw.categories) ? normalizeCategoriesList(raw.categories) : defaultCategories,
     expenseCategories: Array.isArray(raw.expenseCategories) ? (raw.expenseCategories as string[]) : defaultExpenseCategories,
     activities: Array.isArray(raw.activities) ? (raw.activities as ActivityLog[]) : [],
     dailyClosings: Array.isArray(raw.dailyClosings) ? raw.dailyClosings : [],
@@ -1106,6 +1118,7 @@ export async function saveSaleAtomic(
       id: string;
       newQty: number;
       remainingImeis?: string[];
+      variants?: MobileVariant[];
       updatedAt?: string;
     }>;
     khataUpdate?: {
@@ -1129,6 +1142,27 @@ export async function saveSaleAtomic(
   const saleWithTs: SaleRecord = { ...sale, updatedAt: sale.updatedAt || now };
   const saleDocId = toValidFirestoreDocId(sale.invNo, 'INV');
 
+  const buildInvUpdatePayload = (invUpdate: {
+    id: string;
+    newQty: number;
+    remainingImeis?: string[];
+    variants?: MobileVariant[];
+    updatedAt?: string;
+  }): Record<string, unknown> => {
+    const updateData: Record<string, unknown> = {
+      qty: invUpdate.newQty,
+      updatedAt: invUpdate.updatedAt || now,
+    };
+    if (invUpdate.remainingImeis !== undefined) {
+      updateData.imeis = invUpdate.remainingImeis;
+      updateData.imei = invUpdate.remainingImeis.length > 0 ? invUpdate.remainingImeis.join(', ') : null;
+    }
+    if (invUpdate.variants !== undefined) {
+      updateData.variants = invUpdate.variants;
+    }
+    return updateData;
+  };
+
   const enqueueIndividualOps = async (reason?: string) => {
     await enqueuePendingWrite({
       op: 'set',
@@ -1139,14 +1173,7 @@ export async function saveSaleAtomic(
     });
     for (const invUpdate of inventoryUpdates) {
       const invId = toValidFirestoreDocId(invUpdate.id, 'STK');
-      const updateData: Record<string, unknown> = {
-        qty: invUpdate.newQty,
-        updatedAt: invUpdate.updatedAt || now,
-      };
-      if (invUpdate.remainingImeis) {
-        updateData.imeis = invUpdate.remainingImeis;
-        updateData.imei = invUpdate.remainingImeis.join(', ');
-      }
+      const updateData = buildInvUpdatePayload(invUpdate);
       await enqueuePendingWrite({
         op: 'set',
         path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.INVENTORY}/${invId}`,
@@ -1200,14 +1227,7 @@ export async function saveSaleAtomic(
 
     for (const invUpdate of inventoryUpdates) {
       const invDocRef = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.INVENTORY, toValidFirestoreDocId(invUpdate.id, 'STK'));
-      const updateData: Record<string, unknown> = {
-        qty: invUpdate.newQty,
-        updatedAt: invUpdate.updatedAt || now,
-      };
-      if (invUpdate.remainingImeis) {
-        updateData.imeis = invUpdate.remainingImeis;
-        updateData.imei = invUpdate.remainingImeis.join(', ');
-      }
+      const updateData = buildInvUpdatePayload(invUpdate);
       batch.set(invDocRef, sanitizeForFirestore(updateData) as Record<string, unknown>, { merge: true });
     }
 
@@ -1354,6 +1374,54 @@ export async function saveActivityLogToFirestore(activity: ActivityLog, targetSt
     data: payload as unknown as Record<string, unknown>,
     merge: true,
   });
+}
+
+export async function clearActivitiesFromFirestore(activityIds: string[], targetStoreId?: string): Promise<void> {
+  if (!activityIds || activityIds.length === 0) return;
+  const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
+
+  const enqueueAll = async (reason?: string) => {
+    for (const id of activityIds) {
+      if (!id || !id.trim()) continue;
+      const docId = toValidFirestoreDocId(id, 'ACT');
+      await enqueuePendingWrite({
+        op: 'delete',
+        path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.ACTIVITIES}/${docId}`,
+        lastError: reason,
+      });
+    }
+  };
+
+  if ((typeof navigator !== 'undefined' && !navigator.onLine) || getQuotaExceededFlag()) {
+    await enqueueAll('Offline or quota cooldown');
+    return;
+  }
+
+  try {
+    const user = await ensureAnonymousAuth();
+    if (!user) {
+      await enqueueAll(getLastCloudError() || 'Firebase Auth unavailable');
+      return;
+    }
+
+    const chunks = chunkArray(activityIds.filter(id => Boolean(id && id.trim())), 450);
+    for (const chunk of chunks) {
+      const batch = writeBatch(db);
+      for (const id of chunk) {
+        const docId = toValidFirestoreDocId(id, 'ACT');
+        const ref = doc(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.ACTIVITIES, docId);
+        batch.delete(ref);
+      }
+      await awaitWriteWithQuotaAndTimeout(batch.commit());
+      recordCloudWrite(chunk.length);
+    }
+    setLastCloudError(null);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (isQuotaError(err)) setQuotaExceededFlag(true);
+    else setLastCloudError(`Clear activities failed: ${msg}`);
+    await enqueueAll(msg);
+  }
 }
 
 export async function savePurchaseToFirestore(purchase: SupplierPurchase, targetStoreId?: string): Promise<void> {
@@ -1664,7 +1732,11 @@ export function subscribeToStoreRootConfig(
         };
 
         if (rootData.settings !== undefined) patch.settings = rootData.settings as ShopSettings;
-        if (rootData.categories !== undefined) patch.categories = rootData.categories as string[];
+        if (rootData.categories !== undefined) {
+          patch.categories = Array.isArray(rootData.categories)
+            ? normalizeCategoriesList(rootData.categories)
+            : [];
+        }
         if (rootData.expenseCategories !== undefined) patch.expenseCategories = rootData.expenseCategories as string[];
         if (rootData.onlineAccounts !== undefined) patch.onlineAccounts = rootData.onlineAccounts as OnlineAccount[];
         if (rootData.tabPreferences !== undefined) patch.tabPreferences = rootData.tabPreferences as TabPreferences;
@@ -1790,7 +1862,7 @@ export function subscribeToStoreFullData(
 
 export async function saveUserToFirestore(user: UserAccount, targetStoreId?: string): Promise<void> {
   const effectiveStoreId = toValidFirestoreDocId(
-    user.storeId || targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID,
+    targetStoreId || currentActiveStoreId || user.storeId || DEFAULT_STORE_ID,
     'STR'
   );
   const userDocId = toValidFirestoreDocId(user.id, 'USR');
@@ -2009,25 +2081,60 @@ export async function saveAppDataToFirestore(data: AppData, targetStoreId?: stri
 
 // ==================== SINGLE SOURCE OF TRUTH LOAD FROM FIRESTORE ====================
 
-export async function loadAppDataFromFirestore(targetStoreId?: string): Promise<AppData | null> {
-  if (getQuotaExceededFlag()) return null;
+export interface CloudLoadResult {
+  data: AppData | null;
+  fromServer: boolean;
+}
+
+export async function loadAppDataFromFirestoreWithMeta(targetStoreId?: string): Promise<CloudLoadResult> {
+  if (getQuotaExceededFlag()) return { data: null, fromServer: false };
   const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
 
   try {
     const authUser = await ensureAnonymousAuth();
-    if (!authUser) return null;
+    if (!authUser) return { data: null, fromServer: false };
 
     const rootDocRef = doc(db, STORES_COLLECTION, storeId);
-    const rootDocSnap = await getDoc(rootDocRef);
+    let fromServer = false;
+    let rootDocSnap: any;
+    try {
+      rootDocSnap = await getDocFromServer(rootDocRef);
+      fromServer = true;
+    } catch (srvErr: any) {
+      const code = srvErr?.code || '';
+      if (code === 'permission-denied' || isQuotaError(srvErr)) {
+        throw srvErr;
+      }
+      rootDocSnap = await getDoc(rootDocRef);
+      fromServer = Boolean(rootDocSnap && rootDocSnap.metadata && !rootDocSnap.metadata.fromCache);
+    }
 
     if (!rootDocSnap.exists()) {
-      return null;
+      return { data: null, fromServer };
     }
 
     const rootData = rootDocSnap.data() as Record<string, unknown>;
     const normalizedDeleted = normalizeDeletedIds(rootData as Partial<AppData>);
 
     const emptySnap = { docs: [], forEach: () => {} } as any;
+    const fetchSubSnap = async (qOrRef: any, allowEmptyFallback = false) => {
+      try {
+        const snap = await getDocsFromServer(qOrRef);
+        return snap;
+      } catch (err: any) {
+        const code = err?.code || '';
+        if (code === 'permission-denied' || isQuotaError(err)) {
+          throw err;
+        }
+        fromServer = false;
+        try {
+          return await getDocs(qOrRef);
+        } catch {
+          return allowEmptyFallback ? emptySnap : null;
+        }
+      }
+    };
+
     const [
       salesSnap,
       invSnap,
@@ -2042,24 +2149,24 @@ export async function loadAppDataFromFirestore(targetStoreId?: string): Promise<
       ledgerSnap,
       imeiSnap,
     ] = await Promise.all([
-      getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.SALES)),
-      getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.INVENTORY)),
-      getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.KHATA)),
-      getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.EXPENSES)),
-      getDocs(
+      fetchSubSnap(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.SALES)),
+      fetchSubSnap(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.INVENTORY)),
+      fetchSubSnap(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.KHATA)),
+      fetchSubSnap(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.EXPENSES)),
+      fetchSubSnap(
         query(
           collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.ACTIVITIES),
           orderBy('timestamp', 'desc'),
-          limit(300)
+          limit(200)
         )
-      ).catch(() => getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.ACTIVITIES))),
-      getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.USERS)).catch(() => emptySnap),
-      getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.PURCHASES)).catch(() => emptySnap),
-      getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.DAILY_CLOSINGS)).catch(() => emptySnap),
-      getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.SALES_RETURNS)).catch(() => emptySnap),
-      getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.STOCK_ADJUSTMENTS)).catch(() => emptySnap),
-      getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.PURCHASES_LEDGER)).catch(() => emptySnap),
-      getDocs(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.IMEI_RECORDS)).catch(() => emptySnap),
+      ).catch(() => fetchSubSnap(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.ACTIVITIES), true)),
+      fetchSubSnap(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.USERS), true),
+      fetchSubSnap(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.PURCHASES), true),
+      fetchSubSnap(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.DAILY_CLOSINGS), true),
+      fetchSubSnap(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.SALES_RETURNS), true),
+      fetchSubSnap(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.STOCK_ADJUSTMENTS), true),
+      fetchSubSnap(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.PURCHASES_LEDGER), true),
+      fetchSubSnap(collection(db, STORES_COLLECTION, storeId, SUB_COLLECTIONS.IMEI_RECORDS), true),
     ]);
 
     const readSubCollection = <T>(
@@ -2170,7 +2277,7 @@ export async function loadAppDataFromFirestore(targetStoreId?: string): Promise<
       tabPreferencesUpdatedAt: typeof rootData.tabPreferencesUpdatedAt === 'string' ? rootData.tabPreferencesUpdatedAt : undefined,
       usersUpdatedAt: typeof rootData.usersUpdatedAt === 'string' ? rootData.usersUpdatedAt : undefined,
       settings: (rootData.settings as ShopSettings) || defaultSettings,
-      categories: Array.isArray(rootData.categories) ? cleanCategories(rootData.categories) : [],
+      categories: Array.isArray(rootData.categories) ? normalizeCategoriesList(rootData.categories) : defaultCategories,
       expenseCategories: Array.isArray(rootData.expenseCategories) ? (rootData.expenseCategories as string[]) : defaultExpenseCategories,
       onlineAccounts: Array.isArray(rootData.onlineAccounts) ? (rootData.onlineAccounts as OnlineAccount[]) : defaultOnlineAccounts,
       tabPreferences: (rootData.tabPreferences as TabPreferences) || {},
@@ -2195,12 +2302,12 @@ export async function loadAppDataFromFirestore(targetStoreId?: string): Promise<
     if (currentPendingOps.length === 0) {
       setLastCloudError(null);
     }
-    return assembledData;
+    return { data: assembledData, fromServer };
   } catch (error) {
     console.warn(`Firebase Firestore load notice for store [${storeId}]:`, error);
     if (isQuotaError(error)) {
       setQuotaExceededFlag(true);
-      return null;
+      return { data: null, fromServer: false };
     }
     const errMsg = error instanceof Error ? error.message : String(error);
     setLastCloudError(`Cloud load failed: ${errMsg}`);
@@ -2210,8 +2317,13 @@ export async function loadAppDataFromFirestore(targetStoreId?: string): Promise<
     ) {
       handleFirestoreError(error, OperationType.GET, `${STORES_COLLECTION}/${storeId}`);
     }
-    return null;
+    return { data: null, fromServer: false };
   }
+}
+
+export async function loadAppDataFromFirestore(targetStoreId?: string): Promise<AppData | null> {
+  const res = await loadAppDataFromFirestoreWithMeta(targetStoreId);
+  return res.data;
 }
 
 async function loadAppDataFromLegacyFirestore(): Promise<Partial<AppData> | null> {
@@ -2522,31 +2634,6 @@ export async function runOneTimeSubcollectionMigration(
 
 // ==================== LOCAL STORAGE & INDEXEDDB ====================
 
-function getFallbackLocalInventory(): InventoryItem[] {
-  try {
-    const mainKey = getLocalStorageKey(DEFAULT_STORE_ID);
-    const mainRaw = localStorage.getItem(mainKey);
-    if (mainRaw) {
-      const parsed = JSON.parse(mainRaw);
-      const validation = validateBackupData(parsed);
-      if (validation.valid && validation.data && validation.data.inventory.length > 0) {
-        return validation.data.inventory;
-      }
-    }
-    const legacyRaw = localStorage.getItem(STORAGE_KEY);
-    if (legacyRaw) {
-      const parsedLegacy = JSON.parse(legacyRaw);
-      const validation = validateBackupData(parsedLegacy);
-      if (validation.valid && validation.data && validation.data.inventory.length > 0) {
-        return validation.data.inventory;
-      }
-    }
-  } catch {
-    // ignore
-  }
-  return [];
-}
-
 export function loadStoredData(targetStoreId?: string): AppData {
   try {
     const key = getLocalStorageKey(targetStoreId);
@@ -2556,18 +2643,6 @@ export function loadStoredData(targetStoreId?: string): AppData {
       const parsed = JSON.parse(raw);
       const validation = validateBackupData(parsed);
       if (validation.valid && validation.data) {
-        if (validation.data.inventory.length > 0) {
-          return validation.data;
-        }
-        const fallbackInv = getFallbackLocalInventory();
-        const deletedInv = validation.data.deletedInventoryIds || [];
-        const filteredFallback = fallbackInv.filter(item => !deletedInv.includes(item.id));
-        if (filteredFallback.length > 0) {
-          return {
-            ...validation.data,
-            inventory: filteredFallback,
-          };
-        }
         return validation.data;
       }
     }
@@ -2825,12 +2900,10 @@ export function mergeAppData(local: AppData, remote: Partial<AppData>): AppData 
   const localWinsCategories = shouldPreferLocalGroup(local.categoriesUpdatedAt, remote.categoriesUpdatedAt);
   const mergedCategories =
     remote.categories !== undefined
-      ? localWinsCategories && (local.categories?.length || 0) > 0
-        ? local.categories!
-        : remote.categories.length > 0
-        ? remote.categories
-        : local.categories || []
-      : local.categories || [];
+      ? localWinsCategories
+        ? normalizeCategoriesList(local.categories || [])
+        : normalizeCategoriesList(remote.categories || [])
+      : normalizeCategoriesList(local.categories || []);
 
   const localWinsExpCategories = shouldPreferLocalGroup(
     local.expenseCategoriesUpdatedAt,
@@ -2838,8 +2911,8 @@ export function mergeAppData(local: AppData, remote: Partial<AppData>): AppData 
   );
   const mergedExpCategories =
     remote.expenseCategories !== undefined
-      ? localWinsExpCategories && (local.expenseCategories?.length || 0) > 0
-        ? local.expenseCategories!
+      ? localWinsExpCategories
+        ? local.expenseCategories || []
         : remote.expenseCategories
       : local.expenseCategories || defaultExpenseCategories;
 
@@ -2849,8 +2922,8 @@ export function mergeAppData(local: AppData, remote: Partial<AppData>): AppData 
   );
   const mergedOnlineAccounts =
     remote.onlineAccounts !== undefined
-      ? localWinsOnlineAccounts && (local.onlineAccounts?.length || 0) > 0
-        ? local.onlineAccounts!
+      ? localWinsOnlineAccounts
+        ? local.onlineAccounts || []
         : remote.onlineAccounts
       : local.onlineAccounts || defaultOnlineAccounts;
 
@@ -2865,8 +2938,8 @@ export function mergeAppData(local: AppData, remote: Partial<AppData>): AppData 
   const localWinsUsers = shouldPreferLocalGroup(local.usersUpdatedAt, remote.usersUpdatedAt);
   const mergedUsers =
     remote.users !== undefined
-      ? localWinsUsers && (local.users?.length || 0) >= (remote.users?.length || 0)
-        ? local.users!
+      ? localWinsUsers
+        ? local.users || []
         : remote.users
       : local.users || [];
 
@@ -2927,14 +3000,17 @@ export function mergeAppData(local: AppData, remote: Partial<AppData>): AppData 
       k => k.updatedAt || k.lastUpdated,
       (ex, inc) => {
         const { winner, loser } = pickByTime(ex, inc, x => x.updatedAt || x.lastUpdated);
+        const mergedDeletedTxIds = Array.from(
+          new Set([...(winner.deletedTxIds || []), ...(loser.deletedTxIds || [])])
+        );
+        const deletedTxSet = new Set(mergedDeletedTxIds);
+        const filteredHistory = (winner.history || []).filter(tx => !deletedTxSet.has(tx.id));
         return {
           ...loser,
           ...winner,
           image: winner.image || loser.image,
-          history:
-            (winner.history?.length || 0) >= (loser.history?.length || 0)
-              ? winner.history
-              : loser.history,
+          deletedTxIds: mergedDeletedTxIds.length > 0 ? mergedDeletedTxIds : undefined,
+          history: filteredHistory,
         };
       }
     ),
@@ -3128,13 +3204,62 @@ export async function recoverAllMissingStoreData(
   };
 }
 
+/**
+ * Authoritative reconciliation when the offline pending-writes queue is empty
+ * and live server data was loaded cleanly. Keeps cloud deletions & categories
+ * exact across all devices while preserving locally cached media blobs if missing.
+ */
+export function reconcileWithAuthoritativeCloud(localFallback: AppData, cloudData: AppData): AppData {
+  const { deletedIds, deletedInventoryIds } = mergeDeletedIds(localFallback, cloudData);
+
+  const localInvImgById = new Map((localFallback.inventory || []).map(i => [i.id, i.image]));
+  const localExpImgById = new Map((localFallback.expenses || []).map(e => [e.id, e.image]));
+  const localKhataImgById = new Map((localFallback.khata || []).map(k => [k.id, k.image]));
+  const localPurImgById = new Map(
+    (localFallback.supplierPurchases || []).map(p => [p.id || p.billNo, p.invoiceImage])
+  );
+
+  return {
+    ...cloudData,
+    backupVersion: CURRENT_BACKUP_VERSION,
+    migrationDone: cloudData.migrationDone || localFallback.migrationDone,
+    currentUser: localFallback.currentUser || cloudData.currentUser,
+    currentRole: localFallback.currentRole || cloudData.currentRole || 'admin',
+    settings: {
+      ...cloudData.settings,
+      logo: cloudData.settings?.logo || localFallback.settings?.logo,
+      shopLogo: cloudData.settings?.shopLogo || localFallback.settings?.shopLogo,
+      invoiceLogo: cloudData.settings?.invoiceLogo || localFallback.settings?.invoiceLogo,
+      loginPageLogo: cloudData.settings?.loginPageLogo || localFallback.settings?.loginPageLogo,
+    },
+    deletedIds,
+    deletedInventoryIds,
+    inventory: (cloudData.inventory || []).map(item => ({
+      ...item,
+      image: item.image || localInvImgById.get(item.id),
+    })),
+    expenses: (cloudData.expenses || []).map(exp => ({
+      ...exp,
+      image: exp.image || localExpImgById.get(exp.id),
+    })),
+    khata: (cloudData.khata || []).map(cust => ({
+      ...cust,
+      image: cust.image || localKhataImgById.get(cust.id),
+    })),
+    supplierPurchases: (cloudData.supplierPurchases || []).map(pur => ({
+      ...pur,
+      invoiceImage: pur.invoiceImage || localPurImgById.get(pur.id || pur.billNo),
+    })),
+  };
+}
+
 // ==================== STARTUP INITIALIZATION ====================
 
 /**
  * Exact startup order:
  * 1) Load IndexedDB / localStorage -> show UI immediately
  * 2) Start pending-writes queue retry engine (uploads ONLY pending local writes)
- * 3) Fetch Firestore -> merge with tombstones -> done (NEVER bulk uploads local state)
+ * 3) Fetch Firestore -> reconcile authoritatively if no pending local writes, else merge with tombstones
  * 4) If root doc exists and !migrationDone, run one-time migration cleanly.
  */
 export async function migrateAndInitializeData(
@@ -3181,14 +3306,18 @@ export async function migrateAndInitializeData(
     // Save today's automatic daily safety backup in IndexedDB
     saveDailyAutomaticBackup(storeId, currentBestData).catch(() => {});
 
-    // Flush any pending writes queued while offline
-    processPendingWritesQueue().catch(() => {});
+    // Flush any pending writes queued while offline before reconciling with server
+    await processPendingWritesQueue().catch(() => {});
+    const remainingPendingOps = await getPendingWrites();
 
-    // 3. Fetch Firestore -> merge with tombstones (NO saveAppDataToFirestore upload at startup!)
-    const remoteData = await loadAppDataFromFirestore(storeId);
+    // 3. Fetch live Firestore -> reconcile authoritatively when queue is empty and response is from server
+    const { data: remoteData, fromServer } = await loadAppDataFromFirestoreWithMeta(storeId);
 
     if (remoteData) {
-      let mergedData = mergeAppData(currentBestData, remoteData);
+      let mergedData =
+        remainingPendingOps.length === 0 && fromServer
+          ? reconcileWithAuthoritativeCloud(currentBestData, remoteData)
+          : mergeAppData(currentBestData, remoteData);
 
       // 4. One-time subcollection migration if needed (skip while quota cooldown is active)
       if (!remoteData.migrationDone && !getQuotaExceededFlag()) {

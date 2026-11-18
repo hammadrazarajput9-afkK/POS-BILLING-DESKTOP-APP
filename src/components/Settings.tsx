@@ -33,6 +33,7 @@ import {
   deleteUserFromFirestore,
   listAutomaticBackups,
   downloadJsonBackup,
+  DEFAULT_STORE_ID,
 } from '../utils/storage';
 import { firebaseConfig } from '../utils/firebase';
 import { CameraCaptureModal } from './CameraCaptureModal';
@@ -448,7 +449,7 @@ export const Settings: React.FC<SettingsProps> = ({
       return;
     }
 
-    const currentAdminStoreId = fullData.currentUser?.storeId || fullData.currentUser?.id || 'main_store';
+    const currentAdminStoreId = DEFAULT_STORE_ID;
     const newSalesman: UserAccount = {
       id: 'USR-SLS-' + Date.now(),
       name: salesmanName.trim(),
@@ -602,7 +603,7 @@ export const Settings: React.FC<SettingsProps> = ({
     const updatedUsers = existingUsers.filter(u => u.id !== userToDelete.id);
 
     // Permanently purge document from Cloud Firestore registry and all store paths
-    deleteUserFromFirestore(userToDelete.id, fullData.currentUser?.storeId).catch(err => {
+    deleteUserFromFirestore(userToDelete.id, DEFAULT_STORE_ID).catch(err => {
       console.warn('Failed to delete user document from Firestore:', err);
     });
 
@@ -2064,7 +2065,7 @@ export const Settings: React.FC<SettingsProps> = ({
               totpSecret: newSecret,
               is2faEnabled: true,
             };
-            saveUserToFirestore(updatedAdmin, updatedAdmin.storeId);
+            saveUserToFirestore(updatedAdmin, DEFAULT_STORE_ID);
             if (onUpdateUsers && fullData.users) {
               const updatedUsers = fullData.users.map(u => u.id === updatedAdmin.id ? updatedAdmin : u);
               onUpdateUsers(updatedUsers);

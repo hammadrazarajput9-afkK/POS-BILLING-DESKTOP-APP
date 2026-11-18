@@ -55,28 +55,55 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
       updatedAt: now,
     };
 
-    // 1. Calculate Inventory Updates & remaining IMEIs
+    // 1. Calculate Inventory Updates, remaining IMEIs & variant stock
     const inventoryUpdates: Array<{
       id: string;
       newQty: number;
       remainingImeis?: string[];
+      variants?: typeof data.inventory[number]['variants'];
       updatedAt?: string;
     }> = [];
 
     const updatedInventory = data.inventory.map(invItem => {
-      const soldItem = saleWithTs.items.find(s => s.id === invItem.id);
-      if (soldItem) {
-        const soldImeisList = extractItemImeis(soldItem);
+      const soldItemsForProduct = saleWithTs.items.filter(s => s.id === invItem.id);
+      if (soldItemsForProduct.length > 0) {
+        const soldImeisList = soldItemsForProduct.flatMap(si => extractItemImeis(si));
+        const totalSoldQty = soldItemsForProduct.reduce((sum, si) => sum + (si.qty || 0), 0);
         const currentImeis = extractItemImeis(invItem);
         const remainingImeis = currentImeis.filter(
           im => !soldImeisList.some(sIm => sIm.toLowerCase() === im.toLowerCase())
         );
 
-        const newQty = Math.max(0, invItem.qty - soldItem.qty);
+        let updatedVariants = invItem.variants;
+        if (invItem.variants && invItem.variants.length > 0) {
+          updatedVariants = invItem.variants.map(v => {
+            const matchingLines = soldItemsForProduct.filter(
+              si => si.variantId && v.id && si.variantId === v.id
+            );
+            const qtyDeducted = matchingLines.reduce((sum, si) => sum + (si.qty || 0), 0);
+            const variantSoldImeis = matchingLines.flatMap(si => extractItemImeis(si));
+            const curVImeis = Array.isArray(v.imeis) ? v.imeis.filter(Boolean) : [];
+            const nextVImeis = curVImeis.filter(
+              im =>
+                !variantSoldImeis.some(sIm => sIm.toLowerCase() === im.toLowerCase()) &&
+                !soldImeisList.some(sIm => sIm.toLowerCase() === im.toLowerCase())
+            );
+            const curVQty = v.qty === '' || v.qty === undefined ? curVImeis.length : Number(v.qty) || 0;
+            const nextVQty = Math.max(0, curVQty - qtyDeducted);
+            return {
+              ...v,
+              qty: nextVQty,
+              imeis: nextVImeis,
+            };
+          });
+        }
+
+        const newQty = Math.max(0, invItem.qty - totalSoldQty);
         inventoryUpdates.push({
           id: invItem.id,
           newQty,
-          remainingImeis: remainingImeis.length > 0 ? remainingImeis : undefined,
+          remainingImeis,
+          variants: updatedVariants,
           updatedAt: now,
         });
 
@@ -86,6 +113,7 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
           updatedAt: now,
           imeis: remainingImeis.length > 0 ? remainingImeis : undefined,
           imei: remainingImeis.length > 0 ? remainingImeis.join(', ') : undefined,
+          variants: updatedVariants,
         };
       }
       return invItem;
@@ -264,17 +292,35 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
 
     if (targetSale && targetSale.status !== 'CANCELLED') {
       data.inventory.forEach(invItem => {
-        const soldItem = targetSale.items.find(si => si.id === invItem.id || si.name === invItem.name);
-        if (soldItem) {
-          const soldImeis = soldItem.imeis || (soldItem.imei ? [soldItem.imei] : []);
+        const soldItems = targetSale.items.filter(si => si.id === invItem.id || si.name === invItem.name);
+        if (soldItems.length > 0) {
+          const soldImeis = soldItems.flatMap(si => si.imeis || (si.imei ? [si.imei] : []));
+          const totalRestoredQty = soldItems.reduce((sum, si) => sum + (si.qty || 0), 0);
           const currentImeis = invItem.imeis || (invItem.imei ? invItem.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
           const combinedImeis = Array.from(new Set([...currentImeis, ...soldImeis]));
+          const restoredVariants =
+            invItem.variants && invItem.variants.length > 0
+              ? invItem.variants.map(v => {
+                  const vSoldLines = soldItems.filter(si => si.variantId && v.id && si.variantId === v.id);
+                  if (vSoldLines.length === 0) return v;
+                  const vQtyAdd = vSoldLines.reduce((sum, si) => sum + (si.qty || 0), 0);
+                  const vSoldImeis = vSoldLines.flatMap(si => si.imeis || (si.imei ? [si.imei] : []));
+                  const curVImeis = Array.isArray(v.imeis) ? v.imeis.filter(Boolean) : [];
+                  return {
+                    ...v,
+                    qty: (Number(v.qty) || 0) + vQtyAdd,
+                    imeis: Array.from(new Set([...curVImeis, ...vSoldImeis])),
+                  };
+                })
+              : invItem.variants;
+
           restoredInventoryToSync.push({
             ...invItem,
-            qty: invItem.qty + soldItem.qty,
+            qty: invItem.qty + totalRestoredQty,
             updatedAt: now,
             imeis: combinedImeis.length > 0 ? combinedImeis : undefined,
             imei: combinedImeis.length > 0 ? combinedImeis.join(', ') : undefined,
+            variants: restoredVariants,
           });
         }
       });
@@ -339,17 +385,35 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
 
       if (sale.status !== 'CANCELLED') {
         updatedInventory = prev.inventory.map(invItem => {
-          const soldItem = sale.items.find(si => si.id === invItem.id || si.name === invItem.name);
-          if (soldItem) {
-            const soldImeis = soldItem.imeis || (soldItem.imei ? [soldItem.imei] : []);
+          const soldItems = sale.items.filter(si => si.id === invItem.id || si.name === invItem.name);
+          if (soldItems.length > 0) {
+            const soldImeis = soldItems.flatMap(si => si.imeis || (si.imei ? [si.imei] : []));
+            const totalRestoredQty = soldItems.reduce((sum, si) => sum + (si.qty || 0), 0);
             const currentImeis = invItem.imeis || (invItem.imei ? invItem.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
             const combinedImeis = Array.from(new Set([...currentImeis, ...soldImeis]));
+            const restoredVariants =
+              invItem.variants && invItem.variants.length > 0
+                ? invItem.variants.map(v => {
+                    const vSoldLines = soldItems.filter(si => si.variantId && v.id && si.variantId === v.id);
+                    if (vSoldLines.length === 0) return v;
+                    const vQtyAdd = vSoldLines.reduce((sum, si) => sum + (si.qty || 0), 0);
+                    const vSoldImeis = vSoldLines.flatMap(si => si.imeis || (si.imei ? [si.imei] : []));
+                    const curVImeis = Array.isArray(v.imeis) ? v.imeis.filter(Boolean) : [];
+                    return {
+                      ...v,
+                      qty: (Number(v.qty) || 0) + vQtyAdd,
+                      imeis: Array.from(new Set([...curVImeis, ...vSoldImeis])),
+                    };
+                  })
+                : invItem.variants;
+
             return {
               ...invItem,
-              qty: invItem.qty + soldItem.qty,
+              qty: invItem.qty + totalRestoredQty,
               updatedAt: now,
               imeis: combinedImeis.length > 0 ? combinedImeis : undefined,
               imei: combinedImeis.length > 0 ? combinedImeis.join(', ') : undefined,
+              variants: restoredVariants,
             };
           }
           return invItem;

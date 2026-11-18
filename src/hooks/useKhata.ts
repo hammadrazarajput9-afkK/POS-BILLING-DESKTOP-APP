@@ -338,11 +338,14 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
       return t.type === 'credit' ? acc + t.amount : acc - t.amount;
     }, 0);
 
+    const nextDeletedTxIds = Array.from(new Set([...(existingCust.deletedTxIds || []), txId]));
+
     const updatedCustomer: KhataCustomer = {
       ...existingCust,
       balance: recalculatedBalance,
       lastUpdated: now,
       updatedAt: now,
+      deletedTxIds: nextDeletedTxIds,
       history: nextHistory,
     };
 

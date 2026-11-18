@@ -111,6 +111,7 @@ export interface KhataCustomer {
   balance: number;
   lastUpdated: string;
   updatedAt?: string;
+  deletedTxIds?: string[];
   history: KhataTransaction[];
 }
 
@@ -198,6 +199,8 @@ export interface TabPreferences {
 export interface CartItem extends InventoryItem {
   cartQty: number;
   selectedImeis?: string[];
+  selectedVariantId?: string;
+  selectedVariantLabel?: string;
 }
 
 export type PaymentMethod = 'Cash' | 'JazzCash' | 'Easypaisa' | 'Bank' | 'Card';
@@ -218,6 +221,8 @@ export interface SaleItem {
   qty: number;
   returnedQty?: number;
   barcode?: string;
+  variantId?: string;
+  variantLabel?: string;
 }
 
 export interface SaleRecord {

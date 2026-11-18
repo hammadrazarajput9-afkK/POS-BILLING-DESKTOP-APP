@@ -119,6 +119,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
   const [cameraScannerTarget, setCameraScannerTarget] = useState<'productSearch' | 'historySearch'>('productSearch');
   const [selectedProductDetails, setSelectedProductDetails] = useState<InventoryItem | null>(null);
+  const [variantPickerItem, setVariantPickerItem] = useState<InventoryItem | null>(null);
   const [copiedImei, setCopiedImei] = useState<string | null>(null);
 
   const handleCopyImei = (imei: string) => {
@@ -312,6 +313,8 @@ const PosTabComponent: React.FC<PosTabProps> = ({
         salePrice: si.salePrice,
         qty: originalProduct ? originalProduct.qty + si.qty : si.qty,
         status: originalProduct?.status || 'ACTIVE',
+        selectedVariantId: si.variantId,
+        selectedVariantLabel: si.variantLabel,
         cartQty: si.qty,
         selectedImeis: si.imeis || (si.imei ? [si.imei] : []),
         imei: si.imei,
@@ -583,18 +586,97 @@ const PosTabComponent: React.FC<PosTabProps> = ({
     });
   }, [activeInventory, search, selectedCategory]);
 
-  const addToCart = (item: InventoryItem, specificImei?: string) => {
-    if (item.qty <= 0) {
-      showToast('Item is out of stock', 'error');
+  const getVariantLabel = (v: MobileVariant): string => {
+    const parts = [v.ram, v.storage, v.color].map(x => (x || '').trim()).filter(Boolean);
+    return parts.join(' • ') || 'Standard Variant';
+  };
+
+  const getVariantStock = (v: MobileVariant): number => {
+    if (v.qty !== '' && v.qty !== undefined) {
+      return Math.max(0, Number(v.qty) || 0);
+    }
+    return Array.isArray(v.imeis) ? v.imeis.filter(Boolean).length : 0;
+  };
+
+  const getVariantPricing = (item: InventoryItem, v?: MobileVariant) => {
+    const costPrice =
+      v && v.costPrice !== '' && Number(v.costPrice) > 0 ? Number(v.costPrice) : item.costPrice;
+    const salePrice =
+      v && v.salePrice !== '' && Number(v.salePrice) > 0 ? Number(v.salePrice) : item.salePrice;
+    const wholesalePrice =
+      v && v.wholesalePrice !== undefined && v.wholesalePrice !== '' && Number(v.wholesalePrice) > 0
+        ? Number(v.wholesalePrice)
+        : item.wholesalePrice;
+    return { costPrice, salePrice, wholesalePrice };
+  };
+
+  const addToCart = (item: InventoryItem, specificImei?: string, chosenVariant?: MobileVariant) => {
+    const totalProductInCart = cart
+      .filter(c => c.id === item.id)
+      .reduce((sum, c) => sum + c.cartQty, 0);
+
+    if (item.qty <= 0 || totalProductInCart >= item.qty) {
+      showToast(item.qty <= 0 ? 'Item is out of stock' : `Only ${item.qty} units available in stock`, 'error');
       return;
     }
 
-    const itemImeis = extractItemImeis(item);
+    let effectiveVariant = chosenVariant;
+    if (!effectiveVariant && item.variants && item.variants.length > 0) {
+      if (specificImei) {
+        const matchedV = item.variants.find(v =>
+          (v.imeis || []).some(im => im.toLowerCase() === specificImei.toLowerCase())
+        );
+        if (matchedV) effectiveVariant = matchedV;
+      }
+      if (!effectiveVariant) {
+        if (item.variants.length === 1) {
+          effectiveVariant = item.variants[0];
+        } else {
+          setVariantPickerItem(item);
+          return;
+        }
+      }
+    }
+
+    const variantId = effectiveVariant?.id || (effectiveVariant ? getVariantLabel(effectiveVariant) : undefined);
+    const variantLabel = effectiveVariant ? getVariantLabel(effectiveVariant) : undefined;
+    const variantDedicatedImeis =
+      effectiveVariant && Array.isArray(effectiveVariant.imeis)
+        ? effectiveVariant.imeis.filter(Boolean)
+        : [];
+    const itemImeis =
+      variantDedicatedImeis.length > 0 ? variantDedicatedImeis : extractItemImeis(item);
+
+    if (effectiveVariant) {
+      const vStock =
+        item.variants && item.variants.length === 1
+          ? Math.max(getVariantStock(effectiveVariant), item.qty)
+          : getVariantStock(effectiveVariant);
+      const inCartVariantQty = cart
+        .filter(c => c.id === item.id && (c.selectedVariantId || '') === (variantId || ''))
+        .reduce((sum, c) => sum + c.cartQty, 0);
+      if (inCartVariantQty >= vStock) {
+        showToast(
+          vStock <= 0
+            ? `${variantLabel} is out of stock`
+            : `Only ${vStock} units available for ${variantLabel}`,
+          'warning'
+        );
+        return;
+      }
+    }
+
+    const { costPrice, salePrice, wholesalePrice } = getVariantPricing(item, effectiveVariant);
 
     setCart(prev => {
-      const existing = prev.find(c => c.id === item.id);
+      const existing = prev.find(
+        c => c.id === item.id && (c.selectedVariantId || '') === (variantId || '')
+      );
       if (existing) {
-        if (existing.cartQty >= item.qty) {
+        const totalInPrev = prev
+          .filter(c => c.id === item.id)
+          .reduce((sum, c) => sum + c.cartQty, 0);
+        if (totalInPrev >= item.qty) {
           showToast(`Only ${item.qty} units available in stock`, 'warning');
           return prev;
         }
@@ -606,13 +688,12 @@ const PosTabComponent: React.FC<PosTabProps> = ({
         if (specificImei && !nextSelected.includes(specificImei)) {
           nextSelected.push(specificImei);
         } else {
-          // Find first available unused IMEI
           const unused = itemImeis.find(im => !nextSelected.includes(im));
           if (unused) nextSelected.push(unused);
         }
 
         return prev.map(c =>
-          c.id === item.id
+          c.id === item.id && (c.selectedVariantId || '') === (variantId || '')
             ? {
                 ...c,
                 cartQty: newQty,
@@ -633,29 +714,61 @@ const PosTabComponent: React.FC<PosTabProps> = ({
           ...prev,
           {
             ...item,
+            costPrice,
+            salePrice,
+            wholesalePrice,
+            selectedVariantId: variantId,
+            selectedVariantLabel: variantLabel,
             cartQty: 1,
             selectedImeis: initialSelected,
-            imei: initialSelected[0] || item.imei,
+            imei: initialSelected[0] || (effectiveVariant ? undefined : item.imei),
+            imeis: effectiveVariant ? itemImeis : item.imeis,
           },
         ];
       }
     });
-    showToast(`${item.name} added to cart`, 'info');
+    showToast(
+      variantLabel ? `${item.name} (${variantLabel}) added to cart` : `${item.name} added to cart`,
+      'info'
+    );
   };
 
-  const updateCartQty = (id: string, delta: number) => {
+  const updateCartQty = (id: string, delta: number, variantId?: string) => {
     const invItem = activeInventory.find(i => i.id === id);
     if (!invItem) return;
-    const itemImeis = extractItemImeis(invItem);
+    const targetVariant =
+      variantId && invItem.variants
+        ? invItem.variants.find(v => (v.id || getVariantLabel(v)) === variantId)
+        : undefined;
+    const variantDedicatedImeis =
+      targetVariant && Array.isArray(targetVariant.imeis)
+        ? targetVariant.imeis.filter(Boolean)
+        : [];
+    const itemImeis =
+      variantDedicatedImeis.length > 0 ? variantDedicatedImeis : extractItemImeis(invItem);
 
     setCart(prev => {
+      const totalProductQty = prev
+        .filter(c => c.id === id)
+        .reduce((sum, c) => sum + c.cartQty, 0);
+
       return prev
         .map(c => {
-          if (c.id === id) {
+          if (c.id === id && (c.selectedVariantId || '') === (variantId || '')) {
             const newQty = c.cartQty + delta;
-            if (delta > 0 && newQty > invItem.qty) {
+            if (delta > 0 && totalProductQty + delta > invItem.qty) {
               showToast(`Stock limit (${invItem.qty}) reached`, 'warning');
               return c;
+            }
+            if (delta > 0 && targetVariant) {
+              const vMax =
+                invItem.variants && invItem.variants.length === 1
+                  ? Math.max(getVariantStock(targetVariant), invItem.qty)
+                  : getVariantStock(targetVariant);
+              if (newQty > vMax) {
+                showToast(`Variant stock limit (${vMax}) reached`, 'warning');
+                return c;
+              }
             }
 
             let nextSelected = [...(c.selectedImeis || [])];
@@ -679,10 +792,15 @@ const PosTabComponent: React.FC<PosTabProps> = ({
     });
   };
 
-  const handleSelectImeiForCartItem = (itemId: string, unitIndex: number, chosenImei: string) => {
+  const handleSelectImeiForCartItem = (
+    itemId: string,
+    unitIndex: number,
+    chosenImei: string,
+    variantId?: string
+  ) => {
     setCart(prev =>
       prev.map(c => {
-        if (c.id === itemId) {
+        if (c.id === itemId && (c.selectedVariantId || '') === (variantId || '')) {
           const updated = [...(c.selectedImeis || [])];
           updated[unitIndex] = chosenImei;
           return {
@@ -696,8 +814,10 @@ const PosTabComponent: React.FC<PosTabProps> = ({
     );
   };
 
-  const removeFromCart = (id: string) => {
-    setCart(prev => prev.filter(c => c.id !== id));
+  const removeFromCart = (id: string, variantId?: string) => {
+    setCart(prev =>
+      prev.filter(c => !(c.id === id && (c.selectedVariantId || '') === (variantId || '')))
+    );
   };
 
   const clearCart = () => {
@@ -933,11 +1053,16 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                   const hasMultipleImeis = availableItemImeis.length > 0;
 
                   return (
-                    <tr key={item.id} className="hover:bg-slate-50/60 transition">
+                    <tr key={`${item.id}::${item.selectedVariantId || 'default'}`} className="hover:bg-slate-50/60 transition">
                       <td className="p-2.5">
                         <p className="font-semibold text-slate-900 leading-tight line-clamp-1">
                           {item.name}
                         </p>
+                        {item.selectedVariantLabel && (
+                          <span className="inline-block mt-0.5 text-[9px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded">
+                            {item.selectedVariantLabel}
+                          </span>
+                        )}
                         {hasMultipleImeis ? (
                           <div className="mt-1 space-y-1">
                             {Array.from({ length: item.cartQty }).map((_, unitIdx) => {
@@ -951,7 +1076,12 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                                     <select
                                       value={curVal}
                                       onChange={e =>
-                                        handleSelectImeiForCartItem(item.id, unitIdx, e.target.value)
+                                        handleSelectImeiForCartItem(
+                                          item.id,
+                                          unitIdx,
+                                          e.target.value,
+                                          item.selectedVariantId
+                                        )
                                       }
                                       className="text-[10px] tabular-nums text-blue-700 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5 max-w-[170px] outline-none"
                                     >
@@ -980,7 +1110,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                         <div className="inline-flex items-center gap-1 bg-slate-100 rounded-lg p-0.5">
                           <button
                             type="button"
-                            onClick={() => updateCartQty(item.id, -1)}
+                            onClick={() => updateCartQty(item.id, -1, item.selectedVariantId)}
                             className="w-7 h-7 sm:w-5 sm:h-5 bg-white rounded font-bold text-slate-700 hover:bg-slate-200 flex items-center justify-center transition cursor-pointer shadow-2xs"
                           >
                             <Minus className="w-3.5 h-3.5" />
@@ -990,7 +1120,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                           </span>
                           <button
                             type="button"
-                            onClick={() => updateCartQty(item.id, 1)}
+                            onClick={() => updateCartQty(item.id, 1, item.selectedVariantId)}
                             className="w-7 h-7 sm:w-5 sm:h-5 bg-white rounded font-bold text-slate-700 hover:bg-slate-200 flex items-center justify-center transition cursor-pointer shadow-2xs"
                           >
                             <Plus className="w-3.5 h-3.5" />
@@ -1008,7 +1138,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                       <td className="p-2.5 text-center">
                         <button
                           type="button"
-                          onClick={() => removeFromCart(item.id)}
+                          onClick={() => removeFromCart(item.id, item.selectedVariantId)}
                           className="text-slate-400 hover:text-rose-600 p-1.5 transition cursor-pointer min-h-[36px] min-w-[36px] flex items-center justify-center"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -1204,6 +1334,8 @@ const PosTabComponent: React.FC<PosTabProps> = ({
           id: i.id,
           name: i.name,
           category: i.category,
+          variantId: i.selectedVariantId,
+          variantLabel: i.selectedVariantLabel,
           imei: itemImeis.length > 0 ? itemImeis.join(', ') : undefined,
           imeis: itemImeis.length > 0 ? itemImeis : undefined,
           salePrice: activeUnitPrice,
@@ -1467,8 +1599,10 @@ const PosTabComponent: React.FC<PosTabProps> = ({
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-2 sm:gap-3 pb-16 lg:pb-3">
                   {filteredItems.map(item => {
-                    const inCartItem = cart.find(c => c.id === item.id);
-                    const remainingStock = item.qty - (inCartItem?.cartQty || 0);
+                    const inCartQtyForItem = cart
+                      .filter(c => c.id === item.id)
+                      .reduce((sum, c) => sum + c.cartQty, 0);
+                    const remainingStock = item.qty - inCartQtyForItem;
 
                     return (
                       <div
@@ -2374,41 +2508,73 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
               <div className="space-y-2 max-h-48 overflow-y-auto pr-1 scrollbar-thin">
                 {selectedProductDetails.variants && selectedProductDetails.variants.length > 0 ? (
-                  selectedProductDetails.variants.map((v: MobileVariant, vIdx: number) => (
-                    <div key={v.id || vIdx} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 shadow-2xs">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
-                          <span className="w-5 h-5 rounded-md bg-blue-100 text-blue-700 flex items-center justify-center tabular-nums text-[10px]">
-                            #{vIdx + 1}
-                          </span>
-                          {v.color || `${v.ram || ''} ${v.storage || ''}`.trim() || 'Standard Variant'}
-                        </span>
-                        <span className="tabular-nums text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
-                          {v.qty || 1} units
-                        </span>
-                      </div>
-                      {v.imeis && v.imeis.filter(Boolean).length > 0 && (
-                        <div className="pt-1 border-t border-slate-200/70 flex flex-wrap gap-1">
-                          {v.imeis.filter(Boolean).map((im: string, imIdx: number) => (
+                  selectedProductDetails.variants.map((v: MobileVariant, vIdx: number) => {
+                    const vKey = v.id || getVariantLabel(v);
+                    const vTotal = getVariantStock(v);
+                    const vInCart = cart
+                      .filter(c => c.id === selectedProductDetails.id && (c.selectedVariantId || '') === vKey)
+                      .reduce((sum, c) => sum + c.cartQty, 0);
+                    const vRem = Math.max(0, vTotal - vInCart);
+                    const vPrices = getVariantPricing(selectedProductDetails, v);
+                    const vUnitPrice = getItemUnitPrice(vPrices);
+                    return (
+                      <div key={v.id || vIdx} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 shadow-2xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                              <span className="w-5 h-5 rounded-md bg-blue-100 text-blue-700 flex items-center justify-center tabular-nums text-[10px] shrink-0">
+                                #{vIdx + 1}
+                              </span>
+                              <span className="truncate">{getVariantLabel(v)}</span>
+                            </span>
+                            <span className="text-[10px] font-bold text-blue-600 tabular-nums ml-6.5 block">
+                              {currency} {vUnitPrice.toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className={`tabular-nums text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                              vRem > 0 ? 'text-emerald-700 bg-emerald-50' : 'text-rose-600 bg-rose-50'
+                            }`}>
+                              {vRem > 0 ? `${vRem} left` : 'Out'}
+                            </span>
                             <button
-                              key={imIdx}
                               type="button"
-                              onClick={() => handleCopyImei(im)}
-                              className="tabular-nums text-[10px] bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer transition shadow-2xs"
-                              title="Click to copy IMEI"
+                              onClick={() => addToCart(selectedProductDetails, undefined, v)}
+                              disabled={vRem <= 0}
+                              className={`px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-0.5 transition cursor-pointer ${
+                                vRem <= 0
+                                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+                              }`}
                             >
-                              <span>IMEI: {im}</span>
-                              {copiedImei === im ? (
-                                <Check className="w-3 h-3 text-emerald-600" />
-                              ) : (
-                                <Copy className="w-3 h-3 text-blue-400" />
-                              )}
+                              <Plus className="w-3 h-3" />
+                              <span>Add</span>
                             </button>
-                          ))}
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  ))
+                        {v.imeis && v.imeis.filter(Boolean).length > 0 && (
+                          <div className="pt-1 border-t border-slate-200/70 flex flex-wrap gap-1">
+                            {v.imeis.filter(Boolean).map((im: string, imIdx: number) => (
+                              <button
+                                key={imIdx}
+                                type="button"
+                                onClick={() => handleCopyImei(im)}
+                                className="tabular-nums text-[10px] bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer transition shadow-2xs"
+                                title="Click to copy IMEI"
+                              >
+                                <span>IMEI: {im}</span>
+                                {copiedImei === im ? (
+                                  <Check className="w-3 h-3 text-emerald-600" />
+                                ) : (
+                                  <Copy className="w-3 h-3 text-blue-400" />
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
                 ) : selectedProductDetails.imeis && selectedProductDetails.imeis.filter(Boolean).length > 0 ? (
                   <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
                     <span className="text-xs font-bold text-slate-700 block">Registered IMEIs:</span>
@@ -2461,17 +2627,24 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                 type="button"
                 onClick={() => {
                   addToCart(selectedProductDetails);
-                  showToast(`Added ${selectedProductDetails.name} to bill`, 'success');
                 }}
-                disabled={selectedProductDetails.qty <= (cart.find(c => c.id === selectedProductDetails.id)?.cartQty || 0)}
+                disabled={
+                  selectedProductDetails.qty <=
+                  cart.filter(c => c.id === selectedProductDetails.id).reduce((sum, c) => sum + c.cartQty, 0)
+                }
                 className={`w-full sm:flex-1 py-2.5 px-4 font-bold text-xs rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-2 min-h-[42px] ${
-                  selectedProductDetails.qty <= (cart.find(c => c.id === selectedProductDetails.id)?.cartQty || 0)
+                  selectedProductDetails.qty <=
+                  cart.filter(c => c.id === selectedProductDetails.id).reduce((sum, c) => sum + c.cartQty, 0)
                     ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
                     : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20 active:scale-[0.98]'
                 }`}
               >
                 <Plus className="w-4 h-4" />
-                <span>Add to Bill / Cart</span>
+                <span>
+                  {selectedProductDetails.variants && selectedProductDetails.variants.length > 1
+                    ? 'Select Variant & Add'
+                    : 'Add to Bill / Cart'}
+                </span>
               </button>
 
               <button
@@ -2490,6 +2663,128 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                 className="w-full sm:w-auto py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer min-h-[42px]"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Variant Picker Modal for Multi-Variant Products */}
+      {variantPickerItem && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-md w-full p-4 sm:p-5 shadow-2xl space-y-4 border border-slate-100 my-auto animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+                  <Layers className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-black text-slate-900 text-sm sm:text-base truncate">
+                    Select Variant
+                  </h3>
+                  <p className="text-[11px] text-slate-500 truncate">
+                    {variantPickerItem.name} • Choose variant to add to cart
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setVariantPickerItem(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition cursor-pointer shrink-0"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2 max-h-[60dvh] overflow-y-auto pr-1 scrollbar-thin">
+              {(variantPickerItem.variants || []).map((v, vIdx) => {
+                const vKey = v.id || getVariantLabel(v);
+                const vTotal = getVariantStock(v);
+                const vInCart = cart
+                  .filter(c => c.id === variantPickerItem.id && (c.selectedVariantId || '') === vKey)
+                  .reduce((sum, c) => sum + c.cartQty, 0);
+                const vRemaining = Math.max(0, vTotal - vInCart);
+                const vPricing = getVariantPricing(variantPickerItem, v);
+                const vPrice = getItemUnitPrice(vPricing);
+                const imeiCount = Array.isArray(v.imeis) ? v.imeis.filter(Boolean).length : 0;
+
+                return (
+                  <button
+                    key={v.id || vIdx}
+                    type="button"
+                    disabled={vRemaining <= 0}
+                    onClick={() => {
+                      addToCart(variantPickerItem, undefined, v);
+                      setVariantPickerItem(null);
+                    }}
+                    className={`w-full text-left p-3 rounded-2xl border transition flex items-center justify-between gap-3 ${
+                      vRemaining <= 0
+                        ? 'bg-slate-50 border-slate-200 opacity-55 cursor-not-allowed'
+                        : 'bg-white border-slate-200 hover:border-blue-500 hover:bg-blue-50/40 cursor-pointer shadow-2xs active:scale-[0.99]'
+                    }`}
+                  >
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-md bg-purple-100 text-purple-700 flex items-center justify-center tabular-nums text-[10px] font-bold shrink-0">
+                          #{vIdx + 1}
+                        </span>
+                        <span className="font-extrabold text-xs sm:text-sm text-slate-900 truncate">
+                          {getVariantLabel(v)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px] pl-6.5 flex-wrap">
+                        <span
+                          className={`tabular-nums font-bold px-2 py-0.5 rounded-full ${
+                            vRemaining > 2
+                              ? 'bg-emerald-50 text-emerald-700'
+                              : vRemaining > 0
+                              ? 'bg-amber-50 text-amber-700'
+                              : 'bg-rose-50 text-rose-600'
+                          }`}
+                        >
+                          {vRemaining > 0 ? `${vRemaining} in stock` : 'Out of stock'}
+                        </span>
+                        {imeiCount > 0 && (
+                          <span className="text-[10px] text-slate-500 font-semibold tabular-nums">
+                            {imeiCount} IMEI{imeiCount > 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0 space-y-1">
+                      <div
+                        className={`tabular-nums font-black text-xs sm:text-sm ${
+                          saleMode === 'wholesale' ? 'text-purple-700' : 'text-blue-600'
+                        }`}
+                      >
+                        {currency} {vPrice.toLocaleString()}
+                      </div>
+                      <span
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold ${
+                          vRemaining <= 0
+                            ? 'bg-slate-200 text-slate-500'
+                            : saleMode === 'wholesale'
+                            ? 'bg-purple-600 text-white'
+                            : 'bg-blue-600 text-white'
+                        }`}
+                      >
+                        <Plus className="w-3 h-3" />
+                        Add
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setVariantPickerItem(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+              >
+                Cancel
               </button>
             </div>
           </div>
