@@ -33,6 +33,7 @@ import {
   deleteUserFromFirestore,
   listAutomaticBackups,
   downloadJsonBackup,
+  calculateStorageUsageStats,
   DEFAULT_STORE_ID,
 } from '../utils/storage';
 import { firebaseConfig } from '../utils/firebase';
@@ -983,6 +984,69 @@ export const Settings: React.FC<SettingsProps> = ({
                     Products with inventory at or below this count will trigger amber/red reorder badges.
                   </p>
                 </div>
+
+                {/* Custom Invoice Bottom Note & Return Policy */}
+                <div className="sm:col-span-2 p-3.5 bg-blue-50/50 border border-blue-200/80 rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                      <Receipt className="w-4 h-4 text-blue-600" />
+                      Custom Invoice Bottom Note &amp; Warranty Policy
+                    </label>
+                    <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
+                      Prints on All Bills &amp; WhatsApp
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        Custom Invoice Bottom Note
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={formData.receiptFooter || ''}
+                        onChange={e => setFormData({ ...formData, receiptFooter: e.target.value })}
+                        placeholder="e.g. Thank you for shopping with us! Goods once sold can be exchanged within 3 days."
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        Return &amp; Checking Warranty Policy
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={formData.returnPolicy || ''}
+                        onChange={e => setFormData({ ...formData, returnPolicy: e.target.value })}
+                        placeholder="e.g. 7 Days checking warranty. Original invoice required for claims."
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="bg-white border border-dashed border-slate-300 rounded-xl p-2.5 text-center space-y-0.5">
+                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">
+                      Live Invoice Footer Preview
+                    </span>
+                    {Array.from(
+                      new Set(
+                        [(formData.returnPolicy || '').trim(), (formData.receiptFooter || '').trim()].filter(Boolean)
+                      )
+                    ).length > 0 ? (
+                      Array.from(
+                        new Set(
+                          [(formData.returnPolicy || '').trim(), (formData.receiptFooter || '').trim()].filter(Boolean)
+                        )
+                      ).map((line, i) => (
+                        <p key={i} className="text-[11px] text-slate-700 font-semibold italic">
+                          {line}
+                        </p>
+                      ))
+                    ) : (
+                      <p className="text-[11px] text-slate-400 italic">Thank you for your business!</p>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {/* Login Page Customization Section */}
@@ -1249,6 +1313,82 @@ export const Settings: React.FC<SettingsProps> = ({
                   </p>
                 </div>
               </div>
+
+              {/* Photo & Free Cloud Storage Meter */}
+              {(() => {
+                const storageStats = calculateStorageUsageStats(fullData);
+                const totalMb = storageStats.totalBytes / (1024 * 1024);
+                const photoMb = storageStats.photoBytes / (1024 * 1024);
+                const textMb = storageStats.textBytes / (1024 * 1024);
+                const remainingMb = storageStats.remainingBytes / (1024 * 1024);
+                const limitMb = storageStats.firestoreFreeLimitBytes / (1024 * 1024);
+                const pct = Math.min(100, Math.max(0.5, storageStats.usedPercent));
+
+                return (
+                  <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-2xl space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h4 className="font-black text-indigo-950 text-xs flex items-center gap-1.5">
+                          <Database className="w-4 h-4 text-indigo-600" />
+                          Free Photos &amp; Cloud Database Storage Status
+                        </h4>
+                        <p className="text-[10px] text-indigo-800/80">
+                          Firebase Spark Free Tier provides 1,024 MB (1 GiB) cloud storage for photos &amp; entries
+                        </p>
+                      </div>
+                      <span className="px-2.5 py-1 rounded-full bg-indigo-600 text-white text-[10px] font-black tabular-nums">
+                        {remainingMb >= 1024
+                          ? `${(remainingMb / 1024).toFixed(2)} GB Remaining`
+                          : `${remainingMb.toFixed(1)} MB Remaining`}
+                      </span>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-[11px] font-bold text-slate-700 mb-1">
+                        <span>Total Used Storage</span>
+                        <span className="tabular-nums">
+                          {totalMb.toFixed(2)} MB / {limitMb.toLocaleString()} MB ({storageStats.usedPercent.toFixed(2)}%)
+                        </span>
+                      </div>
+                      <div className="w-full h-2.5 bg-white border border-indigo-200 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full transition-all ${
+                            pct >= 85 ? 'bg-rose-500' : pct >= 60 ? 'bg-amber-500' : 'bg-indigo-600'
+                          }`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                      <div className="bg-white p-2.5 rounded-xl border border-indigo-100">
+                        <span className="text-[10px] text-slate-400 block font-semibold">Saved Photos</span>
+                        <span className="font-black text-slate-900 tabular-nums">
+                          {storageStats.photoCount} ({photoMb.toFixed(2)} MB)
+                        </span>
+                      </div>
+                      <div className="bg-white p-2.5 rounded-xl border border-indigo-100">
+                        <span className="text-[10px] text-slate-400 block font-semibold">Entries &amp; Text</span>
+                        <span className="font-black text-slate-900 tabular-nums">{textMb.toFixed(2)} MB</span>
+                      </div>
+                      <div className="bg-white p-2.5 rounded-xl border border-indigo-100">
+                        <span className="text-[10px] text-slate-400 block font-semibold">Free Space Left</span>
+                        <span className="font-black text-emerald-700 tabular-nums">{remainingMb.toFixed(1)} MB</span>
+                      </div>
+                      <div className="bg-white p-2.5 rounded-xl border border-indigo-100">
+                        <span className="text-[10px] text-slate-400 block font-semibold">Est. Photos Remaining</span>
+                        <span className="font-black text-indigo-700 tabular-nums">
+                          ~{storageStats.estimatedRemainingPhotos.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    <p className="text-[10px] text-slate-500">
+                      Breakdown: Inventory ({storageStats.photoBreakdown.inventory}) • Khata ({storageStats.photoBreakdown.khata}) • Expenses ({storageStats.photoBreakdown.expenses}) • Purchases ({storageStats.photoBreakdown.purchases}) • Logos ({storageStats.photoBreakdown.logos})
+                    </p>
+                  </div>
+                );
+              })()}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 {/* Export Backup */}

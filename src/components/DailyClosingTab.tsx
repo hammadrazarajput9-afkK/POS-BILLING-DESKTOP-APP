@@ -1505,7 +1505,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
 
       {/* Hidden Printable Thermal/PDF Receipt Slip */}
       {selectedClosingForPrint && (
-        <div id="printable-receipt-area" className="hidden tabular-nums text-xs">
+        <div id="printable-receipt-area" className="hidden print:block tabular-nums text-xs">
           <div className="text-center border-b border-dashed border-black pb-2 mb-2">
             <h2 className="font-extrabold text-sm uppercase">{data.settings.shopName}</h2>
             <p className="text-[10px]">{data.settings.address}</p>

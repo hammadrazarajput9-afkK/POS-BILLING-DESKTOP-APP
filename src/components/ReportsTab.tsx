@@ -1700,7 +1700,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
 
       {/* HIDDEN PRINTABLE REPORT AREA FOR PDF EXPORT */}
       {activeReportModal && (
-        <div id="printable-report-area" className="hidden font-sans text-xs">
+        <div id="printable-report-area" className="hidden print:block font-sans text-xs">
           <div style={{ textAlign: 'center', borderBottom: '2px solid #000', paddingBottom: '12px', marginBottom: '16px' }}>
             <h1 style={{ fontSize: '18px', fontWeight: 'bold', margin: '0 0 4px 0' }}>{shopName}</h1>
             <p style={{ margin: '2px 0', fontSize: '11px' }}>{data.settings.address} | Ph: {data.settings.phone}</p>

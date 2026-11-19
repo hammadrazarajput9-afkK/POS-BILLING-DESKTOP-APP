@@ -6,7 +6,7 @@ import {
   KhataCustomer,
   ActivityLog,
 } from '../types';
-import { recordImeisSold, extractItemImeis, recordImeisReturned } from '../utils/imeiManager';
+import { recordImeisSold, extractItemImeis, recordImeisReturned, diffChangedImeiRecords } from '../utils/imeiManager';
 import {
   saveSaleAtomic,
   deleteSaleFromFirestore,
@@ -271,8 +271,9 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
     if (newKhataCustomerToCreate) {
       saveKhataCustomerToFirestore(newKhataCustomerToCreate).catch(() => {});
     }
-    if (updatedImeiRecords.length > 0) {
-      saveImeiRecordsBatchToFirestore(updatedImeiRecords).catch(() => {});
+    const changedImeis = diffChangedImeiRecords(data.imeiRecords || [], updatedImeiRecords);
+    if (changedImeis.length > 0) {
+      saveImeiRecordsBatchToFirestore(changedImeis).catch(() => {});
     }
   };
 
@@ -527,8 +528,9 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
 
     restoredInventoryToSync.forEach(item => saveInventoryItemToFirestore(item).catch(() => {}));
     if (restoredKhataToSync) saveKhataCustomerToFirestore(restoredKhataToSync).catch(() => {});
-    if (syncedImeiRecordsToSave.length > 0) {
-      saveImeiRecordsBatchToFirestore(syncedImeiRecordsToSave).catch(() => {});
+    const changedDeleteImeis = diffChangedImeiRecords(data.imeiRecords || [], syncedImeiRecordsToSave);
+    if (changedDeleteImeis.length > 0) {
+      saveImeiRecordsBatchToFirestore(changedDeleteImeis).catch(() => {});
     }
 
     if (activeReceiptSale && activeReceiptSale.invNo === invNo) {
@@ -740,7 +742,8 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
     if (updatedSaleToSync) updateSaleInFirestore(updatedSaleToSync).catch(() => {});
     restoredInvToSync.forEach(item => saveInventoryItemToFirestore(item).catch(() => {}));
     if (updatedKhataToSync) saveKhataCustomerToFirestore(updatedKhataToSync).catch(() => {});
-    if (syncedImeiRecords.length > 0) saveImeiRecordsBatchToFirestore(syncedImeiRecords).catch(() => {});
+    const changedReturnImeis = diffChangedImeiRecords(data.imeiRecords || [], syncedImeiRecords);
+    if (changedReturnImeis.length > 0) saveImeiRecordsBatchToFirestore(changedReturnImeis).catch(() => {});
 
     logActivity(
       'Sale',

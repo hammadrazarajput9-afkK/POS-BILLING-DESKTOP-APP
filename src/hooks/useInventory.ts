@@ -6,7 +6,7 @@ import {
   StockAdjustmentReason,
   ActivityLog,
 } from '../types';
-import { recordImeisAvailable } from '../utils/imeiManager';
+import { recordImeisAvailable, diffChangedImeiRecords } from '../utils/imeiManager';
 import {
   saveInventoryItemToFirestore,
   deleteInventoryItemFromFirestore,
@@ -197,8 +197,9 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
       saveInventoryItemToFirestore(updatedItem).catch(err => {
         console.warn('Firestore inventory update warning:', err);
       });
-      if (syncedImeis.length > 0) {
-        saveImeiRecordsBatchToFirestore(syncedImeis).catch(() => {});
+      const changedEditImeis = diffChangedImeiRecords(data.imeiRecords || [], syncedImeis);
+      if (changedEditImeis.length > 0) {
+        saveImeiRecordsBatchToFirestore(changedEditImeis).catch(() => {});
       }
 
       logActivity(
@@ -254,8 +255,9 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
         });
       }
       savePurchasesLedgerBatchToFirestore(newPurchases).catch(() => {});
-      if (syncedImeis.length > 0) {
-        saveImeiRecordsBatchToFirestore(syncedImeis).catch(() => {});
+      const changedNewImeis = diffChangedImeiRecords(data.imeiRecords || [], syncedImeis);
+      if (changedNewImeis.length > 0) {
+        saveImeiRecordsBatchToFirestore(changedNewImeis).catch(() => {});
       }
 
       if (itemsList.length === 1) {
@@ -655,8 +657,9 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
     saveInventoryItemToFirestore(newItem).catch(err => {
       console.warn('Firestore purchase item save warning:', err);
     });
-    if (syncedImeis.length > 0) {
-      saveImeiRecordsBatchToFirestore(syncedImeis).catch(() => {});
+    const changedPurchaseImeis = diffChangedImeiRecords(data.imeiRecords || [], syncedImeis);
+    if (changedPurchaseImeis.length > 0) {
+      saveImeiRecordsBatchToFirestore(changedPurchaseImeis).catch(() => {});
     }
 
     logActivity(

@@ -75,6 +75,7 @@ interface PosDraftState {
   paymentMethod: PaymentMethod;
   accountId: string;
   amountPaid: number | '';
+  billNote: string;
 }
 
 const initialPosDraft: PosDraftState = {
@@ -91,6 +92,7 @@ const initialPosDraft: PosDraftState = {
   paymentMethod: 'Cash',
   accountId: '',
   amountPaid: '',
+  billNote: '',
 };
 
 const PosTabComponent: React.FC<PosTabProps> = ({
@@ -114,6 +116,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 }) => {
   const { showToast } = useToast();
   const [search, setSearch] = useState('');
+  const searchInputRef = React.useRef<HTMLInputElement | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
   const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
@@ -121,6 +124,43 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   const [selectedProductDetails, setSelectedProductDetails] = useState<InventoryItem | null>(null);
   const [variantPickerItem, setVariantPickerItem] = useState<InventoryItem | null>(null);
   const [copiedImei, setCopiedImei] = useState<string | null>(null);
+  const [duplicateScanAlert, setDuplicateScanAlert] = useState<{ title: string; detail: string } | null>(null);
+  const duplicateAlertTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const triggerDuplicateAlert = (title: string, detail: string) => {
+    setDuplicateScanAlert({ title, detail });
+    if (duplicateAlertTimerRef.current) {
+      clearTimeout(duplicateAlertTimerRef.current);
+    }
+    duplicateAlertTimerRef.current = setTimeout(() => {
+      setDuplicateScanAlert(null);
+    }, 5500);
+
+    showToast(`⚠️ ${title} — ${detail}`, 'error');
+
+    try {
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (AudioCtx) {
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(520, ctx.currentTime);
+        osc.frequency.setValueAtTime(360, ctx.currentTime + 0.09);
+        gain.gain.setValueAtTime(0.14, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.22);
+        setTimeout(() => {
+          ctx.close().catch(() => {});
+        }, 300);
+      }
+    } catch {
+      // Ignore audio errors if blocked by browser autoplay policy
+    }
+  };
 
   const handleCopyImei = (imei: string) => {
     navigator.clipboard.writeText(imei);
@@ -336,6 +376,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       paymentMethod: sale.paymentMethod || 'Cash',
       accountId: sale.accountId || '',
       amountPaid: sale.amountPaid || '',
+      billNote: sale.notes || '',
     });
 
     setEditModalSale(null);
@@ -359,9 +400,6 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   };
 
   const handlePrintHistoryReport = () => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-
     const totalSalesSum = filteredSales.reduce((acc, s) => acc + (s.status === 'CANCELLED' ? 0 : s.grandTotal), 0);
     const totalTransactions = filteredSales.filter(s => s.status !== 'CANCELLED').length;
     const reportLogo = settings?.invoiceLogo || settings?.shopLogo || settings?.logo;
@@ -369,16 +407,16 @@ const PosTabComponent: React.FC<PosTabProps> = ({
     const shopAddress = settings?.address || '';
     const shopPhone = settings?.phone || '';
 
-    printWindow.document.write(`
+    const htmlContent = `
+      <!DOCTYPE html>
       <html>
         <head>
           <title>Sales Report - ${historyRange.toUpperCase()}</title>
-          <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
           <style>
-            body { font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif; padding: 30px; color: #1e293b; font-variant-numeric: tabular-nums; }
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 24px; color: #1e293b; font-variant-numeric: tabular-nums; }
             .header-banner { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px; }
             .header-banner img { width: 55px; height: 55px; border-radius: 50%; object-fit: contain; margin-bottom: 6px; }
-            h1 { font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif; font-size: 20px; color: #1e3a8a; margin: 4px 0; }
+            h1 { font-size: 20px; color: #1e3a8a; margin: 4px 0; }
             p { font-size: 11px; color: #666; margin: 2px 0; }
             table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 11px; }
             th { background-color: #f3f4f6; padding: 10px; border: 1px solid #ddd; text-align: left; }
@@ -396,7 +434,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
           <p>Filter Range: <strong>${historyRange.toUpperCase()}</strong> (${historyStartDate} to ${historyEndDate})</p>
           <p>Total Completed Invoices: <strong>${totalTransactions}</strong></p>
           <p>Net Revenue: <strong>${currency} ${totalSalesSum.toLocaleString()}</strong></p>
-          
+
           <table>
             <thead>
               <tr>
@@ -425,11 +463,38 @@ const PosTabComponent: React.FC<PosTabProps> = ({
               </tr>
             </tbody>
           </table>
-          <script>window.print();</script>
         </body>
       </html>
-    `);
-    printWindow.document.close();
+    `;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    iframe.style.visibility = 'hidden';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (doc && iframe.contentWindow) {
+      doc.open();
+      doc.write(htmlContent);
+      doc.close();
+      setTimeout(() => {
+        try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } finally {
+          setTimeout(() => {
+            if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+          }, 1000);
+        }
+      }, 250);
+    } else if (iframe.parentNode) {
+      iframe.parentNode.removeChild(iframe);
+    }
   };
 
   const handleShareHistoryReport = () => {
@@ -469,6 +534,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   const paymentMethod = draft.paymentMethod || 'Cash';
   const accountId = draft.accountId || '';
   const amountPaid = draft.amountPaid !== undefined ? draft.amountPaid : '';
+  const billNote = draft.billNote || '';
 
   // Helper to get active price per unit based on Mode (Retail vs Custom Wholesale Price)
   const getItemUnitPrice = (item: { salePrice: number; wholesalePrice?: number }, mode = saleMode) => {
@@ -559,12 +625,60 @@ const PosTabComponent: React.FC<PosTabProps> = ({
     setDraft(prev => ({ ...prev, amountPaid: amt }));
   };
 
+  const setBillNote = (note: string) => {
+    setDraft(prev => ({ ...prev, billNote: note }));
+  };
+
   // Filtered inventory: EXCLUDE archived products from active sales POS
   const activeInventory = useMemo(() => {
     return inventory.filter(item => item.status !== 'ARCHIVED');
   }, [inventory]);
 
-  // Filtered inventory by search & category
+  // Exact IMEI / Barcode matcher for instant auto-selection
+  const findExactImeiOrBarcodeMatch = (
+    rawCode: string
+  ): {
+    item: InventoryItem;
+    variant?: MobileVariant;
+    matchedImei?: string;
+    matchType: 'imei' | 'barcode';
+  } | null => {
+    const clean = rawCode.trim().toLowerCase();
+    if (!clean) return null;
+
+    // 1. Check variant-level exact IMEIs first (guarantees exact product + exact variant)
+    for (const item of activeInventory) {
+      if (item.variants && item.variants.length > 0) {
+        for (const v of item.variants) {
+          const exactVarImei = (v.imeis || []).find(im => im.trim().toLowerCase() === clean);
+          if (exactVarImei) {
+            return { item, variant: v, matchedImei: exactVarImei.trim(), matchType: 'imei' };
+          }
+        }
+      }
+    }
+
+    // 2. Check product-level exact IMEIs
+    for (const item of activeInventory) {
+      const exactProdImei = extractItemImeis(item).find(im => im.trim().toLowerCase() === clean);
+      if (exactProdImei) {
+        const matchedV =
+          item.variants && item.variants.length === 1 ? item.variants[0] : undefined;
+        return { item, variant: matchedV, matchedImei: exactProdImei.trim(), matchType: 'imei' };
+      }
+    }
+
+    // 3. Check exact barcode
+    for (const item of activeInventory) {
+      if (item.barcode && item.barcode.trim().toLowerCase() === clean) {
+        return { item, matchType: 'barcode' };
+      }
+    }
+
+    return null;
+  };
+
+  // Filtered inventory by search & category (with exact IMEI/barcode match prioritized at the top)
   const filteredItems = useMemo(() => {
     const q = search.toLowerCase().trim();
     if (!q) {
@@ -575,7 +689,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
     const tokens = q.split(/\s+/).filter(Boolean);
 
-    return activeInventory.filter(item => {
+    const matches = activeInventory.filter(item => {
       const imeiString = extractItemImeis(item).join(' ');
 
       const combinedText = `${item.name} ${item.category} ${item.barcode || ''} ${imeiString}`.toLowerCase();
@@ -584,6 +698,17 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
       return matchSearch && matchCat;
     });
+
+    const getMatchRank = (item: InventoryItem): number => {
+      const imeis = extractItemImeis(item).map(im => im.trim().toLowerCase());
+      const barcode = (item.barcode || '').trim().toLowerCase();
+      if (imeis.includes(q) || barcode === q) return 0;
+      if (imeis.some(im => im.startsWith(q)) || barcode.startsWith(q)) return 1;
+      if (item.name.toLowerCase().startsWith(q)) return 2;
+      return 3;
+    };
+
+    return [...matches].sort((a, b) => getMatchRank(a) - getMatchRank(b));
   }, [activeInventory, search, selectedCategory]);
 
   const getVariantLabel = (v: MobileVariant): string => {
@@ -610,21 +735,41 @@ const PosTabComponent: React.FC<PosTabProps> = ({
     return { costPrice, salePrice, wholesalePrice };
   };
 
-  const addToCart = (item: InventoryItem, specificImei?: string, chosenVariant?: MobileVariant) => {
+  const isImeiAlreadyInCart = (imei: string): boolean => {
+    const target = imei.trim().toLowerCase();
+    if (!target) return false;
+    return cart.some(c => {
+      const list = [
+        ...(c.selectedImeis || []),
+        ...(c.imei ? c.imei.split(',').map(s => s.trim()) : []),
+      ].filter(Boolean);
+      return list.some(im => im.toLowerCase() === target);
+    });
+  };
+
+  const addToCart = (item: InventoryItem, specificImei?: string, chosenVariant?: MobileVariant): boolean => {
+    if (specificImei && isImeiAlreadyInCart(specificImei)) {
+      triggerDuplicateAlert(
+        'Duplicate IMEI Scan Blocked',
+        `"${item.name}" (IMEI: ${specificImei}) pehle se cart mein mojood hai! Dobara add nahi ki gayi.`
+      );
+      return false;
+    }
+
     const totalProductInCart = cart
       .filter(c => c.id === item.id)
       .reduce((sum, c) => sum + c.cartQty, 0);
 
     if (item.qty <= 0 || totalProductInCart >= item.qty) {
       showToast(item.qty <= 0 ? 'Item is out of stock' : `Only ${item.qty} units available in stock`, 'error');
-      return;
+      return false;
     }
 
     let effectiveVariant = chosenVariant;
     if (!effectiveVariant && item.variants && item.variants.length > 0) {
       if (specificImei) {
         const matchedV = item.variants.find(v =>
-          (v.imeis || []).some(im => im.toLowerCase() === specificImei.toLowerCase())
+          (v.imeis || []).some(im => im.trim().toLowerCase() === specificImei.trim().toLowerCase())
         );
         if (matchedV) effectiveVariant = matchedV;
       }
@@ -633,7 +778,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
           effectiveVariant = item.variants[0];
         } else {
           setVariantPickerItem(item);
-          return;
+          return false;
         }
       }
     }
@@ -662,7 +807,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
             : `Only ${vStock} units available for ${variantLabel}`,
           'warning'
         );
-        return;
+        return false;
       }
     }
 
@@ -728,9 +873,92 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       }
     });
     showToast(
-      variantLabel ? `${item.name} (${variantLabel}) added to cart` : `${item.name} added to cart`,
-      'info'
+      specificImei
+        ? `${item.name}${variantLabel ? ` (${variantLabel})` : ''} • IMEI ${specificImei} added`
+        : variantLabel
+        ? `${item.name} (${variantLabel}) added to cart`
+        : `${item.name} added to cart`,
+      'success'
     );
+    return true;
+  };
+
+  const handleScanOrQuickMatch = (rawCode: string, source: 'scanner' | 'enter' | 'typing'): boolean => {
+    const clean = rawCode.trim();
+    if (!clean) return false;
+
+    const clearAndFocusSearch = () => {
+      setSearch('');
+      setTimeout(() => searchInputRef.current?.focus(), 0);
+    };
+
+    const exact = findExactImeiOrBarcodeMatch(clean);
+    if (exact) {
+      // Prevent duplicate scan of an IMEI already in the cart
+      if (exact.matchType === 'imei' && exact.matchedImei && isImeiAlreadyInCart(exact.matchedImei)) {
+        triggerDuplicateAlert(
+          'Duplicate Scan Blocked',
+          `"${exact.item.name}" (IMEI: ${exact.matchedImei}) pehle se cart mein mojood hai!`
+        );
+        clearAndFocusSearch();
+        return true;
+      }
+
+      // Prevent accidental re-scan of a barcode/product already in the cart
+      if (exact.matchType === 'barcode' && cart.some(c => c.id === exact.item.id)) {
+        triggerDuplicateAlert(
+          'Product Pehle Se Cart Mein Hai',
+          `"${exact.item.name}" pehle se cart mein add hai! Galti se dobara scan hone par add nahi kiya gaya. Qty barhani ho to cart se (+) dabayein.`
+        );
+        clearAndFocusSearch();
+        return true;
+      }
+
+      if (source === 'typing' && exact.matchType !== 'imei') {
+        return false;
+      }
+      if (exact.matchType === 'barcode' && exact.item.variants && exact.item.variants.length > 1) {
+        setVariantPickerItem(exact.item);
+        clearAndFocusSearch();
+        return true;
+      }
+      const added = addToCart(exact.item, exact.matchedImei, exact.variant);
+      if (added) {
+        clearAndFocusSearch();
+      } else if (exact.item.variants && exact.item.variants.length > 1 && !exact.variant) {
+        setSearch('');
+      } else if (exact.matchedImei) {
+        clearAndFocusSearch();
+      }
+      return true;
+    }
+
+    if (source === 'enter') {
+      const q = clean.toLowerCase();
+      const matchingBySearch = activeInventory.filter(item => {
+        const imeiString = extractItemImeis(item).join(' ');
+        const combined = `${item.name} ${item.category} ${item.barcode || ''} ${imeiString}`.toLowerCase();
+        return q.split(/\s+/).filter(Boolean).every(tok => combined.includes(tok));
+      });
+      if (matchingBySearch.length === 1) {
+        const singleMatch = matchingBySearch[0];
+        if (cart.some(c => c.id === singleMatch.id)) {
+          triggerDuplicateAlert(
+            'Product Pehle Se Cart Mein Hai',
+            `"${singleMatch.name}" pehle se cart mein add hai! Dobara scan karne par add nahi kiya gaya.`
+          );
+          clearAndFocusSearch();
+          return true;
+        }
+        const added = addToCart(singleMatch);
+        if (added) {
+          clearAndFocusSearch();
+        }
+        return true;
+      }
+    }
+
+    return false;
   };
 
   const updateCartQty = (id: string, delta: number, variantId?: string) => {
@@ -871,8 +1099,8 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
   const renderCartContent = (isMobile = false) => (
     <div
-      className={`bg-white rounded-2xl p-3 sm:p-4 space-y-3 flex flex-col h-full min-h-0 ${
-        isMobile ? 'overflow-y-auto' : 'border border-slate-200/90 shadow-xs overflow-hidden'
+      className={`bg-white rounded-2xl p-3 sm:p-4 flex flex-col h-full min-h-0 ${
+        isMobile ? 'space-y-3 overflow-y-auto' : 'gap-2.5 border border-slate-200/90 shadow-xs overflow-hidden'
       }`}
     >
       {/* Cart Header */}
@@ -919,341 +1147,53 @@ const PosTabComponent: React.FC<PosTabProps> = ({
         </div>
       </div>
 
-      {/* TWO INVOICE TYPES: Cash Customer vs Credit/Khata Customer */}
-      <div className="space-y-2 bg-slate-50 p-2.5 sm:p-3 rounded-2xl border border-slate-200/80 shrink-0">
-        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
-          Invoice Type
-        </label>
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => setInvoiceType('cash')}
-            className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer min-h-[40px] ${
-              invoiceType === 'cash'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
-            }`}
-          >
-            <Banknote className="w-4 h-4" />
-            <span>Cash Customer</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setInvoiceType('credit')}
-            className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer min-h-[40px] ${
-              invoiceType === 'credit'
-                ? 'bg-purple-600 text-white shadow-xs'
-                : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
-            }`}
-          >
-            <BookOpen className="w-4 h-4" />
-            <span>Credit / Khata</span>
-          </button>
-        </div>
-
-        {/* If Credit / Khata is selected, allow picking from existing customers */}
-        {invoiceType === 'credit' && khataCustomers.length > 0 && (
-          <div className="pt-1.5">
-            <select
-              value={selectedKhataId}
-              onChange={e => handleKhataSelect(e.target.value)}
-              className="w-full bg-white border border-purple-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-purple-600 min-h-[40px]"
-            >
-              <option value="">Select Existing Khata Customer...</option>
-              {khataCustomers.map(k => (
-                <option key={k.id} value={k.id}>
-                  {k.name} ({k.phone}) - Current Due: {currency} {k.balance.toLocaleString()}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-      </div>
-
-      {/* Customer Info */}
-      <div className="space-y-2 shrink-0">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <input
-            type="text"
-            value={custName}
-            onChange={e => setCustName(e.target.value)}
-            placeholder={saleMode === 'wholesale' ? "Retailer / Contact Person Name *" : "Customer Name"}
-            className={`border rounded-xl px-3 py-2.5 text-xs font-medium focus:outline-none focus:bg-white transition min-h-[44px] ${
-              saleMode === 'wholesale' ? 'bg-purple-50/50 border-purple-200 focus:border-purple-600' : 'bg-slate-50 border-slate-200 focus:border-blue-600'
-            }`}
-          />
-          <input
-            type="text"
-            value={custPhone}
-            onChange={e => setCustPhone(e.target.value)}
-            placeholder="Phone Number"
-            className={`border rounded-xl px-3 py-2.5 text-xs font-medium focus:outline-none focus:bg-white transition min-h-[44px] ${
-              saleMode === 'wholesale' ? 'bg-purple-50/50 border-purple-200 focus:border-purple-600' : 'bg-slate-50 border-slate-200 focus:border-blue-600'
-            }`}
-          />
-        </div>
-
-        {/* Wholesale Retailer Shop Details */}
-        {saleMode === 'wholesale' && (
-          <div className="bg-purple-50 border border-purple-200 rounded-xl p-2.5 space-y-2 animate-in fade-in">
-            <span className="text-[10px] font-black uppercase text-purple-900 tracking-wider flex items-center gap-1">
-              <Package className="w-3.5 h-3.5 text-purple-700" /> Retailer / Shop Details
-            </span>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <input
-                type="text"
-                value={retailerShopName}
-                onChange={e => setRetailerShopName(e.target.value)}
-                placeholder="Shop / Business Name"
-                className="bg-white border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[38px]"
-              />
-              <input
-                type="text"
-                value={retailerCity}
-                onChange={e => setRetailerCity(e.target.value)}
-                placeholder="City (e.g. Lahore, Karachi)"
-                className="bg-white border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[38px]"
-              />
-              <input
-                type="text"
-                value={retailerNtn}
-                onChange={e => setRetailerNtn(e.target.value)}
-                placeholder="NTN / GST No (Optional)"
-                className="bg-white border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs tabular-nums font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[38px]"
-              />
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Cart Itemized Table */}
-      <div className={`border border-slate-200/80 rounded-xl overflow-hidden flex flex-col ${isMobile ? 'min-h-[140px] max-h-56' : 'flex-1 min-h-[110px] max-h-[180px] xl:max-h-[220px] 2xl:max-h-[260px]'}`}>
-        <div className="overflow-y-auto flex-1 scrollbar-thin">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200 sticky top-0">
-              <tr>
-                <th className="p-2.5">Item</th>
-                <th className="p-2.5 text-center">Qty</th>
-                <th className="p-2.5 text-right">Price</th>
-                <th className="p-2.5 text-center"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-xs">
-              {cart.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="text-center py-8 text-slate-400">
-                    <ShoppingCart className="w-5 h-5 mx-auto mb-1 text-slate-300" />
-                    <p className="text-xs font-medium">Cart is empty</p>
-                  </td>
-                </tr>
-              ) : (
-                cart.map(item => {
-                  const availableItemImeis = extractItemImeis(item);
-                  const hasMultipleImeis = availableItemImeis.length > 0;
-
-                  return (
-                    <tr key={`${item.id}::${item.selectedVariantId || 'default'}`} className="hover:bg-slate-50/60 transition">
-                      <td className="p-2.5">
-                        <p className="font-semibold text-slate-900 leading-tight line-clamp-1">
-                          {item.name}
-                        </p>
-                        {item.selectedVariantLabel && (
-                          <span className="inline-block mt-0.5 text-[9px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded">
-                            {item.selectedVariantLabel}
-                          </span>
-                        )}
-                        {hasMultipleImeis ? (
-                          <div className="mt-1 space-y-1">
-                            {Array.from({ length: item.cartQty }).map((_, unitIdx) => {
-                              const curVal = item.selectedImeis?.[unitIdx] || availableItemImeis[unitIdx] || '';
-                              return (
-                                <div key={unitIdx} className="flex items-center gap-1">
-                                  <span className="text-[9px] tabular-nums text-slate-400 font-bold">
-                                    #{unitIdx + 1}:
-                                  </span>
-                                  {availableItemImeis.length > 1 ? (
-                                    <select
-                                      value={curVal}
-                                      onChange={e =>
-                                        handleSelectImeiForCartItem(
-                                          item.id,
-                                          unitIdx,
-                                          e.target.value,
-                                          item.selectedVariantId
-                                        )
-                                      }
-                                      className="text-[10px] tabular-nums text-blue-700 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5 max-w-[170px] outline-none"
-                                    >
-                                      {availableItemImeis.map(im => (
-                                        <option key={im} value={im}>
-                                          IMEI: {im}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  ) : (
-                                    <span className="text-[9px] tabular-nums text-blue-700 bg-blue-50 px-1 py-0.5 rounded border border-blue-100">
-                                      IMEI: {curVal}
-                                    </span>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : item.barcode ? (
-                          <p className="text-[9px] tabular-nums text-slate-400">
-                            Code: {item.barcode}
-                          </p>
-                        ) : null}
-                      </td>
-                      <td className="p-2.5 text-center">
-                        <div className="inline-flex items-center gap-1 bg-slate-100 rounded-lg p-0.5">
-                          <button
-                            type="button"
-                            onClick={() => updateCartQty(item.id, -1, item.selectedVariantId)}
-                            className="w-7 h-7 sm:w-5 sm:h-5 bg-white rounded font-bold text-slate-700 hover:bg-slate-200 flex items-center justify-center transition cursor-pointer shadow-2xs"
-                          >
-                            <Minus className="w-3.5 h-3.5" />
-                          </button>
-                          <span className="tabular-nums font-bold text-xs px-1.5 min-w-[20px] text-center">
-                            {item.cartQty}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => updateCartQty(item.id, 1, item.selectedVariantId)}
-                            className="w-7 h-7 sm:w-5 sm:h-5 bg-white rounded font-bold text-slate-700 hover:bg-slate-200 flex items-center justify-center transition cursor-pointer shadow-2xs"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                      <td className="p-2.5 text-right tabular-nums font-bold text-slate-900">
-                        {currency} {(getItemUnitPrice(item) * item.cartQty).toLocaleString()}
-                        {saleMode === 'wholesale' && (
-                          <div className="text-[9px] text-purple-700 font-sans">
-                            {currency} {getItemUnitPrice(item).toLocaleString()} / unit
-                          </div>
-                        )}
-                      </td>
-                      <td className="p-2.5 text-center">
-                        <button
-                          type="button"
-                          onClick={() => removeFromCart(item.id, item.selectedVariantId)}
-                          className="text-slate-400 hover:text-rose-600 p-1.5 transition cursor-pointer min-h-[36px] min-w-[36px] flex items-center justify-center"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Pricing Totals & Payment Method */}
-      <div className="space-y-2.5 pt-2 border-t border-slate-100 text-xs shrink-0">
-        <div className="space-y-1.5 text-slate-600">
-          <div className="flex justify-between">
-            <span>Subtotal ({saleMode === 'wholesale' ? 'B2B Wholesale' : 'Retail'}):</span>
-            <span className="tabular-nums font-bold text-slate-800">
-              {currency} {subtotal.toLocaleString()}
-            </span>
-          </div>
-
-          {/* Wholesale B2B Savings Banner */}
-          {saleMode === 'wholesale' && wholesaleSavings > 0 && (
-            <div className="flex justify-between items-center bg-purple-50 border border-purple-200 text-purple-900 px-2.5 py-1.5 rounded-xl font-extrabold text-[11px]">
-              <span className="flex items-center gap-1">
-                <Sparkles className="w-3.5 h-3.5 text-purple-600" /> B2B Wholesale Savings:
-              </span>
-              <span className="tabular-nums">
-                {currency} {wholesaleSavings.toLocaleString()}
-              </span>
-            </div>
-          )}
-
-          <div className="flex justify-between items-center">
-            <span>Discount ({currency}):</span>
-            <input
-              type="number"
-              min="0"
-              value={discount}
-              onChange={e => setDiscount(e.target.value === '' ? '' : Number(e.target.value))}
-              placeholder="Discount"
-              className="w-24 text-right bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 tabular-nums font-bold text-xs focus:outline-none focus:border-blue-600 focus:bg-white"
-            />
-          </div>
-
-          <div className="flex justify-between text-base font-extrabold text-slate-900 pt-1.5 border-t border-slate-100">
-            <span>Grand Total:</span>
-            <span className={`tabular-nums text-lg ${saleMode === 'wholesale' ? 'text-purple-700' : 'text-blue-600'}`}>
-              {currency} {grandTotal.toLocaleString()}
-            </span>
-          </div>
-
-          {/* If Credit Sale, show Paid Now vs Due Balance */}
-          {invoiceType === 'credit' && (
-            <div className="bg-purple-50 p-2.5 rounded-xl border border-purple-200 space-y-1.5 mt-2">
-              <div className="flex justify-between items-center">
-                <span className="font-bold text-purple-900">Advance / Paid Now ({currency}):</span>
-                <input
-                  type="number"
-                  min="0"
-                  max={grandTotal}
-                  value={amountPaid}
-                  onChange={e => setAmountPaid(e.target.value === '' ? '' : Number(e.target.value))}
-                  placeholder="Paid amount"
-                  className="w-28 text-right bg-white border border-purple-300 rounded-lg px-2.5 py-1.5 tabular-nums font-bold text-xs focus:outline-none focus:border-purple-600"
-                />
-              </div>
-              <div className="flex justify-between items-center pt-1 border-t border-purple-200 text-purple-900">
-                <span className="font-extrabold">Remaining Due (Khata Balance):</span>
-                <span className="tabular-nums font-extrabold text-sm tabular-nums text-rose-600">
-                  {currency} {actualDue.toLocaleString()}
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Payment Modes */}
-        <div>
-          <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1.5">
-            Payment Channel
+      {/* Scrollable Middle Cart Sections (keeps Wholesale & Credit forms from pushing Checkout button off-screen) */}
+      <div className={isMobile ? 'space-y-3' : 'flex-1 min-h-0 overflow-y-auto pr-1 space-y-2.5 scrollbar-thin'}>
+        {/* TWO INVOICE TYPES: Cash Customer vs Credit/Khata Customer */}
+        <div className="space-y-2 bg-slate-50 p-2.5 sm:p-3 rounded-2xl border border-slate-200/80">
+          <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            Invoice Type
           </label>
-          <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
-            {(['Cash', 'JazzCash', 'Easypaisa', 'Bank', 'Card'] as PaymentMethod[]).map(pm => (
-              <button
-                key={pm}
-                type="button"
-                onClick={() => setPaymentMethod(pm)}
-                className={`py-2.5 px-1 rounded-xl text-xs font-bold text-center transition cursor-pointer min-h-[42px] ${
-                  paymentMethod === pm
-                    ? invoiceType === 'credit' ? 'bg-purple-600 text-white shadow-xs' : 'bg-blue-600 text-white shadow-xs'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                }`}
-              >
-                {pm}
-              </button>
-            ))}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setInvoiceType('cash')}
+              className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer min-h-[40px] ${
+                invoiceType === 'cash'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+              }`}
+            >
+              <Banknote className="w-4 h-4" />
+              <span>Cash Customer</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setInvoiceType('credit')}
+              className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer min-h-[40px] ${
+                invoiceType === 'credit'
+                  ? 'bg-purple-600 text-white shadow-xs'
+                  : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+              }`}
+            >
+              <BookOpen className="w-4 h-4" />
+              <span>Credit / Khata</span>
+            </button>
           </div>
-          {matchingAccounts.length > 1 && (
-            <div className="mt-2.5">
-              <label className="block text-[11px] font-bold text-blue-900 mb-1">
-                Select Specific {paymentMethod} Account *
-              </label>
+
+          {/* If Credit / Khata is selected, allow picking from existing customers */}
+          {invoiceType === 'credit' && khataCustomers.length > 0 && (
+            <div className="pt-1.5">
               <select
-                value={accountId}
-                onChange={e => setDraft(prev => ({ ...prev, accountId: e.target.value }))}
-                className="w-full px-3 py-2 bg-white border border-blue-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-600 min-h-[44px]"
+                value={selectedKhataId}
+                onChange={e => handleKhataSelect(e.target.value)}
+                className="w-full bg-white border border-purple-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-purple-600 min-h-[40px]"
               >
-                <option value="">-- Choose Account --</option>
-                {matchingAccounts.map(acc => (
-                  <option key={acc.id} value={acc.id}>
-                    {acc.name} {acc.accountNumber ? `(${acc.accountNumber})` : ''}
+                <option value="">Select Existing Khata Customer...</option>
+                {khataCustomers.map(k => (
+                  <option key={k.id} value={k.id}>
+                    {k.name} ({k.phone}) - Current Due: {currency} {k.balance.toLocaleString()}
                   </option>
                 ))}
               </select>
@@ -1261,7 +1201,321 @@ const PosTabComponent: React.FC<PosTabProps> = ({
           )}
         </div>
 
-        {/* Checkout Action Button */}
+        {/* Customer Info */}
+        <div className="space-y-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <input
+              type="text"
+              value={custName}
+              onChange={e => setCustName(e.target.value)}
+              placeholder={saleMode === 'wholesale' ? "Retailer / Contact Person Name *" : "Customer Name"}
+              className={`border rounded-xl px-3 py-2.5 text-xs font-medium focus:outline-none focus:bg-white transition min-h-[40px] ${
+                saleMode === 'wholesale' ? 'bg-purple-50/50 border-purple-200 focus:border-purple-600' : 'bg-slate-50 border-slate-200 focus:border-blue-600'
+              }`}
+            />
+            <input
+              type="text"
+              value={custPhone}
+              onChange={e => setCustPhone(e.target.value)}
+              placeholder="Phone Number"
+              className={`border rounded-xl px-3 py-2.5 text-xs font-medium focus:outline-none focus:bg-white transition min-h-[40px] ${
+                saleMode === 'wholesale' ? 'bg-purple-50/50 border-purple-200 focus:border-purple-600' : 'bg-slate-50 border-slate-200 focus:border-blue-600'
+              }`}
+            />
+          </div>
+
+          {/* Wholesale Retailer Shop Details */}
+          {saleMode === 'wholesale' && (
+            <div className="bg-purple-50 border border-purple-200 rounded-xl p-2.5 space-y-2 animate-in fade-in">
+              <span className="text-[10px] font-black uppercase text-purple-900 tracking-wider flex items-center gap-1">
+                <Package className="w-3.5 h-3.5 text-purple-700" /> Retailer / Shop Details
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <input
+                  type="text"
+                  value={retailerShopName}
+                  onChange={e => setRetailerShopName(e.target.value)}
+                  placeholder="Shop / Business Name"
+                  className="bg-white border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[38px]"
+                />
+                <input
+                  type="text"
+                  value={retailerCity}
+                  onChange={e => setRetailerCity(e.target.value)}
+                  placeholder="City (e.g. Lahore, Karachi)"
+                  className="bg-white border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[38px]"
+                />
+                <input
+                  type="text"
+                  value={retailerNtn}
+                  onChange={e => setRetailerNtn(e.target.value)}
+                  placeholder="NTN / GST No (Optional)"
+                  className="bg-white border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs tabular-nums font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[38px]"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Cart Itemized Table */}
+        <div className={`border border-slate-200/80 rounded-xl overflow-hidden flex flex-col ${isMobile ? 'min-h-[140px] max-h-56' : 'min-h-[115px] max-h-[220px]'}`}>
+          <div className="overflow-y-auto flex-1 scrollbar-thin">
+            <table className="w-full text-left border-collapse">
+              <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200 sticky top-0">
+                <tr>
+                  <th className="p-2.5">Item</th>
+                  <th className="p-2.5 text-center">Qty</th>
+                  <th className="p-2.5 text-right">Price</th>
+                  <th className="p-2.5 text-center"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-xs">
+                {cart.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="text-center py-6 text-slate-400">
+                      <ShoppingCart className="w-5 h-5 mx-auto mb-1 text-slate-300" />
+                      <p className="text-xs font-medium">Cart is empty</p>
+                    </td>
+                  </tr>
+                ) : (
+                  cart.map(item => {
+                    const availableItemImeis = extractItemImeis(item);
+                    const hasMultipleImeis = availableItemImeis.length > 0;
+
+                    return (
+                      <tr key={`${item.id}::${item.selectedVariantId || 'default'}`} className="hover:bg-slate-50/60 transition">
+                        <td className="p-2.5">
+                          <p className="font-semibold text-slate-900 leading-tight line-clamp-1">
+                            {item.name}
+                          </p>
+                          {item.selectedVariantLabel && (
+                            <span className="inline-block mt-0.5 text-[9px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded">
+                              {item.selectedVariantLabel}
+                            </span>
+                          )}
+                          {hasMultipleImeis ? (
+                            <div className="mt-1 space-y-1">
+                              {Array.from({ length: item.cartQty }).map((_, unitIdx) => {
+                                const curVal = item.selectedImeis?.[unitIdx] || availableItemImeis[unitIdx] || '';
+                                return (
+                                  <div key={unitIdx} className="flex items-center gap-1">
+                                    <span className="text-[9px] tabular-nums text-slate-400 font-bold">
+                                      #{unitIdx + 1}:
+                                    </span>
+                                    {availableItemImeis.length > 1 ? (
+                                      <select
+                                        value={curVal}
+                                        onChange={e =>
+                                          handleSelectImeiForCartItem(
+                                            item.id,
+                                            unitIdx,
+                                            e.target.value,
+                                            item.selectedVariantId
+                                          )
+                                        }
+                                        className="text-[10px] tabular-nums text-blue-700 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5 max-w-[170px] outline-none"
+                                      >
+                                        {availableItemImeis.map(im => (
+                                          <option key={im} value={im}>
+                                            IMEI: {im}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <span className="text-[9px] tabular-nums text-blue-700 bg-blue-50 px-1 py-0.5 rounded border border-blue-100">
+                                        IMEI: {curVal}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : item.barcode ? (
+                            <p className="text-[9px] tabular-nums text-slate-400">
+                              Code: {item.barcode}
+                            </p>
+                          ) : null}
+                        </td>
+                        <td className="p-2.5 text-center">
+                          <div className="inline-flex items-center gap-1 bg-slate-100 rounded-lg p-0.5">
+                            <button
+                              type="button"
+                              onClick={() => updateCartQty(item.id, -1, item.selectedVariantId)}
+                              className="w-7 h-7 sm:w-5 sm:h-5 bg-white rounded font-bold text-slate-700 hover:bg-slate-200 flex items-center justify-center transition cursor-pointer shadow-2xs"
+                            >
+                              <Minus className="w-3.5 h-3.5" />
+                            </button>
+                            <span className="tabular-nums font-bold text-xs px-1.5 min-w-[20px] text-center">
+                              {item.cartQty}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => updateCartQty(item.id, 1, item.selectedVariantId)}
+                              className="w-7 h-7 sm:w-5 sm:h-5 bg-white rounded font-bold text-slate-700 hover:bg-slate-200 flex items-center justify-center transition cursor-pointer shadow-2xs"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                        <td className="p-2.5 text-right tabular-nums font-bold text-slate-900">
+                          {currency} {(getItemUnitPrice(item) * item.cartQty).toLocaleString()}
+                          {saleMode === 'wholesale' && (
+                            <div className="text-[9px] text-purple-700 font-sans">
+                              {currency} {getItemUnitPrice(item).toLocaleString()} / unit
+                            </div>
+                          )}
+                        </td>
+                        <td className="p-2.5 text-center">
+                          <button
+                            type="button"
+                            onClick={() => removeFromCart(item.id, item.selectedVariantId)}
+                            className="text-slate-400 hover:text-rose-600 p-1.5 transition cursor-pointer min-h-[36px] min-w-[36px] flex items-center justify-center"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Pricing Totals & Payment Method */}
+        <div className="space-y-2.5 pt-2 border-t border-slate-100 text-xs">
+          <div className="space-y-1.5 text-slate-600">
+            <div className="flex justify-between">
+              <span>Subtotal ({saleMode === 'wholesale' ? 'B2B Wholesale' : 'Retail'}):</span>
+              <span className="tabular-nums font-bold text-slate-800">
+                {currency} {subtotal.toLocaleString()}
+              </span>
+            </div>
+
+            {/* Wholesale B2B Savings Banner */}
+            {saleMode === 'wholesale' && wholesaleSavings > 0 && (
+              <div className="flex justify-between items-center bg-purple-50 border border-purple-200 text-purple-900 px-2.5 py-1.5 rounded-xl font-extrabold text-[11px]">
+                <span className="flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5 text-purple-600" /> B2B Wholesale Savings:
+                </span>
+                <span className="tabular-nums">
+                  {currency} {wholesaleSavings.toLocaleString()}
+                </span>
+              </div>
+            )}
+
+            <div className="flex justify-between items-center">
+              <span>Discount ({currency}):</span>
+              <input
+                type="number"
+                min="0"
+                value={discount}
+                onChange={e => setDiscount(e.target.value === '' ? '' : Number(e.target.value))}
+                placeholder="Discount"
+                className="w-24 text-right bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 tabular-nums font-bold text-xs focus:outline-none focus:border-blue-600 focus:bg-white"
+              />
+            </div>
+
+            <div className="flex justify-between text-base font-extrabold text-slate-900 pt-1.5 border-t border-slate-100">
+              <span>Grand Total:</span>
+              <span className={`tabular-nums text-lg ${saleMode === 'wholesale' ? 'text-purple-700' : 'text-blue-600'}`}>
+                {currency} {grandTotal.toLocaleString()}
+              </span>
+            </div>
+
+            {/* If Credit Sale, show Paid Now vs Due Balance */}
+            {invoiceType === 'credit' && (
+              <div className="bg-purple-50 p-2.5 rounded-xl border border-purple-200 space-y-1.5 mt-2">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-purple-900">Advance / Paid Now ({currency}):</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max={grandTotal}
+                    value={amountPaid}
+                    onChange={e => setAmountPaid(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="Paid amount"
+                    className="w-28 text-right bg-white border border-purple-300 rounded-lg px-2.5 py-1.5 tabular-nums font-bold text-xs focus:outline-none focus:border-purple-600"
+                  />
+                </div>
+                <div className="flex justify-between items-center pt-1 border-t border-purple-200 text-purple-900">
+                  <span className="font-extrabold">Remaining Due (Khata Balance):</span>
+                  <span className="tabular-nums font-extrabold text-sm text-rose-600">
+                    {currency} {actualDue.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Payment Modes */}
+          <div>
+            <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1.5">
+              Payment Channel
+            </label>
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
+              {(['Cash', 'JazzCash', 'Easypaisa', 'Bank', 'Card'] as PaymentMethod[]).map(pm => (
+                <button
+                  key={pm}
+                  type="button"
+                  onClick={() => setPaymentMethod(pm)}
+                  className={`py-2 px-1 rounded-xl text-xs font-bold text-center transition cursor-pointer min-h-[38px] ${
+                    paymentMethod === pm
+                      ? invoiceType === 'credit' ? 'bg-purple-600 text-white shadow-xs' : 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  {pm}
+                </button>
+              ))}
+            </div>
+            {matchingAccounts.length > 1 && (
+              <div className="mt-2.5">
+                <label className="block text-[11px] font-bold text-blue-900 mb-1">
+                  Select Specific {paymentMethod} Account *
+                </label>
+                <select
+                  value={accountId}
+                  onChange={e => setDraft(prev => ({ ...prev, accountId: e.target.value }))}
+                  className="w-full px-3 py-2 bg-white border border-blue-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-600 min-h-[40px]"
+                >
+                  <option value="">-- Choose Account --</option>
+                  {matchingAccounts.map(acc => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.name} {acc.accountNumber ? `(${acc.accountNumber})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          {/* Per-Bill Note Field (prints at bottom of invoice in any language) */}
+          <div className="pt-2 border-t border-slate-100">
+            <label className="flex items-center justify-between text-[11px] font-bold uppercase text-slate-500 mb-1">
+              <span className="flex items-center gap-1">
+                <FileText className="w-3 h-3 text-blue-500" />
+                Bill / Invoice Note
+              </span>
+              <span className="text-[9px] font-semibold text-slate-400 normal-case">
+                Urdu / English / Roman Urdu
+              </span>
+            </label>
+            <textarea
+              rows={2}
+              dir="auto"
+              value={billNote}
+              onChange={e => setBillNote(e.target.value)}
+              placeholder="Apni zuban mein is bill ke neeche koi bhi note likhein (optional)..."
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-600 focus:bg-white transition resize-none"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Pinned Checkout Action Button (always visible even in Wholesale / Credit modes) */}
+      <div className="pt-2 border-t border-slate-100 bg-white shrink-0">
         <button
           type="button"
           onClick={() => {
@@ -1354,6 +1608,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       netProfit,
       paymentMethod,
       accountId: matchingAccounts.length > 0 ? accountId || undefined : undefined,
+      notes: billNote.trim() || undefined,
       date: new Date().toISOString(),
     };
 
@@ -1500,13 +1755,47 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
             {/* Search & Category Filter Bar */}
             <div className="bg-white border border-slate-200/90 rounded-2xl p-2.5 sm:p-3 space-y-2 shadow-xs shrink-0">
+              {duplicateScanAlert && (
+                <div className="bg-rose-50 border border-rose-300 text-rose-900 rounded-xl px-3 py-2 flex items-start justify-between gap-2 shadow-xs animate-in fade-in">
+                  <div className="flex items-start gap-2 min-w-0">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    <div className="text-xs min-w-0">
+                      <p className="font-black text-rose-800 leading-tight">{duplicateScanAlert.title}</p>
+                      <p className="text-[11px] font-semibold text-rose-700 mt-0.5 leading-snug">
+                        {duplicateScanAlert.detail}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDuplicateScanAlert(null)}
+                    className="p-1 text-rose-500 hover:text-rose-800 rounded-lg cursor-pointer shrink-0"
+                    title="Dismiss Alert"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
               <div className="relative flex items-center">
                 <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
+                  ref={searchInputRef}
                   type="text"
                   value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  placeholder="Search title, category, barcode, or IMEI..."
+                  onChange={e => {
+                    const nextVal = e.target.value;
+                    setSearch(nextVal);
+                    if (nextVal.trim().length >= 8) {
+                      handleScanOrQuickMatch(nextVal, 'typing');
+                    }
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && search.trim()) {
+                      e.preventDefault();
+                      handleScanOrQuickMatch(search, 'enter');
+                    }
+                  }}
+                  placeholder="Scan IMEI / barcode or search product..."
                   className="w-full pl-8.5 pr-20 sm:pr-24 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white transition h-9 sm:h-10"
                 />
                 <div className="absolute right-1 flex items-center gap-1">
@@ -1773,7 +2062,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
         </div>
       ) : (
         /* ================= HISTORY SUB-TAB VIEW ================= */
-        <div className="space-y-6">
+        <div className="space-y-6 flex-1 min-h-0 overflow-y-auto pr-1 pb-6 scrollbar-thin">
           {/* Filters & Actions Control Bar */}
           <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
@@ -2017,8 +2306,15 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
                       {/* Notes / Reason for cancellation */}
                       {sale.notes && (
-                        <p className="text-xs text-rose-700 bg-rose-50 border border-rose-100 px-3 py-1.5 rounded-xl font-medium">
-                          <strong>Log Notes:</strong> {sale.notes}
+                        <p
+                          dir="auto"
+                          className={`text-xs px-3 py-1.5 rounded-xl font-medium border ${
+                            isCancelled
+                              ? 'text-rose-700 bg-rose-50 border-rose-100'
+                              : 'text-slate-800 bg-amber-50 border-amber-200/80'
+                          }`}
+                        >
+                          <strong>{isCancelled ? 'Log Notes:' : 'Bill Note:'}</strong> {sale.notes}
                         </p>
                       )}
                     </div>
@@ -2716,6 +3012,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                     onClick={() => {
                       addToCart(variantPickerItem, undefined, v);
                       setVariantPickerItem(null);
+                      setSelectedProductDetails(null);
                     }}
                     className={`w-full text-left p-3 rounded-2xl border transition flex items-center justify-between gap-3 ${
                       vRemaining <= 0
@@ -2797,8 +3094,11 @@ const PosTabComponent: React.FC<PosTabProps> = ({
         onClose={() => setIsCameraScannerOpen(false)}
         onScan={(code) => {
           if (cameraScannerTarget === 'productSearch') {
-            setSearch(code);
-            showToast(`Product Scanned: ${code}`, 'success');
+            const matched = handleScanOrQuickMatch(code, 'scanner');
+            if (!matched) {
+              setSearch(code);
+              showToast(`Product Scanned: ${code}`, 'info');
+            }
           } else {
             setHistorySearch(code);
             showToast(`Invoice Code Scanned: ${code}`, 'success');

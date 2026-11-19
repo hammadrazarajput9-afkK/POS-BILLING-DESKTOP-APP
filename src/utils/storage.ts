@@ -112,14 +112,30 @@ export function getLocalStorageKey(storeId?: string): string {
 }
 
 export const SESSION_STORAGE_KEY = 'MOBILE_POS_ACTIVE_USER_SESSION';
+export const TAB_SESSION_STORAGE_KEY = 'MOBILE_POS_TAB_USER_SESSION';
 
-export function saveCurrentSession(user?: UserAccount | null): void {
+export function saveCurrentSession(user?: UserAccount | null, persistAcrossRestarts: boolean = true): void {
   try {
     if (user) {
-      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(user));
+      const serialized = JSON.stringify(user);
+      if (persistAcrossRestarts) {
+        localStorage.setItem(SESSION_STORAGE_KEY, serialized);
+      } else {
+        localStorage.removeItem(SESSION_STORAGE_KEY);
+      }
+      try {
+        sessionStorage.setItem(TAB_SESSION_STORAGE_KEY, serialized);
+      } catch {
+        // ignore sessionStorage quota errors
+      }
       setActiveStoreId(DEFAULT_STORE_ID);
     } else {
       localStorage.removeItem(SESSION_STORAGE_KEY);
+      try {
+        sessionStorage.removeItem(TAB_SESSION_STORAGE_KEY);
+      } catch {
+        // ignore
+      }
     }
   } catch (e) {
     console.warn('Session save warning:', e);
@@ -128,7 +144,15 @@ export function saveCurrentSession(user?: UserAccount | null): void {
 
 export function getSavedSessionUser(): UserAccount | null {
   try {
-    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    const raw =
+      localStorage.getItem(SESSION_STORAGE_KEY) ||
+      (() => {
+        try {
+          return sessionStorage.getItem(TAB_SESSION_STORAGE_KEY);
+        } catch {
+          return null;
+        }
+      })();
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (parsed && parsed.id && parsed.email) {
@@ -143,6 +167,11 @@ export function getSavedSessionUser(): UserAccount | null {
 export function clearCurrentSession(): void {
   try {
     localStorage.removeItem(SESSION_STORAGE_KEY);
+    try {
+      sessionStorage.removeItem(TAB_SESSION_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
   } catch {
     // ignore
   }
@@ -2953,6 +2982,12 @@ export function mergeAppData(local: AppData, remote: Partial<AppData>): AppData 
   return {
     ...local,
     ...remote,
+    currentUser: local.currentUser ?? remote.currentUser,
+    currentRole: local.currentUser
+      ? local.currentRole
+      : remote.currentUser
+      ? remote.currentRole
+      : local.currentRole || remote.currentRole || 'admin',
     backupVersion: CURRENT_BACKUP_VERSION,
     lastModified: maxIso(local.lastModified, remote.lastModified) || new Date().toISOString(),
     migrationDone: local.migrationDone || remote.migrationDone,
@@ -3411,3 +3446,120 @@ function chunkArray<T>(items: T[], chunkSize: number): T[][] {
   }
   return result;
 }
+
+export interface StorageUsageStats {
+  photoCount: number;
+  photoBreakdown: {
+    inventory: number;
+    khata: number;
+    expenses: number;
+    purchases: number;
+    logos: number;
+  };
+  photoBytes: number;
+  textBytes: number;
+  totalBytes: number;
+  firestoreFreeLimitBytes: number;
+  remainingBytes: number;
+  usedPercent: number;
+  estimatedRemainingPhotos: number;
+  avgPhotoBytes: number;
+}
+
+export const FIRESTORE_FREE_STORAGE_LIMIT_BYTES = 1024 * 1024 * 1024; // 1 GiB (1,024 MB) Free Spark Firestore storage
+
+function utf8ByteLength(str?: string): number {
+  if (!str) return 0;
+  try {
+    return new Blob([str]).size;
+  } catch {
+    return str.length;
+  }
+}
+
+/**
+ * Pure local calculation (0 Firestore reads) of stored photo size & total database size
+ * against Firebase Firestore's 1 GiB (1,024 MB) free storage limit.
+ */
+export function calculateStorageUsageStats(appData?: AppData | null): StorageUsageStats {
+  const data = appData || initialCleanData;
+  let inventoryPhotos = 0;
+  let khataPhotos = 0;
+  let expensePhotos = 0;
+  let purchasePhotos = 0;
+  let logoPhotos = 0;
+  let photoBytes = 0;
+
+  (data.inventory || []).forEach(item => {
+    if (item.image) {
+      inventoryPhotos++;
+      photoBytes += utf8ByteLength(item.image);
+    }
+  });
+  (data.khata || []).forEach(k => {
+    if (k.image) {
+      khataPhotos++;
+      photoBytes += utf8ByteLength(k.image);
+    }
+  });
+  (data.expenses || []).forEach(e => {
+    if (e.image) {
+      expensePhotos++;
+      photoBytes += utf8ByteLength(e.image);
+    }
+  });
+  (data.supplierPurchases || []).forEach(p => {
+    if (p.invoiceImage) {
+      purchasePhotos++;
+      photoBytes += utf8ByteLength(p.invoiceImage);
+    }
+  });
+
+  const uniqueLogos = new Set(
+    [
+      data.settings?.shopLogo,
+      data.settings?.invoiceLogo,
+      data.settings?.loginPageLogo,
+      data.settings?.logo,
+    ].filter((v): v is string => Boolean(v && v.startsWith('data:')))
+  );
+  uniqueLogos.forEach(src => {
+    logoPhotos++;
+    photoBytes += utf8ByteLength(src);
+  });
+
+  let totalBytes = photoBytes;
+  try {
+    const serialized = JSON.stringify(data);
+    totalBytes = Math.max(photoBytes, utf8ByteLength(serialized));
+  } catch {
+    totalBytes = photoBytes;
+  }
+
+  const textBytes = Math.max(0, totalBytes - photoBytes);
+  const photoCount = inventoryPhotos + khataPhotos + expensePhotos + purchasePhotos + logoPhotos;
+  const avgPhotoBytes = photoCount > 0 ? Math.round(photoBytes / photoCount) : 75 * 1024; // ~75 KB compressed photo avg
+  const remainingBytes = Math.max(0, FIRESTORE_FREE_STORAGE_LIMIT_BYTES - totalBytes);
+  const usedPercent = Math.min(100, (totalBytes / FIRESTORE_FREE_STORAGE_LIMIT_BYTES) * 100);
+  const estimatedRemainingPhotos = avgPhotoBytes > 0 ? Math.floor(remainingBytes / avgPhotoBytes) : 0;
+
+  return {
+    photoCount,
+    photoBreakdown: {
+      inventory: inventoryPhotos,
+      khata: khataPhotos,
+      expenses: expensePhotos,
+      purchases: purchasePhotos,
+      logos: logoPhotos,
+    },
+    photoBytes,
+    textBytes,
+    totalBytes,
+    firestoreFreeLimitBytes: FIRESTORE_FREE_STORAGE_LIMIT_BYTES,
+    remainingBytes,
+    usedPercent,
+    estimatedRemainingPhotos,
+    avgPhotoBytes,
+  };
+}
+

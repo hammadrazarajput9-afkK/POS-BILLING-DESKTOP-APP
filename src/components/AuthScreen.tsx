@@ -992,6 +992,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 </div>
               )}
             </div>
+
+            {/* Footer Attribution */}
+            <div className="pt-2.5 mt-2 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-1 text-center shrink-0">
+              <span className="text-[10px] sm:text-[11px] font-black tracking-wider uppercase text-purple-700">
+                HAMMAD RAZA DEVELOPMENT
+              </span>
+              <span className="text-[10px] sm:text-[11px] font-black tracking-wider uppercase text-slate-700">
+                OWNER MAJID RAO
+              </span>
+            </div>
           </div>
 
           {/* ================= DESKTOP-ONLY RIGHT SIDE: PURPLE GRADIENT PANEL WITH HUGE CIRCLE & LARGE LOGO ================= */}

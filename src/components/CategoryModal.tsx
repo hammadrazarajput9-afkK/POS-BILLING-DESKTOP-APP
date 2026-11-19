@@ -133,9 +133,13 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
             </div>
           ) : (
             categories.map(cat => {
-              const productCount = inventory.filter(
+              const matchingItems = inventory.filter(
                 i => i.category.toLowerCase() === cat.toLowerCase()
-              ).length;
+              );
+              const productCount = matchingItems.length;
+              const pieceCount = matchingItems
+                .filter(i => i.status !== 'ARCHIVED')
+                .reduce((sum, i) => sum + Math.max(0, Number(i.qty) || 0), 0);
               const hasData = productCount > 0;
               const isEditingThis = editingCat === cat;
 
@@ -176,12 +180,12 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
                           <p className="text-xs font-bold text-slate-800 truncate">{cat}</p>
                           <p className="text-[10px] text-slate-400 flex items-center gap-1">
                             {hasData ? (
-                              <span className="text-blue-600 font-semibold flex items-center gap-1">
-                                <Lock className="w-2.5 h-2.5" /> {productCount} product{productCount > 1 ? 's' : ''} in stock (Locked • Name editable)
+                              <span className="text-blue-600 font-semibold flex items-center gap-1 tabular-nums">
+                                <Lock className="w-2.5 h-2.5 shrink-0" /> {productCount} product{productCount > 1 ? 's' : ''} • {pieceCount.toLocaleString()} pc{pieceCount !== 1 ? 's' : ''} in stock
                               </span>
                             ) : (
                               <span className="text-emerald-600 font-semibold flex items-center gap-1">
-                                <CheckCircle2 className="w-2.5 h-2.5" /> 0 products (Safe to delete)
+                                <CheckCircle2 className="w-2.5 h-2.5" /> 0 products • 0 pcs (Safe to delete)
                               </span>
                             )}
                           </p>

@@ -18,6 +18,7 @@ import {
   processPendingWritesQueue,
   downloadJsonBackup,
   loadStoredData,
+  calculateStorageUsageStats,
   SyncStatusSnapshot,
 } from '../utils/storage';
 import {
@@ -49,6 +50,7 @@ export const OnlineStatusBadge: React.FC<OnlineStatusBadgeProps> = ({
   const [status, setStatus] = useState<SyncStatusSnapshot>(() => getSyncStatusSnapshot());
   const [detailsOpen, setDetailsOpen] = useState<boolean>(false);
   const [retrying, setRetrying] = useState<boolean>(false);
+  const [deviceQuotaEstimate, setDeviceQuotaEstimate] = useState<{ usedMb: number; quotaMb: number } | null>(null);
 
   useEffect(() => {
     const unsub = subscribeSyncStatus((snap) => {
@@ -56,6 +58,23 @@ export const OnlineStatusBadge: React.FC<OnlineStatusBadgeProps> = ({
     });
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    if (!detailsOpen) return;
+    if (typeof navigator !== 'undefined' && navigator.storage?.estimate) {
+      navigator.storage
+        .estimate()
+        .then(est => {
+          if (est.usage !== undefined && est.quota !== undefined) {
+            setDeviceQuotaEstimate({
+              usedMb: est.usage / (1024 * 1024),
+              quotaMb: est.quota / (1024 * 1024),
+            });
+          }
+        })
+        .catch(() => {});
+    }
+  }, [detailsOpen]);
 
   const handleRetryNow = async () => {
     if (retrying) return;
@@ -330,6 +349,81 @@ export const OnlineStatusBadge: React.FC<OnlineStatusBadgeProps> = ({
                   Free quota resets in <strong>{formatTimeUntilQuotaReset()}</strong>. Server quota is shared across all sessions/devices of this project.
                 </p>
               </div>
+
+              {/* Photo & Cloud Database Storage Space Card */}
+              {(() => {
+                const storageStats = calculateStorageUsageStats(appData || loadStoredData());
+                const totalMb = storageStats.totalBytes / (1024 * 1024);
+                const photoMb = storageStats.photoBytes / (1024 * 1024);
+                const textMb = storageStats.textBytes / (1024 * 1024);
+                const remainingMb = storageStats.remainingBytes / (1024 * 1024);
+                const limitMb = storageStats.firestoreFreeLimitBytes / (1024 * 1024);
+                const pct = Math.min(100, Math.max(0.5, storageStats.usedPercent));
+
+                return (
+                  <div className="p-3.5 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-black uppercase tracking-wider text-indigo-900 flex items-center gap-1.5">
+                        <HardDrive className="w-3.5 h-3.5 text-indigo-600" />
+                        Photos &amp; Free Cloud Storage
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 text-[10px] font-black tabular-nums">
+                        {remainingMb >= 1024
+                          ? `${(remainingMb / 1024).toFixed(2)} GB Free`
+                          : `${remainingMb.toFixed(1)} MB Free`}
+                      </span>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-[11px] font-bold text-slate-700">
+                        <span>Total Used (Photos + Data)</span>
+                        <span className="tabular-nums">
+                          {totalMb.toFixed(2)} MB / {limitMb.toLocaleString()} MB ({storageStats.usedPercent.toFixed(2)}%)
+                        </span>
+                      </div>
+                      <div className="w-full h-2 bg-white border border-indigo-200/80 rounded-full overflow-hidden mt-1">
+                        <div
+                          className={`h-full transition-all ${
+                            pct >= 85 ? 'bg-rose-500' : pct >= 60 ? 'bg-amber-500' : 'bg-indigo-600'
+                          }`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-1.5 text-[10px] pt-0.5">
+                      <div className="bg-white rounded-lg p-1.5 border border-indigo-100">
+                        <span className="text-slate-400 block font-semibold">Saved Photos</span>
+                        <span className="font-extrabold text-slate-900 tabular-nums">
+                          {storageStats.photoCount} ({photoMb.toFixed(2)} MB)
+                        </span>
+                      </div>
+                      <div className="bg-white rounded-lg p-1.5 border border-indigo-100">
+                        <span className="text-slate-400 block font-semibold">Text &amp; Bills</span>
+                        <span className="font-extrabold text-slate-900 tabular-nums">
+                          {textMb.toFixed(2)} MB
+                        </span>
+                      </div>
+                      <div className="bg-white rounded-lg p-1.5 border border-indigo-100">
+                        <span className="text-slate-400 block font-semibold">More Photos Left</span>
+                        <span className="font-extrabold text-emerald-700 tabular-nums">
+                          ~{storageStats.estimatedRemainingPhotos.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    {deviceQuotaEstimate && (
+                      <p className="text-[10px] text-indigo-800/80 font-medium">
+                        Device Offline Cache: {deviceQuotaEstimate.usedMb.toFixed(2)} MB used of{' '}
+                        {deviceQuotaEstimate.quotaMb >= 1024
+                          ? `${(deviceQuotaEstimate.quotaMb / 1024).toFixed(1)} GB`
+                          : `${deviceQuotaEstimate.quotaMb.toFixed(0)} MB`}{' '}
+                        browser space
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Exact Why-Offline / Pause Reason */}
               {(status.offlineReason !== 'online' || hasCloudError) && (

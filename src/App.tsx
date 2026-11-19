@@ -48,7 +48,7 @@ import {
   CollectionDeltaEvent,
   DEFAULT_STORE_ID,
 } from './utils/storage';
-import { recordImeisReversed, recordImeisAvailable } from './utils/imeiManager';
+import { recordImeisReversed, recordImeisAvailable, diffChangedImeiRecords } from './utils/imeiManager';
 import { generateEntityId } from './utils/id';
 import { ToastProvider, useToast } from './components/Toast';
 import { FormDraftProvider } from './context/FormDraftContext';
@@ -209,15 +209,17 @@ function AppContent() {
     setActiveStoreId(DEFAULT_STORE_ID);
 
     migrateAndInitializeData(updatedData => {
-      if (sessionUser) {
-        setData({
-          ...updatedData,
-          currentUser: sessionUser,
-          currentRole: sessionUser.role,
-        });
-      } else {
-        setData(updatedData);
-      }
+      setData(prev => {
+        const activeUser = prev.currentUser || getSavedSessionUser() || sessionUser || updatedData.currentUser;
+        if (activeUser) {
+          return {
+            ...updatedData,
+            currentUser: activeUser,
+            currentRole: prev.currentRole || activeUser.role || 'admin',
+          };
+        }
+        return updatedData;
+      });
       isInitialSyncDoneRef.current = true;
     }, DEFAULT_STORE_ID);
   }, []);
@@ -1090,7 +1092,10 @@ function AppContent() {
     }
     savePurchaseToFirestore(newPurchase, DEFAULT_STORE_ID).catch(() => {});
     savePurchasesLedgerBatchToFirestore(newLedgerEntries, DEFAULT_STORE_ID).catch(() => {});
-    saveImeiRecordsBatchToFirestore(syncedImeis, DEFAULT_STORE_ID).catch(() => {});
+    const changedSaveImeis = diffChangedImeiRecords(data.imeiRecords || [], syncedImeis);
+    if (changedSaveImeis.length > 0) {
+      saveImeiRecordsBatchToFirestore(changedSaveImeis, DEFAULT_STORE_ID).catch(() => {});
+    }
   };
 
   const handleUpdatePurchase = (
@@ -1352,8 +1357,13 @@ function AppContent() {
       saveInventoryItemToFirestore(item, DEFAULT_STORE_ID).catch(() => {});
     });
     savePurchaseToFirestore(updatedPurchase, DEFAULT_STORE_ID).catch(() => {});
-    savePurchasesLedgerBatchToFirestore(syncedLedger, DEFAULT_STORE_ID).catch(() => {});
-    saveImeiRecordsBatchToFirestore(syncedImeis, DEFAULT_STORE_ID).catch(() => {});
+    if (newLedgerEntries.length > 0) {
+      savePurchasesLedgerBatchToFirestore(newLedgerEntries, DEFAULT_STORE_ID).catch(() => {});
+    }
+    const changedUpdateImeis = diffChangedImeiRecords(data.imeiRecords || [], syncedImeis);
+    if (changedUpdateImeis.length > 0) {
+      saveImeiRecordsBatchToFirestore(changedUpdateImeis, DEFAULT_STORE_ID).catch(() => {});
+    }
   };
 
   const handleDeletePurchase = () => {
@@ -1455,9 +1465,15 @@ function AppContent() {
     changedInventory.forEach(item => {
       saveInventoryItemToFirestore(item, DEFAULT_STORE_ID).catch(() => {});
     });
+    const changedLedgerForReversal = syncedLedger.filter(e => e.updatedAt === revNow);
     savePurchaseToFirestore(reversedPurchase, DEFAULT_STORE_ID).catch(() => {});
-    savePurchasesLedgerBatchToFirestore(syncedLedger, DEFAULT_STORE_ID).catch(() => {});
-    saveImeiRecordsBatchToFirestore(syncedImeis, DEFAULT_STORE_ID).catch(() => {});
+    if (changedLedgerForReversal.length > 0) {
+      savePurchasesLedgerBatchToFirestore(changedLedgerForReversal, DEFAULT_STORE_ID).catch(() => {});
+    }
+    const changedReverseImeis = diffChangedImeiRecords(data.imeiRecords || [], syncedImeis);
+    if (changedReverseImeis.length > 0) {
+      saveImeiRecordsBatchToFirestore(changedReverseImeis, DEFAULT_STORE_ID).catch(() => {});
+    }
 
     logActivity(
       'Purchase',
@@ -1616,11 +1632,7 @@ function AppContent() {
           onAuthSuccess={(user, rememberMe = true) => {
             const activeStoreId = DEFAULT_STORE_ID;
             setActiveStoreId(activeStoreId);
-            if (rememberMe) {
-              saveCurrentSession(user);
-            } else {
-              clearCurrentSession();
-            }
+            saveCurrentSession(user, rememberMe);
 
             if (user.role === 'salesman') {
               setActiveTab('pos');

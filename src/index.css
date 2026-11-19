@@ -767,42 +767,61 @@
 
 /* Print thermal receipt & PDF report styles */
 @media print {
+  html,
+  body,
+  #root,
+  .app-root-container {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
   body * {
     visibility: hidden !important;
   }
-  
+
   #printable-receipt-area,
   #printable-receipt-area *,
   #printable-report-area,
   #printable-report-area *,
   #printable-purchase-area,
-  #printable-purchase-area * {
+  #printable-purchase-area *,
+  #printable-receipt,
+  #printable-receipt *,
+  #printable-thermal-invoice,
+  #printable-thermal-invoice *,
+  #barcode-print-sheet,
+  #barcode-print-sheet * {
     visibility: visible !important;
   }
 
   #printable-receipt-area {
-    position: fixed !important;
+    display: block !important;
+    position: absolute !important;
     left: 0 !important;
     top: 0 !important;
     width: 80mm !important;
     margin: 0 !important;
     padding: 10px !important;
-    background: white !important;
-    color: black !important;
+    background: #ffffff !important;
+    color: #000000 !important;
     box-shadow: none !important;
     border: none !important;
   }
 
   #printable-report-area,
-  #printable-purchase-area {
-    position: fixed !important;
+  #printable-purchase-area,
+  #barcode-print-sheet {
+    display: block !important;
+    position: absolute !important;
     left: 0 !important;
     top: 0 !important;
     width: 100% !important;
     margin: 0 !important;
-    padding: 20px !important;
-    background: white !important;
-    color: black !important;
+    padding: 16px !important;
+    background: #ffffff !important;
+    color: #000000 !important;
     box-shadow: none !important;
     border: none !important;
   }
@@ -915,21 +934,30 @@ button:not(:disabled):active {
 
   /* Isolate receipt: hide all other UI chrome */
   body * {
-    visibility: hidden;
+    visibility: hidden !important;
   }
 
   #printable-receipt,
   #printable-receipt *,
   #printable-thermal-invoice,
-  #printable-thermal-invoice * {
-    visibility: visible;
+  #printable-thermal-invoice *,
+  #printable-receipt-area,
+  #printable-receipt-area *,
+  #printable-report-area,
+  #printable-report-area *,
+  #printable-purchase-area,
+  #printable-purchase-area *,
+  #barcode-print-sheet,
+  #barcode-print-sheet * {
+    visibility: visible !important;
   }
 
   #printable-receipt,
   #printable-thermal-invoice {
-    position: absolute;
-    left: 0;
-    top: 0;
+    display: block !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
     margin: 0 auto !important;
     padding: 3mm 4mm !important;
     background: #ffffff !important;

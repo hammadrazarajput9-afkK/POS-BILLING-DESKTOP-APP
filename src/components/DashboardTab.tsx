@@ -68,7 +68,12 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
   // Cash Ledger Drill-down Modal state
   const [isDrilldownOpen, setIsDrilldownOpen] = useState(false);
   const [ledgerFilter, setLedgerFilter] = useState<'ALL' | 'IN' | 'OUT'>('ALL');
+  const [ledgerTypeFilter, setLedgerTypeFilter] = useState<'ALL' | 'SALE' | 'KHATA_RECOVERY' | 'EXPENSE' | 'SUPPLIER_PAYMENT' | 'BANK'>('ALL');
   const [ledgerSearch, setLedgerSearch] = useState('');
+
+  // Clickable Metric Box "All Details" Modal
+  const [activeMetricDetail, setActiveMetricDetail] = useState<'profit' | 'expenses' | 'outflow' | 'stock' | 'credit' | null>(null);
+  const [metricDetailSearch, setMetricDetailSearch] = useState('');
 
   // Small Eye toggle to show / hide monetary balance values (persisted in localStorage)
   const [showBalance, setShowBalance] = useState<boolean>(() => {
@@ -160,9 +165,35 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
       const matchesType =
         ledgerFilter === 'ALL' ? true : ledgerFilter === 'IN' ? isIn : isOut;
 
-      return matchesSearch && matchesType;
+      const matchesCategory =
+        ledgerTypeFilter === 'ALL'
+          ? true
+          : ledgerTypeFilter === 'BANK'
+          ? item.bankIn > 0 || item.bankOut > 0
+          : item.type === ledgerTypeFilter;
+
+      return matchesSearch && matchesType && matchesCategory;
     });
-  }, [cashDrawer.ledger, ledgerSearch, ledgerFilter]);
+  }, [cashDrawer.ledger, ledgerSearch, ledgerFilter, ledgerTypeFilter]);
+
+  const openCashDrilldown = (
+    typeFilter: 'ALL' | 'SALE' | 'KHATA_RECOVERY' | 'EXPENSE' | 'SUPPLIER_PAYMENT' | 'BANK' = 'ALL',
+    inOutFilter: 'ALL' | 'IN' | 'OUT' = 'ALL'
+  ) => {
+    setLedgerTypeFilter(typeFilter);
+    setLedgerFilter(inOutFilter);
+    setLedgerSearch('');
+    setIsDrilldownOpen(true);
+  };
+
+  const openMetricDetail = (metric: 'profit' | 'expenses' | 'outflow' | 'stock' | 'credit') => {
+    if (metric !== 'credit' && data.currentRole === 'salesman') {
+      showToast('Permission Denied: Financial profit/expense/stock asset details are restricted to Administrators', 'warning');
+      return;
+    }
+    setMetricDetailSearch('');
+    setActiveMetricDetail(metric);
+  };
 
   const logoSrc = data.settings.shopLogo || data.settings.logo;
 
@@ -265,12 +296,17 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
               </button>
 
               {cashDrawer.bankBalance !== 0 && (
-                <div className="flex items-baseline gap-1.5 text-slate-300 text-sm font-semibold ml-2">
+                <button
+                  type="button"
+                  onClick={() => openCashDrilldown('BANK', 'ALL')}
+                  className="flex items-baseline gap-1.5 text-slate-300 text-sm font-semibold ml-2 hover:bg-white/10 px-2.5 py-1 rounded-xl transition cursor-pointer"
+                  title="Click to view Digital / Bank transactions"
+                >
                   <span className="text-slate-400 text-xs">Digital / Bank:</span>
                   <span className="tabular-nums font-bold text-sky-400">
                     {data.settings.currency} {showBalance ? bankVal.toLocaleString() : '••••••'}
                   </span>
-                </div>
+                </button>
               )}
             </div>
           </div>
@@ -280,7 +316,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setIsDrilldownOpen(true)}
+              onClick={() => openCashDrilldown('ALL', 'ALL')}
               className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-sm border border-white/10"
             >
               <Wallet className="w-4 h-4 text-emerald-400" />
@@ -291,28 +327,44 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
 
         {/* Real-time Math Formula Breakdown Strip */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 mt-5 pt-4 border-t border-white/10 text-xs">
-          <div className="bg-white/5 rounded-xl p-2.5">
+          <div
+            onClick={() => openCashDrilldown('SALE', 'IN')}
+            className="bg-white/5 hover:bg-white/15 rounded-xl p-2.5 cursor-pointer transition border border-transparent hover:border-emerald-400/30"
+            title="Click to view all Cash Sales"
+          >
             <span className="text-[10px] text-slate-400 block font-semibold">(+) Cash Sales</span>
             <p className="tabular-nums font-bold text-emerald-400 mt-0.5">
               +{data.settings.currency} {showBalance ? cashDrawer.cashSales.toLocaleString() : '••••••'}
             </p>
           </div>
 
-          <div className="bg-white/5 rounded-xl p-2.5">
+          <div
+            onClick={() => openCashDrilldown('KHATA_RECOVERY', 'IN')}
+            className="bg-white/5 hover:bg-white/15 rounded-xl p-2.5 cursor-pointer transition border border-transparent hover:border-sky-400/30"
+            title="Click to view all Khata Recoveries"
+          >
             <span className="text-[10px] text-slate-400 block font-semibold">(+) Khata Recoveries</span>
             <p className="tabular-nums font-bold text-sky-400 mt-0.5">
               +{data.settings.currency} {showBalance ? cashDrawer.khataRecoveriesCash.toLocaleString() : '••••••'}
             </p>
           </div>
 
-          <div className="bg-white/5 rounded-xl p-2.5">
+          <div
+            onClick={() => openCashDrilldown('EXPENSE', 'OUT')}
+            className="bg-white/5 hover:bg-white/15 rounded-xl p-2.5 cursor-pointer transition border border-transparent hover:border-rose-400/30"
+            title="Click to view all Cash Expenses"
+          >
             <span className="text-[10px] text-slate-400 block font-semibold">(-) Cash Expenses</span>
             <p className="tabular-nums font-bold text-rose-400 mt-0.5">
               -{data.settings.currency} {showBalance ? cashDrawer.cashExpenses.toLocaleString() : '••••••'}
             </p>
           </div>
 
-          <div className="bg-white/5 rounded-xl p-2.5">
+          <div
+            onClick={() => openCashDrilldown('SUPPLIER_PAYMENT', 'OUT')}
+            className="bg-white/5 hover:bg-white/15 rounded-xl p-2.5 cursor-pointer transition border border-transparent hover:border-amber-400/30"
+            title="Click to view all Supplier Cash Payments"
+          >
             <span className="text-[10px] text-slate-400 block font-semibold">(-) Supplier Paid</span>
             <p className="tabular-nums font-bold text-amber-400 mt-0.5">
               -{data.settings.currency} {showBalance ? cashDrawer.supplierPaidCash.toLocaleString() : '••••••'}
@@ -320,7 +372,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           </div>
 
           <div
-            onClick={() => setIsDrilldownOpen(true)}
+            onClick={() => openCashDrilldown('ALL', 'ALL')}
             className="bg-emerald-500/15 border border-emerald-500/30 rounded-xl p-2.5 col-span-2 sm:col-span-1 cursor-pointer hover:bg-emerald-500/25 transition"
           >
             <span className="text-[10px] text-emerald-300 block font-extrabold flex items-center justify-between">
@@ -370,7 +422,11 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
 
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-2 lg:grid-cols-5 sm:gap-4">
           {/* 1. REAL-TIME NET PROFIT */}
-          <div className="bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 shadow-xs dark:shadow-none transition hover:border-emerald-400 hover:shadow-md flex flex-col justify-between">
+          <div
+            onClick={() => openMetricDetail('profit')}
+            className="bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 shadow-xs dark:shadow-none transition hover:border-emerald-400 hover:shadow-md flex flex-col justify-between cursor-pointer group"
+            title="Click to view complete Profit & Sales Margin breakdown"
+          >
             <div className="flex items-center justify-between mb-1.5 sm:mb-3">
               <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
@@ -386,19 +442,29 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
                   <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" /> Restricted
                 </span>
               ) : (
-                <h3
-                  className={`text-sm sm:text-2xl font-black tabular-nums tracking-tight truncate ${
-                    profitVal >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
-                  }`}
-                >
-                  {data.settings.currency} {showBottomMetrics ? profitVal.toLocaleString() : '••••••'}
-                </h3>
+                <>
+                  <h3
+                    className={`text-sm sm:text-2xl font-black tabular-nums tracking-tight truncate ${
+                      profitVal >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                    }`}
+                  >
+                    {data.settings.currency} {showBottomMetrics ? profitVal.toLocaleString() : '••••••'}
+                  </h3>
+                  <p className="text-[10px] text-emerald-600/80 font-bold mt-1 flex items-center gap-1 group-hover:translate-x-0.5 transition">
+                    <span>All Details</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </p>
+                </>
               )}
             </div>
           </div>
 
           {/* 2. DAILY EXPENSES */}
-          <div className="bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 shadow-xs dark:shadow-none transition hover:border-rose-400 hover:shadow-md flex flex-col justify-between">
+          <div
+            onClick={() => openMetricDetail('expenses')}
+            className="bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 shadow-xs dark:shadow-none transition hover:border-rose-400 hover:shadow-md flex flex-col justify-between cursor-pointer group"
+            title="Click to view all recorded expenses & breakdown"
+          >
             <div className="flex items-center justify-between mb-1.5 sm:mb-3">
               <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0"></span>
@@ -414,15 +480,25 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
                   <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" /> Restricted
                 </span>
               ) : (
-                <h3 className="text-sm sm:text-2xl font-black text-slate-900 dark:text-white tabular-nums tracking-tight truncate">
-                  {data.settings.currency} {showBottomMetrics ? expensesVal.toLocaleString() : '••••••'}
-                </h3>
+                <>
+                  <h3 className="text-sm sm:text-2xl font-black text-slate-900 dark:text-white tabular-nums tracking-tight truncate">
+                    {data.settings.currency} {showBottomMetrics ? expensesVal.toLocaleString() : '••••••'}
+                  </h3>
+                  <p className="text-[10px] text-rose-600/80 font-bold mt-1 flex items-center gap-1 group-hover:translate-x-0.5 transition">
+                    <span>All Details ({(data.expenses || []).length})</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </p>
+                </>
               )}
             </div>
           </div>
 
           {/* 3. SUPPLIER PURCHASES */}
-          <div className="bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 shadow-xs dark:shadow-none transition hover:border-amber-400 hover:shadow-md flex flex-col justify-between">
+          <div
+            onClick={() => openMetricDetail('outflow')}
+            className="bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 shadow-xs dark:shadow-none transition hover:border-amber-400 hover:shadow-md flex flex-col justify-between cursor-pointer group"
+            title="Click to view all Supplier Outflow & Purchase Bills"
+          >
             <div className="flex items-center justify-between mb-1.5 sm:mb-3">
               <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
@@ -438,15 +514,25 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
                   <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" /> Restricted
                 </span>
               ) : (
-                <h3 className="text-sm sm:text-2xl font-black text-slate-900 dark:text-white tabular-nums tracking-tight truncate">
-                  {data.settings.currency} {showBottomMetrics ? purchasesVal.toLocaleString() : '••••••'}
-                </h3>
+                <>
+                  <h3 className="text-sm sm:text-2xl font-black text-slate-900 dark:text-white tabular-nums tracking-tight truncate">
+                    {data.settings.currency} {showBottomMetrics ? purchasesVal.toLocaleString() : '••••••'}
+                  </h3>
+                  <p className="text-[10px] text-amber-600/90 font-bold mt-1 flex items-center gap-1 group-hover:translate-x-0.5 transition">
+                    <span>All Details</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </p>
+                </>
               )}
             </div>
           </div>
 
           {/* 4. TOTAL STOCK VALUE */}
-          <div className="bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 shadow-xs dark:shadow-none transition hover:border-blue-400 hover:shadow-md flex flex-col justify-between">
+          <div
+            onClick={() => openMetricDetail('stock')}
+            className="bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 shadow-xs dark:shadow-none transition hover:border-blue-400 hover:shadow-md flex flex-col justify-between cursor-pointer group"
+            title="Click to view complete Inventory Stock Asset valuation"
+          >
             <div className="flex items-center justify-between mb-1.5 sm:mb-3">
               <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0"></span>
@@ -466,14 +552,19 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
                   {data.settings.currency} {showBottomMetrics ? stockCostVal.toLocaleString() : '••••••'}
                 </h3>
               )}
-              <p className="text-[10px] sm:text-[11px] text-slate-400 dark:text-neutral-500 mt-0.5 sm:mt-1 truncate">
-                {totalInStockUnits} units in stock
+              <p className="text-[10px] sm:text-[11px] text-blue-600/80 dark:text-neutral-400 mt-0.5 sm:mt-1 font-bold flex items-center justify-between truncate">
+                <span>{totalInStockUnits} units in stock</span>
+                {data.currentRole !== 'salesman' && <ArrowRight className="w-3 h-3 shrink-0" />}
               </p>
             </div>
           </div>
 
           {/* 5. TODAY'S CREDIT (UDHAR) GIVEN */}
-          <div className="col-span-2 sm:col-span-1 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 shadow-xs dark:shadow-none transition hover:border-orange-500 hover:shadow-md flex flex-col justify-between">
+          <div
+            onClick={() => openMetricDetail('credit')}
+            className="col-span-2 sm:col-span-1 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 shadow-xs dark:shadow-none transition hover:border-orange-500 hover:shadow-md flex flex-col justify-between cursor-pointer group"
+            title="Click to view all Credit & Khata details"
+          >
             <div className="flex items-center justify-between mb-1.5 sm:mb-3">
               <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse shrink-0"></span>
@@ -487,8 +578,9 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
               <h3 className="text-sm sm:text-2xl font-black text-slate-900 dark:text-white tabular-nums tracking-tight truncate">
                 {data.settings.currency} {showBottomMetrics ? todayUdharGiven.toLocaleString() : '••••••'}
               </h3>
-              <p className="text-[10px] text-slate-400 dark:text-neutral-500 mt-0.5 sm:mt-1 font-semibold truncate">
-                Credit sales & Khata balance today
+              <p className="text-[10px] text-orange-600/90 dark:text-neutral-400 mt-0.5 sm:mt-1 font-bold flex items-center justify-between truncate">
+                <span>All Details (Today &amp; Khata)</span>
+                <ArrowRight className="w-3 h-3 shrink-0" />
               </p>
             </div>
           </div>
@@ -638,34 +730,46 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
                 />
               </div>
 
-              <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-bold w-full sm:w-auto">
-                <button
-                  type="button"
-                  onClick={() => setLedgerFilter('ALL')}
-                  className={`flex-1 sm:flex-none px-3 py-1 rounded-lg transition cursor-pointer ${
-                    ledgerFilter === 'ALL' ? 'bg-white text-blue-600 shadow-2xs' : 'text-slate-600'
-                  }`}
-                >
-                  All ({cashDrawer.ledger.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setLedgerFilter('IN')}
-                  className={`flex-1 sm:flex-none px-3 py-1 rounded-lg transition cursor-pointer ${
-                    ledgerFilter === 'IN' ? 'bg-white text-emerald-600 shadow-2xs' : 'text-slate-600'
-                  }`}
-                >
-                  Inflow (+)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setLedgerFilter('OUT')}
-                  className={`flex-1 sm:flex-none px-3 py-1 rounded-lg transition cursor-pointer ${
-                    ledgerFilter === 'OUT' ? 'bg-white text-rose-600 shadow-2xs' : 'text-slate-600'
-                  }`}
-                >
-                  Outflow (-)
-                </button>
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+                {ledgerTypeFilter !== 'ALL' && (
+                  <button
+                    type="button"
+                    onClick={() => setLedgerTypeFilter('ALL')}
+                    className="px-2.5 py-1 bg-indigo-100 text-indigo-800 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Filter: {ledgerTypeFilter.replace('_', ' ')}</span>
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+                <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-bold flex-1 sm:flex-none">
+                  <button
+                    type="button"
+                    onClick={() => setLedgerFilter('ALL')}
+                    className={`flex-1 sm:flex-none px-3 py-1 rounded-lg transition cursor-pointer ${
+                      ledgerFilter === 'ALL' ? 'bg-white text-blue-600 shadow-2xs' : 'text-slate-600'
+                    }`}
+                  >
+                    All ({cashDrawer.ledger.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLedgerFilter('IN')}
+                    className={`flex-1 sm:flex-none px-3 py-1 rounded-lg transition cursor-pointer ${
+                      ledgerFilter === 'IN' ? 'bg-white text-emerald-600 shadow-2xs' : 'text-slate-600'
+                    }`}
+                  >
+                    Inflow (+)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLedgerFilter('OUT')}
+                    className={`flex-1 sm:flex-none px-3 py-1 rounded-lg transition cursor-pointer ${
+                      ledgerFilter === 'OUT' ? 'bg-white text-rose-600 shadow-2xs' : 'text-slate-600'
+                    }`}
+                  >
+                    Outflow (-)
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -759,6 +863,399 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           </div>
         </div>
       )}
+
+      {/* ======================================================== */}
+      {/* CLICKABLE METRIC "ALL DETAILS" MODAL                     */}
+      {/* ======================================================== */}
+      {activeMetricDetail && (() => {
+        const cur = data.settings.currency;
+        const q = metricDetailSearch.trim().toLowerCase();
+        const completedSales = (data.sales || []).filter(s => s.status !== 'CANCELLED');
+        const totalSalesRev = completedSales.reduce((sum, s) => sum + (s.grandTotal || 0), 0);
+        const totalSalesCogs = completedSales.reduce((sum, s) => sum + (s.totalCost || 0), 0);
+        const grossProfitSum = totalSalesRev - totalSalesCogs;
+        const totalStockSaleValue = (data.inventory || []).reduce((sum, i) => sum + (i.salePrice || 0) * (i.qty || 0), 0);
+
+        const activePurchases = (data.supplierPurchases || []).filter(p => p.status !== 'REVERSED');
+        const totalBilledPurchases = activePurchases.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
+        const totalPurchaseDue = activePurchases.reduce((sum, p) => sum + Math.max(0, (p.totalAmount || 0) - (p.paidAmount || 0)), 0);
+
+        const todayStr = new Date().toISOString().split('T')[0];
+        const todayCreditEntries: Array<{ customerName: string; phone?: string; date: string; note?: string; amount: number }> = [];
+        (data.khata || []).forEach(cust => {
+          (cust.history || []).forEach(tx => {
+            if (tx.type === 'credit' && tx.date && tx.date.startsWith(todayStr)) {
+              todayCreditEntries.push({
+                customerName: cust.name,
+                phone: cust.phone,
+                date: tx.date,
+                note: tx.note,
+                amount: tx.amount,
+              });
+            }
+          });
+        });
+        const totalAllKhataBalance = (data.khata || []).reduce((sum, k) => sum + Math.max(0, k.balance || 0), 0);
+
+        const titleMap: Record<'profit' | 'expenses' | 'outflow' | 'stock' | 'credit', { title: string; subtitle: string; tab: string; tabLabel: string }> = {
+          profit: {
+            title: 'Net Profit — Complete Breakdown',
+            subtitle: `Sales Revenue (${cur} ${totalSalesRev.toLocaleString()}) - COGS (${cur} ${totalSalesCogs.toLocaleString()}) - Expenses (${cur} ${expensesVal.toLocaleString()})`,
+            tab: 'reports',
+            tabLabel: 'Open Full P&L Reports',
+          },
+          expenses: {
+            title: 'All Shop Expenses — Itemized Details',
+            subtitle: `${(data.expenses || []).length} recorded expense entries totaling ${cur} ${expensesVal.toLocaleString()}`,
+            tab: 'expenses',
+            tabLabel: 'Open Expenses Tab',
+          },
+          outflow: {
+            title: 'Supplier Outflow & Purchases — All Details',
+            subtitle: `${activePurchases.length} supplier bills | Total Paid: ${cur} ${purchasesVal.toLocaleString()} | Payable: ${cur} ${totalPurchaseDue.toLocaleString()}`,
+            tab: 'purchases',
+            tabLabel: 'Open Purchases Tab',
+          },
+          stock: {
+            title: 'Stock Asset Valuation — Complete Inventory',
+            subtitle: `${(data.inventory || []).length} products (${totalInStockUnits} units) | Cost Asset: ${cur} ${stockCostVal.toLocaleString()} | Retail Value: ${cur} ${totalStockSaleValue.toLocaleString()}`,
+            tab: 'inventory',
+            tabLabel: 'Open Inventory Tab',
+          },
+          credit: {
+            title: 'Credit Issued & Active Khata — All Details',
+            subtitle: `Issued Today: ${cur} ${todayUdharGiven.toLocaleString()} | Total Receivable Khata: ${cur} ${totalAllKhataBalance.toLocaleString()}`,
+            tab: 'khata',
+            tabLabel: 'Open Khata / Credit Tab',
+          },
+        };
+        const meta = titleMap[activeMetricDetail];
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs">
+            <div className="bg-white rounded-2xl max-w-4xl w-full p-4 sm:p-6 shadow-2xl space-y-4 border border-slate-100 my-auto animate-in fade-in zoom-in-95 max-h-[92vh] flex flex-col">
+              {/* Header */}
+              <div className="flex items-start justify-between border-b border-slate-100 pb-3 shrink-0 gap-3">
+                <div>
+                  <h3 className="font-black text-slate-900 text-sm sm:text-base">{meta.title}</h3>
+                  <p className="text-[11px] text-slate-500 font-medium mt-0.5">{meta.subtitle}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveMetricDetail(null)}
+                  className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer shrink-0"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Search inside details */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 shrink-0">
+                <div className="relative flex-1 sm:max-w-xs">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={metricDetailSearch}
+                    onChange={e => setMetricDetailSearch(e.target.value)}
+                    placeholder="Search records in this view..."
+                    className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const targetTab = meta.tab;
+                    setActiveMetricDetail(null);
+                    onSwitchTab(targetTab);
+                  }}
+                  className="px-3.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <span>{meta.tabLabel}</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 min-h-0 overflow-y-auto border border-slate-200 rounded-xl text-xs">
+                {activeMetricDetail === 'profit' && (
+                  <div className="space-y-3 p-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+                        <span className="text-[10px] text-slate-500 block font-bold">Total Sales Revenue</span>
+                        <span className="font-black text-slate-900 tabular-nums text-sm">{cur} {totalSalesRev.toLocaleString()}</span>
+                      </div>
+                      <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+                        <span className="text-[10px] text-slate-500 block font-bold">Cost of Goods (COGS)</span>
+                        <span className="font-black text-amber-700 tabular-nums text-sm">-{cur} {totalSalesCogs.toLocaleString()}</span>
+                      </div>
+                      <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+                        <span className="text-[10px] text-slate-500 block font-bold">Gross Profit - Expenses</span>
+                        <span className="font-black text-rose-700 tabular-nums text-sm">
+                          {cur} {grossProfitSum.toLocaleString()} - {cur} {expensesVal.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="p-2.5 bg-emerald-50 rounded-xl border border-emerald-200">
+                        <span className="text-[10px] text-emerald-700 block font-bold">Net Profit</span>
+                        <span className={`font-black tabular-nums text-sm ${profitVal >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                          {cur} {profitVal.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    <table className="w-full text-left border-collapse">
+                      <thead className="bg-slate-50 border-y border-slate-200 text-[10px] font-bold text-slate-500 uppercase">
+                        <tr>
+                          <th className="py-2 px-3">Date / Inv #</th>
+                          <th className="py-2 px-3">Customer</th>
+                          <th className="py-2 px-3 text-right">Sale</th>
+                          <th className="py-2 px-3 text-right">Cost</th>
+                          <th className="py-2 px-3 text-right">Profit</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {completedSales
+                          .filter(s =>
+                            !q ||
+                            s.invNo.toLowerCase().includes(q) ||
+                            s.custName.toLowerCase().includes(q) ||
+                            s.items.some(it => it.name.toLowerCase().includes(q))
+                          )
+                          .map(s => (
+                            <tr key={s.invNo} className="hover:bg-slate-50">
+                              <td className="py-2 px-3">
+                                <span className="font-bold text-slate-900 block">{s.invNo}</span>
+                                <span className="text-[10px] text-slate-400">{new Date(s.date).toLocaleDateString()}</span>
+                              </td>
+                              <td className="py-2 px-3">
+                                <span className="font-semibold text-slate-800">{s.custName}</span>
+                                <span className="block text-[10px] text-slate-400">
+                                  {s.items.map(it => `${it.name} x${it.qty}`).join(', ')}
+                                </span>
+                              </td>
+                              <td className="py-2 px-3 text-right tabular-nums font-bold">{cur} {s.grandTotal.toLocaleString()}</td>
+                              <td className="py-2 px-3 text-right tabular-nums text-slate-500">{cur} {(s.totalCost || 0).toLocaleString()}</td>
+                              <td className={`py-2 px-3 text-right tabular-nums font-black ${(s.grandTotal - (s.totalCost || 0)) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                {cur} {(s.grandTotal - (s.totalCost || 0)).toLocaleString()}
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {activeMetricDetail === 'expenses' && (
+                  <table className="w-full text-left border-collapse">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase sticky top-0">
+                      <tr>
+                        <th className="py-2.5 px-3">Date</th>
+                        <th className="py-2.5 px-3">Description</th>
+                        <th className="py-2.5 px-3">Category</th>
+                        <th className="py-2.5 px-3">Method</th>
+                        <th className="py-2.5 px-3 text-right">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {(data.expenses || [])
+                        .filter(e =>
+                          !q ||
+                          e.description.toLowerCase().includes(q) ||
+                          e.category.toLowerCase().includes(q) ||
+                          (e.paymentMethod || '').toLowerCase().includes(q)
+                        )
+                        .map(exp => (
+                          <tr key={exp.id} className="hover:bg-slate-50">
+                            <td className="py-2 px-3 whitespace-nowrap text-slate-500">{new Date(exp.date).toLocaleDateString()}</td>
+                            <td className="py-2 px-3 font-bold text-slate-900">{exp.description}</td>
+                            <td className="py-2 px-3">
+                              <span className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 font-bold text-[10px]">{exp.category}</span>
+                            </td>
+                            <td className="py-2 px-3 text-slate-600">{exp.paymentMethod || 'Cash'}</td>
+                            <td className="py-2 px-3 text-right tabular-nums font-black text-rose-600">
+                              {cur} {exp.amount.toLocaleString()}
+                            </td>
+                          </tr>
+                        ))}
+                      {(data.expenses || []).length === 0 && (
+                        <tr><td colSpan={5} className="py-8 text-center text-slate-400">No expenses recorded yet</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                )}
+
+                {activeMetricDetail === 'outflow' && (
+                  <div className="space-y-3 p-3">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+                        <span className="text-[10px] text-slate-500 block font-bold">Total Billed Purchases</span>
+                        <span className="font-black text-slate-900 tabular-nums text-sm">{cur} {totalBilledPurchases.toLocaleString()}</span>
+                      </div>
+                      <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200">
+                        <span className="text-[10px] text-amber-800 block font-bold">Total Outflow Paid</span>
+                        <span className="font-black text-amber-800 tabular-nums text-sm">{cur} {purchasesVal.toLocaleString()}</span>
+                      </div>
+                      <div className="p-2.5 bg-rose-50 rounded-xl border border-rose-200">
+                        <span className="text-[10px] text-rose-700 block font-bold">Remaining Payable</span>
+                        <span className="font-black text-rose-700 tabular-nums text-sm">{cur} {totalPurchaseDue.toLocaleString()}</span>
+                      </div>
+                    </div>
+                    <table className="w-full text-left border-collapse">
+                      <thead className="bg-slate-50 border-y border-slate-200 text-[10px] font-bold text-slate-500 uppercase">
+                        <tr>
+                          <th className="py-2 px-3">Date / Bill #</th>
+                          <th className="py-2 px-3">Supplier / Party</th>
+                          <th className="py-2 px-3 text-right">Bill Total</th>
+                          <th className="py-2 px-3 text-right">Paid</th>
+                          <th className="py-2 px-3 text-right">Due</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {activePurchases
+                          .filter(p =>
+                            !q ||
+                            p.partyName.toLowerCase().includes(q) ||
+                            p.billNo.toLowerCase().includes(q) ||
+                            p.items.some(it => it.name.toLowerCase().includes(q))
+                          )
+                          .map(p => (
+                            <tr key={p.id} className="hover:bg-slate-50">
+                              <td className="py-2 px-3">
+                                <span className="font-bold text-slate-900 block">#{p.billNo}</span>
+                                <span className="text-[10px] text-slate-400">{new Date(p.date).toLocaleDateString()}</span>
+                              </td>
+                              <td className="py-2 px-3">
+                                <span className="font-semibold text-slate-800">{p.partyName}</span>
+                                <span className="block text-[10px] text-slate-400">{p.items.length} item(s) • {p.paymentMethod}</span>
+                              </td>
+                              <td className="py-2 px-3 text-right tabular-nums font-bold">{cur} {p.totalAmount.toLocaleString()}</td>
+                              <td className="py-2 px-3 text-right tabular-nums font-bold text-amber-700">{cur} {p.paidAmount.toLocaleString()}</td>
+                              <td className="py-2 px-3 text-right tabular-nums font-bold text-rose-600">
+                                {cur} {Math.max(0, p.totalAmount - p.paidAmount).toLocaleString()}
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {activeMetricDetail === 'stock' && (
+                  <table className="w-full text-left border-collapse">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase sticky top-0">
+                      <tr>
+                        <th className="py-2.5 px-3">Product</th>
+                        <th className="py-2.5 px-3">Category</th>
+                        <th className="py-2.5 px-3 text-right">Qty</th>
+                        <th className="py-2.5 px-3 text-right">Unit Cost</th>
+                        <th className="py-2.5 px-3 text-right">Stock Cost Asset</th>
+                        <th className="py-2.5 px-3 text-right">Retail Value</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {(data.inventory || [])
+                        .filter(i =>
+                          i.status !== 'ARCHIVED' &&
+                          (!q || i.name.toLowerCase().includes(q) || i.category.toLowerCase().includes(q))
+                        )
+                        .sort((a, b) => (b.costPrice * b.qty) - (a.costPrice * a.qty))
+                        .map(item => (
+                          <tr key={item.id} className="hover:bg-slate-50">
+                            <td className="py-2 px-3 font-bold text-slate-900">{item.name}</td>
+                            <td className="py-2 px-3 text-slate-600">{item.category}</td>
+                            <td className="py-2 px-3 text-right tabular-nums font-bold">{item.qty}</td>
+                            <td className="py-2 px-3 text-right tabular-nums text-slate-500">{cur} {item.costPrice.toLocaleString()}</td>
+                            <td className="py-2 px-3 text-right tabular-nums font-black text-blue-700">
+                              {cur} {(item.costPrice * item.qty).toLocaleString()}
+                            </td>
+                            <td className="py-2 px-3 text-right tabular-nums font-bold text-emerald-700">
+                              {cur} {(item.salePrice * item.qty).toLocaleString()}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                )}
+
+                {activeMetricDetail === 'credit' && (
+                  <div className="space-y-3 p-3">
+                    <div>
+                      <h4 className="font-extrabold text-slate-800 text-[11px] uppercase tracking-wider mb-1.5">
+                        Today&apos;s Credit Entries ({todayCreditEntries.length})
+                      </h4>
+                      <table className="w-full text-left border-collapse border border-slate-200 rounded-lg overflow-hidden">
+                        <thead className="bg-orange-50 text-[10px] font-bold text-orange-900 uppercase">
+                          <tr>
+                            <th className="py-2 px-3">Customer</th>
+                            <th className="py-2 px-3">Details / Note</th>
+                            <th className="py-2 px-3 text-right">Amount</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {todayCreditEntries
+                            .filter(e => !q || e.customerName.toLowerCase().includes(q) || (e.note || '').toLowerCase().includes(q))
+                            .map((entry, idx) => (
+                              <tr key={idx}>
+                                <td className="py-2 px-3 font-bold text-slate-900">
+                                  {entry.customerName} {entry.phone ? `(${entry.phone})` : ''}
+                                </td>
+                                <td className="py-2 px-3 text-slate-600">{entry.note || 'Credit Purchase'}</td>
+                                <td className="py-2 px-3 text-right tabular-nums font-black text-orange-700">
+                                  {cur} {entry.amount.toLocaleString()}
+                                </td>
+                              </tr>
+                            ))}
+                          {todayCreditEntries.length === 0 && (
+                            <tr><td colSpan={3} className="py-4 text-center text-slate-400">No credit issued today</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div>
+                      <h4 className="font-extrabold text-slate-800 text-[11px] uppercase tracking-wider mb-1.5">
+                        All Outstanding Customer Khata Balances
+                      </h4>
+                      <table className="w-full text-left border-collapse border border-slate-200 rounded-lg overflow-hidden">
+                        <thead className="bg-slate-50 text-[10px] font-bold text-slate-500 uppercase">
+                          <tr>
+                            <th className="py-2 px-3">Customer</th>
+                            <th className="py-2 px-3">Phone</th>
+                            <th className="py-2 px-3 text-right">Outstanding Balance</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {(data.khata || [])
+                            .filter(k => k.balance > 0 && (!q || k.name.toLowerCase().includes(q) || (k.phone || '').includes(q)))
+                            .sort((a, b) => b.balance - a.balance)
+                            .map(k => (
+                              <tr key={k.id}>
+                                <td className="py-2 px-3 font-bold text-slate-900">{k.name}</td>
+                                <td className="py-2 px-3 text-slate-600 tabular-nums">{k.phone || '-'}</td>
+                                <td className="py-2 px-3 text-right tabular-nums font-black text-rose-600">
+                                  {cur} {k.balance.toLocaleString()}
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end pt-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setActiveMetricDetail(null)}
+                  className="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition cursor-pointer"
+                >
+                  Close Details
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* TOTP 2FA Setup Modal from Dashboard Banner */}
       <TotpSetupModal

@@ -612,3 +612,45 @@ export function recordImeisReversed({
     return true;
   });
 }
+
+/**
+ * Returns ONLY the IMEI records that are newly created or modified compared to prevRecords.
+ * Prevents rewriting hundreds/thousands of untouched historical IMEI docs on every transaction.
+ */
+export function diffChangedImeiRecords(
+  prevRecords: ImeiRecord[] = [],
+  nextRecords: ImeiRecord[] = []
+): ImeiRecord[] {
+  const prevByKey = new Map<string, ImeiRecord>();
+  for (const r of prevRecords) {
+    const key = r.id || r.imei.toLowerCase();
+    prevByKey.set(key, r);
+  }
+
+  const changed: ImeiRecord[] = [];
+  for (const next of nextRecords) {
+    const key = next.id || next.imei.toLowerCase();
+    const prev = prevByKey.get(key);
+    if (!prev) {
+      changed.push(next);
+      continue;
+    }
+    if (
+      prev.status !== next.status ||
+      prev.updatedAt !== next.updatedAt ||
+      prev.invoiceNo !== next.invoiceNo ||
+      prev.soldDate !== next.soldDate ||
+      prev.customerName !== next.customerName ||
+      prev.customerPhone !== next.customerPhone ||
+      prev.purchaseBillNo !== next.purchaseBillNo ||
+      prev.purchaseParty !== next.purchaseParty ||
+      prev.productId !== next.productId ||
+      prev.productName !== next.productName ||
+      prev.category !== next.category
+    ) {
+      changed.push(next);
+    }
+  }
+  return changed;
+}
+

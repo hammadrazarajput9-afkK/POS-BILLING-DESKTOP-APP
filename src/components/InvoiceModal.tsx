@@ -49,6 +49,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteMode, setDeleteMode] = useState<'cancel' | 'permanent'>('cancel');
   const [cancelReason, setCancelReason] = useState('Customer request / cancelled');
+  const [isPrintingBluetooth, setIsPrintingBluetooth] = useState(false);
 
   if (!isOpen || !sale) return null;
 
@@ -71,7 +72,14 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
     ? 'bg-amber-600 text-white'
     : 'bg-rose-600 text-white';
 
-  const [isPrintingBluetooth, setIsPrintingBluetooth] = useState(false);
+  const returnPolicyText = (settings.returnPolicy || '').trim();
+  const receiptFooterText = (settings.receiptFooter || '').trim();
+  const footerNoteLines = Array.from(
+    new Set([returnPolicyText, receiptFooterText].filter(Boolean))
+  );
+  if (footerNoteLines.length === 0) {
+    footerNoteLines.push('Thank you for your business!');
+  }
 
   const handlePrint = () => {
     window.print();
@@ -129,8 +137,9 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
       `GRAND TOTAL: ${settings.currency} ${grandTotal.toLocaleString()}`,
       `Paid Amount: ${settings.currency} ${amountPaid.toLocaleString()} (${sale.paymentMethod || 'Cash'})`,
       amountDue > 0 ? `Balance Due: ${settings.currency} ${amountDue.toLocaleString()}` : '',
+      sale.notes ? `Note: ${sale.notes}` : '',
       `==============================`,
-      settings.returnPolicy || settings.receiptFooter || 'Thank you for your visit!',
+      ...footerNoteLines,
       `==============================`,
     ].filter(Boolean);
 
@@ -158,11 +167,13 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
       {/* ============================================================== */}
       <div
         id="printable-thermal-invoice"
-        className="hidden print:block print:w-full print:bg-white text-black p-4 tabular-nums"
-        style={{
-          maxWidth: printFormat === 'thermal-58' ? '58mm' : printFormat === 'thermal-80' ? '80mm' : '210mm',
-          margin: '0 auto',
-        }}
+        className={`hidden print:block print:w-full print:bg-white text-black p-4 tabular-nums ${
+          printFormat === 'thermal-58'
+            ? 'thermal-58-print'
+            : printFormat === 'thermal-80'
+            ? 'thermal-80-print'
+            : 'a4-print'
+        }`}
       >
         {/* Print Header */}
         <div className="text-center pb-2 border-b border-black">
@@ -265,9 +276,24 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
           )}
         </div>
 
+        {/* Custom Per-Bill Note (Urdu / English / Roman Urdu) */}
+        {sale.notes && (
+          <div
+            dir="auto"
+            className="mt-2 p-1.5 border border-dashed border-black text-[10px] font-semibold whitespace-pre-wrap text-left"
+          >
+            <span className="font-black uppercase text-[9px] mr-1">Note:</span>
+            {sale.notes}
+          </div>
+        )}
+
         {/* Footer & Return Policy */}
         <div className="pt-3 text-center text-[10px] space-y-1">
-          <p className="font-semibold">{settings.returnPolicy || settings.receiptFooter || 'Thank you for your business!'}</p>
+          {footerNoteLines.map((line, idx) => (
+            <p key={idx} className={idx === 0 ? 'font-semibold' : 'text-[9.5px] font-medium'}>
+              {line}
+            </p>
+          ))}
           <p className="text-[8px] text-gray-500">System Generated Invoice</p>
         </div>
       </div>
@@ -498,6 +524,19 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               )}
             </div>
 
+            {/* Custom Per-Bill Note Preview */}
+            {sale.notes && (
+              <div
+                dir="auto"
+                className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-left text-xs text-slate-800 whitespace-pre-wrap"
+              >
+                <span className="font-extrabold text-[10px] uppercase tracking-wider text-amber-800 block mb-0.5">
+                  Bill Note:
+                </span>
+                {sale.notes}
+              </div>
+            )}
+
             {/* QR Code & Return Policy Footer */}
             <div className="pt-3 border-t border-dashed border-slate-300 text-center space-y-2">
               <div className="flex items-center justify-center gap-2 p-2 bg-white rounded-xl border border-slate-200 w-fit mx-auto">
@@ -508,9 +547,13 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 </div>
               </div>
 
-              <p className="text-[10px] text-slate-600 font-sans italic">
-                {settings.returnPolicy || settings.receiptFooter || 'Warranty claims require original invoice.'}
-              </p>
+              <div className="space-y-0.5">
+                {footerNoteLines.map((line, idx) => (
+                  <p key={idx} className="text-[10px] text-slate-600 font-sans italic">
+                    {line}
+                  </p>
+                ))}
+              </div>
             </div>
           </div>
         </div>

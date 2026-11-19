@@ -482,6 +482,37 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
     return activeItems.filter(i => i.qty <= 1).length;
   }, [activeItems]);
 
+  // Per-category Products & Total Pieces count (e.g., Android: 12 Products • 48 Pcs)
+  const categoryStats = useMemo(() => {
+    const statsMap = new Map<string, { products: number; pieces: number }>();
+    categories.forEach(c => statsMap.set(c, { products: 0, pieces: 0 }));
+
+    const sourceItems = unifiedInventory.filter(item => {
+      if (statusFilter === 'ARCHIVED') return item.status === 'ARCHIVED';
+      return item.status !== 'ARCHIVED';
+    });
+
+    let totalProducts = 0;
+    let totalPieces = 0;
+
+    for (const item of sourceItems) {
+      totalProducts += 1;
+      const qty = Math.max(0, Number(item.qty) || 0);
+      totalPieces += qty;
+
+      const matchedCat =
+        categories.find(c => c.toLowerCase() === (item.category || '').toLowerCase()) ||
+        item.category ||
+        'Uncategorized';
+      const cur = statsMap.get(matchedCat) || { products: 0, pieces: 0 };
+      cur.products += 1;
+      cur.pieces += qty;
+      statsMap.set(matchedCat, cur);
+    }
+
+    return { totalProducts, totalPieces, statsMap };
+  }, [unifiedInventory, categories, statusFilter]);
+
   const handleCopyImei = (imei: string) => {
     navigator.clipboard.writeText(imei);
     setCopiedImei(imei);
@@ -671,14 +702,70 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
               onChange={e => setCategoryFilter(e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl px-3 py-2.5 outline-none focus:border-blue-600 cursor-pointer h-10 truncate"
             >
-              <option value="ALL">All Categories</option>
-              {categories.map(cat => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
+              <option value="ALL">
+                All Categories ({categoryStats.totalProducts} Prod • {categoryStats.totalPieces} Pcs)
+              </option>
+              {categories.map(cat => {
+                const st = categoryStats.statsMap.get(cat) || { products: 0, pieces: 0 };
+                return (
+                  <option key={cat} value={cat}>
+                    {cat} ({st.products} Prod • {st.pieces} Pcs)
+                  </option>
+                );
+              })}
             </select>
           </div>
+        </div>
+
+        {/* Category Wise Products & Piece Count Breakdown Strip */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin touch-pan-x">
+          <button
+            type="button"
+            onClick={() => setCategoryFilter('ALL')}
+            className={`shrink-0 px-3 py-1.5 rounded-xl border text-left transition cursor-pointer flex items-center gap-2 ${
+              categoryFilter === 'ALL'
+                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+            }`}
+          >
+            <span className="text-xs font-extrabold">All</span>
+            <span
+              className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md tabular-nums ${
+                categoryFilter === 'ALL'
+                  ? 'bg-blue-500/40 text-white'
+                  : 'bg-white text-slate-600 border border-slate-200/80'
+              }`}
+            >
+              {categoryStats.totalProducts} Prod • {categoryStats.totalPieces} Pcs
+            </span>
+          </button>
+          {categories.map(cat => {
+            const st = categoryStats.statsMap.get(cat) || { products: 0, pieces: 0 };
+            const isActive = categoryFilter === cat;
+            return (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setCategoryFilter(isActive ? 'ALL' : cat)}
+                className={`shrink-0 px-3 py-1.5 rounded-xl border text-left transition cursor-pointer flex items-center gap-2 ${
+                  isActive
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                    : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                }`}
+              >
+                <span className="text-xs font-extrabold">{cat}</span>
+                <span
+                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md tabular-nums ${
+                    isActive
+                      ? 'bg-blue-500/40 text-white'
+                      : 'bg-white text-slate-600 border border-slate-200/80'
+                  }`}
+                >
+                  {st.products} Prod • {st.pieces} Pcs
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         {/* View Mode Toggle & Product Grid / Table */}
@@ -707,8 +794,9 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                 </button>
               </div>
             </div>
-            <span className="text-xs font-bold text-slate-600">
-              Showing {filtered.length} products
+            <span className="text-xs font-bold text-slate-600 tabular-nums">
+              Showing {filtered.length} products •{' '}
+              {filtered.reduce((sum, item) => sum + Math.max(0, Number(item.qty) || 0), 0).toLocaleString()} pieces
             </span>
           </div>
 

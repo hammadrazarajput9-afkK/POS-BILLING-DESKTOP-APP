@@ -77,9 +77,16 @@ export function generateWhatsAppInvoiceText(sale: SaleRecord, settings: ShopSett
     `⭐ *GRAND TOTAL:* *${cur} ${grandTotal.toLocaleString()}*`,
     `💵 *Paid Amount:* ${cur} ${amountPaid.toLocaleString()} (${sale.paymentMethod || 'Cash'})`,
     amountDue > 0 ? `⚠️ *Remaining Balance:* *${cur} ${amountDue.toLocaleString()}*` : '',
+    sale.notes ? `📝 *Note:* ${sale.notes}` : '',
     `━━━━━━━━━━━━━━━━━━━━`,
-    settings.returnPolicy || settings.receiptFooter || '🙏 Thank you for your B2B partnership!',
-    `_Note: B2B Wholesale terms apply. Please retain for warranty claims._`,
+    ...(Array.from(
+      new Set([(settings.returnPolicy || '').trim(), (settings.receiptFooter || '').trim()].filter(Boolean))
+    ).length > 0
+      ? Array.from(
+          new Set([(settings.returnPolicy || '').trim(), (settings.receiptFooter || '').trim()].filter(Boolean))
+        )
+      : ['🙏 Thank you for your business!']),
+    `_Note: Please retain invoice for warranty or checking claims._`,
   ].filter(Boolean);
 
   return lines.join('\n');

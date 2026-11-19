@@ -199,12 +199,24 @@ export function generateEscPosInvoiceData(
     b.bold(true).row('Balance Due:', `${cur} ${amountDue.toLocaleString()}`).bold(false);
   }
 
+  if (sale.notes) {
+    b.separator('-');
+    b.align(0);
+    b.line(`Note: ${sale.notes}`);
+  }
+
   b.separator('=');
 
   // Footer / Return Policy
   b.align(1);
-  const footerText = settings.returnPolicy || settings.receiptFooter || 'Thank you for your visit!';
-  b.line(footerText);
+  const notesList = Array.from(
+    new Set([(settings.returnPolicy || '').trim(), (settings.receiptFooter || '').trim()].filter(Boolean))
+  );
+  if (notesList.length > 0) {
+    notesList.forEach(line => b.line(line));
+  } else {
+    b.line('Thank you for your visit!');
+  }
   b.line('Warranty claims require original receipt.');
 
   b.feed(4);
