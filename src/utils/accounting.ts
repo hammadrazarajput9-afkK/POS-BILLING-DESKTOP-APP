@@ -8,10 +8,19 @@ export type AccountChannel = 'Cash' | 'Bank' | 'JazzCash' | 'Easypaisa' | 'Card'
 export function normalizePaymentChannel(pm?: string): AccountChannel {
   if (!pm) return 'Cash';
   const clean = pm.trim().toLowerCase();
+  if (clean.includes('jazzcash') || clean.includes('jazz cash')) return 'JazzCash';
+  if (clean.includes('easypaisa') || clean.includes('easy paisa')) return 'Easypaisa';
   if (clean === 'cash' || clean === 'cash drawer') return 'Cash';
-  if (clean === 'bank' || clean === 'bank transfer' || clean === 'meezan bank' || clean === 'cheque') return 'Bank';
-  if (clean === 'jazzcash') return 'JazzCash';
-  if (clean === 'easypaisa') return 'Easypaisa';
+  if (
+    clean === 'bank' ||
+    clean === 'bank transfer' ||
+    clean === 'bank account' ||
+    clean === 'meezan bank' ||
+    clean === 'cheque' ||
+    clean.includes('bank')
+  ) {
+    return 'Bank';
+  }
   if (clean === 'card' || clean === 'credit card' || clean === 'debit card') return 'Card';
   return 'Other';
 }
@@ -152,8 +161,9 @@ export function calculateAccountingSummary(
     });
   }
 
-  // 3. Filter period transactions
+  // 3. Filter period transactions (exclude CANCELLED sales)
   const periodSales = (data.sales || []).filter(s =>
+    s.status !== 'CANCELLED' &&
     isTxInClosingPeriod(s.date, previousClosing, targetDate, targetTime)
   );
 
@@ -193,19 +203,22 @@ export function calculateAccountingSummary(
     return normalizePaymentChannel(pm) === targetChannel;
   };
 
-  // Helper to check online account matching (exact accountId or legacy single fallback)
+  // Helper to check online account matching (exact accountId first, then legacy fallback)
   const matchesAccount = (
     tx: { paymentMethod?: string; accountId?: string },
     accId: string,
     accChannel: AccountChannel,
     onlineAccountsList: OnlineAccount[]
   ): boolean => {
-    if (normalizePaymentChannel(tx.paymentMethod) !== accChannel) return false;
     if (tx.accountId) {
       return tx.accountId === accId;
     }
+    if (normalizePaymentChannel(tx.paymentMethod) !== accChannel) return false;
     // Legacy fallback: if tx has no accountId, attribute to this account if it's the only one of this channel
-    const sameChannelAccounts = onlineAccountsList.filter(a => normalizePaymentChannel(a.bankType || a.name) === accChannel);
+    const sameChannelAccounts = onlineAccountsList.filter(a => {
+      const aChan = normalizePaymentChannel(a.name);
+      return (aChan !== 'Other' ? aChan : normalizePaymentChannel(a.bankType || a.name)) === accChannel;
+    });
     return sameChannelAccounts.length === 1 && sameChannelAccounts[0].id === accId;
   };
 
@@ -214,14 +227,14 @@ export function calculateAccountingSummary(
   // Channel Accumulator Helper
   const createChannelBreakdown = (channel: AccountChannel, openingVal: number = 0): AccountBreakdown => {
     const isChannelAccount = (tx: { paymentMethod?: string; accountId?: string }) => {
-      if (!matchesChannel(tx.paymentMethod, channel)) return false;
-      // If channel is Cash or Card or Other, aggregate all matching
-      if (channel === 'Cash' || channel === 'Card' || channel === 'Other') return true;
-      // For Bank, JazzCash, Easypaisa, if online accounts are defined, ensure we don't double count items explicitly assigned to an online account unless this channel breakdown represents unassigned or general channel
       if (tx.accountId && allOnlineAccounts.some(a => a.id === tx.accountId)) {
         const assignedAcc = allOnlineAccounts.find(a => a.id === tx.accountId);
-        return normalizePaymentChannel(assignedAcc?.bankType || assignedAcc?.name) === channel;
+        const byName = normalizePaymentChannel(assignedAcc?.name);
+        const byType = normalizePaymentChannel(assignedAcc?.bankType || assignedAcc?.name);
+        const resolved = byName !== 'Other' ? byName : byType;
+        return resolved === channel;
       }
+      if (!matchesChannel(tx.paymentMethod, channel)) return false;
       return true;
     };
 

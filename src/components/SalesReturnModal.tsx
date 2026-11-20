@@ -537,7 +537,7 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                                     value={curQty}
                                     placeholder="Qty"
                                     onChange={e => handleQtyChange(key, e.target.value === '' ? '' : parseInt(e.target.value, 10) || 1, remainingQty, item.salePrice)}
-                                    className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-amber-500"
+                                    className="allow-spinner w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-amber-500"
                                   />
                                 </div>
 

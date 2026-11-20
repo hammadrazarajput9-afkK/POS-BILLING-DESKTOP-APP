@@ -31,6 +31,17 @@
     font-feature-settings: inherit;
   }
 
+  /* Hide up/down spinner arrows on all price/amount number inputs across the app; keep ONLY on Quantity inputs (.allow-spinner) */
+  input[type="number"]:not(.allow-spinner)::-webkit-outer-spin-button,
+  input[type="number"]:not(.allow-spinner)::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"]:not(.allow-spinner) {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+
   h1, h2, h3, .font-display {
     font-family: 'Outfit', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     letter-spacing: -0.015em;

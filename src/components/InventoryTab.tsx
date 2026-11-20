@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { InventoryItem, ItemCategory, StockAdjustment, SaleRecord, MobileVariant, SupplierPurchase, ImeiRecord } from '../types';
+import { InventoryItem, ItemCategory, StockAdjustment, SaleRecord, MobileVariant, SupplierPurchase, ImeiRecord, ActivityLog } from '../types';
 import {
   Search,
   Plus,
@@ -28,7 +28,9 @@ import {
   List,
   Share2,
   Truck,
-  Building2
+  Building2,
+  Cpu,
+  HardDrive
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { ConfirmModal } from './ConfirmModal';
@@ -40,6 +42,7 @@ interface InventoryTabProps {
   currency: string;
   categories: string[];
   stockAdjustments?: StockAdjustment[];
+  activities?: ActivityLog[];
   sales?: SaleRecord[];
   supplierPurchases?: SupplierPurchase[];
   imeiRecords?: ImeiRecord[];
@@ -60,6 +63,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
   currency,
   categories,
   stockAdjustments = [],
+  activities = [],
   sales = [],
   supplierPurchases = [],
   imeiRecords = [],
@@ -81,9 +85,14 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
   const [copiedImei, setCopiedImei] = useState<string | null>(null);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isAdjustmentsModalOpen, setIsAdjustmentsModalOpen] = useState(false);
+  const [logModalTab, setLogModalTab] = useState<'activity' | 'adjustments'>('activity');
   const [productToDelete, setProductToDelete] = useState<InventoryItem | null>(null);
   const [productToPermanentDelete, setProductToPermanentDelete] = useState<InventoryItem | null>(null);
   const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
+
+  const inventoryActivities = useMemo(() => {
+    return (activities || []).filter(a => a.category === 'Inventory');
+  }, [activities]);
 
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [selectedProductPopup, setSelectedProductPopup] = useState<InventoryItem | null>(null);
@@ -288,7 +297,8 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
     if (item.variants && item.variants.length > 0) {
       lines.push(`\n*COLOR / SPECIFICATION VARIANTS:*`);
       item.variants.forEach((v: MobileVariant, idx: number) => {
-        const col = v.color || `${v.ram || ''} ${v.storage || ''}`.trim() || `Variant ${idx + 1}`;
+        const spec = [v.ram, v.storage].filter(Boolean).join('/');
+        const col = [spec, v.color].filter(Boolean).join(' • ') || `Variant ${idx + 1}`;
         const imeisStr = (v.imeis || []).filter(Boolean).join(', ');
         lines.push(`${idx + 1}. *${col}* - ${v.qty || 1} units${imeisStr ? `\n   IMEIs: ${imeisStr}` : ''}`);
       });
@@ -335,9 +345,11 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
     if (item.variants && item.variants.length > 0) {
       item.variants.forEach((v: MobileVariant, idx: number) => {
         const imeisStr = (v.imeis || []).filter(Boolean).join(', ') || 'N/A';
+        const spec = [v.ram, v.storage].filter(Boolean).join('/');
+        const label = [spec, v.color].filter(Boolean).join(' • ') || 'Standard';
         rows.push([
           `Variant #${idx + 1}`,
-          v.color || `${v.ram || ''} ${v.storage || ''}`.trim() || 'Standard',
+          label,
           `${v.qty || 1} Units`,
           imeisStr
         ]);
@@ -455,8 +467,10 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
         ...(item.variants?.flatMap(v => v.imeis || []) || []),
       ].join(' ');
 
-      const variantColors = (item.variants || []).map(v => v.color || '').join(' ');
-      const combinedText = `${item.name} ${item.category} ${variantColors} ${item.barcode || ''} ${imeiString}`.toLowerCase();
+      const variantSpecsAndColors = (item.variants || [])
+        .map(v => `${v.ram || ''} ${v.storage || ''} ${v.color || ''}`)
+        .join(' ');
+      const combinedText = `${item.name} ${item.category} ${item.ram || ''} ${item.storage || ''} ${variantSpecsAndColors} ${item.barcode || ''} ${imeiString}`.toLowerCase();
       return tokens.every(token => combinedText.includes(token));
     });
   }, [unifiedInventory, search, categoryFilter, statusFilter]);
@@ -610,15 +624,18 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
           <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
             <button
               type="button"
-              onClick={() => setIsAdjustmentsModalOpen(true)}
+              onClick={() => {
+                setLogModalTab('activity');
+                setIsAdjustmentsModalOpen(true);
+              }}
               className="flex-1 sm:flex-initial px-2.5 sm:px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs rounded-xl border border-amber-200/80 transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs h-8.5 sm:h-9.5"
-              title="View Manual Stock Quantity Adjustment History"
+              title="View Inventory Logs, Missing Field Alerts & Stock Adjustments"
             >
               <History className="w-3.5 h-3.5 text-amber-600 shrink-0" />
               <span className="truncate">Log</span>
-              {stockAdjustments.length > 0 && (
+              {(inventoryActivities.length > 0 || stockAdjustments.length > 0) && (
                 <span className="bg-amber-200 text-amber-900 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
-                  {stockAdjustments.length}
+                  {inventoryActivities.length + stockAdjustments.length}
                 </span>
               )}
             </button>
@@ -841,14 +858,33 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                           )}
                         </div>
 
-                        {/* Category & Color Variants Badge */}
+                        {/* Category, RAM/Storage & Color Variants Badges */}
                         <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
                           <span className="inline-block text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md truncate max-w-full">
                             {item.category}
                           </span>
+                          {(() => {
+                            const specs = Array.from(
+                              new Set(
+                                [
+                                  ...(item.variants || []).map(v => [v.ram, v.storage].filter(Boolean).join('/')),
+                                  [item.ram, item.storage].filter(Boolean).join('/'),
+                                ].filter(Boolean)
+                              )
+                            );
+                            return specs.slice(0, 2).map((sp, sIdx) => (
+                              <span
+                                key={sIdx}
+                                className="inline-flex items-center gap-0.5 text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/70 px-1.5 py-0.5 rounded-md"
+                              >
+                                <Cpu className="w-2.5 h-2.5" />
+                                {sp}
+                              </span>
+                            ));
+                          })()}
                           {item.variants && item.variants.length > 0 && (
                             <span className="inline-block text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200/60 px-1.5 py-0.5 rounded-md">
-                              {item.variants.length} Colors
+                              {item.variants.length} {item.variants.length === 1 ? 'Variant' : 'Variants'}
                             </span>
                           )}
                         </div>
@@ -942,6 +978,29 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                                 )}
                                 <div>
                                   <p className="font-bold text-slate-900 group-hover:text-blue-600 transition leading-snug">{item.name}</p>
+                                  {(() => {
+                                    const specs = Array.from(
+                                      new Set(
+                                        [
+                                          ...(item.variants || []).map(v => [v.ram, v.storage].filter(Boolean).join('/')),
+                                          [item.ram, item.storage].filter(Boolean).join('/'),
+                                        ].filter(Boolean)
+                                      )
+                                    );
+                                    if (specs.length === 0) return null;
+                                    return (
+                                      <div className="flex flex-wrap gap-1 mt-0.5">
+                                        {specs.map((sp, sIdx) => (
+                                          <span
+                                            key={sIdx}
+                                            className="inline-flex items-center gap-0.5 text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/70 px-1.5 py-0.2 rounded"
+                                          >
+                                            {sp}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                               </div>
                             </td>
@@ -1148,6 +1207,32 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                     {selectedProductPopup.category}
                   </span>
                   <h4 className="font-extrabold text-slate-900 text-base sm:text-lg mt-1">{selectedProductPopup.name}</h4>
+                  {(() => {
+                    const popupSpecs = Array.from(
+                      new Set(
+                        [
+                          ...(selectedProductPopup.variants || []).map(v =>
+                            [v.ram, v.storage].filter(Boolean).join(' / ')
+                          ),
+                          [selectedProductPopup.ram, selectedProductPopup.storage].filter(Boolean).join(' / '),
+                        ].filter(Boolean)
+                      )
+                    );
+                    if (popupSpecs.length === 0) return null;
+                    return (
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                        {popupSpecs.map((spec, sIdx) => (
+                          <span
+                            key={sIdx}
+                            className="inline-flex items-center gap-1 text-[11px] font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-lg"
+                          >
+                            <Cpu className="w-3 h-3 text-indigo-600" />
+                            <span>{spec}</span>
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs pt-1">
                   <div>
@@ -1172,27 +1257,38 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
               </div>
             </div>
 
-            {/* Colors & IMEIs Breakdown */}
+            {/* Colors, RAM/Storage & IMEIs Breakdown */}
             <div className="space-y-3">
               <h5 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-2">
                 <Layers className="w-4 h-4 text-blue-600" />
-                Color Variants & Dedicated IMEIs
+                RAM / Storage, Color Variants & Dedicated IMEIs
               </h5>
 
               <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                 {selectedProductPopup.variants && selectedProductPopup.variants.length > 0 ? (
-                  selectedProductPopup.variants.map((v: MobileVariant, vIdx: number) => (
+                  selectedProductPopup.variants.map((v: MobileVariant, vIdx: number) => {
+                    const specText = [v.ram, v.storage].filter(Boolean).join(' / ');
+                    return (
                     <div key={v.id || vIdx} className="p-3 bg-white border border-slate-200 rounded-xl space-y-1.5 shadow-2xs">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                      <div className="flex flex-wrap items-center justify-between gap-1.5">
+                        <div className="font-bold text-xs text-slate-800 flex items-center gap-1.5 flex-wrap">
                           <span className="w-5 h-5 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center tabular-nums text-[10px]">
                             #{vIdx + 1}
                           </span>
-                          {v.color || `${v.ram || ''} ${v.storage || ''}`.trim() || 'Standard Variant'}
-                        </span>
-                        <div className="flex items-center gap-2">
+                          {specText && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200/80 text-[10px] font-extrabold">
+                              <HardDrive className="w-2.5 h-2.5 text-indigo-600" />
+                              {specText}
+                            </span>
+                          )}
+                          <span>{v.color || (!specText ? 'Standard Variant' : 'Default Color')}</span>
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="tabular-nums font-black text-blue-600 text-xs">
                             {currency} {Number(v.salePrice || selectedProductPopup.salePrice).toLocaleString()}
+                            {isAdmin && v.wholesalePrice !== undefined && v.wholesalePrice !== ''
+                              ? ` • WS: ${currency} ${Number(v.wholesalePrice).toLocaleString()}`
+                              : ''}
                             {isAdmin && v.costPrice ? ` (Cost: ${currency} ${Number(v.costPrice).toLocaleString()})` : ''}
                           </span>
                           <span className="tabular-nums text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
@@ -1229,7 +1325,8 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                         </div>
                       )}
                     </div>
-                  ))
+                    );
+                  })
                 ) : selectedProductPopup.imeis && selectedProductPopup.imeis.filter(Boolean).length > 0 ? (
                   <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-2">
                     <span className="text-xs font-bold text-slate-700 block">Registered IMEIs / Serials:</span>
@@ -1424,7 +1521,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
         onRenameCategory={onRenameCategory}
       />
 
-      {/* Stock Adjustments Audit History Modal */}
+      {/* Inventory Logs, Missing Alerts & Stock Adjustments Modal */}
       {isAdjustmentsModalOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-2xl max-w-2xl w-full p-5 sm:p-6 shadow-2xl space-y-4 border border-slate-100 max-h-[90vh] flex flex-col">
@@ -1435,10 +1532,10 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                 </div>
                 <div>
                   <h3 className="font-extrabold text-slate-900 text-sm sm:text-base">
-                    Stock Quantity Adjustment Audit Log
+                    Inventory Logs & Missing Alerts
                   </h3>
                   <p className="text-[11px] text-slate-400">
-                    Chronological audit history of all manual quantity modifications
+                    Added/updated items, missing field alerts (IMEI, Price, Picture), and qty adjustments
                   </p>
                 </div>
               </div>
@@ -1451,8 +1548,76 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
               </button>
             </div>
 
+            <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 pb-2.5">
+              <button
+                type="button"
+                onClick={() => setLogModalTab('activity')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  logModalTab === 'activity'
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                Inventory Logs & Alerts ({inventoryActivities.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setLogModalTab('adjustments')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  logModalTab === 'adjustments'
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                Stock Qty Adjustments ({stockAdjustments.length})
+              </button>
+            </div>
+
             <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
-              {stockAdjustments.length === 0 ? (
+              {logModalTab === 'activity' ? (
+                inventoryActivities.length === 0 ? (
+                  <div className="text-center py-12 text-slate-400 space-y-2">
+                    <Clock className="w-8 h-8 mx-auto text-slate-300" />
+                    <p className="font-semibold text-slate-600 text-xs">No inventory activity logs recorded yet</p>
+                    <p className="text-[11px] text-slate-400">
+                      Product additions, updates, and missing field alerts (IMEI / Cost / Sale / Picture) will show here.
+                    </p>
+                  </div>
+                ) : (
+                  inventoryActivities.map((act, idx) => {
+                    const detailsStr = act.details || '';
+                    const [baseDetails, missingPart] = detailsStr.split(' | Missing Alerts: ');
+                    const hasMissing = Boolean(missingPart);
+
+                    return (
+                      <div
+                        key={act.id || idx}
+                        className={`p-3 rounded-xl border space-y-1.5 text-xs ${
+                          hasMissing
+                            ? 'bg-amber-50/60 border-amber-200'
+                            : 'bg-slate-50 border-slate-200/80'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-slate-900">{act.title}</span>
+                          <span className="text-[10px] text-slate-500 tabular-nums shrink-0">
+                            {new Date(act.timestamp).toLocaleString()}
+                          </span>
+                        </div>
+                        {baseDetails && (
+                          <p className="text-[11px] text-slate-600">{baseDetails}</p>
+                        )}
+                        {hasMissing && (
+                          <div className="flex items-start gap-1.5 p-2 rounded-lg bg-amber-100/80 border border-amber-300/70 text-[11px] text-amber-950 font-semibold">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-700 shrink-0 mt-0.5" />
+                            <span>Missing: {missingPart}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )
+              ) : stockAdjustments.length === 0 ? (
                 <div className="text-center py-12 text-slate-400 space-y-2">
                   <Clock className="w-8 h-8 mx-auto text-slate-300" />
                   <p className="font-semibold text-slate-600 text-xs">No manual stock adjustments recorded yet</p>

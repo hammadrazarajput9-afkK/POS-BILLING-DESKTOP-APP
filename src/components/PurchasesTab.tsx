@@ -2066,7 +2066,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                                 placeholder="Qty"
                                 value={item.qty}
                                 onChange={e => handleItemQtyChange(idx, e.target.value)}
-                                className="w-full px-2.5 py-2 bg-white border border-blue-400 rounded-xl text-xs tabular-nums font-extrabold text-blue-700 text-center focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500 shadow-2xs"
+                                className="allow-spinner w-full px-2.5 py-2 bg-white border border-blue-400 rounded-xl text-xs tabular-nums font-extrabold text-blue-700 text-center focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500 shadow-2xs"
                               />
                             </div>
 

@@ -32,7 +32,8 @@ import {
   Sparkles,
   Layers,
   Copy,
-  Info
+  Info,
+  Sliders
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
@@ -57,6 +58,7 @@ interface PosTabProps {
   onCancelSale: (invNo: string, reason: string) => void;
   onDeleteSale?: (invNo: string, permanent?: boolean, reason?: string) => void;
   onUpdateSale?: (sale: SaleRecord) => void;
+  onUpdateOnlineAccount?: (account: OnlineAccount, silent?: boolean) => void;
   saleToEdit?: SaleRecord | null;
   onClearSaleToEdit?: () => void;
 }
@@ -111,6 +113,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   onCancelSale,
   onDeleteSale,
   onUpdateSale,
+  onUpdateOnlineAccount,
   saleToEdit,
   onClearSaleToEdit,
 }) => {
@@ -126,6 +129,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   const [copiedImei, setCopiedImei] = useState<string | null>(null);
   const [duplicateScanAlert, setDuplicateScanAlert] = useState<{ title: string; detail: string } | null>(null);
   const duplicateAlertTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showChannelCustomizer, setShowChannelCustomizer] = useState(false);
 
   const triggerDuplicateAlert = (title: string, detail: string) => {
     setDuplicateScanAlert({ title, detail });
@@ -546,23 +550,18 @@ const PosTabComponent: React.FC<PosTabProps> = ({
     return item.salePrice;
   };
 
-  // Matching online accounts for payment method
-  const matchingAccounts = useMemo(() => {
-    return onlineAccounts.filter(a => normalizePaymentChannel(a.bankType || a.name) === paymentMethod);
-  }, [onlineAccounts, paymentMethod]);
+  // Visible online accounts configured in Daily Closing for POS Billing Cart
+  const visiblePosAccounts = useMemo(() => {
+    return onlineAccounts.filter(a => a.showInPos !== false);
+  }, [onlineAccounts]);
 
-  // Auto select if 1 account exists
-  React.useEffect(() => {
-    if (matchingAccounts.length === 1) {
-      if (accountId !== matchingAccounts[0].id) {
-        setDraft(prev => ({ ...prev, accountId: matchingAccounts[0].id }));
-      }
-    } else if (matchingAccounts.length === 0) {
-      if (accountId !== '') {
-        setDraft(prev => ({ ...prev, accountId: '' }));
-      }
-    }
-  }, [paymentMethod, matchingAccounts, accountId]);
+  const selectCashChannel = () => {
+    setDraft(prev => ({ ...prev, paymentMethod: 'Cash', accountId: '' }));
+  };
+
+  const selectOnlineAccount = (acc: OnlineAccount) => {
+    setDraft(prev => ({ ...prev, paymentMethod: acc.name, accountId: acc.id }));
+  };
 
   const setCart = (updater: CartItem[] | ((prev: CartItem[]) => CartItem[])) => {
     setDraft(prev => ({
@@ -1449,45 +1448,178 @@ const PosTabComponent: React.FC<PosTabProps> = ({
             )}
           </div>
 
-          {/* Payment Modes */}
+          {/* Payment Modes (Cash + Configured Daily Closing Accounts) */}
           <div>
-            <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1.5">
-              Payment Channel
-            </label>
-            <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
-              {(['Cash', 'JazzCash', 'Easypaisa', 'Bank', 'Card'] as PaymentMethod[]).map(pm => (
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <label className="text-[11px] font-bold uppercase text-slate-500">
+                Payment Channel
+              </label>
+              {onlineAccounts.length > 0 && onUpdateOnlineAccount && (
                 <button
-                  key={pm}
                   type="button"
-                  onClick={() => setPaymentMethod(pm)}
-                  className={`py-2 px-1 rounded-xl text-xs font-bold text-center transition cursor-pointer min-h-[38px] ${
-                    paymentMethod === pm
-                      ? invoiceType === 'credit' ? 'bg-purple-600 text-white shadow-xs' : 'bg-blue-600 text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  onClick={() => setShowChannelCustomizer(prev => !prev)}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 border transition cursor-pointer ${
+                    showChannelCustomizer
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
                   }`}
                 >
-                  {pm}
+                  <Sliders className="w-2.5 h-2.5" />
+                  <span>Customize ({visiblePosAccounts.length}/{onlineAccounts.length})</span>
                 </button>
-              ))}
+              )}
             </div>
-            {matchingAccounts.length > 1 && (
-              <div className="mt-2.5">
-                <label className="block text-[11px] font-bold text-blue-900 mb-1">
-                  Select Specific {paymentMethod} Account *
-                </label>
-                <select
-                  value={accountId}
-                  onChange={e => setDraft(prev => ({ ...prev, accountId: e.target.value }))}
-                  className="w-full px-3 py-2 bg-white border border-blue-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-600 min-h-[40px]"
-                >
-                  <option value="">-- Choose Account --</option>
-                  {matchingAccounts.map(acc => (
-                    <option key={acc.id} value={acc.id}>
-                      {acc.name} {acc.accountNumber ? `(${acc.accountNumber})` : ''}
-                    </option>
-                  ))}
-                </select>
+
+            {showChannelCustomizer && onlineAccounts.length > 0 && onUpdateOnlineAccount && (
+              <div className="mb-2 p-2.5 bg-slate-50 border border-blue-200 rounded-xl space-y-1.5">
+                <div className="flex items-center justify-between text-[10px] font-bold text-slate-600 uppercase">
+                  <span>Select accounts to show in Cart</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowChannelCustomizer(false)}
+                    className="text-blue-600 hover:underline cursor-pointer normal-case"
+                  >
+                    Done
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  {onlineAccounts.map(acc => {
+                    const isShown = acc.showInPos !== false;
+                    return (
+                      <label
+                        key={acc.id}
+                        className={`flex items-center justify-between gap-2 p-1.5 rounded-lg border text-[11px] cursor-pointer transition ${
+                          isShown
+                            ? 'bg-white border-blue-200 text-slate-900'
+                            : 'bg-slate-100/80 border-slate-200 text-slate-400'
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <span className="font-bold block truncate">{acc.name}</span>
+                          <span className="text-[9px] text-slate-500 block truncate">
+                            {acc.bankType || 'Digital Wallet'}
+                            {acc.accountNumber ? ` • ${acc.accountNumber}` : ''}
+                          </span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={isShown}
+                          onChange={() =>
+                            onUpdateOnlineAccount(
+                              { ...acc, showInPos: !isShown },
+                              true
+                            )
+                          }
+                          className="w-3.5 h-3.5 accent-blue-600 shrink-0 cursor-pointer"
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
+            )}
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+              {/* Cash Button */}
+              <button
+                type="button"
+                onClick={selectCashChannel}
+                className={`p-2 rounded-xl text-left transition cursor-pointer border min-h-[44px] flex flex-col justify-center ${
+                  paymentMethod === 'Cash' && !accountId
+                    ? invoiceType === 'credit'
+                      ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                      : 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                    : 'bg-slate-50 text-slate-800 border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-xs font-extrabold truncate">Cash</span>
+                  <span
+                    className={`text-[9px] px-1.5 py-0.2 rounded font-bold shrink-0 ${
+                      paymentMethod === 'Cash' && !accountId
+                        ? 'bg-white/20 text-white'
+                        : 'bg-emerald-100 text-emerald-800'
+                    }`}
+                  >
+                    Drawer
+                  </span>
+                </div>
+                <span
+                  className={`text-[10px] truncate mt-0.5 ${
+                    paymentMethod === 'Cash' && !accountId ? 'text-white/80' : 'text-slate-400'
+                  }`}
+                >
+                  Physical Cash
+                </span>
+              </button>
+
+              {/* Configured Daily Closing Digital / Bank / Load Accounts */}
+              {visiblePosAccounts.map(acc => {
+                const isSelected =
+                  accountId === acc.id ||
+                  (!accountId &&
+                    paymentMethod !== 'Cash' &&
+                    String(paymentMethod).trim().toLowerCase() === acc.name.trim().toLowerCase());
+                return (
+                  <button
+                    key={acc.id}
+                    type="button"
+                    onClick={() => selectOnlineAccount(acc)}
+                    className={`p-2 rounded-xl text-left transition cursor-pointer border min-h-[44px] flex flex-col justify-center ${
+                      isSelected
+                        ? invoiceType === 'credit'
+                          ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                          : 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                        : 'bg-slate-50 text-slate-800 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-xs font-extrabold truncate">{acc.name}</span>
+                      <span
+                        className={`text-[9px] px-1.5 py-0.2 rounded font-bold shrink-0 max-w-[85px] truncate ${
+                          isSelected
+                            ? 'bg-white/20 text-white'
+                            : 'bg-blue-100/80 text-blue-800'
+                        }`}
+                      >
+                        {acc.bankType || 'Digital'}
+                      </span>
+                    </div>
+                    <span
+                      className={`text-[10px] tabular-nums truncate mt-0.5 ${
+                        isSelected ? 'text-white/85' : 'text-slate-500'
+                      }`}
+                    >
+                      {acc.accountNumber || acc.accountTitle || acc.bankType || 'Configured Account'}
+                    </span>
+                  </button>
+                );
+              })}
+
+              {/* Fallback quick methods only when no digital accounts exist */}
+              {onlineAccounts.length === 0 &&
+                (['JazzCash', 'Easypaisa', 'Bank', 'Card'] as PaymentMethod[]).map(pm => (
+                  <button
+                    key={pm}
+                    type="button"
+                    onClick={() => setDraft(prev => ({ ...prev, paymentMethod: pm, accountId: '' }))}
+                    className={`p-2 rounded-xl text-xs font-bold text-center transition cursor-pointer border min-h-[44px] ${
+                      paymentMethod === pm
+                        ? invoiceType === 'credit'
+                          ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                          : 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {pm}
+                  </button>
+                ))}
+            </div>
+
+            {onlineAccounts.length > 0 && visiblePosAccounts.length === 0 && (
+              <p className="text-[11px] text-amber-700 font-semibold mt-1.5">
+                Sab digital accounts hidden hain — Customize par click karke show karein.
+              </p>
             )}
           </div>
 
@@ -1553,10 +1685,13 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       return;
     }
 
-    if (matchingAccounts.length > 1 && !accountId) {
-      showToast(`Please select the specific ${paymentMethod} account.`, 'warning');
-      return;
-    }
+    const selectedOnlineAccount =
+      onlineAccounts.find(a => a.id === accountId) ||
+      (paymentMethod !== 'Cash'
+        ? onlineAccounts.find(
+            a => a.name.trim().toLowerCase() === String(paymentMethod).trim().toLowerCase()
+          )
+        : undefined);
 
     // Generate persistent sequential invoice number: INV-YYYYMMDD-0001, INV-YYYYMMDD-0002...
     const invNo = generateNextInvoiceNumber(sales);
@@ -1607,7 +1742,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       totalCost,
       netProfit,
       paymentMethod,
-      accountId: matchingAccounts.length > 0 ? accountId || undefined : undefined,
+      accountId: selectedOnlineAccount?.id || undefined,
       notes: billNote.trim() || undefined,
       date: new Date().toISOString(),
     };

@@ -63,9 +63,86 @@ export interface CashDrawerSummary {
   ledger: CashLedgerItem[];
 }
 
-export function useCashDrawer(data: AppData): CashDrawerSummary {
+export type DashboardPeriodMode =
+  | 'live'
+  | 'today'
+  | 'weekly'
+  | 'monthly'
+  | 'yearly'
+  | 'date'
+  | 'all';
+
+export interface DashboardPeriodFilter {
+  mode: DashboardPeriodMode;
+  specificDate?: string; // YYYY-MM-DD
+  endDate?: string; // optional YYYY-MM-DD
+}
+
+export function isDateInDashboardPeriod(
+  dateStr: string | undefined,
+  filter: DashboardPeriodFilter,
+  latestClosing: DailyClosingRecord | null,
+  todayStr: string
+): boolean {
+  if (!dateStr) return false;
+  if (filter.mode === 'live') {
+    return isTxInClosingPeriod(dateStr, latestClosing, todayStr);
+  }
+  if (filter.mode === 'all') {
+    return true;
+  }
+
+  const parsed = new Date(dateStr);
+  const txDay = dateStr.length >= 10 && /^\d{4}-\d{2}-\d{2}/.test(dateStr)
+    ? dateStr.substring(0, 10)
+    : !isNaN(parsed.getTime())
+    ? `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`
+    : '';
+
+  const now = new Date();
+  const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+  if (filter.mode === 'today') {
+    return txDay === localToday;
+  }
+
+  if (filter.mode === 'weekly') {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6, 0, 0, 0, 0);
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    if (!isNaN(parsed.getTime())) {
+      return parsed >= start && parsed <= end;
+    }
+    const startStr = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+    return txDay >= startStr && txDay <= localToday;
+  }
+
+  if (filter.mode === 'monthly') {
+    const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    return txDay.startsWith(monthPrefix);
+  }
+
+  if (filter.mode === 'yearly') {
+    const yearPrefix = `${now.getFullYear()}-`;
+    return txDay.startsWith(yearPrefix);
+  }
+
+  if (filter.mode === 'date') {
+    const startDay = filter.specificDate || localToday;
+    const endDay = filter.endDate && filter.endDate >= startDay ? filter.endDate : startDay;
+    return txDay >= startDay && txDay <= endDay;
+  }
+
+  return true;
+}
+
+export function useCashDrawer(
+  data: AppData,
+  periodFilter: DashboardPeriodFilter = { mode: 'live' }
+): CashDrawerSummary {
   return useMemo(() => {
-    // 1. Determine Opening Balance from last Daily Closing or default to 0
+    const isLiveMode = periodFilter.mode === 'live';
+
+    // 1. Determine Opening Balance from last Daily Closing (only applied in live drawer mode)
     let openingCash = 0;
     let openingBank = 0;
 
@@ -78,7 +155,7 @@ export function useCashDrawer(data: AppData): CashDrawerSummary {
         return dateTimeB.localeCompare(dateTimeA);
       });
       latestClosing = sortedClosings[0] || null;
-      if (latestClosing) {
+      if (isLiveMode && latestClosing) {
         openingCash = Number(latestClosing.totalCash) || 0;
         openingBank = Number(latestClosing.totalOnline) || 0;
       }
@@ -86,7 +163,7 @@ export function useCashDrawer(data: AppData): CashDrawerSummary {
 
     const todayStr = new Date().toISOString().substring(0, 10);
 
-    // 2. Compute Sales Breakdown (Only transactions after previous closing)
+    // 2. Compute Sales Breakdown for active period
     let cashSales = 0;
     let bankSales = 0;
     let creditSales = 0;
@@ -96,8 +173,10 @@ export function useCashDrawer(data: AppData): CashDrawerSummary {
     const salesLedgerEntries: CashLedgerItem[] = [];
 
     (data.sales || []).forEach(sale => {
-      // Check if sale belongs to the period after the latest closing
-      if (!isTxInClosingPeriod(sale.date, latestClosing, todayStr)) {
+      if (sale.status === 'CANCELLED') {
+        return;
+      }
+      if (!isDateInDashboardPeriod(sale.date, periodFilter, latestClosing, todayStr)) {
         return;
       }
 
@@ -149,7 +228,11 @@ export function useCashDrawer(data: AppData): CashDrawerSummary {
 
     (data.khata || []).forEach(customer => {
       (customer.history || []).forEach(tx => {
-        if (tx.type === 'payment' && tx.amount > 0 && isTxInClosingPeriod(tx.date, latestClosing, todayStr)) {
+        if (
+          tx.type === 'payment' &&
+          tx.amount > 0 &&
+          isDateInDashboardPeriod(tx.date, periodFilter, latestClosing, todayStr)
+        ) {
           const channel = normalizePaymentChannel(tx.paymentMethod);
           const isCash = channel === 'Cash';
 
@@ -183,7 +266,7 @@ export function useCashDrawer(data: AppData): CashDrawerSummary {
     const expenseLedgerEntries: CashLedgerItem[] = [];
 
     (data.expenses || []).forEach(exp => {
-      if (!isTxInClosingPeriod(exp.date, latestClosing, todayStr)) {
+      if (!isDateInDashboardPeriod(exp.date, periodFilter, latestClosing, todayStr)) {
         return;
       }
 
@@ -224,7 +307,7 @@ export function useCashDrawer(data: AppData): CashDrawerSummary {
         return;
       }
 
-      if (!isTxInClosingPeriod(purchase.date, latestClosing, todayStr)) {
+      if (!isDateInDashboardPeriod(purchase.date, periodFilter, latestClosing, todayStr)) {
         return;
       }
 
@@ -264,7 +347,7 @@ export function useCashDrawer(data: AppData): CashDrawerSummary {
     const returnLedgerEntries: CashLedgerItem[] = [];
 
     (data.salesReturns || []).forEach(ret => {
-      if (!isTxInClosingPeriod(ret.returnDate, latestClosing, todayStr)) {
+      if (!isDateInDashboardPeriod(ret.returnDate, periodFilter, latestClosing, todayStr)) {
         return;
       }
 
@@ -402,5 +485,5 @@ export function useCashDrawer(data: AppData): CashDrawerSummary {
       realTimeNetProfit,
       ledger: reversedLedger,
     };
-  }, [data]);
+  }, [data, periodFilter.mode, periodFilter.specificDate, periodFilter.endDate]);
 }

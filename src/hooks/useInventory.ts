@@ -88,6 +88,58 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
     const now = new Date().toISOString();
     const itemsList = Array.isArray(itemData) ? itemData : [itemData];
 
+    const collectMissingAlertsForItem = (item: Omit<InventoryItem, 'id' | 'createdAt'>): string => {
+      const missing: string[] = [];
+      if (!item.image) missing.push('Picture');
+      if (item.variants && item.variants.length > 0) {
+        item.variants.forEach((v, idx) => {
+          const vLabel = [v.ram, v.storage, v.color?.trim()].filter(Boolean).join('/') || `Var #${idx + 1}`;
+          const vMiss: string[] = [];
+          if (v.costPrice === '' || v.costPrice === undefined) vMiss.push('Cost Price');
+          if (v.salePrice === '' || v.salePrice === undefined) vMiss.push('Sale Price');
+          if (v.wholesalePrice === '' || v.wholesalePrice === undefined) vMiss.push('Wholesale Price');
+          const qtyCount = Math.max(1, Number(v.qty) || 1);
+          const vImeis = v.imeis || [];
+          const emptyImeis: string[] = [];
+          for (let k = 0; k < qtyCount; k++) {
+            if (!(vImeis[k] || '').trim()) emptyImeis.push(`#${k + 1}`);
+          }
+          if (emptyImeis.length > 0) {
+            vMiss.push(`IMEI ${emptyImeis.slice(0, 4).join(', ')}${emptyImeis.length > 4 ? ` (+${emptyImeis.length - 4})` : ''}`);
+          }
+          if (vMiss.length > 0) missing.push(`${vLabel}: ${vMiss.join(', ')}`);
+        });
+      } else {
+        if (!item.costPrice) missing.push('Cost Price');
+        if (!item.salePrice) missing.push('Sale Price');
+        if (item.wholesalePrice === undefined) missing.push('Wholesale Price');
+        const catLower = (item.category || '').toLowerCase();
+        const looksMobile =
+          catLower.includes('android') ||
+          catLower.includes('keypad') ||
+          catLower.includes('smart') ||
+          catLower.includes('feature') ||
+          catLower.includes('mobile') ||
+          catLower.includes('phone');
+        if (looksMobile && item.qty > 0) {
+          const enteredImeis =
+            item.imeis && item.imeis.length > 0
+              ? item.imeis.filter(Boolean).length
+              : item.imei
+              ? item.imei.split(',').map(s => s.trim()).filter(Boolean).length
+              : 0;
+          if (enteredImeis < item.qty) {
+            const missingSlots: string[] = [];
+            for (let k = enteredImeis; k < item.qty; k++) {
+              missingSlots.push(`#${k + 1}`);
+            }
+            missing.push(`IMEI ${missingSlots.slice(0, 4).join(', ')}${missingSlots.length > 4 ? ` (+${missingSlots.length - 4})` : ''}`);
+          }
+        }
+      }
+      return missing.join(' | ');
+    };
+
     if (existingId && itemsList.length === 1) {
       const singleItem = itemsList[0];
       const existingProduct = data.inventory.find(i => i.id === existingId);
@@ -202,10 +254,11 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
         saveImeiRecordsBatchToFirestore(changedEditImeis).catch(() => {});
       }
 
+      const editMissing = collectMissingAlertsForItem(singleItem);
       logActivity(
         'Inventory',
         `Updated Product: ${singleItem.name}`,
-        `Category: ${singleItem.category}, Qty: ${singleItem.qty}, Sale: ${data.settings.currency} ${singleItem.salePrice}`,
+        `Category: ${singleItem.category}, Qty: ${singleItem.qty}, Sale: ${data.settings.currency} ${singleItem.salePrice}${editMissing ? ` | Missing Alerts: ${editMissing}` : ''}`,
         'update',
         existingId
       );
@@ -261,18 +314,26 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
       }
 
       if (itemsList.length === 1) {
+        const createMissing = collectMissingAlertsForItem(itemsList[0]);
         logActivity(
           'Inventory',
           `Added New Product: ${itemsList[0].name}`,
-          `Stock: ${itemsList[0].qty} units @ Cost ${data.settings.currency} ${itemsList[0].costPrice}, Sale ${data.settings.currency} ${itemsList[0].salePrice}`,
+          `Stock: ${itemsList[0].qty} units @ Cost ${data.settings.currency} ${itemsList[0].costPrice}, Sale ${data.settings.currency} ${itemsList[0].salePrice}${createMissing ? ` | Missing Alerts: ${createMissing}` : ''}`,
           'create',
           newItems[0].id
         );
       } else {
+        const batchMissing = itemsList
+          .map(it => {
+            const m = collectMissingAlertsForItem(it);
+            return m ? `${it.name}: ${m}` : '';
+          })
+          .filter(Boolean)
+          .join(' | ');
         logActivity(
           'Inventory',
           `Added ${itemsList.length} Mobile Variants for: ${itemsList[0].name.split('(')[0].trim()}`,
-          `Total Batch: ${itemsList.reduce((acc, i) => acc + i.qty, 0)} units registered into inventory`,
+          `Total Batch: ${itemsList.reduce((acc, i) => acc + i.qty, 0)} units registered into inventory${batchMissing ? ` | Missing Alerts: ${batchMissing}` : ''}`,
           'create'
         );
       }

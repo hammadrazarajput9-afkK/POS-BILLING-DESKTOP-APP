@@ -177,6 +177,51 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
       .reduce((acc, t) => acc + t.amount, 0);
   }, [history]);
 
+  // Helper to resolve matching POS invoice for a ledger transaction
+  const findLinkedSaleForTx = (
+    tx: KhataCustomer['history'][number],
+    pool: SaleRecord[]
+  ): SaleRecord | undefined => {
+    const noteStr = tx.note || '';
+    const invMatch =
+      noteStr.match(/(INV-[A-Z0-9-]+)/i) ||
+      noteStr.match(/Invoice\s*#?\s*([A-Z0-9-]+)/i) ||
+      noteStr.match(/#([A-Z0-9-]{4,})/i);
+    if (invMatch && invMatch[1]) {
+      const targetInv = invMatch[1].trim().toLowerCase();
+      const byInv = pool.find(s => s.invNo.trim().toLowerCase() === targetInv);
+      if (byInv) return byInv;
+    }
+    if (tx.type === 'credit') {
+      const txTime = new Date(tx.date).getTime();
+      const txDay = tx.date ? tx.date.substring(0, 10) : '';
+      const closeMatch = pool.find(s => {
+        if (s.status === 'CANCELLED') return false;
+        const diffMs = Math.abs(new Date(s.date).getTime() - txTime);
+        const sameDay = txDay && s.date && s.date.substring(0, 10) === txDay;
+        const dueMatches = Math.abs((s.amountDue || 0) - tx.amount) < 1;
+        return (diffMs <= 5 * 60 * 1000 || sameDay) && dueMatches;
+      });
+      if (closeMatch) return closeMatch;
+    }
+    return undefined;
+  };
+
+  const customerSalesPool = useMemo(() => {
+    if (!customer) return sales;
+    const normPhone = customer.phone.replace(/[^0-9]/g, '');
+    const normName = customer.name.trim().toLowerCase();
+    const matched = sales.filter(s => {
+      if (s.status === 'CANCELLED') return false;
+      if (s.khataCustomerId && s.khataCustomerId === customer.id) return true;
+      const sPhone = (s.custPhone || '').replace(/[^0-9]/g, '');
+      if (normPhone.length >= 7 && sPhone && sPhone === normPhone) return true;
+      if (normName && s.custName.trim().toLowerCase() === normName) return true;
+      return false;
+    });
+    return matched.length > 0 ? matched : sales.filter(s => s.status !== 'CANCELLED');
+  }, [customer, sales]);
+
   const runningLedger = useMemo(() => {
     let running = 0;
     const sorted = [...history].sort(
@@ -184,28 +229,40 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     );
 
     const calculated = sorted.map(tx => {
+      const prevBalance = running;
       if (tx.type === 'credit') {
         running += tx.amount;
       } else {
         running -= tx.amount;
       }
+      const linkedSale = findLinkedSaleForTx(tx, customerSalesPool);
       return {
         ...tx,
+        prevBalance,
         runningBalance: running,
+        linkedSale,
       };
     });
 
     return calculated.reverse();
-  }, [history]);
+  }, [history, customerSalesPool]);
 
   const filteredLedger = useMemo(() => {
     const q = ledgerSearch.toLowerCase().trim();
     return runningLedger.filter(tx => {
       if (ledgerFilter !== 'all' && tx.type !== ledgerFilter) return false;
       if (!q) return true;
+      const itemHit = tx.linkedSale?.items.some(it =>
+        it.name.toLowerCase().includes(q) ||
+        (it.imei || '').toLowerCase().includes(q) ||
+        (it.imeis || []).some(im => im.toLowerCase().includes(q)) ||
+        (it.variantLabel || '').toLowerCase().includes(q)
+      );
       return (
         (tx.note || '').toLowerCase().includes(q) ||
         (tx.paymentMethod || '').toLowerCase().includes(q) ||
+        (tx.linkedSale?.invNo || '').toLowerCase().includes(q) ||
+        Boolean(itemHit) ||
         String(tx.amount).includes(q)
       );
     });
@@ -346,23 +403,52 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
       doc.text(`Credit Given: ${currency} ${totalCreditGiven.toLocaleString()}`, 136, 58);
       doc.text(`Recovered: ${currency} ${totalPaymentReceived.toLocaleString()}`, 136, 64);
 
-      const tableRows = runningLedger.map(tx => [
-        new Date(tx.date).toLocaleDateString(),
-        tx.type === 'credit' ? 'Credit (+)' : `Paid (${tx.paymentMethod || 'Cash'})`,
-        tx.note || '--',
-        `${tx.type === 'credit' ? '+' : '-'} ${currency} ${tx.amount.toLocaleString()}`,
-        `${currency} ${tx.runningBalance.toLocaleString()}`,
-      ]);
+      const formatSaleItemsText = (sale?: SaleRecord): string => {
+        if (!sale || !sale.items || sale.items.length === 0) return '';
+        const lines = sale.items.map(it => {
+          const imeis =
+            Array.isArray(it.imeis) && it.imeis.length > 0 ? it.imeis.join(', ') : it.imei;
+          return `${it.name}${it.variantLabel ? ` (${it.variantLabel})` : ''} x${it.qty} @ ${currency} ${it.salePrice.toLocaleString()}${imeis ? ` [IMEI: ${imeis}]` : ''}`;
+        });
+        const meta: string[] = [`Bill: ${currency} ${sale.grandTotal.toLocaleString()}`];
+        if ((sale.amountPaid || 0) > 0) {
+          meta.push(`Paid Now: ${currency} ${(sale.amountPaid || 0).toLocaleString()}`);
+        }
+        if ((sale.discount || 0) > 0) {
+          meta.push(`Disc: ${currency} ${(sale.discount || 0).toLocaleString()}`);
+        }
+        if (sale.notes) {
+          meta.push(`Note: ${sale.notes}`);
+        }
+        return `${lines.join('\n')}\n(${meta.join(' | ')})`;
+      };
+
+      const tableRows = runningLedger.map(tx => {
+        const itemsText = formatSaleItemsText(tx.linkedSale);
+        const detailCell = itemsText
+          ? `${tx.note || `Invoice #${tx.linkedSale?.invNo}`}\n${itemsText}`
+          : tx.note || '--';
+        return [
+          new Date(tx.date).toLocaleDateString(),
+          tx.type === 'credit' ? 'Credit (+)' : `Paid (${tx.paymentMethod || 'Cash'})`,
+          detailCell,
+          `${currency} ${tx.prevBalance.toLocaleString()}`,
+          `${tx.type === 'credit' ? '+' : '-'} ${currency} ${tx.amount.toLocaleString()}`,
+          `${currency} ${tx.runningBalance.toLocaleString()}`,
+        ];
+      });
 
       autoTable(doc, {
         startY: 74,
-        head: [['Date', 'Type', 'Remarks / Details', 'Amount', 'Balance']],
-        body: tableRows.length > 0 ? tableRows : [['--', '--', 'No transactions recorded', '--', '--']],
-        styles: { fontSize: 8.5, cellPadding: 3 },
+        head: [['Date', 'Type', 'Itemized Details / Remarks', 'Prev Bal', 'Entry', 'New Bal']],
+        body: tableRows.length > 0 ? tableRows : [['--', '--', 'No transactions recorded', '--', '--', '--']],
+        styles: { fontSize: 8, cellPadding: 2.5, overflow: 'linebreak' },
         headStyles: { fillColor: [88, 28, 135], textColor: 255, fontStyle: 'bold' },
         columnStyles: {
-          3: { halign: 'right', fontStyle: 'bold' },
+          2: { cellWidth: 74 },
+          3: { halign: 'right' },
           4: { halign: 'right', fontStyle: 'bold' },
+          5: { halign: 'right', fontStyle: 'bold' },
         },
       });
 
@@ -388,23 +474,51 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     }
 
     const rows = runningLedger
-      .map(
-        tx => `
+      .map(tx => {
+        const itemsHtml =
+          tx.linkedSale && tx.linkedSale.items.length > 0
+            ? `<div style="margin-top: 4px; padding: 5px 7px; background: #f8fafc; border-left: 2px solid #7e22ce; font-size: 11px;">
+                ${tx.linkedSale.items
+                  .map(it => {
+                    const imeis =
+                      Array.isArray(it.imeis) && it.imeis.length > 0
+                        ? it.imeis.join(', ')
+                        : it.imei;
+                    return `<div style="margin-bottom: 2px;">
+                      <strong>${it.name}</strong>${it.variantLabel ? ` (${it.variantLabel})` : ''} &times; ${it.qty} @ ${currency} ${it.salePrice.toLocaleString()} = <strong>${currency} ${(it.salePrice * it.qty).toLocaleString()}</strong>
+                      ${imeis ? `<div style="font-size: 10px; color: #475569;">IMEI: ${imeis}</div>` : ''}
+                    </div>`;
+                  })
+                  .join('')}
+                <div style="font-size: 10px; color: #475569; margin-top: 3px; border-top: 1px dashed #cbd5e1; padding-top: 2px;">
+                  Bill: ${currency} ${tx.linkedSale.grandTotal.toLocaleString()} | Paid Now: ${currency} ${(tx.linkedSale.amountPaid || 0).toLocaleString()} | Credit Due: ${currency} ${(tx.linkedSale.amountDue || 0).toLocaleString()}
+                  ${tx.linkedSale.notes ? `<br/>Note: ${tx.linkedSale.notes}` : ''}
+                </div>
+              </div>`
+            : '';
+
+        return `
         <tr>
-          <td style="padding: 8px; border-bottom: 1px solid #eee;">${new Date(tx.date).toLocaleDateString()}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold; color: ${tx.type === 'credit' ? '#b91c1c' : '#15803d'};">
-            ${tx.type === 'credit' ? 'Credit Added (+)' : `Payment (${tx.paymentMethod || 'Cash'})`}
+          <td style="padding: 8px; border-bottom: 1px solid #eee; vertical-align: top;">${new Date(tx.date).toLocaleDateString()}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; font-weight: bold; color: ${tx.type === 'credit' ? '#b91c1c' : '#15803d'};">
+            ${tx.type === 'credit' ? 'Credit (+)' : `Paid (${tx.paymentMethod || 'Cash'})`}
           </td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee;">${tx.note || '-'}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600;">
+          <td style="padding: 8px; border-bottom: 1px solid #eee; vertical-align: top;">
+            <div>${tx.note || '-'}</div>
+            ${itemsHtml}
+          </td>
+          <td style="padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; text-align: right; font-variant-numeric: tabular-nums; color: #64748b;">
+            ${currency} ${tx.prevBalance.toLocaleString()}
+          </td>
+          <td style="padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; color: ${tx.type === 'credit' ? '#b91c1c' : '#15803d'};">
             ${tx.type === 'credit' ? '+' : '-'} ${currency} ${tx.amount.toLocaleString()}
           </td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700;">
+          <td style="padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; text-align: right; font-variant-numeric: tabular-nums; font-weight: 800;">
             ${currency} ${tx.runningBalance.toLocaleString()}
           </td>
         </tr>
-      `
-      )
+      `;
+      })
       .join('');
 
     printWindow.document.write(`
@@ -414,7 +528,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
           <title>Account Ledger - ${customer.name}</title>
           <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
           <style>
-            body { font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 24px; color: #1e293b; max-width: 720px; margin: 0 auto; font-variant-numeric: tabular-nums; }
+            body { font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 24px; color: #1e293b; max-width: 780px; margin: 0 auto; font-variant-numeric: tabular-nums; }
             .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 16px; }
             .shop-title { font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif; font-size: 20px; font-weight: 800; margin: 0; }
             .meta { font-size: 11px; color: #64748b; margin-top: 4px; }
@@ -427,7 +541,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
           <div class="header">
             <h1 class="shop-title">${settings.shopName}</h1>
             <p class="meta">${settings.address} | Ph: ${settings.phone}</p>
-            <h2 style="font-size: 14px; margin-top: 8px;">Customer Credit & Ledger Statement</h2>
+            <h2 style="font-size: 14px; margin-top: 8px;">Detailed Customer Credit & Itemized Ledger Statement</h2>
           </div>
 
           <div style="margin-bottom: 16px; font-size: 12px;">
@@ -455,13 +569,14 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
               <tr>
                 <th>Date</th>
                 <th>Type</th>
-                <th>Remarks</th>
-                <th style="text-align: right;">Amount</th>
+                <th>Itemized Details & Remarks</th>
+                <th style="text-align: right;">Prev Bal</th>
+                <th style="text-align: right;">Entry</th>
                 <th style="text-align: right;">Balance</th>
               </tr>
             </thead>
             <tbody>
-              ${rows || '<tr><td colspan="5" style="text-align: center; padding: 16px;">No transactions recorded</td></tr>'}
+              ${rows || '<tr><td colspan="6" style="text-align: center; padding: 16px;">No transactions recorded</td></tr>'}
             </tbody>
           </table>
 
@@ -820,32 +935,32 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
           </div>
         </div>
 
-        {/* Workspace Navigation Tabs + Quick Action Toolbar */}
-        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-col xl:flex-row xl:items-center justify-between gap-2.5 shrink-0">
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 xl:pb-0">
+        {/* Workspace Navigation Tabs + Quick Action Toolbar (Zero Horizontal Scroll) */}
+        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-col gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
               onClick={() => setActiveTab('ledger')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'ledger'
                   ? 'bg-slate-900 text-white shadow-2xs'
                   : 'text-slate-700 bg-white border border-slate-200 hover:bg-slate-100'
               }`}
             >
-              <FileText className="w-3.5 h-3.5 text-purple-600" />
+              <FileText className="w-3.5 h-3.5 text-purple-500" />
               Ledger History ({history.length})
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('location')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'location'
                   ? 'bg-blue-600 text-white shadow-2xs'
                   : 'text-slate-700 bg-white border border-slate-200 hover:bg-slate-100'
               }`}
             >
-              <MapPin className="w-3.5 h-3.5 text-blue-600" />
+              <MapPin className="w-3.5 h-3.5 text-blue-500" />
               Location & Map
               {hasGpsPin && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />}
             </button>
@@ -853,32 +968,32 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
             <button
               type="button"
               onClick={() => setActiveTab('invoices')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'invoices'
                   ? 'bg-slate-900 text-white shadow-2xs'
                   : 'text-slate-700 bg-white border border-slate-200 hover:bg-slate-100'
               }`}
             >
-              <ShoppingBag className="w-3.5 h-3.5 text-amber-600" />
+              <ShoppingBag className="w-3.5 h-3.5 text-amber-500" />
               Invoices & Phones ({customerSales.length})
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('profile')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'profile'
                   ? 'bg-purple-700 text-white shadow-2xs'
                   : 'text-slate-700 bg-white border border-slate-200 hover:bg-slate-100'
               }`}
             >
-              <Edit3 className="w-3.5 h-3.5 text-purple-600" />
+              <Edit3 className="w-3.5 h-3.5 text-purple-500" />
               Edit Profile & Limits
             </button>
           </div>
 
           {/* Action Toolbar */}
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-200/70">
             <button
               type="button"
               onClick={() => {
@@ -888,7 +1003,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                 setNote('');
                 setTxReceiptImage('');
               }}
-              className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+              className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
             >
               <CreditCard className="w-3.5 h-3.5" />
               Add Credit (+)
@@ -903,7 +1018,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                 setNote('');
                 setTxReceiptImage('');
               }}
-              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
             >
               <DollarSign className="w-3.5 h-3.5" />
               Receive Payment (-)
@@ -913,7 +1028,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
               href={whatsAppUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs rounded-xl transition flex items-center gap-1.5"
+              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs rounded-xl transition flex items-center gap-1.5"
               title="WhatsApp Roman English Statement"
             >
               <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
@@ -923,7 +1038,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
             <button
               type="button"
               onClick={handleDownloadPdfStatement}
-              className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+              className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer"
             >
               <Download className="w-3.5 h-3.5 text-purple-600" />
               PDF
@@ -932,7 +1047,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
             <button
               type="button"
               onClick={handlePrintStatement}
-              className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+              className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" />
               Print
@@ -1133,54 +1248,61 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                 </div>
               </div>
 
-              <div className="border border-slate-200/90 rounded-xl overflow-x-auto shadow-2xs">
-                <table className="w-full min-w-[650px] text-left border-collapse text-xs">
-                  <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
-                    <tr>
-                      <th className="p-3">Date & Time</th>
-                      <th className="p-3">Transaction Type</th>
-                      <th className="p-3">Channel</th>
-                      <th className="p-3">Remarks / Photo</th>
-                      <th className="p-3 text-right">Debit / Credit</th>
-                      <th className="p-3 text-right">Running Balance</th>
-                      {isAdmin && onDeleteTransaction && <th className="p-3 text-center">Action</th>}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredLedger.length === 0 ? (
-                      <tr>
-                        <td colSpan={isAdmin && onDeleteTransaction ? 7 : 6} className="text-center py-12 text-slate-400">
-                          No transactions found. Use "Add Credit" or "Receive Payment" above.
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredLedger.map((tx, idx) => {
-                        const d = new Date(tx.date);
-                        return (
-                          <tr key={tx.id || idx} className="hover:bg-slate-50/70 transition">
-                            <td className="p-3 tabular-nums text-[11px] text-slate-500 whitespace-nowrap">
-                              {d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}{' '}
-                              <span className="text-slate-400 text-[10px]">
-                                {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                              </span>
-                            </td>
-                            <td className="p-3 whitespace-nowrap">
-                              {tx.type === 'credit' ? (
-                                <span className="inline-flex items-center gap-1 font-bold text-[11px] text-rose-700">
-                                  <ArrowUpRight className="w-3.5 h-3.5" /> Credit Added
+              {/* Detailed Itemized Account Statement Cards (Zero horizontal scroll) */}
+              <div className="space-y-2.5">
+                {filteredLedger.length === 0 ? (
+                  <div className="text-center py-12 text-slate-400 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+                    No transactions found. Use "Add Credit (+)" or "Receive Payment (-)" above.
+                  </div>
+                ) : (
+                  filteredLedger.map((tx, idx) => {
+                    const d = new Date(tx.date);
+                    const isCredit = tx.type === 'credit';
+                    const sale = tx.linkedSale;
+
+                    return (
+                      <div
+                        key={tx.id || idx}
+                        className={`rounded-xl border p-3 sm:p-3.5 transition ${
+                          isCredit
+                            ? 'bg-rose-50/30 border-rose-200/80 hover:border-rose-300'
+                            : 'bg-emerald-50/30 border-emerald-200/80 hover:border-emerald-300'
+                        }`}
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2.5">
+                          {/* Left Metadata + Remarks */}
+                          <div className="space-y-1 min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {isCredit ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-rose-100 text-rose-800 font-extrabold text-[11px]">
+                                  <ArrowUpRight className="w-3 h-3" /> Credit Added (+)
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1 font-bold text-[11px] text-emerald-700">
-                                  <ArrowDownLeft className="w-3.5 h-3.5" /> Payment Received
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 font-extrabold text-[11px]">
+                                  <ArrowDownLeft className="w-3 h-3" /> Payment Received (-)
                                 </span>
                               )}
-                            </td>
-                            <td className="p-3 text-[11px] text-slate-500 font-medium">
-                              {tx.type === 'credit' ? 'Udhar / Credit' : tx.paymentMethod || 'Cash'}
-                            </td>
-                            <td className="p-3 text-slate-700 font-medium">
-                              <div className="flex items-center gap-2">
-                                <span>{tx.note || '--'}</span>
+
+                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-white border border-slate-200 text-slate-700">
+                                {isCredit ? 'Udhar / Credit' : tx.paymentMethod || 'Cash'}
+                              </span>
+
+                              {sale && (
+                                <span className="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-800 tabular-nums">
+                                  {sale.invNo}
+                                  {sale.saleMode === 'wholesale' ? ' • Wholesale' : ''}
+                                </span>
+                              )}
+
+                              <span className="text-[11px] text-slate-500 tabular-nums">
+                                {d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}{' '}
+                                {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+
+                            {(tx.note || tx.receiptImage) && (
+                              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-700 font-medium pt-0.5">
+                                {tx.note && <span className="break-words">{tx.note}</span>}
                                 {tx.receiptImage && (
                                   <button
                                     type="button"
@@ -1191,19 +1313,36 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                                   </button>
                                 )}
                               </div>
-                            </td>
-                            <td
-                              className={`p-3 text-right tabular-nums font-extrabold whitespace-nowrap ${
-                                tx.type === 'credit' ? 'text-rose-600' : 'text-emerald-600'
-                              }`}
-                            >
-                              {tx.type === 'credit' ? '+' : '-'} {currency} {tx.amount.toLocaleString()}
-                            </td>
-                            <td className="p-3 text-right tabular-nums font-bold text-slate-900 whitespace-nowrap">
-                              {currency} {tx.runningBalance.toLocaleString()}
-                            </td>
+                            )}
+                          </div>
+
+                          {/* Right Accounting Strip: Prev Bal -> Entry -> New Balance + Delete */}
+                          <div className="flex flex-wrap items-center gap-3 sm:gap-4 shrink-0 bg-white px-3 py-1.5 rounded-xl border border-slate-200/80">
+                            <div className="text-right">
+                              <span className="block text-[9px] font-bold uppercase text-slate-400">Prev Bal</span>
+                              <span className="text-[11px] font-semibold text-slate-600 tabular-nums">
+                                {currency} {tx.prevBalance.toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="text-right">
+                              <span className="block text-[9px] font-bold uppercase text-slate-400">Entry</span>
+                              <span
+                                className={`text-xs font-extrabold tabular-nums ${
+                                  isCredit ? 'text-rose-600' : 'text-emerald-600'
+                                }`}
+                              >
+                                {isCredit ? '+' : '-'} {currency} {tx.amount.toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="text-right border-l border-slate-200 pl-3">
+                              <span className="block text-[9px] font-bold uppercase text-slate-400">Balance</span>
+                              <span className="text-xs font-black text-slate-900 tabular-nums">
+                                {currency} {tx.runningBalance.toLocaleString()}
+                              </span>
+                            </div>
+
                             {isAdmin && onDeleteTransaction && (
-                              <td className="p-3 text-center whitespace-nowrap">
+                              <div className="pl-1 border-l border-slate-100">
                                 {confirmDeleteTxId === tx.id ? (
                                   <div className="inline-flex items-center gap-1">
                                     <button
@@ -1234,14 +1373,77 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </button>
                                 )}
-                              </td>
+                              </div>
                             )}
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
+                          </div>
+                        </div>
+
+                        {/* Full Itemized Invoice Product Breakdown inside Ledger */}
+                        {sale && sale.items && sale.items.length > 0 && (
+                          <div className="mt-2.5 pt-2.5 border-t border-slate-200/70 bg-white/90 rounded-xl p-2.5 space-y-1.5">
+                            <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                              <span className="flex items-center gap-1 text-indigo-800">
+                                <ShoppingBag className="w-3 h-3" />
+                                Purchased Items ({sale.items.length})
+                              </span>
+                              <div className="flex flex-wrap items-center gap-2.5 tabular-nums text-slate-600">
+                                <span>Bill: <strong>{currency} {sale.grandTotal.toLocaleString()}</strong></span>
+                                {(sale.discount || 0) > 0 && (
+                                  <span>Disc: <strong className="text-amber-700">{currency} {(sale.discount || 0).toLocaleString()}</strong></span>
+                                )}
+                                <span>Paid: <strong className="text-emerald-700">{currency} {(sale.amountPaid || 0).toLocaleString()}</strong></span>
+                                <span>Khata Due: <strong className="text-rose-600">{currency} {(sale.amountDue || 0).toLocaleString()}</strong></span>
+                              </div>
+                            </div>
+
+                            <div className="divide-y divide-slate-100">
+                              {sale.items.map((item, itemIdx) => {
+                                const imeis =
+                                  Array.isArray(item.imeis) && item.imeis.length > 0
+                                    ? item.imeis.join(', ')
+                                    : item.imei;
+                                return (
+                                  <div
+                                    key={itemIdx}
+                                    className="py-1.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs"
+                                  >
+                                    <div className="min-w-0">
+                                      <span className="font-bold text-slate-900">
+                                        {item.name}
+                                      </span>
+                                      {item.variantLabel && (
+                                        <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.2 rounded bg-slate-100 text-slate-700">
+                                          {item.variantLabel}
+                                        </span>
+                                      )}
+                                      {imeis && (
+                                        <span className="block sm:inline sm:ml-2 text-[11px] font-mono text-indigo-700 break-all">
+                                          IMEI: {imeis}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-right tabular-nums shrink-0 text-[11px] text-slate-600">
+                                      <span>{item.qty} × {currency} {item.salePrice.toLocaleString()} = </span>
+                                      <strong className="text-slate-900">
+                                        {currency} {(item.salePrice * item.qty).toLocaleString()}
+                                      </strong>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {sale.notes && (
+                              <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200/70 rounded-lg px-2 py-1">
+                                <strong>Bill Note:</strong> {sale.notes}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
           )}
@@ -1380,72 +1582,75 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                   No POS invoices linked to this customer yet.
                 </div>
               ) : (
-                <div className="border border-slate-200 rounded-xl overflow-x-auto">
-                  <table className="w-full min-w-[600px] text-left border-collapse text-xs">
-                    <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
-                      <tr>
-                        <th className="p-3">Invoice #</th>
-                        <th className="p-3">Date</th>
-                        <th className="p-3">Phones / Items & IMEIs</th>
-                        <th className="p-3">Type</th>
-                        <th className="p-3 text-right">Bill Total</th>
-                        <th className="p-3 text-right">Paid</th>
-                        <th className="p-3 text-right">Due</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {customerSales.map(sale => (
-                        <tr key={sale.invNo} className="hover:bg-slate-50/70">
-                          <td className="p-3 font-bold text-slate-900 tabular-nums whitespace-nowrap">
-                            {sale.invNo}
-                          </td>
-                          <td className="p-3 text-slate-500 tabular-nums whitespace-nowrap">
-                            {new Date(sale.date).toLocaleDateString()}
-                          </td>
-                          <td className="p-3 text-slate-700">
-                            <div className="space-y-1">
-                              {sale.items.map((item, i) => {
-                                const imeis =
-                                  Array.isArray(item.imeis) && item.imeis.length > 0
-                                    ? item.imeis.join(', ')
-                                    : item.imei;
-                                return (
-                                  <div key={i} className="text-[11px]">
-                                    <span className="font-semibold text-slate-800">
-                                      {item.name} × {item.qty}
-                                    </span>
-                                    {imeis && (
-                                      <span className="text-slate-400 ml-1.5 tabular-nums">
-                                        [IMEI: {imeis}]
-                                      </span>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </td>
-                          <td className="p-3">
-                            <span
-                              className={`text-[10px] font-bold ${
-                                sale.invoiceType === 'credit' ? 'text-rose-700' : 'text-emerald-700'
-                              }`}
+                <div className="space-y-2.5">
+                  {customerSales.map(sale => (
+                    <div
+                      key={sale.invNo}
+                      className="border border-slate-200 rounded-xl p-3 bg-slate-50/40 space-y-2 text-xs"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-200/80">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-extrabold text-slate-900 tabular-nums">{sale.invNo}</span>
+                          <span className="text-[11px] text-slate-500 tabular-nums">
+                            {new Date(sale.date).toLocaleString()}
+                          </span>
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-lg ${
+                              sale.invoiceType === 'credit'
+                                ? 'bg-rose-100 text-rose-800'
+                                : 'bg-emerald-100 text-emerald-800'
+                            }`}
+                          >
+                            {sale.invoiceType === 'credit' ? 'Credit / Udhar' : sale.paymentMethod}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-3 tabular-nums text-[11px]">
+                          <span className="text-slate-600">
+                            Total: <strong className="text-slate-900">{currency} {sale.grandTotal.toLocaleString()}</strong>
+                          </span>
+                          <span className="text-emerald-700 font-semibold">
+                            Paid: {currency} {(sale.amountPaid ?? sale.grandTotal).toLocaleString()}
+                          </span>
+                          <span className="text-rose-600 font-extrabold">
+                            Due: {currency} {(sale.amountDue ?? 0).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        {sale.items.map((item, i) => {
+                          const imeis =
+                            Array.isArray(item.imeis) && item.imeis.length > 0
+                              ? item.imeis.join(', ')
+                              : item.imei;
+                          return (
+                            <div
+                              key={i}
+                              className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 bg-white px-2.5 py-1.5 rounded-lg border border-slate-200/70"
                             >
-                              {sale.invoiceType === 'credit' ? 'Credit / Udhar' : sale.paymentMethod}
-                            </span>
-                          </td>
-                          <td className="p-3 text-right font-bold tabular-nums text-slate-900">
-                            {currency} {sale.grandTotal.toLocaleString()}
-                          </td>
-                          <td className="p-3 text-right tabular-nums text-emerald-700 font-semibold">
-                            {currency} {(sale.amountPaid ?? sale.grandTotal).toLocaleString()}
-                          </td>
-                          <td className="p-3 text-right tabular-nums font-bold text-rose-600">
-                            {currency} {(sale.amountDue ?? 0).toLocaleString()}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                              <div className="min-w-0">
+                                <span className="font-bold text-slate-800">{item.name}</span>
+                                {item.variantLabel && (
+                                  <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
+                                    {item.variantLabel}
+                                  </span>
+                                )}
+                                {imeis && (
+                                  <span className="block sm:inline sm:ml-2 text-[11px] font-mono text-indigo-700 break-all">
+                                    [IMEI: {imeis}]
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[11px] font-bold tabular-nums text-slate-700 shrink-0">
+                                {item.qty} × {currency} {item.salePrice.toLocaleString()} = {currency} {(item.salePrice * item.qty).toLocaleString()}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

@@ -34,7 +34,8 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   ShieldCheck,
-  CreditCard
+  CreditCard,
+  Edit2
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { ConfirmModal } from './ConfirmModal';
@@ -47,6 +48,7 @@ interface DailyClosingTabProps {
   onSaveClosing: (record: Omit<DailyClosingRecord, 'id'>) => void;
   onDeleteClosing: (id: string) => void;
   onAddOnlineAccount: (account: Omit<OnlineAccount, 'id'>) => void;
+  onUpdateOnlineAccount?: (account: OnlineAccount) => void;
   onDeleteOnlineAccount: (id: string) => void;
   onOpenSettings?: () => void;
   onOpenPdfReport?: () => void;
@@ -60,6 +62,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
   onSaveClosing,
   onDeleteClosing,
   onAddOnlineAccount,
+  onUpdateOnlineAccount,
   onDeleteOnlineAccount,
   onOpenSettings,
   onOpenPdfReport,
@@ -87,9 +90,13 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
 
   // Modals state
   const [isAddAccountModalOpen, setIsAddAccountModalOpen] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<OnlineAccount | null>(null);
+  const [newAccountCategory, setNewAccountCategory] = useState<'Digital Wallet' | 'Bank Account' | 'Load' | 'Custom'>('Digital Wallet');
+  const [customAccountCategory, setCustomAccountCategory] = useState('');
   const [newAccountName, setNewAccountName] = useState('');
   const [newAccountNumber, setNewAccountNumber] = useState('');
   const [newAccountTitle, setNewAccountTitle] = useState('');
+  const [newAccountShowInPos, setNewAccountShowInPos] = useState(true);
 
 
   const [accountToDelete, setAccountToDelete] = useState<OnlineAccount | null>(null);
@@ -209,8 +216,45 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
     showToast('Cash count reset', 'info');
   };
 
-  // Add Online Account
-  const handleCreateOnlineAccount = (e: React.FormEvent) => {
+  const openAddAccountModal = () => {
+    setEditingAccount(null);
+    setNewAccountCategory('Digital Wallet');
+    setCustomAccountCategory('');
+    setNewAccountName('');
+    setNewAccountNumber('');
+    setNewAccountTitle('');
+    setNewAccountShowInPos(true);
+    setIsAddAccountModalOpen(true);
+  };
+
+  const openEditAccountModal = (acc: OnlineAccount) => {
+    setEditingAccount(acc);
+    const type = (acc.bankType || 'Digital Wallet').trim();
+    if (type === 'Digital Wallet' || type === 'Bank Account' || type === 'Load') {
+      setNewAccountCategory(type);
+      setCustomAccountCategory('');
+    } else if (type.toLowerCase().includes('bank')) {
+      setNewAccountCategory('Bank Account');
+      setCustomAccountCategory('');
+    } else if (type.toLowerCase().includes('load')) {
+      setNewAccountCategory('Load');
+      setCustomAccountCategory('');
+    } else if (type.toLowerCase().includes('wallet') || type.toLowerCase() === 'jazzcash' || type.toLowerCase() === 'easypaisa') {
+      setNewAccountCategory('Digital Wallet');
+      setCustomAccountCategory('');
+    } else {
+      setNewAccountCategory('Custom');
+      setCustomAccountCategory(type);
+    }
+    setNewAccountName(acc.name || '');
+    setNewAccountNumber(acc.accountNumber || '');
+    setNewAccountTitle(acc.accountTitle || '');
+    setNewAccountShowInPos(acc.showInPos !== false);
+    setIsAddAccountModalOpen(true);
+  };
+
+  // Add or Edit Online Account
+  const handleSaveOnlineAccount = (e: React.FormEvent) => {
     e.preventDefault();
     const name = newAccountName.trim();
     if (!name) {
@@ -218,18 +262,37 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
       return;
     }
 
-    onAddOnlineAccount({
-      name,
-      accountNumber: newAccountNumber.trim() || undefined,
-      accountTitle: newAccountTitle.trim() || undefined,
-      bankType: 'Digital Wallet',
-    });
+    const resolvedBankType =
+      newAccountCategory === 'Custom'
+        ? customAccountCategory.trim() || 'Other'
+        : newAccountCategory;
 
+    if (editingAccount && onUpdateOnlineAccount) {
+      onUpdateOnlineAccount({
+        ...editingAccount,
+        name,
+        accountNumber: newAccountNumber.trim() || undefined,
+        accountTitle: newAccountTitle.trim() || undefined,
+        bankType: resolvedBankType,
+        showInPos: newAccountShowInPos,
+      });
+    } else {
+      onAddOnlineAccount({
+        name,
+        accountNumber: newAccountNumber.trim() || undefined,
+        accountTitle: newAccountTitle.trim() || undefined,
+        bankType: resolvedBankType,
+        showInPos: newAccountShowInPos,
+      });
+    }
+
+    setEditingAccount(null);
     setNewAccountName('');
     setNewAccountNumber('');
     setNewAccountTitle('');
+    setCustomAccountCategory('');
+    setNewAccountShowInPos(true);
     setIsAddAccountModalOpen(false);
-    showToast(`Online account "${name}" added`, 'success');
   };
 
   // Commit & Finalize Closing
@@ -706,6 +769,33 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
             </div>
           </div>
         </div>
+
+        {(accounting.other.sales > 0 ||
+          accounting.other.khataRecoveries > 0 ||
+          accounting.other.expenses > 0 ||
+          accounting.other.supplierPayments > 0 ||
+          accounting.other.expectedClosing !== 0) && (
+          <div className="px-4 py-2.5 bg-purple-50/60 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <span className="font-bold text-purple-900 flex items-center gap-1.5">
+              <CreditCard className="w-3.5 h-3.5 text-purple-600" />
+              Load / Other Digital Channels
+            </span>
+            <div className="flex flex-wrap items-center gap-4 tabular-nums">
+              <span className="text-slate-600">
+                +Sales: <strong className="text-emerald-700">{currency} {accounting.other.sales.toLocaleString()}</strong>
+              </span>
+              <span className="text-slate-600">
+                +Khata: <strong className="text-emerald-700">{currency} {accounting.other.khataRecoveries.toLocaleString()}</strong>
+              </span>
+              <span className="text-slate-600">
+                -Outflow: <strong className="text-rose-600">{currency} {(accounting.other.expenses + accounting.other.supplierPayments).toLocaleString()}</strong>
+              </span>
+              <span className="font-extrabold text-purple-900">
+                Net: {currency} {accounting.other.expectedClosing.toLocaleString()}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Grand Summary Strip: 3 Cards */}
@@ -804,7 +894,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
             {!isDayFinalized && (
               <button
                 type="button"
-                onClick={() => setIsAddAccountModalOpen(true)}
+                onClick={openAddAccountModal}
                 className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg text-xs font-bold flex items-center gap-1 transition cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" /> Add Account
@@ -839,13 +929,18 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                       return (
                         <tr key={acc.id} className="hover:bg-slate-50/70 transition">
                           <td className="p-2.5">
-                            <div className="flex items-center gap-1.5 min-w-0">
+                            <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                               <span className="font-bold text-slate-900 text-xs truncate">
                                 {acc.name}
                               </span>
                               <span className="text-[9px] bg-blue-50 text-blue-700 border border-blue-200/60 px-1.5 py-0.5 rounded font-bold shrink-0">
-                                {acc.bankType || 'Wallet'}
+                                {acc.bankType || 'Digital Wallet'}
                               </span>
+                              {acc.showInPos !== false && (
+                                <span className="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200/60 px-1.5 py-0.5 rounded font-bold shrink-0">
+                                  POS
+                                </span>
+                              )}
                             </div>
                             {acc.accountNumber && (
                               <p className="text-[10px] text-slate-400 tabular-nums truncate">
@@ -872,8 +967,8 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                           </td>
 
                           <td className="p-2.5 text-right tabular-nums">
-                            <div className="inline-flex items-center justify-end gap-1.5">
-                              <div className="text-right leading-tight">
+                            <div className="inline-flex items-center justify-end gap-1">
+                              <div className="text-right leading-tight mr-1">
                                 <div className="text-[10px] font-semibold text-slate-500">
                                   Exp: {expectedAcc.toLocaleString()}
                                 </div>
@@ -888,6 +983,17 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                                   </div>
                                 )}
                               </div>
+
+                              {isAdmin && !isDayFinalized && onUpdateOnlineAccount && (
+                                <button
+                                  type="button"
+                                  onClick={() => openEditAccountModal(acc)}
+                                  className="text-slate-400 hover:text-blue-600 p-1 rounded transition cursor-pointer shrink-0"
+                                  title="Edit Account"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
 
                               {isAdmin && !isDayFinalized && (
                                 <button
@@ -932,12 +1038,12 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="font-bold text-slate-900 text-xs truncate">
                               {acc.name}
                             </span>
                             <span className="text-[9px] bg-blue-50 text-blue-700 border border-blue-200/60 px-1.5 py-0.2 rounded font-bold shrink-0">
-                              {acc.bankType || 'Wallet'}
+                              {acc.bankType || 'Digital Wallet'}
                             </span>
                           </div>
                           {acc.accountNumber && (
@@ -947,7 +1053,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                           )}
                         </div>
 
-                        <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="flex items-center gap-1 shrink-0">
                           <input
                             type="number"
                             min="0"
@@ -960,8 +1066,18 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                               }))
                             }
                             placeholder="Balance"
-                            className="w-26 text-right tabular-nums font-bold text-xs bg-white border border-slate-200 rounded-lg py-1.5 px-2 focus:outline-none focus:border-blue-600 min-h-[38px] disabled:opacity-75 disabled:cursor-not-allowed"
+                            className="w-24 text-right tabular-nums font-bold text-xs bg-white border border-slate-200 rounded-lg py-1.5 px-2 focus:outline-none focus:border-blue-600 min-h-[38px] disabled:opacity-75 disabled:cursor-not-allowed"
                           />
+                          {isAdmin && !isDayFinalized && onUpdateOnlineAccount && (
+                            <button
+                              type="button"
+                              onClick={() => openEditAccountModal(acc)}
+                              className="text-slate-400 hover:text-blue-600 p-1 rounded transition cursor-pointer"
+                              title="Edit Account"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           {isAdmin && !isDayFinalized && (
                             <button
                               type="button"
@@ -1702,40 +1818,91 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
         </div>
       )}
 
-      {/* Add Online Account Modal */}
+      {/* Add / Edit Online Account Modal */}
       {isAddAccountModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-100">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-blue-600" />
-                <h3 className="font-bold text-slate-900 text-sm">Add New Digital Account</h3>
+                <h3 className="font-bold text-slate-900 text-sm">
+                  {editingAccount ? 'Edit Digital Account' : 'Add New Digital Account'}
+                </h3>
               </div>
               <button
                 type="button"
-                onClick={() => setIsAddAccountModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100"
+                onClick={() => {
+                  setIsAddAccountModalOpen(false);
+                  setEditingAccount(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateOnlineAccount} className="space-y-3 text-xs">
+            <form onSubmit={handleSaveOnlineAccount} className="space-y-3 text-xs">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Account / Bank Name *</label>
+                <label className="block font-semibold text-slate-700 mb-1.5">Account Type *</label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {(
+                    [
+                      { id: 'Digital Wallet', label: 'Digital Wallet' },
+                      { id: 'Bank Account', label: 'Bank Account' },
+                      { id: 'Load', label: 'Load' },
+                      { id: 'Custom', label: 'Add Another Account' },
+                    ] as const
+                  ).map(opt => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setNewAccountCategory(opt.id)}
+                      className={`py-2 px-2.5 rounded-xl font-bold border text-center transition cursor-pointer ${
+                        newAccountCategory === opt.id
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {newAccountCategory === 'Custom' && (
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Custom Account Category *</label>
+                  <input
+                    type="text"
+                    required
+                    value={customAccountCategory}
+                    onChange={e => setCustomAccountCategory(e.target.value)}
+                    placeholder="e.g. SadaPay, NayaPay, Raast, Zindigi"
+                    className="w-full bg-slate-50 border border-blue-300 rounded-xl px-3 py-2 font-medium focus:outline-none focus:border-blue-600"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Account / Wallet / Load Name *</label>
                 <input
                   type="text"
                   required
                   value={newAccountName}
                   onChange={e => setNewAccountName(e.target.value)}
-                  placeholder="e.g. Meezan Bank Current, Shop JazzCash"
+                  placeholder={
+                    newAccountCategory === 'Bank Account'
+                      ? 'e.g. Meezan Bank Current, HBL Shop'
+                      : newAccountCategory === 'Load'
+                      ? 'e.g. Jazz Load, Zong Load, Telenor Load'
+                      : 'e.g. Shop JazzCash, Easypaisa Counter'
+                  }
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:outline-none focus:border-blue-600"
                 />
               </div>
 
-
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Account / IBAN Number (Optional)</label>
+                <label className="block font-semibold text-slate-700 mb-1">Account / Phone / IBAN Number (Optional)</label>
                 <input
                   type="text"
                   value={newAccountNumber}
@@ -1756,19 +1923,35 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                 />
               </div>
 
+              <label className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer">
+                <div>
+                  <span className="font-bold text-slate-800 block">Show in POS Billing Cart</span>
+                  <span className="text-[10px] text-slate-500">Show under Payment Channel during billing</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={newAccountShowInPos}
+                  onChange={e => setNewAccountShowInPos(e.target.checked)}
+                  className="w-4 h-4 accent-blue-600 cursor-pointer"
+                />
+              </label>
+
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setIsAddAccountModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium text-xs rounded-xl"
+                  onClick={() => {
+                    setIsAddAccountModalOpen(false);
+                    setEditingAccount(null);
+                  }}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium text-xs rounded-xl cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md shadow-blue-500/20"
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md shadow-blue-500/20 cursor-pointer"
                 >
-                  Save Account
+                  {editingAccount ? 'Save Changes' : 'Save Account'}
                 </button>
               </div>
             </form>

@@ -846,6 +846,8 @@ function AppContent() {
     const now = new Date().toISOString();
     const newAccount: OnlineAccount = {
       id: generateEntityId('OA'),
+      showInPos: acc.showInPos ?? true,
+      updatedAt: now,
       ...acc,
     };
 
@@ -867,12 +869,47 @@ function AppContent() {
     logActivity(
       'Settings',
       `Added Online Account: ${acc.name}`,
-      `Type: ${acc.bankType || 'Wallet'}${acc.accountNumber ? ` (${acc.accountNumber})` : ''}`,
+      `Type: ${acc.bankType || 'Digital Wallet'}${acc.accountNumber ? ` (${acc.accountNumber})` : ''}`,
       'create',
       newAccount.id
     );
 
     showToast(`Online account "${acc.name}" added`, 'success');
+  };
+
+  const handleUpdateOnlineAccount = (updatedAcc: OnlineAccount, silent = false) => {
+    const now = new Date().toISOString();
+    const nextAcc: OnlineAccount = {
+      ...updatedAcc,
+      updatedAt: now,
+    };
+    const updatedOnlineAccounts = (data.onlineAccounts || []).map(a =>
+      a.id === nextAcc.id ? nextAcc : a
+    );
+    setData(prev => ({
+      ...prev,
+      lastModified: now,
+      onlineAccountsUpdatedAt: now,
+      onlineAccounts: (prev.onlineAccounts || []).map(a => (a.id === nextAcc.id ? nextAcc : a)),
+    }));
+
+    saveRootConfigToFirestore({
+      onlineAccounts: updatedOnlineAccounts,
+      onlineAccountsUpdatedAt: now,
+    }).catch(err => {
+      console.warn('Firestore online account update sync warning:', err);
+    });
+
+    if (!silent) {
+      logActivity(
+        'Settings',
+        `Updated Online Account: ${nextAcc.name}`,
+        `Type: ${nextAcc.bankType || 'Digital Wallet'}${nextAcc.accountNumber ? ` (${nextAcc.accountNumber})` : ''} | POS Cart: ${nextAcc.showInPos === false ? 'Hidden' : 'Visible'}`,
+        'update',
+        nextAcc.id
+      );
+      showToast(`Account "${nextAcc.name}" updated`, 'success');
+    }
   };
 
   const handleDeleteOnlineAccount = (id: string) => {
@@ -1808,6 +1845,7 @@ function AppContent() {
                 onCancelSale={handleCancelSale}
                 onDeleteSale={handleDeleteSale}
                 onUpdateSale={handleUpdateSale}
+                onUpdateOnlineAccount={handleUpdateOnlineAccount}
                 saleToEdit={saleToEdit}
                 onClearSaleToEdit={() => setSaleToEdit(null)}
               />
@@ -1819,6 +1857,7 @@ function AppContent() {
                 currency={data.settings.currency}
                 categories={data.categories || ['Android Mobile', 'Keypad Mobile']}
                 stockAdjustments={data.stockAdjustments || []}
+                activities={data.activities || []}
                 sales={data.sales || []}
                 supplierPurchases={data.supplierPurchases || []}
                 imeiRecords={data.imeiRecords || []}
@@ -1908,6 +1947,7 @@ function AppContent() {
                 onSaveClosing={handleSaveDailyClosing}
                 onDeleteClosing={handleDeleteDailyClosing}
                 onAddOnlineAccount={handleAddOnlineAccount}
+                onUpdateOnlineAccount={handleUpdateOnlineAccount}
                 onDeleteOnlineAccount={handleDeleteOnlineAccount}
                 onOpenSettings={() => setTabSettingsModalOpen(true)}
                 onOpenPdfReport={() => handleOpenPdfReport('dailyClosing')}

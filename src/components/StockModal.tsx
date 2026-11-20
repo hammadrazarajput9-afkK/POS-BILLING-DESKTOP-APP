@@ -221,6 +221,9 @@ export const StockModal: React.FC<StockModalProps> = ({
   const [variants, setVariants] = useState<MobileVariant[]>([
     createDefaultVariant('var-1', '4GB', '64GB'),
   ]);
+  const [editAutoFallback, setEditAutoFallback] = useState<
+    Record<string, { costPrice?: number | ''; wholesalePrice?: number | ''; salePrice?: number | '' }>
+  >({});
 
   // Category creation / rename inline state
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
@@ -278,11 +281,37 @@ export const StockModal: React.FC<StockModalProps> = ({
         }
 
         if (editItem.variants && editItem.variants.length > 0) {
-          setVariants(editItem.variants.map(v => ({
-            ...v,
-            imeis: v.imeis && v.imeis.length > 0 ? [...v.imeis] : Array(Math.max(1, Number(v.qty) || 1)).fill(''),
-          })));
+          const fallbackMap: Record<
+            string,
+            { costPrice?: number | ''; wholesalePrice?: number | ''; salePrice?: number | '' }
+          > = {};
+          setVariants(
+            editItem.variants.map(v => {
+              const fb: { costPrice?: number | ''; wholesalePrice?: number | ''; salePrice?: number | '' } = {};
+              if (v.autoCostPrice && v.costPrice !== '') fb.costPrice = v.costPrice;
+              if (v.autoWholesalePrice && v.wholesalePrice !== undefined && v.wholesalePrice !== '') {
+                fb.wholesalePrice = v.wholesalePrice;
+              }
+              if (v.autoSalePrice && v.salePrice !== '') fb.salePrice = v.salePrice;
+              if (Object.keys(fb).length > 0) {
+                fallbackMap[v.id] = fb;
+              }
+              return {
+                ...v,
+                costPrice: v.autoCostPrice ? '' : v.costPrice,
+                wholesalePrice: v.autoWholesalePrice
+                  ? ''
+                  : v.wholesalePrice !== undefined
+                  ? v.wholesalePrice
+                  : '',
+                salePrice: v.autoSalePrice ? '' : v.salePrice,
+                imeis: v.imeis && v.imeis.length > 0 ? [...v.imeis] : Array(Math.max(1, Number(v.qty) || 1)).fill(''),
+              };
+            })
+          );
+          setEditAutoFallback(fallbackMap);
         } else if (isMobileCategory(editItem.category)) {
+          setEditAutoFallback({});
           // If mobile category without variants, seed the current item as Variant #1
           const parenMatch = editItem.name.match(/\(([^)]+)\)/);
           const parenColor = parenMatch ? parenMatch[1].trim() : '';
@@ -297,8 +326,11 @@ export const StockModal: React.FC<StockModalProps> = ({
             qty: editItem.qty || 1,
             imeis: existingImeis.length > 0 ? existingImeis : [''],
           }]);
+        } else {
+          setEditAutoFallback({});
         }
       } else {
+        setEditAutoFallback({});
         isEditingRef.current = false;
         // Pre-select last chosen category so adding multiple items in the same category is sticky & fast
         const lastCategory = getLastSelectedCategory(categories);
@@ -320,7 +352,15 @@ export const StockModal: React.FC<StockModalProps> = ({
         setImeis(draftData.imeis && draftData.imeis.length > 0 ? [...draftData.imeis] : ['']);
 
         if (hasMeaningfulDraft && draftData.variants && draftData.variants.length > 0 && isAndroidCategory(lastCategory)) {
-          setVariants(draftData.variants.map(v => ({ ...v, imeis: [...(v.imeis || [''])] })));
+          setVariants(
+            draftData.variants.map(v => ({
+              ...v,
+              costPrice: v.autoCostPrice ? '' : v.costPrice,
+              wholesalePrice: v.autoWholesalePrice ? '' : v.wholesalePrice,
+              salePrice: v.autoSalePrice ? '' : v.salePrice,
+              imeis: [...(v.imeis || [''])],
+            }))
+          );
         } else {
           const isAndroidLast = isAndroidCategory(lastCategory);
           setVariants([createDefaultVariant('var-1', isAndroidLast ? '6GB' : '', isAndroidLast ? '128GB' : '')]);
@@ -469,6 +509,62 @@ export const StockModal: React.FC<StockModalProps> = ({
     return null;
   };
 
+  // Check if two variants share the exact same RAM + Storage spec (for Keypad, RAM/Storage aren't applicable)
+  const isSameSpecForAutoPrice = (a: MobileVariant, b: MobileVariant): boolean => {
+    if (isKeypad) return true;
+    const aRam = (a.ram || '').trim().toLowerCase();
+    const bRam = (b.ram || '').trim().toLowerCase();
+    const aSto = (a.storage || '').trim().toLowerCase();
+    const bSto = (b.storage || '').trim().toLowerCase();
+    if (!aRam && !aSto) return false;
+    return aRam === bRam && aSto === bSto;
+  };
+
+  // Returns faint suggested price ONLY if input is empty and a sibling with the SAME RAM & Storage has a price
+  const getVariantPriceSuggestion = (
+    idx: number,
+    field: 'costPrice' | 'wholesalePrice' | 'salePrice'
+  ): number | '' => {
+    const target = variants[idx];
+    if (!target) return '';
+    if (target[field] !== '' && target[field] !== undefined) return '';
+
+    const autoFlag =
+      field === 'costPrice'
+        ? 'autoCostPrice'
+        : field === 'wholesalePrice'
+        ? 'autoWholesalePrice'
+        : 'autoSalePrice';
+
+    const manualSibling = variants.find(
+      (s, j) =>
+        j !== idx &&
+        isSameSpecForAutoPrice(target, s) &&
+        s[field] !== '' &&
+        s[field] !== undefined &&
+        !s[autoFlag]
+    );
+    if (manualSibling && manualSibling[field] !== '' && manualSibling[field] !== undefined) {
+      return Number(manualSibling[field]);
+    }
+
+    const anySibling = variants.find(
+      (s, j) =>
+        j !== idx &&
+        isSameSpecForAutoPrice(target, s) &&
+        s[field] !== '' &&
+        s[field] !== undefined
+    );
+    if (anySibling && anySibling[field] !== '' && anySibling[field] !== undefined) {
+      return Number(anySibling[field]);
+    }
+
+    const fb = editAutoFallback[target.id]?.[field];
+    if (fb !== undefined && fb !== '') return Number(fb);
+
+    return '';
+  };
+
   // Variant helper functions
   const handleAddVariant = () => {
     const lastVar = variants[variants.length - 1];
@@ -487,14 +583,18 @@ export const StockModal: React.FC<StockModalProps> = ({
       else nextStorage = lastVar.storage;
     }
 
+    // Keep price inputs EMPTY so suggested values (when RAM & Storage match) only appear faintly as placeholders
     const newVar: MobileVariant = {
       id: 'var-' + Date.now() + '-' + Math.random().toString(36).substring(2, 5),
       ram: nextRam,
       storage: nextStorage,
       color: '',
-      costPrice: lastVar?.costPrice !== undefined ? lastVar.costPrice : '',
-      wholesalePrice: lastVar?.wholesalePrice !== undefined ? lastVar.wholesalePrice : '',
-      salePrice: lastVar?.salePrice !== undefined ? lastVar.salePrice : '',
+      costPrice: '',
+      wholesalePrice: '',
+      salePrice: '',
+      autoCostPrice: false,
+      autoWholesalePrice: false,
+      autoSalePrice: false,
       qty: '',
       imeis: [''],
     };
@@ -511,9 +611,12 @@ export const StockModal: React.FC<StockModalProps> = ({
       ram: source.ram,
       storage: source.storage,
       color: source.color ? `${source.color} (Copy)` : '',
-      costPrice: source.costPrice,
-      wholesalePrice: source.wholesalePrice,
-      salePrice: source.salePrice,
+      costPrice: '',
+      wholesalePrice: '',
+      salePrice: '',
+      autoCostPrice: false,
+      autoWholesalePrice: false,
+      autoSalePrice: false,
       qty: newQty,
       imeis: Array(newQty).fill(''),
     };
@@ -536,11 +639,26 @@ export const StockModal: React.FC<StockModalProps> = ({
   };
 
   const handleUpdateVariantField = (idx: number, field: keyof MobileVariant, value: any) => {
+    const targetId = variants[idx]?.id;
     setVariants(prev => {
-      const copy = [...prev];
-      copy[idx] = { ...copy[idx], [field]: value };
+      const copy = prev.map(v => ({ ...v }));
+      copy[idx][field] = value as never;
+
+      if (field === 'costPrice') copy[idx].autoCostPrice = false;
+      if (field === 'wholesalePrice') copy[idx].autoWholesalePrice = false;
+      if (field === 'salePrice') copy[idx].autoSalePrice = false;
+
       return copy;
     });
+
+    if (targetId && (field === 'ram' || field === 'storage')) {
+      setEditAutoFallback(prev => {
+        if (!prev[targetId]) return prev;
+        const next = { ...prev };
+        delete next[targetId];
+        return next;
+      });
+    }
   };
 
   // Critical requirement: When Variant quantity changes, dynamically match IMEIs count exactly!
@@ -904,17 +1022,23 @@ export const StockModal: React.FC<StockModalProps> = ({
     }
   };
 
-  // Totals calculations for mobile variants
+  // Totals calculations for mobile variants (resolving faint same-spec auto suggestions too)
   const totalVariantsCount = variants.length;
   const totalVariantsQty = variants.reduce((acc, v) => acc + (Number(v.qty) || 0), 0);
-  const totalVariantsCost = variants.reduce(
-    (acc, v) => acc + (Number(v.costPrice) || 0) * (Number(v.qty) || 0),
-    0
-  );
-  const totalVariantsSale = variants.reduce(
-    (acc, v) => acc + (Number(v.salePrice) || 0) * (Number(v.qty) || 0),
-    0
-  );
+  const totalVariantsCost = variants.reduce((acc, v, idx) => {
+    const effCost =
+      v.costPrice !== '' && v.costPrice !== undefined
+        ? Number(v.costPrice)
+        : Number(getVariantPriceSuggestion(idx, 'costPrice')) || 0;
+    return acc + effCost * (Number(v.qty) || 0);
+  }, 0);
+  const totalVariantsSale = variants.reduce((acc, v, idx) => {
+    const effSale =
+      v.salePrice !== '' && v.salePrice !== undefined
+        ? Number(v.salePrice)
+        : Number(getVariantPriceSuggestion(idx, 'salePrice')) || 0;
+    return acc + effSale * (Number(v.qty) || 0);
+  }, 0);
   const totalVariantsProfit = totalVariantsSale - totalVariantsCost;
 
   // Submit Handler
@@ -939,14 +1063,33 @@ export const StockModal: React.FC<StockModalProps> = ({
         }
       }
 
-      // 1. Synchronize every variant's imeis array exactly with its quantity
-      const synchronizedVariants = variants.map(v => {
+      // 1. Synchronize every variant's imeis array & resolve effective auto-suggested prices ONLY for matching RAM + Storage
+      const synchronizedVariants = variants.map((v, idx) => {
         const qty = Math.max(1, Number(v.qty));
         const curImeis = v.imeis || [];
         const nextImeis = [...curImeis];
         while (nextImeis.length < qty) nextImeis.push('');
+
+        const suggCost = getVariantPriceSuggestion(idx, 'costPrice');
+        const suggWholesale = getVariantPriceSuggestion(idx, 'wholesalePrice');
+        const suggSale = getVariantPriceSuggestion(idx, 'salePrice');
+
+        const hasManualCost = v.costPrice !== '' && v.costPrice !== undefined;
+        const hasManualWholesale = v.wholesalePrice !== '' && v.wholesalePrice !== undefined;
+        const hasManualSale = v.salePrice !== '' && v.salePrice !== undefined;
+
         return {
           ...v,
+          costPrice: hasManualCost ? Number(v.costPrice) : suggCost !== '' ? Number(suggCost) : ('' as const),
+          wholesalePrice: hasManualWholesale
+            ? Number(v.wholesalePrice)
+            : suggWholesale !== ''
+            ? Number(suggWholesale)
+            : ('' as const),
+          salePrice: hasManualSale ? Number(v.salePrice) : suggSale !== '' ? Number(suggSale) : ('' as const),
+          autoCostPrice: !hasManualCost && suggCost !== '',
+          autoWholesalePrice: !hasManualWholesale && suggWholesale !== '',
+          autoSalePrice: !hasManualSale && suggSale !== '',
           qty,
           imeis: nextImeis.slice(0, qty),
         };
@@ -1006,11 +1149,35 @@ export const StockModal: React.FC<StockModalProps> = ({
       }
 
       const totalQuantity = synchronizedVariants.reduce((sum, v) => sum + (Number(v.qty) || 0), 0);
-      const primaryCost = Number(synchronizedVariants[0]?.costPrice) || 0;
-      const primarySale = Number(synchronizedVariants[0]?.salePrice) || 0;
-      const primaryWholesale = synchronizedVariants[0]?.wholesalePrice !== '' && synchronizedVariants[0]?.wholesalePrice !== undefined
-        ? Number(synchronizedVariants[0]?.wholesalePrice)
-        : Math.round(primarySale * 0.9);
+      const primaryCost =
+        Number(synchronizedVariants.find(v => v.costPrice !== '' && v.costPrice !== undefined)?.costPrice) || 0;
+      const primarySale =
+        Number(synchronizedVariants.find(v => v.salePrice !== '' && v.salePrice !== undefined)?.salePrice) || 0;
+      const firstWholesaleVar = synchronizedVariants.find(
+        v => v.wholesalePrice !== '' && v.wholesalePrice !== undefined
+      );
+      const primaryWholesale = firstWholesaleVar ? Number(firstWholesaleVar.wholesalePrice) : undefined;
+
+      const missingAlerts: string[] = [];
+      if (!image) missingAlerts.push('Picture');
+      synchronizedVariants.forEach((v, idx) => {
+        const varLabel = isKeypad
+          ? v.color?.trim() || `Var #${idx + 1}`
+          : [v.ram, v.storage, v.color?.trim()].filter(Boolean).join('/') || `Var #${idx + 1}`;
+        const varMissing: string[] = [];
+        if (v.costPrice === '' || v.costPrice === undefined) varMissing.push('Cost Price');
+        if (v.salePrice === '' || v.salePrice === undefined) varMissing.push('Sale Price');
+        if (v.wholesalePrice === '' || v.wholesalePrice === undefined) varMissing.push('Wholesale Price');
+        const emptyImeiIndices = (v.imeis || [])
+          .map((im, iIdx) => (!(im || '').trim() ? `#${iIdx + 1}` : null))
+          .filter(Boolean) as string[];
+        if (emptyImeiIndices.length > 0) {
+          varMissing.push(`IMEI ${emptyImeiIndices.slice(0, 4).join(', ')}${emptyImeiIndices.length > 4 ? ` (+${emptyImeiIndices.length - 4})` : ''}`);
+        }
+        if (varMissing.length > 0) {
+          missingAlerts.push(`${varLabel}: ${varMissing.join(', ')}`);
+        }
+      });
 
       const allColors = synchronizedVariants.map(v => v.color?.trim()).filter(Boolean).join(', ');
 
@@ -1060,6 +1227,11 @@ export const StockModal: React.FC<StockModalProps> = ({
           : `Product "${singleProduct.name}" added with ${synchronizedVariants.length} variants!`,
         'success'
       );
+      if (missingAlerts.length > 0) {
+        setTimeout(() => {
+          showToast(`Missing fields notice: ${missingAlerts.join(' | ')}`, 'warning');
+        }, 350);
+      }
       if (!editItem) {
         try {
           localStorage.setItem(LAST_SELECTED_CAT_KEY, category);
@@ -1078,7 +1250,7 @@ export const StockModal: React.FC<StockModalProps> = ({
 
       const cost = Number(costPrice) || 0;
       const sale = Number(salePrice) || 0;
-      const wholesale = wholesalePrice !== '' ? Number(wholesalePrice) : Math.round(sale * 0.9);
+      const wholesale = wholesalePrice !== '' ? Number(wholesalePrice) : undefined;
       const quantity = Number(qty);
 
       if (sale < 0 || cost < 0 || quantity < 0) {
@@ -1108,6 +1280,21 @@ export const StockModal: React.FC<StockModalProps> = ({
 
         finalImeis = cleaned.length > 0 ? cleaned : undefined;
         finalImeiStr = cleaned.length > 0 ? cleaned.join(', ') : undefined;
+      }
+
+      const singleMissing: string[] = [];
+      if (!image) singleMissing.push('Picture');
+      if (costPrice === '') singleMissing.push('Cost Price');
+      if (salePrice === '') singleMissing.push('Sale Price');
+      if (wholesalePrice === '') singleMissing.push('Wholesale Price');
+      if (isMobile) {
+        const missingImeiSlots: string[] = [];
+        for (let k = 0; k < quantity; k++) {
+          if (!(imeis[k] || '').trim()) missingImeiSlots.push(`#${k + 1}`);
+        }
+        if (missingImeiSlots.length > 0) {
+          singleMissing.push(`IMEI ${missingImeiSlots.slice(0, 4).join(', ')}${missingImeiSlots.length > 4 ? ` (+${missingImeiSlots.length - 4})` : ''}`);
+        }
       }
 
       // Check if stock quantity changed during edit for Stock Adjustment tracking
@@ -1156,6 +1343,11 @@ export const StockModal: React.FC<StockModalProps> = ({
       );
 
       showToast(editItem ? 'Product updated successfully' : 'Product added to stock', 'success');
+      if (singleMissing.length > 0) {
+        setTimeout(() => {
+          showToast(`Missing fields notice: ${singleMissing.join(', ')}`, 'warning');
+        }, 350);
+      }
       if (!editItem) {
         try {
           localStorage.setItem(LAST_SELECTED_CAT_KEY, category);
@@ -1436,14 +1628,26 @@ export const StockModal: React.FC<StockModalProps> = ({
               <div className={`space-y-2.5 ${variants.length > 1 ? 'max-h-[48vh] overflow-y-auto pr-0.5' : ''}`}>
                 {variants.map((v, vIdx) => {
                   const currentQty = Math.max(1, Number(v.qty) || 1);
-                  const marginVal =
-                    Number(v.salePrice) > 0 && Number(v.costPrice) > 0
-                      ? Number(v.salePrice) - Number(v.costPrice)
-                      : 0;
-                  const marginPct =
-                    marginVal > 0 && Number(v.costPrice) > 0
-                      ? Math.round((marginVal / Number(v.costPrice)) * 100)
-                      : 0;
+                  const suggCost = getVariantPriceSuggestion(vIdx, 'costPrice');
+                  const suggWholesale = getVariantPriceSuggestion(vIdx, 'wholesalePrice');
+                  const suggSale = getVariantPriceSuggestion(vIdx, 'salePrice');
+
+                  const effCost =
+                    v.costPrice !== '' && v.costPrice !== undefined
+                      ? Number(v.costPrice)
+                      : Number(suggCost) || 0;
+                  const effSale =
+                    v.salePrice !== '' && v.salePrice !== undefined
+                      ? Number(v.salePrice)
+                      : Number(suggSale) || 0;
+
+                  const isAutoCostHint = (v.costPrice === '' || v.costPrice === undefined) && suggCost !== '';
+                  const isAutoWholesaleHint =
+                    (v.wholesalePrice === '' || v.wholesalePrice === undefined) && suggWholesale !== '';
+                  const isAutoSaleHint = (v.salePrice === '' || v.salePrice === undefined) && suggSale !== '';
+
+                  const marginVal = effSale > 0 && effCost > 0 ? effSale - effCost : 0;
+                  const marginPct = marginVal > 0 && effCost > 0 ? Math.round((marginVal / effCost) * 100) : 0;
 
                   return (
                     <div
@@ -1499,11 +1703,10 @@ export const StockModal: React.FC<StockModalProps> = ({
                       {isKeypad ? (
                         <div className="flex flex-col sm:flex-row sm:items-center gap-2 bg-purple-50/60 p-2 rounded-lg border border-purple-200/80">
                           <label className="font-bold text-purple-900 flex items-center gap-1 text-[11px] shrink-0">
-                            <Palette className="w-3.5 h-3.5 text-purple-600" /> Phone Color *
+                            <Palette className="w-3.5 h-3.5 text-purple-600" /> Phone Color
                           </label>
                           <input
                             type="text"
-                            required
                             value={v.color || ''}
                             onChange={e => handleUpdateVariantField(vIdx, 'color', e.target.value)}
                             placeholder="e.g. Black, Blue, White, Gold, Red"
@@ -1597,8 +1800,13 @@ export const StockModal: React.FC<StockModalProps> = ({
                       {/* Compact Pricing & Quantity Row */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50/80 p-2 rounded-lg border border-slate-200/70 items-center">
                         <div>
-                          <label className="block font-bold text-slate-700 mb-0.5 text-[10px] truncate" title="Cost Price">
-                            1. Cost ({currency}) *
+                          <label className="flex items-center justify-between gap-1 font-bold text-slate-700 mb-0.5 text-[10px]" title="Cost Price">
+                            <span className="truncate">1. Cost ({currency})</span>
+                            {isAutoCostHint && (
+                              <span className="px-1 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300/70 text-[9px] font-extrabold shrink-0">
+                                Auto
+                              </span>
+                            )}
                           </label>
                           <input
                             type="number"
@@ -1611,14 +1819,23 @@ export const StockModal: React.FC<StockModalProps> = ({
                                 e.target.value === '' ? '' : Number(e.target.value)
                               )
                             }
-                            placeholder="Cost Price"
-                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs tabular-nums font-bold focus:outline-none focus:border-blue-600 min-h-[34px] max-sm:min-h-[40px]"
+                            placeholder={isAutoCostHint ? String(suggCost) : 'Cost Price'}
+                            className={`w-full rounded-lg px-2 py-1 text-xs tabular-nums font-bold focus:outline-none min-h-[34px] max-sm:min-h-[40px] border transition ${
+                              isAutoCostHint
+                                ? 'bg-amber-50/60 border-amber-300 ring-1 ring-amber-200/60 placeholder:text-amber-700/50 placeholder:font-bold text-slate-900 focus:border-amber-500'
+                                : 'bg-white border-slate-200 focus:border-blue-600'
+                            }`}
                           />
                         </div>
 
                         <div>
-                          <label className="block font-bold text-purple-900 mb-0.5 text-[10px] truncate" title="Wholesale Price">
-                            2. Wholesale ({currency})
+                          <label className="flex items-center justify-between gap-1 font-bold text-purple-900 mb-0.5 text-[10px]" title="Wholesale Price">
+                            <span className="truncate">2. Wholesale ({currency})</span>
+                            {isAutoWholesaleHint && (
+                              <span className="px-1 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300/70 text-[9px] font-extrabold shrink-0">
+                                Auto
+                              </span>
+                            )}
                           </label>
                           <input
                             type="number"
@@ -1631,14 +1848,23 @@ export const StockModal: React.FC<StockModalProps> = ({
                                 e.target.value === '' ? '' : Number(e.target.value)
                               )
                             }
-                            placeholder="Wholesale"
-                            className="w-full bg-purple-50/70 border border-purple-200 rounded-lg px-2 py-1 text-xs tabular-nums font-bold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[34px] max-sm:min-h-[40px]"
+                            placeholder={isAutoWholesaleHint ? String(suggWholesale) : 'Wholesale'}
+                            className={`w-full rounded-lg px-2 py-1 text-xs tabular-nums font-bold focus:outline-none min-h-[34px] max-sm:min-h-[40px] border transition ${
+                              isAutoWholesaleHint
+                                ? 'bg-amber-50/60 border-amber-300 ring-1 ring-amber-200/60 placeholder:text-amber-700/50 placeholder:font-bold text-purple-950 focus:border-amber-500'
+                                : 'bg-purple-50/70 border-purple-200 text-purple-950 focus:border-purple-600'
+                            }`}
                           />
                         </div>
 
                         <div>
-                          <label className="block font-bold text-slate-700 mb-0.5 text-[10px] truncate" title="Sale Price">
-                            3. Sale ({currency}) *
+                          <label className="flex items-center justify-between gap-1 font-bold text-slate-700 mb-0.5 text-[10px]" title="Sale Price">
+                            <span className="truncate">3. Sale ({currency})</span>
+                            {isAutoSaleHint && (
+                              <span className="px-1 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300/70 text-[9px] font-extrabold shrink-0">
+                                Auto
+                              </span>
+                            )}
                           </label>
                           <input
                             type="number"
@@ -1651,8 +1877,12 @@ export const StockModal: React.FC<StockModalProps> = ({
                                 e.target.value === '' ? '' : Number(e.target.value)
                               )
                             }
-                            placeholder="Sale Price"
-                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs tabular-nums font-bold focus:outline-none focus:border-blue-600 min-h-[34px] max-sm:min-h-[40px]"
+                            placeholder={isAutoSaleHint ? String(suggSale) : 'Sale Price'}
+                            className={`w-full rounded-lg px-2 py-1 text-xs tabular-nums font-bold focus:outline-none min-h-[34px] max-sm:min-h-[40px] border transition ${
+                              isAutoSaleHint
+                                ? 'bg-amber-50/60 border-amber-300 ring-1 ring-amber-200/60 placeholder:text-amber-700/50 placeholder:font-bold text-slate-900 focus:border-amber-500'
+                                : 'bg-white border-slate-200 focus:border-blue-600'
+                            }`}
                           />
                         </div>
 
@@ -1672,7 +1902,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                               )
                             }
                             placeholder="Qty"
-                            className="w-full bg-white border border-blue-400 rounded-lg px-2 py-1 text-xs tabular-nums font-extrabold text-blue-700 focus:outline-none focus:border-blue-600 min-h-[34px] max-sm:min-h-[40px]"
+                            className="allow-spinner w-full bg-white border border-blue-400 rounded-lg px-2 py-1 text-xs tabular-nums font-extrabold text-blue-700 focus:outline-none focus:border-blue-600 min-h-[34px] max-sm:min-h-[40px]"
                           />
                         </div>
                       </div>
@@ -1824,11 +2054,10 @@ export const StockModal: React.FC<StockModalProps> = ({
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div>
                   <label className="block font-bold text-slate-700 mb-0.5 text-[10px] sm:text-[11px] truncate" title="Cost Price">
-                    1. Cost Price ({currency}) *
+                    1. Cost Price ({currency})
                   </label>
                   <input
                     type="number"
-                    required
                     min="0"
                     value={costPrice}
                     onChange={e => setCostPrice(e.target.value === '' ? '' : Number(e.target.value))}
@@ -1853,11 +2082,10 @@ export const StockModal: React.FC<StockModalProps> = ({
 
                 <div>
                   <label className="block font-bold text-slate-700 mb-0.5 text-[10px] sm:text-[11px] truncate" title="Sale Price">
-                    3. Sale Price ({currency}) *
+                    3. Sale Price ({currency})
                   </label>
                   <input
                     type="number"
-                    required
                     min="0"
                     value={salePrice}
                     onChange={e => setSalePrice(e.target.value === '' ? '' : Number(e.target.value))}
@@ -1880,7 +2108,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                       handleSingleQtyChange(e.target.value === '' ? '' : Number(e.target.value))
                     }
                     placeholder="Qty"
-                    className="w-full bg-slate-50 border border-blue-400 rounded-lg px-2.5 py-1.5 text-xs tabular-nums font-bold text-blue-700 focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[36px] max-sm:min-h-[42px]"
+                    className="allow-spinner w-full bg-slate-50 border border-blue-400 rounded-lg px-2.5 py-1.5 text-xs tabular-nums font-bold text-blue-700 focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[36px] max-sm:min-h-[42px]"
                   />
                 </div>
               </div>

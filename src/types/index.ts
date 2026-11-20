@@ -72,6 +72,9 @@ export interface MobileVariant {
   costPrice: number | '';
   salePrice: number | '';
   wholesalePrice?: number | '';
+  autoCostPrice?: boolean;
+  autoSalePrice?: boolean;
+  autoWholesalePrice?: boolean;
   qty: number | '';
   imeis: string[];
 }
@@ -150,6 +153,8 @@ export interface OnlineAccount {
   accountNumber?: string;
   accountTitle?: string;
   bankType?: string;
+  showInPos?: boolean;
+  updatedAt?: string;
 }
 
 export interface DailyClosingRecord {
@@ -203,7 +208,16 @@ export interface CartItem extends InventoryItem {
   selectedVariantLabel?: string;
 }
 
-export type PaymentMethod = 'Cash' | 'JazzCash' | 'Easypaisa' | 'Bank' | 'Card';
+export type PaymentMethod =
+  | 'Cash'
+  | 'JazzCash'
+  | 'Easypaisa'
+  | 'Bank'
+  | 'Card'
+  | 'Load'
+  | 'Digital Wallet'
+  | 'Other'
+  | (string & {});
 
 export type InvoiceType = 'cash' | 'credit';
 
