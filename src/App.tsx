@@ -1806,13 +1806,13 @@ function AppContent() {
 
         {/* Scrollable Tab Content - Optimized with Conditional Rendering (Unmounts Inactive Tabs) */}
         <main
-          className={`flex-1 ${
+          className={`flex-1 overflow-y-auto ${
             activeTab === 'pos'
-              ? 'p-2 sm:p-3 lg:p-3 overflow-y-auto lg:overflow-hidden pb-3 lg:pb-2'
-              : 'overflow-y-auto p-2.5 sm:p-5 pb-6 lg:pb-6'
+              ? 'p-2 sm:p-3 lg:p-3 pb-4 lg:pb-4'
+              : 'p-2.5 sm:p-5 pb-6 lg:pb-6'
           }`}
         >
-          <div className={activeTab === 'pos' ? 'w-full h-full flex flex-col min-h-0' : 'max-w-7xl mx-auto'}>
+          <div className={activeTab === 'pos' ? 'w-full flex flex-col min-h-0' : 'max-w-7xl mx-auto'}>
             {activeTab === 'dashboard' && (data.currentRole || 'admin') === 'admin' && (
               <DashboardTab
                 data={data}
@@ -1831,6 +1831,8 @@ function AppContent() {
                 khataCustomers={data.khata || []}
                 onlineAccounts={data.onlineAccounts || []}
                 settings={data.settings}
+                posPreferences={data.tabPreferences?.pos}
+                onOpenPosSettings={() => setTabSettingsModalOpen(true)}
                 onCompleteSale={handleCompleteSale}
                 onOpenAddStock={() => {
                   setEditStockItem(null);

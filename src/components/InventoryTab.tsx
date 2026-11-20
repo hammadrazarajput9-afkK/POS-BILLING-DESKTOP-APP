@@ -547,7 +547,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
       `"${i.category}"`,
       i.status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE',
       i.imei || '',
-      i.costPrice,
+      isAdmin ? i.costPrice : 'Restricted',
       i.salePrice,
       i.qty,
     ]);
@@ -584,10 +584,12 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
             Expected Retail Revenue
           </span>
           <h3 className="text-sm sm:text-xl font-extrabold text-emerald-600 tabular-nums mt-0.5 sm:mt-1 truncate">
-            {currency} {totalRetailValuation.toLocaleString()}
+            {isAdmin ? `${currency} ${totalRetailValuation.toLocaleString()}` : '••••••'}
           </h3>
           <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">
-            Margin: +{currency} {(totalRetailValuation - totalCostValuation).toLocaleString()}
+            {isAdmin
+              ? `Margin: +${currency} ${(totalRetailValuation - totalCostValuation).toLocaleString()}`
+              : 'Restricted (Admin)'}
           </p>
         </div>
 

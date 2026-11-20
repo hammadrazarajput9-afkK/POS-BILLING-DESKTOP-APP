@@ -222,6 +222,21 @@ export const TabSettingsModal: React.FC<TabSettingsModalProps> = ({
                   className="w-4 h-4 accent-blue-600 cursor-pointer"
                 />
               </div>
+
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+                <div>
+                  <p className="font-bold text-slate-800">Payment Accounts in Billing Cart</p>
+                  <p className="text-[11px] text-slate-500">
+                    Enable or disable Cash / Digital Wallet / Bank accounts selector inside POS Cart
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={localPrefs.showPaymentAccounts !== false}
+                  onChange={e => updateSetting('showPaymentAccounts', e.target.checked)}
+                  className="w-4 h-4 accent-blue-600 cursor-pointer"
+                />
+              </div>
             </div>
           )}
 

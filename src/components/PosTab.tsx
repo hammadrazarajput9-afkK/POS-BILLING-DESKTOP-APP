@@ -50,6 +50,8 @@ interface PosTabProps {
   khataCustomers?: KhataCustomer[];
   onlineAccounts?: OnlineAccount[];
   settings?: ShopSettings;
+  posPreferences?: Record<string, any>;
+  onOpenPosSettings?: () => void;
   onCompleteSale: (sale: SaleRecord) => void;
   onOpenAddStock: () => void;
   onOpenPdfReport?: () => void;
@@ -105,6 +107,8 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   khataCustomers = [],
   onlineAccounts = [],
   settings,
+  posPreferences,
+  onOpenPosSettings,
   onCompleteSale,
   onOpenAddStock,
   onOpenPdfReport,
@@ -120,6 +124,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   const { showToast } = useToast();
   const [search, setSearch] = useState('');
   const searchInputRef = React.useRef<HTMLInputElement | null>(null);
+  const productGridRef = React.useRef<HTMLDivElement | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
   const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
@@ -130,6 +135,12 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   const [duplicateScanAlert, setDuplicateScanAlert] = useState<{ title: string; detail: string } | null>(null);
   const duplicateAlertTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showChannelCustomizer, setShowChannelCustomizer] = useState(false);
+  const [lastScannedItem, setLastScannedItem] = useState<{
+    itemId: string;
+    imei?: string;
+    variantLabel?: string;
+  } | null>(null);
+  const showPaymentAccountsSection = posPreferences?.showPaymentAccounts !== false;
 
   const triggerDuplicateAlert = (title: string, detail: string) => {
     setDuplicateScanAlert({ title, detail });
@@ -677,21 +688,32 @@ const PosTabComponent: React.FC<PosTabProps> = ({
     return null;
   };
 
-  // Filtered inventory by search & category (with exact IMEI/barcode match prioritized at the top)
+  // Filtered inventory by search & category (pins recently scanned item at #1 and prioritizes exact matches)
   const filteredItems = useMemo(() => {
     const q = search.toLowerCase().trim();
     if (!q) {
-      return selectedCategory === 'ALL'
-        ? activeInventory
-        : activeInventory.filter(item => item.category === selectedCategory);
+      const baseList =
+        selectedCategory === 'ALL'
+          ? activeInventory
+          : activeInventory.filter(item => item.category === selectedCategory);
+
+      if (lastScannedItem) {
+        const scannedInActive = activeInventory.find(i => i.id === lastScannedItem.itemId);
+        if (scannedInActive) {
+          return [scannedInActive, ...baseList.filter(i => i.id !== scannedInActive.id)];
+        }
+      }
+      return baseList;
     }
 
     const tokens = q.split(/\s+/).filter(Boolean);
 
     const matches = activeInventory.filter(item => {
       const imeiString = extractItemImeis(item).join(' ');
-
-      const combinedText = `${item.name} ${item.category} ${item.barcode || ''} ${imeiString}`.toLowerCase();
+      const variantText = (item.variants || [])
+        .map(v => `${v.ram || ''} ${v.storage || ''} ${v.color || ''}`)
+        .join(' ');
+      const combinedText = `${item.name} ${item.category} ${item.ram || ''} ${item.storage || ''} ${variantText} ${item.barcode || ''} ${imeiString}`.toLowerCase();
       const matchSearch = tokens.every(token => combinedText.includes(token));
       const matchCat = selectedCategory === 'ALL' || item.category === selectedCategory;
 
@@ -708,7 +730,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
     };
 
     return [...matches].sort((a, b) => getMatchRank(a) - getMatchRank(b));
-  }, [activeInventory, search, selectedCategory]);
+  }, [activeInventory, search, selectedCategory, lastScannedItem]);
 
   const getVariantLabel = (v: MobileVariant): string => {
     const parts = [v.ram, v.storage, v.color].map(x => (x || '').trim()).filter(Boolean);
@@ -882,6 +904,24 @@ const PosTabComponent: React.FC<PosTabProps> = ({
     return true;
   };
 
+  const highlightScannedProductInCatalog = (
+    item: InventoryItem,
+    imei?: string,
+    variant?: MobileVariant
+  ) => {
+    setLastScannedItem({
+      itemId: item.id,
+      imei,
+      variantLabel: variant ? getVariantLabel(variant) : undefined,
+    });
+    if (selectedCategory !== 'ALL' && item.category !== selectedCategory) {
+      setSelectedCategory('ALL');
+    }
+    setTimeout(() => {
+      productGridRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 40);
+  };
+
   const handleScanOrQuickMatch = (rawCode: string, source: 'scanner' | 'enter' | 'typing'): boolean => {
     const clean = rawCode.trim();
     if (!clean) return false;
@@ -893,6 +933,8 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
     const exact = findExactImeiOrBarcodeMatch(clean);
     if (exact) {
+      highlightScannedProductInCatalog(exact.item, exact.matchedImei, exact.variant);
+
       // Prevent duplicate scan of an IMEI already in the cart
       if (exact.matchType === 'imei' && exact.matchedImei && isImeiAlreadyInCart(exact.matchedImei)) {
         triggerDuplicateAlert(
@@ -941,6 +983,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       });
       if (matchingBySearch.length === 1) {
         const singleMatch = matchingBySearch[0];
+        highlightScannedProductInCatalog(singleMatch);
         if (cart.some(c => c.id === singleMatch.id)) {
           triggerDuplicateAlert(
             'Product Pehle Se Cart Mein Hai',
@@ -1049,6 +1092,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
   const clearCart = () => {
     resetDraft();
+    setLastScannedItem(null);
     showToast('Billing cart cleared', 'info');
   };
 
@@ -1098,14 +1142,14 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
   const renderCartContent = (isMobile = false) => (
     <div
-      className={`bg-white rounded-2xl p-3 sm:p-4 flex flex-col h-full min-h-0 ${
-        isMobile ? 'space-y-3 overflow-y-auto' : 'gap-2.5 border border-slate-200/90 shadow-xs overflow-hidden'
+      className={`bg-white rounded-2xl p-2.5 sm:p-3 flex flex-col ${
+        isMobile ? 'space-y-2.5' : 'gap-2 border border-slate-200/90 shadow-xs'
       }`}
     >
       {/* Cart Header */}
-      <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 shrink-0">
+      <div className="flex items-center justify-between border-b border-slate-100 pb-2 shrink-0">
         <div className="flex items-center gap-2">
-          <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+          <h3 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
             <ShoppingCart className="w-4 h-4 text-blue-600" /> Active Billing Cart ({totalCartItems})
           </h3>
           {hasActiveDraft && cart.length > 0 && (
@@ -1114,24 +1158,24 @@ const PosTabComponent: React.FC<PosTabProps> = ({
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {onOpenPdfReport && (
             <button
               type="button"
               onClick={onOpenPdfReport}
-              className="text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 px-2.5 py-1 rounded-lg transition flex items-center gap-1 cursor-pointer shadow-2xs"
+              className="text-[11px] font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 px-2 py-1 rounded-lg transition flex items-center gap-1 cursor-pointer shadow-2xs"
               title="Export Sales & Invoices PDF Report"
             >
-              <FileText className="w-3.5 h-3.5 text-rose-600" /> Sales PDF
+              <FileText className="w-3 h-3 text-rose-600" /> Sales PDF
             </button>
           )}
           {cart.length > 0 && (
             <button
               type="button"
               onClick={clearCart}
-              className="text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2 py-1 rounded-lg transition cursor-pointer"
+              className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2 py-1 rounded-lg transition cursor-pointer"
             >
-              Clear Cart
+              Clear
             </button>
           )}
           {isMobile && (
@@ -1146,70 +1190,61 @@ const PosTabComponent: React.FC<PosTabProps> = ({
         </div>
       </div>
 
-      {/* Scrollable Middle Cart Sections (keeps Wholesale & Credit forms from pushing Checkout button off-screen) */}
-      <div className={isMobile ? 'space-y-3' : 'flex-1 min-h-0 overflow-y-auto pr-1 space-y-2.5 scrollbar-thin'}>
-        {/* TWO INVOICE TYPES: Cash Customer vs Credit/Khata Customer */}
-        <div className="space-y-2 bg-slate-50 p-2.5 sm:p-3 rounded-2xl border border-slate-200/80">
-          <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
-            Invoice Type
-          </label>
-          <div className="grid grid-cols-2 gap-2">
+      {/* Non-Scrollable Compact Cart Body */}
+      <div className="space-y-2">
+        {/* Invoice Type + Customer Info Compact Block */}
+        <div className="bg-slate-50 p-2 rounded-xl border border-slate-200/80 space-y-1.5">
+          <div className="grid grid-cols-2 gap-1.5">
             <button
               type="button"
               onClick={() => setInvoiceType('cash')}
-              className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer min-h-[40px] ${
+              className={`py-1.5 px-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer min-h-[34px] ${
                 invoiceType === 'cash'
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
               }`}
             >
-              <Banknote className="w-4 h-4" />
+              <Banknote className="w-3.5 h-3.5" />
               <span>Cash Customer</span>
             </button>
 
             <button
               type="button"
               onClick={() => setInvoiceType('credit')}
-              className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer min-h-[40px] ${
+              className={`py-1.5 px-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer min-h-[34px] ${
                 invoiceType === 'credit'
                   ? 'bg-purple-600 text-white shadow-xs'
                   : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
               }`}
             >
-              <BookOpen className="w-4 h-4" />
+              <BookOpen className="w-3.5 h-3.5" />
               <span>Credit / Khata</span>
             </button>
           </div>
 
-          {/* If Credit / Khata is selected, allow picking from existing customers */}
           {invoiceType === 'credit' && khataCustomers.length > 0 && (
-            <div className="pt-1.5">
-              <select
-                value={selectedKhataId}
-                onChange={e => handleKhataSelect(e.target.value)}
-                className="w-full bg-white border border-purple-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-purple-600 min-h-[40px]"
-              >
-                <option value="">Select Existing Khata Customer...</option>
-                {khataCustomers.map(k => (
-                  <option key={k.id} value={k.id}>
-                    {k.name} ({k.phone}) - Current Due: {currency} {k.balance.toLocaleString()}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <select
+              value={selectedKhataId}
+              onChange={e => handleKhataSelect(e.target.value)}
+              className="w-full bg-white border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:outline-none focus:border-purple-600 min-h-[34px]"
+            >
+              <option value="">Select Existing Khata Customer...</option>
+              {khataCustomers.map(k => (
+                <option key={k.id} value={k.id}>
+                  {k.name} ({k.phone}) - Due: {currency} {k.balance.toLocaleString()}
+                </option>
+              ))}
+            </select>
           )}
-        </div>
 
-        {/* Customer Info */}
-        <div className="space-y-2">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
             <input
               type="text"
               value={custName}
               onChange={e => setCustName(e.target.value)}
-              placeholder={saleMode === 'wholesale' ? "Retailer / Contact Person Name *" : "Customer Name"}
-              className={`border rounded-xl px-3 py-2.5 text-xs font-medium focus:outline-none focus:bg-white transition min-h-[40px] ${
-                saleMode === 'wholesale' ? 'bg-purple-50/50 border-purple-200 focus:border-purple-600' : 'bg-slate-50 border-slate-200 focus:border-blue-600'
+              placeholder={saleMode === 'wholesale' ? "Retailer / Contact Person *" : "Customer Name"}
+              className={`border rounded-lg px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:bg-white transition min-h-[34px] ${
+                saleMode === 'wholesale' ? 'bg-purple-50/70 border-purple-200 focus:border-purple-600' : 'bg-white border-slate-200 focus:border-blue-600'
               }`}
             />
             <input
@@ -1217,186 +1252,185 @@ const PosTabComponent: React.FC<PosTabProps> = ({
               value={custPhone}
               onChange={e => setCustPhone(e.target.value)}
               placeholder="Phone Number"
-              className={`border rounded-xl px-3 py-2.5 text-xs font-medium focus:outline-none focus:bg-white transition min-h-[40px] ${
-                saleMode === 'wholesale' ? 'bg-purple-50/50 border-purple-200 focus:border-purple-600' : 'bg-slate-50 border-slate-200 focus:border-blue-600'
+              className={`border rounded-lg px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:bg-white transition min-h-[34px] ${
+                saleMode === 'wholesale' ? 'bg-purple-50/70 border-purple-200 focus:border-purple-600' : 'bg-white border-slate-200 focus:border-blue-600'
               }`}
             />
           </div>
 
           {/* Wholesale Retailer Shop Details */}
           {saleMode === 'wholesale' && (
-            <div className="bg-purple-50 border border-purple-200 rounded-xl p-2.5 space-y-2 animate-in fade-in">
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-2 space-y-1.5 animate-in fade-in">
               <span className="text-[10px] font-black uppercase text-purple-900 tracking-wider flex items-center gap-1">
-                <Package className="w-3.5 h-3.5 text-purple-700" /> Retailer / Shop Details
+                <Package className="w-3 h-3 text-purple-700" /> Retailer / Shop Details
               </span>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
                 <input
                   type="text"
                   value={retailerShopName}
                   onChange={e => setRetailerShopName(e.target.value)}
                   placeholder="Shop / Business Name"
-                  className="bg-white border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[38px]"
+                  className="bg-white border border-purple-200 rounded-lg px-2 py-1 text-xs font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[32px]"
                 />
                 <input
                   type="text"
                   value={retailerCity}
                   onChange={e => setRetailerCity(e.target.value)}
-                  placeholder="City (e.g. Lahore, Karachi)"
-                  className="bg-white border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[38px]"
+                  placeholder="City"
+                  className="bg-white border border-purple-200 rounded-lg px-2 py-1 text-xs font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[32px]"
                 />
                 <input
                   type="text"
                   value={retailerNtn}
                   onChange={e => setRetailerNtn(e.target.value)}
-                  placeholder="NTN / GST No (Optional)"
-                  className="bg-white border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs tabular-nums font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[38px]"
+                  placeholder="NTN / GST (Opt)"
+                  className="bg-white border border-purple-200 rounded-lg px-2 py-1 text-xs tabular-nums font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[32px]"
                 />
               </div>
             </div>
           )}
         </div>
 
-        {/* Cart Itemized Table */}
-        <div className={`border border-slate-200/80 rounded-xl overflow-hidden flex flex-col ${isMobile ? 'min-h-[140px] max-h-56' : 'min-h-[115px] max-h-[220px]'}`}>
-          <div className="overflow-y-auto flex-1 scrollbar-thin">
-            <table className="w-full text-left border-collapse">
-              <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200 sticky top-0">
+        {/* Cart Itemized Table (No nested scrollbar — expands naturally) */}
+        <div className="border border-slate-200/80 rounded-xl overflow-hidden">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
+              <tr>
+                <th className="p-2">Item</th>
+                <th className="p-2 text-center">Qty</th>
+                <th className="p-2 text-right">Price</th>
+                <th className="p-2 text-center w-8"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-xs">
+              {cart.length === 0 ? (
                 <tr>
-                  <th className="p-2.5">Item</th>
-                  <th className="p-2.5 text-center">Qty</th>
-                  <th className="p-2.5 text-right">Price</th>
-                  <th className="p-2.5 text-center"></th>
+                  <td colSpan={4} className="text-center py-4 text-slate-400">
+                    <div className="inline-flex items-center gap-1.5 text-xs font-medium">
+                      <ShoppingCart className="w-4 h-4 text-slate-300" />
+                      <span>Cart is empty — Scan IMEI or click Add</span>
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-xs">
-                {cart.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="text-center py-6 text-slate-400">
-                      <ShoppingCart className="w-5 h-5 mx-auto mb-1 text-slate-300" />
-                      <p className="text-xs font-medium">Cart is empty</p>
-                    </td>
-                  </tr>
-                ) : (
-                  cart.map(item => {
-                    const availableItemImeis = extractItemImeis(item);
-                    const hasMultipleImeis = availableItemImeis.length > 0;
+              ) : (
+                cart.map(item => {
+                  const availableItemImeis = extractItemImeis(item);
+                  const hasMultipleImeis = availableItemImeis.length > 0;
 
-                    return (
-                      <tr key={`${item.id}::${item.selectedVariantId || 'default'}`} className="hover:bg-slate-50/60 transition">
-                        <td className="p-2.5">
-                          <p className="font-semibold text-slate-900 leading-tight line-clamp-1">
-                            {item.name}
-                          </p>
-                          {item.selectedVariantLabel && (
-                            <span className="inline-block mt-0.5 text-[9px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded">
-                              {item.selectedVariantLabel}
-                            </span>
-                          )}
-                          {hasMultipleImeis ? (
-                            <div className="mt-1 space-y-1">
-                              {Array.from({ length: item.cartQty }).map((_, unitIdx) => {
-                                const curVal = item.selectedImeis?.[unitIdx] || availableItemImeis[unitIdx] || '';
-                                return (
-                                  <div key={unitIdx} className="flex items-center gap-1">
-                                    <span className="text-[9px] tabular-nums text-slate-400 font-bold">
-                                      #{unitIdx + 1}:
+                  return (
+                    <tr key={`${item.id}::${item.selectedVariantId || 'default'}`} className="hover:bg-slate-50/60 transition">
+                      <td className="p-2">
+                        <p className="font-semibold text-slate-900 leading-tight line-clamp-1">
+                          {item.name}
+                        </p>
+                        {item.selectedVariantLabel && (
+                          <span className="inline-block mt-0.5 text-[9px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.2 rounded">
+                            {item.selectedVariantLabel}
+                          </span>
+                        )}
+                        {hasMultipleImeis ? (
+                          <div className="mt-1 space-y-0.5">
+                            {Array.from({ length: item.cartQty }).map((_, unitIdx) => {
+                              const curVal = item.selectedImeis?.[unitIdx] || availableItemImeis[unitIdx] || '';
+                              return (
+                                <div key={unitIdx} className="flex items-center gap-1">
+                                  <span className="text-[9px] tabular-nums text-slate-400 font-bold">
+                                    #{unitIdx + 1}:
+                                  </span>
+                                  {availableItemImeis.length > 1 ? (
+                                    <select
+                                      value={curVal}
+                                      onChange={e =>
+                                        handleSelectImeiForCartItem(
+                                          item.id,
+                                          unitIdx,
+                                          e.target.value,
+                                          item.selectedVariantId
+                                        )
+                                      }
+                                      className="text-[10px] tabular-nums text-blue-700 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5 max-w-[165px] outline-none"
+                                    >
+                                      {availableItemImeis.map(im => (
+                                        <option key={im} value={im}>
+                                          IMEI: {im}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  ) : (
+                                    <span className="text-[9px] tabular-nums text-blue-700 bg-blue-50 px-1 py-0.5 rounded border border-blue-100">
+                                      IMEI: {curVal}
                                     </span>
-                                    {availableItemImeis.length > 1 ? (
-                                      <select
-                                        value={curVal}
-                                        onChange={e =>
-                                          handleSelectImeiForCartItem(
-                                            item.id,
-                                            unitIdx,
-                                            e.target.value,
-                                            item.selectedVariantId
-                                          )
-                                        }
-                                        className="text-[10px] tabular-nums text-blue-700 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5 max-w-[170px] outline-none"
-                                      >
-                                        {availableItemImeis.map(im => (
-                                          <option key={im} value={im}>
-                                            IMEI: {im}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    ) : (
-                                      <span className="text-[9px] tabular-nums text-blue-700 bg-blue-50 px-1 py-0.5 rounded border border-blue-100">
-                                        IMEI: {curVal}
-                                      </span>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ) : item.barcode ? (
-                            <p className="text-[9px] tabular-nums text-slate-400">
-                              Code: {item.barcode}
-                            </p>
-                          ) : null}
-                        </td>
-                        <td className="p-2.5 text-center">
-                          <div className="inline-flex items-center gap-1 bg-slate-100 rounded-lg p-0.5">
-                            <button
-                              type="button"
-                              onClick={() => updateCartQty(item.id, -1, item.selectedVariantId)}
-                              className="w-7 h-7 sm:w-5 sm:h-5 bg-white rounded font-bold text-slate-700 hover:bg-slate-200 flex items-center justify-center transition cursor-pointer shadow-2xs"
-                            >
-                              <Minus className="w-3.5 h-3.5" />
-                            </button>
-                            <span className="tabular-nums font-bold text-xs px-1.5 min-w-[20px] text-center">
-                              {item.cartQty}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => updateCartQty(item.id, 1, item.selectedVariantId)}
-                              className="w-7 h-7 sm:w-5 sm:h-5 bg-white rounded font-bold text-slate-700 hover:bg-slate-200 flex items-center justify-center transition cursor-pointer shadow-2xs"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                            </button>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
-                        </td>
-                        <td className="p-2.5 text-right tabular-nums font-bold text-slate-900">
-                          {currency} {(getItemUnitPrice(item) * item.cartQty).toLocaleString()}
-                          {saleMode === 'wholesale' && (
-                            <div className="text-[9px] text-purple-700 font-sans">
-                              {currency} {getItemUnitPrice(item).toLocaleString()} / unit
-                            </div>
-                          )}
-                        </td>
-                        <td className="p-2.5 text-center">
+                        ) : item.barcode ? (
+                          <p className="text-[9px] tabular-nums text-slate-400">
+                            Code: {item.barcode}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className="p-2 text-center">
+                        <div className="inline-flex items-center gap-1 bg-slate-100 rounded-lg p-0.5">
                           <button
                             type="button"
-                            onClick={() => removeFromCart(item.id, item.selectedVariantId)}
-                            className="text-slate-400 hover:text-rose-600 p-1.5 transition cursor-pointer min-h-[36px] min-w-[36px] flex items-center justify-center"
+                            onClick={() => updateCartQty(item.id, -1, item.selectedVariantId)}
+                            className="w-6 h-6 sm:w-5 sm:h-5 bg-white rounded font-bold text-slate-700 hover:bg-slate-200 flex items-center justify-center transition cursor-pointer shadow-2xs"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Minus className="w-3 h-3" />
                           </button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                          <span className="tabular-nums font-bold text-xs px-1 min-w-[18px] text-center">
+                            {item.cartQty}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => updateCartQty(item.id, 1, item.selectedVariantId)}
+                            className="w-6 h-6 sm:w-5 sm:h-5 bg-white rounded font-bold text-slate-700 hover:bg-slate-200 flex items-center justify-center transition cursor-pointer shadow-2xs"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </td>
+                      <td className="p-2 text-right tabular-nums font-bold text-slate-900">
+                        {currency} {(getItemUnitPrice(item) * item.cartQty).toLocaleString()}
+                        {saleMode === 'wholesale' && (
+                          <div className="text-[9px] text-purple-700 font-sans">
+                            {currency} {getItemUnitPrice(item).toLocaleString()}/u
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-1.5 text-center">
+                        <button
+                          type="button"
+                          onClick={() => removeFromCart(item.id, item.selectedVariantId)}
+                          className="text-slate-400 hover:text-rose-600 p-1 transition cursor-pointer flex items-center justify-center mx-auto"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
 
         {/* Pricing Totals & Payment Method */}
-        <div className="space-y-2.5 pt-2 border-t border-slate-100 text-xs">
-          <div className="space-y-1.5 text-slate-600">
-            <div className="flex justify-between">
+        <div className="space-y-1.5 pt-1.5 border-t border-slate-100 text-xs">
+          <div className="space-y-1 text-slate-600">
+            <div className="flex justify-between items-center">
               <span>Subtotal ({saleMode === 'wholesale' ? 'B2B Wholesale' : 'Retail'}):</span>
               <span className="tabular-nums font-bold text-slate-800">
                 {currency} {subtotal.toLocaleString()}
               </span>
             </div>
 
-            {/* Wholesale B2B Savings Banner */}
             {saleMode === 'wholesale' && wholesaleSavings > 0 && (
-              <div className="flex justify-between items-center bg-purple-50 border border-purple-200 text-purple-900 px-2.5 py-1.5 rounded-xl font-extrabold text-[11px]">
+              <div className="flex justify-between items-center bg-purple-50 border border-purple-200 text-purple-900 px-2 py-1 rounded-lg font-extrabold text-[11px]">
                 <span className="flex items-center gap-1">
-                  <Sparkles className="w-3.5 h-3.5 text-purple-600" /> B2B Wholesale Savings:
+                  <Sparkles className="w-3 h-3 text-purple-600" /> Wholesale Savings:
                 </span>
                 <span className="tabular-nums">
                   {currency} {wholesaleSavings.toLocaleString()}
@@ -1411,23 +1445,23 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                 min="0"
                 value={discount}
                 onChange={e => setDiscount(e.target.value === '' ? '' : Number(e.target.value))}
-                placeholder="Discount"
-                className="w-24 text-right bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 tabular-nums font-bold text-xs focus:outline-none focus:border-blue-600 focus:bg-white"
+                placeholder="0"
+                className="w-24 text-right bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 tabular-nums font-bold text-xs focus:outline-none focus:border-blue-600 focus:bg-white"
               />
             </div>
 
-            <div className="flex justify-between text-base font-extrabold text-slate-900 pt-1.5 border-t border-slate-100">
+            <div className="flex justify-between items-center text-sm sm:text-base font-extrabold text-slate-900 pt-1 border-t border-slate-100">
               <span>Grand Total:</span>
-              <span className={`tabular-nums text-lg ${saleMode === 'wholesale' ? 'text-purple-700' : 'text-blue-600'}`}>
+              <span className={`tabular-nums text-base sm:text-lg ${saleMode === 'wholesale' ? 'text-purple-700' : 'text-blue-600'}`}>
                 {currency} {grandTotal.toLocaleString()}
               </span>
             </div>
 
             {/* If Credit Sale, show Paid Now vs Due Balance */}
             {invoiceType === 'credit' && (
-              <div className="bg-purple-50 p-2.5 rounded-xl border border-purple-200 space-y-1.5 mt-2">
+              <div className="bg-purple-50 p-2 rounded-xl border border-purple-200 space-y-1">
                 <div className="flex justify-between items-center">
-                  <span className="font-bold text-purple-900">Advance / Paid Now ({currency}):</span>
+                  <span className="font-bold text-purple-900 text-[11px]">Advance / Paid Now ({currency}):</span>
                   <input
                     type="number"
                     min="0"
@@ -1435,10 +1469,10 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                     value={amountPaid}
                     onChange={e => setAmountPaid(e.target.value === '' ? '' : Number(e.target.value))}
                     placeholder="Paid amount"
-                    className="w-28 text-right bg-white border border-purple-300 rounded-lg px-2.5 py-1.5 tabular-nums font-bold text-xs focus:outline-none focus:border-purple-600"
+                    className="w-28 text-right bg-white border border-purple-300 rounded-lg px-2 py-1 tabular-nums font-bold text-xs focus:outline-none focus:border-purple-600"
                   />
                 </div>
-                <div className="flex justify-between items-center pt-1 border-t border-purple-200 text-purple-900">
+                <div className="flex justify-between items-center pt-1 border-t border-purple-200 text-purple-900 text-[11px]">
                   <span className="font-extrabold">Remaining Due (Khata Balance):</span>
                   <span className="tabular-nums font-extrabold text-sm text-rose-600">
                     {currency} {actualDue.toLocaleString()}
@@ -1448,206 +1482,208 @@ const PosTabComponent: React.FC<PosTabProps> = ({
             )}
           </div>
 
-          {/* Payment Modes (Cash + Configured Daily Closing Accounts) */}
-          <div>
-            <div className="flex items-center justify-between gap-2 mb-1.5">
-              <label className="text-[11px] font-bold uppercase text-slate-500">
-                Payment Channel
-              </label>
-              {onlineAccounts.length > 0 && onUpdateOnlineAccount && (
+          {/* Payment Modes (Toggleable from POS & Billing Settings) */}
+          {showPaymentAccountsSection && (
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <label className="text-[10px] font-bold uppercase text-slate-500">
+                  Payment Channel
+                </label>
+                {onlineAccounts.length > 0 && onUpdateOnlineAccount && (
+                  <button
+                    type="button"
+                    onClick={() => setShowChannelCustomizer(prev => !prev)}
+                    className={`px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 border transition cursor-pointer ${
+                      showChannelCustomizer
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                    }`}
+                  >
+                    <Sliders className="w-2.5 h-2.5" />
+                    <span>Customize ({visiblePosAccounts.length}/{onlineAccounts.length})</span>
+                  </button>
+                )}
+              </div>
+
+              {showChannelCustomizer && onlineAccounts.length > 0 && onUpdateOnlineAccount && (
+                <div className="mb-1.5 p-2 bg-slate-50 border border-blue-200 rounded-xl space-y-1">
+                  <div className="flex items-center justify-between text-[10px] font-bold text-slate-600 uppercase">
+                    <span>Select accounts to show in Cart</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowChannelCustomizer(false)}
+                      className="text-blue-600 hover:underline cursor-pointer normal-case"
+                    >
+                      Done
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                    {onlineAccounts.map(acc => {
+                      const isShown = acc.showInPos !== false;
+                      return (
+                        <label
+                          key={acc.id}
+                          className={`flex items-center justify-between gap-2 p-1.5 rounded-lg border text-[11px] cursor-pointer transition ${
+                            isShown
+                              ? 'bg-white border-blue-200 text-slate-900'
+                              : 'bg-slate-100/80 border-slate-200 text-slate-400'
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <span className="font-bold block truncate">{acc.name}</span>
+                            <span className="text-[9px] text-slate-500 block truncate">
+                              {acc.bankType || 'Digital Wallet'}
+                              {acc.accountNumber ? ` • ${acc.accountNumber}` : ''}
+                            </span>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={isShown}
+                            onChange={() =>
+                              onUpdateOnlineAccount(
+                                { ...acc, showInPos: !isShown },
+                                true
+                              )
+                            }
+                            className="w-3.5 h-3.5 accent-blue-600 shrink-0 cursor-pointer"
+                          />
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                {/* Cash Button */}
                 <button
                   type="button"
-                  onClick={() => setShowChannelCustomizer(prev => !prev)}
-                  className={`px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 border transition cursor-pointer ${
-                    showChannelCustomizer
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                  onClick={selectCashChannel}
+                  className={`p-1.5 rounded-xl text-left transition cursor-pointer border min-h-[38px] flex flex-col justify-center ${
+                    paymentMethod === 'Cash' && !accountId
+                      ? invoiceType === 'credit'
+                        ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                        : 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                      : 'bg-slate-50 text-slate-800 border-slate-200 hover:bg-slate-100'
                   }`}
                 >
-                  <Sliders className="w-2.5 h-2.5" />
-                  <span>Customize ({visiblePosAccounts.length}/{onlineAccounts.length})</span>
-                </button>
-              )}
-            </div>
-
-            {showChannelCustomizer && onlineAccounts.length > 0 && onUpdateOnlineAccount && (
-              <div className="mb-2 p-2.5 bg-slate-50 border border-blue-200 rounded-xl space-y-1.5">
-                <div className="flex items-center justify-between text-[10px] font-bold text-slate-600 uppercase">
-                  <span>Select accounts to show in Cart</span>
-                  <button
-                    type="button"
-                    onClick={() => setShowChannelCustomizer(false)}
-                    className="text-blue-600 hover:underline cursor-pointer normal-case"
-                  >
-                    Done
-                  </button>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                  {onlineAccounts.map(acc => {
-                    const isShown = acc.showInPos !== false;
-                    return (
-                      <label
-                        key={acc.id}
-                        className={`flex items-center justify-between gap-2 p-1.5 rounded-lg border text-[11px] cursor-pointer transition ${
-                          isShown
-                            ? 'bg-white border-blue-200 text-slate-900'
-                            : 'bg-slate-100/80 border-slate-200 text-slate-400'
-                        }`}
-                      >
-                        <div className="min-w-0">
-                          <span className="font-bold block truncate">{acc.name}</span>
-                          <span className="text-[9px] text-slate-500 block truncate">
-                            {acc.bankType || 'Digital Wallet'}
-                            {acc.accountNumber ? ` • ${acc.accountNumber}` : ''}
-                          </span>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={isShown}
-                          onChange={() =>
-                            onUpdateOnlineAccount(
-                              { ...acc, showInPos: !isShown },
-                              true
-                            )
-                          }
-                          className="w-3.5 h-3.5 accent-blue-600 shrink-0 cursor-pointer"
-                        />
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-              {/* Cash Button */}
-              <button
-                type="button"
-                onClick={selectCashChannel}
-                className={`p-2 rounded-xl text-left transition cursor-pointer border min-h-[44px] flex flex-col justify-center ${
-                  paymentMethod === 'Cash' && !accountId
-                    ? invoiceType === 'credit'
-                      ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
-                      : 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                    : 'bg-slate-50 text-slate-800 border-slate-200 hover:bg-slate-100'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-1">
-                  <span className="text-xs font-extrabold truncate">Cash</span>
-                  <span
-                    className={`text-[9px] px-1.5 py-0.2 rounded font-bold shrink-0 ${
-                      paymentMethod === 'Cash' && !accountId
-                        ? 'bg-white/20 text-white'
-                        : 'bg-emerald-100 text-emerald-800'
-                    }`}
-                  >
-                    Drawer
-                  </span>
-                </div>
-                <span
-                  className={`text-[10px] truncate mt-0.5 ${
-                    paymentMethod === 'Cash' && !accountId ? 'text-white/80' : 'text-slate-400'
-                  }`}
-                >
-                  Physical Cash
-                </span>
-              </button>
-
-              {/* Configured Daily Closing Digital / Bank / Load Accounts */}
-              {visiblePosAccounts.map(acc => {
-                const isSelected =
-                  accountId === acc.id ||
-                  (!accountId &&
-                    paymentMethod !== 'Cash' &&
-                    String(paymentMethod).trim().toLowerCase() === acc.name.trim().toLowerCase());
-                return (
-                  <button
-                    key={acc.id}
-                    type="button"
-                    onClick={() => selectOnlineAccount(acc)}
-                    className={`p-2 rounded-xl text-left transition cursor-pointer border min-h-[44px] flex flex-col justify-center ${
-                      isSelected
-                        ? invoiceType === 'credit'
-                          ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
-                          : 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                        : 'bg-slate-50 text-slate-800 border-slate-200 hover:bg-slate-100'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="text-xs font-extrabold truncate">{acc.name}</span>
-                      <span
-                        className={`text-[9px] px-1.5 py-0.2 rounded font-bold shrink-0 max-w-[85px] truncate ${
-                          isSelected
-                            ? 'bg-white/20 text-white'
-                            : 'bg-blue-100/80 text-blue-800'
-                        }`}
-                      >
-                        {acc.bankType || 'Digital'}
-                      </span>
-                    </div>
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[11px] font-extrabold truncate">Cash</span>
                     <span
-                      className={`text-[10px] tabular-nums truncate mt-0.5 ${
-                        isSelected ? 'text-white/85' : 'text-slate-500'
+                      className={`text-[9px] px-1 py-0.2 rounded font-bold shrink-0 ${
+                        paymentMethod === 'Cash' && !accountId
+                          ? 'bg-white/20 text-white'
+                          : 'bg-emerald-100 text-emerald-800'
                       }`}
                     >
-                      {acc.accountNumber || acc.accountTitle || acc.bankType || 'Configured Account'}
+                      Drawer
                     </span>
-                  </button>
-                );
-              })}
-
-              {/* Fallback quick methods only when no digital accounts exist */}
-              {onlineAccounts.length === 0 &&
-                (['JazzCash', 'Easypaisa', 'Bank', 'Card'] as PaymentMethod[]).map(pm => (
-                  <button
-                    key={pm}
-                    type="button"
-                    onClick={() => setDraft(prev => ({ ...prev, paymentMethod: pm, accountId: '' }))}
-                    className={`p-2 rounded-xl text-xs font-bold text-center transition cursor-pointer border min-h-[44px] ${
-                      paymentMethod === pm
-                        ? invoiceType === 'credit'
-                          ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
-                          : 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                  </div>
+                  <span
+                    className={`text-[9px] truncate ${
+                      paymentMethod === 'Cash' && !accountId ? 'text-white/80' : 'text-slate-400'
                     }`}
                   >
-                    {pm}
-                  </button>
-                ))}
+                    Physical Cash
+                  </span>
+                </button>
+
+                {/* Configured Daily Closing Digital / Bank / Load Accounts */}
+                {visiblePosAccounts.map(acc => {
+                  const isSelected =
+                    accountId === acc.id ||
+                    (!accountId &&
+                      paymentMethod !== 'Cash' &&
+                      String(paymentMethod).trim().toLowerCase() === acc.name.trim().toLowerCase());
+                  return (
+                    <button
+                      key={acc.id}
+                      type="button"
+                      onClick={() => selectOnlineAccount(acc)}
+                      className={`p-1.5 rounded-xl text-left transition cursor-pointer border min-h-[38px] flex flex-col justify-center ${
+                        isSelected
+                          ? invoiceType === 'credit'
+                            ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                            : 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                          : 'bg-slate-50 text-slate-800 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-[11px] font-extrabold truncate">{acc.name}</span>
+                        <span
+                          className={`text-[9px] px-1 py-0.2 rounded font-bold shrink-0 max-w-[72px] truncate ${
+                            isSelected
+                              ? 'bg-white/20 text-white'
+                              : 'bg-blue-100/80 text-blue-800'
+                          }`}
+                        >
+                          {acc.bankType || 'Digital'}
+                        </span>
+                      </div>
+                      <span
+                        className={`text-[9px] tabular-nums truncate ${
+                          isSelected ? 'text-white/85' : 'text-slate-500'
+                        }`}
+                      >
+                        {acc.accountNumber || acc.accountTitle || acc.bankType || 'Account'}
+                      </span>
+                    </button>
+                  );
+                })}
+
+                {/* Fallback quick methods only when no digital accounts exist */}
+                {onlineAccounts.length === 0 &&
+                  (['JazzCash', 'Easypaisa', 'Bank', 'Card'] as PaymentMethod[]).map(pm => (
+                    <button
+                      key={pm}
+                      type="button"
+                      onClick={() => setDraft(prev => ({ ...prev, paymentMethod: pm, accountId: '' }))}
+                      className={`p-1.5 rounded-xl text-xs font-bold text-center transition cursor-pointer border min-h-[38px] ${
+                        paymentMethod === pm
+                          ? invoiceType === 'credit'
+                            ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                            : 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {pm}
+                    </button>
+                  ))}
+              </div>
+
+              {onlineAccounts.length > 0 && visiblePosAccounts.length === 0 && (
+                <p className="text-[11px] text-amber-700 font-semibold mt-1">
+                  Sab digital accounts hidden hain — Customize par click karke show karein.
+                </p>
+              )}
             </div>
+          )}
 
-            {onlineAccounts.length > 0 && visiblePosAccounts.length === 0 && (
-              <p className="text-[11px] text-amber-700 font-semibold mt-1.5">
-                Sab digital accounts hidden hain — Customize par click karke show karein.
-              </p>
-            )}
-          </div>
-
-          {/* Per-Bill Note Field (prints at bottom of invoice in any language) */}
-          <div className="pt-2 border-t border-slate-100">
-            <label className="flex items-center justify-between text-[11px] font-bold uppercase text-slate-500 mb-1">
+          {/* Compact Single-Line Per-Bill Note Field */}
+          <div className="pt-1.5 border-t border-slate-100">
+            <div className="flex items-center justify-between text-[10px] font-bold uppercase text-slate-500 mb-1">
               <span className="flex items-center gap-1">
                 <FileText className="w-3 h-3 text-blue-500" />
-                Bill / Invoice Note
+                Bill Note
               </span>
               <span className="text-[9px] font-semibold text-slate-400 normal-case">
                 Urdu / English / Roman Urdu
               </span>
-            </label>
-            <textarea
-              rows={2}
+            </div>
+            <input
+              type="text"
               dir="auto"
               value={billNote}
               onChange={e => setBillNote(e.target.value)}
-              placeholder="Apni zuban mein is bill ke neeche koi bhi note likhein (optional)..."
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-600 focus:bg-white transition resize-none"
+              placeholder="Bill ke neeche koi bhi note likhein (optional)..."
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[34px]"
             />
           </div>
         </div>
       </div>
 
-      {/* Pinned Checkout Action Button (always visible even in Wholesale / Credit modes) */}
-      <div className="pt-2 border-t border-slate-100 bg-white shrink-0">
+      {/* Checkout Action Button */}
+      <div className="pt-1.5 border-t border-slate-100 bg-white shrink-0">
         <button
           type="button"
           onClick={() => {
@@ -1655,7 +1691,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
             if (isMobile) setIsMobileCartOpen(false);
           }}
           disabled={cart.length === 0}
-          className={`w-full py-3.5 text-white font-extrabold rounded-xl shadow-lg transition text-sm flex items-center justify-center gap-2 cursor-pointer min-h-[48px] ${
+          className={`w-full py-2.5 text-white font-extrabold rounded-xl shadow-lg transition text-sm flex items-center justify-center gap-2 cursor-pointer min-h-[42px] ${
             cart.length > 0
               ? invoiceType === 'credit'
                 ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-500/20'
@@ -1685,13 +1721,18 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       return;
     }
 
-    const selectedOnlineAccount =
-      onlineAccounts.find(a => a.id === accountId) ||
-      (paymentMethod !== 'Cash'
-        ? onlineAccounts.find(
-            a => a.name.trim().toLowerCase() === String(paymentMethod).trim().toLowerCase()
-          )
-        : undefined);
+    const selectedOnlineAccount = showPaymentAccountsSection
+      ? onlineAccounts.find(a => a.id === accountId) ||
+        (paymentMethod !== 'Cash'
+          ? onlineAccounts.find(
+              a => a.name.trim().toLowerCase() === String(paymentMethod).trim().toLowerCase()
+            )
+          : undefined)
+      : undefined;
+
+    const effectivePaymentMethod: PaymentMethod = showPaymentAccountsSection
+      ? paymentMethod
+      : 'Cash';
 
     // Generate persistent sequential invoice number: INV-YYYYMMDD-0001, INV-YYYYMMDD-0002...
     const invNo = generateNextInvoiceNumber(sales);
@@ -1741,7 +1782,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       grandTotal,
       totalCost,
       netProfit,
-      paymentMethod,
+      paymentMethod: effectivePaymentMethod,
       accountId: selectedOnlineAccount?.id || undefined,
       notes: billNote.trim() || undefined,
       date: new Date().toISOString(),
@@ -1749,6 +1790,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
     onCompleteSale(saleRecord);
     resetDraft();
+    setLastScannedItem(null);
   };
 
   // Compute stats for historical sales
@@ -1776,9 +1818,9 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   }, [filteredSales]);
 
   return (
-    <div className="space-y-2.5 sm:space-y-4 flex flex-col flex-1 min-h-0 lg:h-full lg:overflow-hidden">
+    <div className="space-y-2.5 sm:space-y-3 flex flex-col flex-1 min-h-0">
       {/* Sub-tab Navigation Panel */}
-      <div className="flex items-center justify-between gap-2 bg-white border border-slate-200/80 rounded-2xl p-1.5 sm:p-2.5 shadow-xs w-full max-w-full overflow-hidden shrink-0">
+      <div className="flex items-center justify-between gap-2 bg-white border border-slate-200/80 rounded-2xl p-1.5 sm:p-2 shadow-xs w-full max-w-full overflow-hidden shrink-0">
         <div className="flex bg-slate-100 p-0.5 sm:p-1 rounded-xl w-full sm:w-fit gap-1">
           <button
             type="button"
@@ -1813,19 +1855,33 @@ const PosTabComponent: React.FC<PosTabProps> = ({
           </button>
         </div>
 
-        {/* Developer Tag - Hidden on tiny screens to avoid wrapping */}
-        <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 border border-slate-200/80 rounded-xl shrink-0">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span className="text-[9px] font-extrabold text-slate-500 tracking-wider tabular-nums">
-            HAMMAD DEVELOPER
-          </span>
+        <div className="flex items-center gap-2 shrink-0">
+          {onOpenPosSettings && (
+            <button
+              type="button"
+              onClick={onOpenPosSettings}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200/80 text-xs font-bold transition cursor-pointer"
+              title="POS & Billing Settings (Enable / Disable Payment Accounts)"
+            >
+              <Sliders className="w-3.5 h-3.5 text-blue-600" />
+              <span className="hidden sm:inline">POS Settings</span>
+            </button>
+          )}
+
+          {/* Developer Tag - Hidden on tiny screens to avoid wrapping */}
+          <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 border border-slate-200/80 rounded-xl shrink-0">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span className="text-[9px] font-extrabold text-slate-500 tracking-wider tabular-nums">
+              HAMMAD DEVELOPER
+            </span>
+          </div>
         </div>
       </div>
 
       {posSubTab === 'billing' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 lg:gap-5 flex-1 min-h-0 lg:overflow-hidden">
-          {/* Left Column: Catalog & Search (7 Cols) - Desktop scrollable products */}
-          <div className="lg:col-span-7 flex flex-col min-h-0 lg:h-full space-y-2.5 sm:space-y-3.5">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 items-start flex-1 min-h-0">
+          {/* Left Column: Catalog & Search (7 Cols) - Sticky scrollable catalog on desktop */}
+          <div className="lg:col-span-7 flex flex-col min-h-0 lg:sticky lg:top-0 lg:max-h-[calc(100dvh-7.5rem)] space-y-2.5 sm:space-y-3">
             {/* Mode Switcher Banner: Retail vs Wholesale Mode (Compact on mobile) */}
             <div className={`border rounded-2xl p-2 sm:p-3 shadow-xs flex items-center justify-between gap-2 shrink-0 transition ${
               saleMode === 'wholesale'
@@ -2007,7 +2063,48 @@ const PosTabComponent: React.FC<PosTabProps> = ({
             </div>
 
             {/* Product Cards Grid - Compact Responsive Daraz Style */}
-            <div className="flex-1 min-h-0 overflow-y-auto pr-1 sm:pr-1.5 scrollbar-thin touch-pan-y">
+            <div ref={productGridRef} className="flex-1 min-h-0 overflow-y-auto pr-1 sm:pr-1.5 scrollbar-thin touch-pan-y space-y-2">
+              {/* Recently Scanned IMEI / Barcode Banner */}
+              {lastScannedItem && (() => {
+                const scannedObj = activeInventory.find(i => i.id === lastScannedItem.itemId);
+                if (!scannedObj) return null;
+                return (
+                  <div className="bg-emerald-50 border border-emerald-300 rounded-xl px-3 py-2 flex items-center justify-between gap-2 shadow-2xs">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <div className="min-w-0 text-xs">
+                        <span className="font-extrabold text-emerald-900 truncate block">
+                          Scanned: {scannedObj.name}
+                          {lastScannedItem.variantLabel ? ` (${lastScannedItem.variantLabel})` : ''}
+                        </span>
+                        {lastScannedItem.imei && (
+                          <span className="text-[10px] font-bold text-emerald-700 tabular-nums block truncate">
+                            IMEI: {lastScannedItem.imei} • Pinned at #1 below & added to cart
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedProductDetails(scannedObj)}
+                        className="px-2 py-1 rounded-lg bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px] font-bold cursor-pointer transition"
+                      >
+                        Details
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLastScannedItem(null)}
+                        className="p-1 text-emerald-600 hover:text-emerald-900 rounded-lg cursor-pointer"
+                        title="Dismiss"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {filteredItems.length === 0 ? (
                 <div className="text-center py-12 bg-white rounded-2xl border border-slate-200 text-xs text-slate-400 space-y-2">
                   <Package className="w-8 h-8 mx-auto text-slate-300" />
@@ -2027,13 +2124,24 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                       .filter(c => c.id === item.id)
                       .reduce((sum, c) => sum + c.cartQty, 0);
                     const remainingStock = item.qty - inCartQtyForItem;
+                    const isLastScanned = lastScannedItem?.itemId === item.id;
+                    const itemSpecs = Array.from(
+                      new Set(
+                        [
+                          ...(item.variants || []).map(v => [v.ram, v.storage].filter(Boolean).join('/')),
+                          [item.ram, item.storage].filter(Boolean).join('/'),
+                        ].filter(Boolean)
+                      )
+                    );
 
                     return (
                       <div
                         key={item.id}
                         onClick={() => setSelectedProductDetails(item)}
-                        className={`bg-white border rounded-2xl p-2 sm:p-2.5 shadow-2xs hover:shadow-lg hover:border-blue-400 transition-all duration-200 cursor-pointer flex flex-col justify-between group relative ${
-                          remainingStock <= 0
+                        className={`bg-white border rounded-2xl p-2 sm:p-2.5 shadow-2xs hover:shadow-lg transition-all duration-200 cursor-pointer flex flex-col justify-between group relative ${
+                          isLastScanned
+                            ? 'border-emerald-500 ring-2 ring-emerald-400/70 bg-emerald-50/15'
+                            : remainingStock <= 0
                             ? 'opacity-60 border-slate-200 hover:border-slate-300'
                             : 'border-slate-200/90 hover:border-blue-500'
                         }`}
@@ -2052,6 +2160,12 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                               <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-black text-sm sm:text-lg shadow-inner">
                                 {item.name.charAt(0).toUpperCase()}
                               </div>
+                            )}
+
+                            {isLastScanned && (
+                              <span className="absolute top-1.5 left-1.5 text-[8px] sm:text-[9px] font-black px-1.5 py-0.2 rounded-full bg-emerald-600 text-white shadow-xs">
+                                Scanned ✓
+                              </span>
                             )}
 
                             {/* Remaining Stock Badge */}
@@ -2073,14 +2187,22 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                             </div>
                           </div>
 
-                          {/* Category & Color Variants Badge */}
+                          {/* Category, RAM/Storage & Color Variants Badge */}
                           <div className="mt-1.5 flex items-center gap-1 flex-wrap">
                             <span className="inline-block text-[8px] sm:text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded truncate max-w-[100px]">
                               {item.category}
                             </span>
+                            {itemSpecs.slice(0, 1).map((sp, sIdx) => (
+                              <span
+                                key={sIdx}
+                                className="inline-block text-[8px] sm:text-[9px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/70 px-1 py-0.5 rounded"
+                              >
+                                {sp}
+                              </span>
+                            ))}
                             {item.variants && item.variants.length > 0 && (
                               <span className="inline-block text-[8px] sm:text-[9px] font-bold text-purple-700 bg-purple-50 border border-purple-200/60 px-1 py-0.5 rounded">
-                                {item.variants.length} Colors
+                                {item.variants.length} {item.variants.length === 1 ? 'Var' : 'Vars'}
                               </span>
                             )}
                           </div>
@@ -2133,8 +2255,8 @@ const PosTabComponent: React.FC<PosTabProps> = ({
             </div>
           </div>
 
-          {/* Right Column: Checkout & Billing Cart (Desktop Only >= lg:) */}
-          <div className="hidden lg:flex lg:flex-col lg:col-span-5 h-full min-h-0 overflow-hidden">
+          {/* Right Column: Checkout & Billing Cart (Desktop Only >= lg:) — Non-scrollable */}
+          <div className="hidden lg:flex lg:flex-col lg:col-span-5">
             {renderCartContent(false)}
           </div>
 
