@@ -597,235 +597,253 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
 
       {/* ALL DETAIL REPORT CARDS SUITE */}
       <div>
-        <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-3">
+        <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-2">
           Available Detail Reports
         </h3>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {/* WHOLESALE & RETAILER B2B REPORT CARD (NEW) */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+          {/* WHOLESALE & RETAILER B2B REPORT CARD */}
           <div
             onClick={() => setActiveReportModal('wholesale')}
-            className="bg-white dark:bg-neutral-900 border-2 border-purple-300 dark:border-purple-800 rounded-2xl p-4 shadow-xs hover:border-purple-500 hover:shadow-md transition cursor-pointer flex flex-col justify-between relative overflow-hidden"
+            className="bg-white dark:bg-neutral-900 border border-purple-300 dark:border-purple-800 rounded-xl p-2.5 shadow-xs hover:border-purple-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between relative overflow-hidden"
           >
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="w-9 h-9 rounded-xl bg-purple-50 dark:bg-purple-950 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold">
-                  <Store className="w-5 h-5" />
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-1.5">
+                <div className="w-7 h-7 rounded-lg bg-purple-50 dark:bg-purple-950 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+                  <Store className="w-3.5 h-3.5" />
                 </div>
-                <span className="text-[10px] font-extrabold px-2 py-0.5 bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 rounded-full">
-                  B2B Wholesale
+                <span className="text-[9px] font-extrabold px-1.5 py-0.5 bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 rounded-md">
+                  B2B
                 </span>
               </div>
               <div>
-                <h4 className="font-extrabold text-slate-900 dark:text-white text-sm">
-                  Wholesale & Retailer B2B Report
+                <h4 className="font-bold text-slate-900 dark:text-white text-xs leading-tight line-clamp-1">
+                  Wholesale & Retailer B2B
                 </h4>
-                <p className="text-[11px] text-slate-500 dark:text-neutral-400 mt-0.5">
-                  Retailer sales, wholesale cost, net profit/loss, and discounts given
+                <p className="text-[10px] text-slate-500 dark:text-neutral-400 mt-0.5 leading-snug line-clamp-2">
+                  Retailer sales, wholesale cost, profit & discounts
                 </p>
               </div>
             </div>
-            <div className="mt-4 pt-3 border-t border-purple-100 dark:border-neutral-800 flex items-center justify-between text-xs font-bold text-purple-600 dark:text-purple-400">
-              <span>{wholesaleSales.length} Wholesale Invoices</span>
-              <ArrowUpRight className="w-4 h-4" />
+            <div className="mt-2 pt-1.5 border-t border-purple-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-purple-600 dark:text-purple-400">
+              <span className="truncate">{wholesaleSales.length} Wholesale Invoices</span>
+              <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
             </div>
           </div>
 
           {/* 1. Sales Report Card */}
           <div
             onClick={() => setActiveReportModal('sales')}
-            className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs hover:border-blue-500 hover:shadow-md transition cursor-pointer flex flex-col justify-between"
+            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2.5 shadow-xs hover:border-blue-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
           >
-            <div className="space-y-2">
-              <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-                <ShoppingBag className="w-5 h-5" />
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                  <ShoppingBag className="w-3.5 h-3.5" />
+                </div>
+                <h4 className="font-bold text-slate-900 dark:text-white text-xs leading-tight line-clamp-1">
+                  Sales & Invoices
+                </h4>
               </div>
-              <div>
-                <h4 className="font-bold text-slate-900 text-sm">Sales & Invoices Report</h4>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Itemized sales, customer invoices, cash vs credit split
-                </p>
-              </div>
+              <p className="text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-2">
+                Itemized sales, customer invoices, cash vs credit split
+              </p>
             </div>
-            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-blue-600">
-              <span>View Detail Report</span>
-              <ArrowUpRight className="w-4 h-4" />
+            <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-blue-600 dark:text-blue-400">
+              <span>View Report</span>
+              <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
             </div>
           </div>
 
           {/* 2. Daily Expenses Report Card */}
           <div
             onClick={() => setActiveReportModal('expenses')}
-            className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs hover:border-rose-500 hover:shadow-md transition cursor-pointer flex flex-col justify-between"
+            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2.5 shadow-xs hover:border-rose-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
           >
-            <div className="space-y-2">
-              <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold">
-                <Receipt className="w-5 h-5" />
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+                  <Receipt className="w-3.5 h-3.5" />
+                </div>
+                <h4 className="font-bold text-slate-900 dark:text-white text-xs leading-tight line-clamp-1">
+                  Daily Expenses
+                </h4>
               </div>
-              <div>
-                <h4 className="font-bold text-slate-900 text-sm">Daily Expenses Report</h4>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Expenditure log by date, category, and payment channel
-                </p>
-              </div>
+              <p className="text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-2">
+                Expenditure log by date, category & payment channel
+              </p>
             </div>
-            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-rose-600">
-              <span>View Detail Report</span>
-              <ArrowUpRight className="w-4 h-4" />
+            <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-rose-600 dark:text-rose-400">
+              <span>View Report</span>
+              <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
             </div>
           </div>
 
           {/* 3. Inventory Stock Valuation Card */}
           <div
             onClick={() => setActiveReportModal('inventory')}
-            className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs hover:border-indigo-500 hover:shadow-md transition cursor-pointer flex flex-col justify-between"
+            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2.5 shadow-xs hover:border-indigo-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
           >
-            <div className="space-y-2">
-              <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
-                <Package className="w-5 h-5" />
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                  <Package className="w-3.5 h-3.5" />
+                </div>
+                <h4 className="font-bold text-slate-900 dark:text-white text-xs leading-tight line-clamp-1">
+                  Inventory & Valuation
+                </h4>
               </div>
-              <div>
-                <h4 className="font-bold text-slate-900 text-sm">Inventory & Valuation</h4>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Stock levels, cost value, retail value, low stock warnings
-                </p>
-              </div>
+              <p className="text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-2">
+                Stock levels, cost value, retail value & low stock alerts
+              </p>
             </div>
-            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-indigo-600">
-              <span>View Detail Report</span>
-              <ArrowUpRight className="w-4 h-4" />
+            <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+              <span>View Report</span>
+              <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
             </div>
           </div>
 
           {/* 4. Customer Credit / Khata Report Card */}
           <div
             onClick={() => setActiveReportModal('khata')}
-            className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs hover:border-purple-500 hover:shadow-md transition cursor-pointer flex flex-col justify-between"
+            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2.5 shadow-xs hover:border-purple-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
           >
-            <div className="space-y-2">
-              <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
-                <BookOpen className="w-5 h-5" />
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+                  <BookOpen className="w-3.5 h-3.5" />
+                </div>
+                <h4 className="font-bold text-slate-900 dark:text-white text-xs leading-tight line-clamp-1">
+                  Customer Credit & Khata
+                </h4>
               </div>
-              <div>
-                <h4 className="font-bold text-slate-900 text-sm">Customer Credit & Khata</h4>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Outstanding credit, customer accounts, recovery records
-                </p>
-              </div>
+              <p className="text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-2">
+                Outstanding credit, customer accounts & recoveries
+              </p>
             </div>
-            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-purple-600">
-              <span>View Detail Report</span>
-              <ArrowUpRight className="w-4 h-4" />
+            <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-purple-600 dark:text-purple-400">
+              <span>View Report</span>
+              <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
             </div>
           </div>
 
           {/* 5. Profit & Loss Statement Card */}
           <div
             onClick={() => setActiveReportModal('pnl')}
-            className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs hover:border-emerald-500 hover:shadow-md transition cursor-pointer flex flex-col justify-between"
+            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2.5 shadow-xs hover:border-emerald-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
           >
-            <div className="space-y-2">
-              <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-                <TrendingUp className="w-5 h-5" />
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                  <TrendingUp className="w-3.5 h-3.5" />
+                </div>
+                <h4 className="font-bold text-slate-900 dark:text-white text-xs leading-tight line-clamp-1">
+                  Profit & Loss
+                </h4>
               </div>
-              <div>
-                <h4 className="font-bold text-slate-900 text-sm">Profit & Loss Statement</h4>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Revenue, cost of sales, operating expenses, net margin
-                </p>
-              </div>
+              <p className="text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-2">
+                Revenue, cost of sales, expenses & net margin
+              </p>
             </div>
-            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-emerald-600">
-              <span>View Detail Report</span>
-              <ArrowUpRight className="w-4 h-4" />
+            <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+              <span>View Report</span>
+              <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
             </div>
           </div>
 
           {/* 6. Daily Closing Report Card */}
           <div
             onClick={() => setActiveReportModal('closings')}
-            className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs hover:border-teal-500 hover:shadow-md transition cursor-pointer flex flex-col justify-between"
+            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2.5 shadow-xs hover:border-teal-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
           >
-            <div className="space-y-2">
-              <div className="w-9 h-9 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center font-bold">
-                <Calculator className="w-5 h-5" />
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0">
+                  <Calculator className="w-3.5 h-3.5" />
+                </div>
+                <h4 className="font-bold text-slate-900 dark:text-white text-xs leading-tight line-clamp-1">
+                  Daily Closing & Cash
+                </h4>
               </div>
-              <div>
-                <h4 className="font-bold text-slate-900 text-sm">Daily Closing & Cash Flow</h4>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Physical cash counts, digital account balances, reconciliation
-                </p>
-              </div>
+              <p className="text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-2">
+                Physical cash counts, digital balances & reconciliation
+              </p>
             </div>
-            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-teal-600">
-              <span>View Detail Report</span>
-              <ArrowUpRight className="w-4 h-4" />
+            <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-teal-600 dark:text-teal-400">
+              <span>View Report</span>
+              <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
             </div>
           </div>
 
           {/* 7. Purchases & Stock Inward Card */}
           <div
             onClick={() => setActiveReportModal('purchases')}
-            className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs hover:border-amber-500 hover:shadow-md transition cursor-pointer flex flex-col justify-between"
+            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2.5 shadow-xs hover:border-amber-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
           >
-            <div className="space-y-2">
-              <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
-                <Layers className="w-5 h-5" />
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                  <Layers className="w-3.5 h-3.5" />
+                </div>
+                <h4 className="font-bold text-slate-900 dark:text-white text-xs leading-tight line-clamp-1">
+                  Purchases Ledger
+                </h4>
               </div>
-              <div>
-                <h4 className="font-bold text-slate-900 text-sm">Purchases Ledger</h4>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Stock inward acquisition history and purchase cost entries
-                </p>
-              </div>
+              <p className="text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-2">
+                Stock inward acquisition history & purchase cost
+              </p>
             </div>
-            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-amber-600">
-              <span>View Detail Report</span>
-              <ArrowUpRight className="w-4 h-4" />
+            <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-amber-600 dark:text-amber-400">
+              <span>View Report</span>
+              <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
             </div>
           </div>
 
           {/* 8. Top Selling Products Card */}
           <div
             onClick={() => setActiveReportModal('top_products')}
-            className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs hover:border-orange-500 hover:shadow-md transition cursor-pointer flex flex-col justify-between"
+            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2.5 shadow-xs hover:border-orange-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
           >
-            <div className="space-y-2">
-              <div className="w-9 h-9 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center font-bold">
-                <TrendingUp className="w-5 h-5" />
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-orange-50 dark:bg-orange-950/60 text-orange-600 dark:text-orange-400 flex items-center justify-center shrink-0">
+                  <TrendingUp className="w-3.5 h-3.5" />
+                </div>
+                <h4 className="font-bold text-slate-900 dark:text-white text-xs leading-tight line-clamp-1">
+                  Top Selling Products
+                </h4>
               </div>
-              <div>
-                <h4 className="font-bold text-slate-900 text-sm">Top Selling Products</h4>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Sales ranking by units sold, total volume, and profit contribution
-                </p>
-              </div>
+              <p className="text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-2">
+                Sales ranking by units sold, volume & profit
+              </p>
             </div>
-            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-orange-600">
-              <span>View Detail Report</span>
-              <ArrowUpRight className="w-4 h-4" />
+            <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-orange-600 dark:text-orange-400">
+              <span>View Report</span>
+              <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
             </div>
           </div>
 
           {/* 9. Returns & Refunds Report Card */}
           <div
             onClick={() => setActiveReportModal('returns')}
-            className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs hover:border-amber-500 hover:shadow-md transition cursor-pointer flex flex-col justify-between"
+            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2.5 shadow-xs hover:border-amber-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
           >
-            <div className="space-y-2">
-              <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
-                <RotateCcw className="w-5 h-5" />
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </div>
+                <h4 className="font-bold text-slate-900 dark:text-white text-xs leading-tight line-clamp-1">
+                  Returns & Refunds
+                </h4>
               </div>
-              <div>
-                <h4 className="font-bold text-slate-900 text-sm">Returns & Refunds</h4>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Restored inventory, IMEIs, customer refunds & reversed margins
-                </p>
-              </div>
+              <p className="text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-2">
+                Restored inventory, IMEIs, refunds & reversed margin
+              </p>
             </div>
-            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-amber-600">
-              <span>{(data.salesReturns || []).length} Returns Recorded</span>
-              <ArrowUpRight className="w-4 h-4" />
+            <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-amber-600 dark:text-amber-400">
+              <span className="truncate">{(data.salesReturns || []).length} Returns</span>
+              <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
             </div>
           </div>
         </div>
