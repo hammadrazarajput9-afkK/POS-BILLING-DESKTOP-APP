@@ -713,7 +713,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
         const imeiLower = imeis.map(im => im.trim().toLowerCase());
         const barcode = (item.barcode || '').trim().toLowerCase();
         const variantText = (item.variants || [])
-          .map(v => `${v.ram || ''} ${v.storage || ''} ${v.color || ''}`)
+          .map(v => `${v.ram || ''} ${v.storage || ''} ${v.color || ''} ${v.note || ''}`)
           .join(' ');
 
         let score = 0;
@@ -725,7 +725,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
           score = smartSearchScore(
             q,
             [item.name, item.category],
-            [item.ram, item.storage, item.color, variantText, item.barcode, imeis.join(' ')]
+            [item.ram, item.storage, item.color, item.note, variantText, item.barcode, imeis.join(' ')]
           );
         }
 
@@ -983,11 +983,11 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       const matchingBySearch = smartFilterAndSort(activeInventory, clean, item => {
         const imeiString = extractItemImeis(item).join(' ');
         const variantText = (item.variants || [])
-          .map(v => `${v.ram || ''} ${v.storage || ''} ${v.color || ''}`)
+          .map(v => `${v.ram || ''} ${v.storage || ''} ${v.color || ''} ${v.note || ''}`)
           .join(' ');
         return {
           primary: [item.name, item.category],
-          secondary: [item.ram, item.storage, item.color, variantText, item.barcode, imeiString],
+          secondary: [item.ram, item.storage, item.color, item.note, variantText, item.barcode, imeiString],
         };
       });
       if (matchingBySearch.length === 1) {
@@ -3114,6 +3114,11 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                             </button>
                           </div>
                         </div>
+                        {v.note && (
+                          <div className="text-[10px] bg-amber-50/80 border border-amber-200/70 text-amber-900 px-2 py-1 rounded-lg font-medium">
+                            <span className="font-bold text-amber-700">Note:</span> {v.note}
+                          </div>
+                        )}
                         {v.imeis && v.imeis.filter(Boolean).length > 0 && (
                           <div className="pt-1 border-t border-slate-200/70 flex flex-wrap gap-1">
                             {v.imeis.filter(Boolean).map((im: string, imIdx: number) => (
@@ -3313,6 +3318,11 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                           </span>
                         )}
                       </div>
+                      {v.note && (
+                        <div className="text-[10px] text-amber-800 bg-amber-50/80 border border-amber-200/70 rounded-md px-1.5 py-0.5 ml-6.5 font-medium truncate">
+                          Note: {v.note}
+                        </div>
+                      )}
                     </div>
 
                     <div className="text-right shrink-0 space-y-1">

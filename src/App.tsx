@@ -954,7 +954,7 @@ function AppContent() {
     const newPurchase: SupplierPurchase = {
       ...purchaseData,
       id: newPurchaseId,
-      partyPhone: isSalesmanUser ? undefined : purchaseData.partyPhone,
+      partyPhone: purchaseData.partyPhone?.trim() || undefined,
       paidAmount: isSalesmanUser ? 0 : purchaseData.paidAmount,
       balanceDue: isSalesmanUser ? purchaseData.totalAmount : purchaseData.balanceDue,
       paymentMethod: isSalesmanUser ? 'Credit' : purchaseData.paymentMethod,
@@ -1192,7 +1192,7 @@ function AppContent() {
     const updatedPurchase: SupplierPurchase = {
       ...updatedPurchaseData,
       id: purchaseId,
-      partyPhone: isSalesmanUser ? oldPurchase.partyPhone : updatedPurchaseData.partyPhone,
+      partyPhone: updatedPurchaseData.partyPhone?.trim() || undefined,
       paidAmount: preservedPaidAmount,
       balanceDue: preservedBalanceDue,
       paymentMethod: isSalesmanUser ? oldPurchase.paymentMethod : updatedPurchaseData.paymentMethod,

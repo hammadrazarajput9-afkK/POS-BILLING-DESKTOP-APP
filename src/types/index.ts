@@ -19,6 +19,7 @@ export interface InventoryItem {
   ram?: string;
   storage?: string;
   color?: string;
+  note?: string;
   variants?: MobileVariant[];
   updatedAt?: string;
 }
@@ -77,6 +78,7 @@ export interface MobileVariant {
   autoWholesalePrice?: boolean;
   qty: number | '';
   imeis: string[];
+  note?: string;
 }
 
 export interface KhataTransaction {

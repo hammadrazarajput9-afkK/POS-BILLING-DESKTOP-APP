@@ -936,7 +936,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
     const newPurchaseData: Omit<SupplierPurchase, 'id'> = {
       billNo: billNo.trim() || generateInwardBillNo(purchaseDate, purchases),
       partyName: partyName.trim(),
-      partyPhone: isAdmin ? partyPhone.trim() || undefined : originalPurchase?.partyPhone || undefined,
+      partyPhone: partyPhone.trim() || undefined,
       date: purchaseDate,
       items: purchaseItems,
       totalAmount: totalBillAmount,
@@ -1913,20 +1913,18 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                   </datalist>
                 </div>
 
-                {isAdmin && (
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      Supplier Phone (Optional)
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="0300-1234567"
-                      value={partyPhone}
-                      onChange={e => setPartyPhone(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500"
-                    />
-                  </div>
-                )}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Supplier Phone (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="0300-1234567"
+                    value={partyPhone}
+                    onChange={e => setPartyPhone(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500"
+                  />
+                </div>
 
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 mb-1">

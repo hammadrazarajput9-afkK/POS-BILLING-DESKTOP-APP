@@ -400,6 +400,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
               wholesalePrice: item.wholesalePrice !== undefined ? item.wholesalePrice : '',
               salePrice: item.salePrice,
               qty: item.qty,
+              note: item.note,
               imeis: item.imeis && item.imeis.length > 0 ? [...item.imeis] : item.imei ? [item.imei] : [],
             }];
 
@@ -429,6 +430,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
             wholesalePrice: item.wholesalePrice !== undefined ? item.wholesalePrice : '',
             salePrice: item.salePrice,
             qty: item.qty,
+            note: item.note,
             imeis: itemImeisList,
           });
         }
@@ -465,12 +467,12 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
       ].join(' ');
 
       const variantSpecsAndColors = (item.variants || [])
-        .map(v => `${v.ram || ''} ${v.storage || ''} ${v.color || ''}`)
+        .map(v => `${v.ram || ''} ${v.storage || ''} ${v.color || ''} ${v.note || ''}`)
         .join(' ');
 
       return {
         primary: [item.name, item.category],
-        secondary: [item.ram, item.storage, item.color, variantSpecsAndColors, item.barcode, imeiString],
+        secondary: [item.ram, item.storage, item.color, item.note, variantSpecsAndColors, item.barcode, imeiString],
       };
     });
   }, [unifiedInventory, search, categoryFilter, statusFilter]);
@@ -1283,6 +1285,12 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                     <span className="tabular-nums font-bold text-slate-700">{selectedProductPopup.barcode}</span>
                   </div>
                 )}
+                {selectedProductPopup.note && (
+                  <div className="text-xs bg-amber-50/80 border border-amber-200/80 text-amber-900 rounded-lg px-2 py-1">
+                    <span className="text-[10px] font-bold uppercase text-amber-700">Note: </span>
+                    <span className="font-medium">{selectedProductPopup.note}</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1325,6 +1333,11 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                           </span>
                         </div>
                       </div>
+                      {v.note && (
+                        <div className="text-[11px] bg-amber-50/70 border border-amber-200/70 text-amber-900 px-2 py-1 rounded-lg font-medium">
+                          <span className="font-bold text-amber-700">Note:</span> {v.note}
+                        </div>
+                      )}
                       {v.imeis && v.imeis.filter(Boolean).length > 0 && (
                         <div className="pt-1 border-t border-slate-100 flex flex-wrap gap-1">
                           {v.imeis.filter(Boolean).map((im: string, imIdx: number) => {

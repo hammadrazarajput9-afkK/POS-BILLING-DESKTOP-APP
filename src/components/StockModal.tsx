@@ -20,7 +20,8 @@ import {
   HardDrive,
   Palette,
   AlertTriangle,
-  Edit2
+  Edit2,
+  FileText
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { useFormDraft } from '../hooks/useFormDraft';
@@ -69,6 +70,7 @@ interface StockDraftState {
   salePrice: number | '';
   qty: number | '';
   imeis: string[];
+  note?: string;
   variants: MobileVariant[];
 }
 
@@ -85,6 +87,7 @@ const createDefaultVariant = (id: string, ram = '4GB', storage = '64GB'): Mobile
   salePrice: '',
   qty: '',
   imeis: [''],
+  note: '',
 });
 
 const initialStockDraft: StockDraftState = {
@@ -96,6 +99,7 @@ const initialStockDraft: StockDraftState = {
   salePrice: '',
   qty: '',
   imeis: [''],
+  note: '',
   variants: [createDefaultVariant('var-1', '4GB', '64GB')],
 };
 
@@ -217,6 +221,7 @@ export const StockModal: React.FC<StockModalProps> = ({
   const [boxSize, setBoxSize] = useState<number | ''>(10);
   const [qty, setQty] = useState<number | ''>('');
   const [color, setColor] = useState('');
+  const [itemNote, setItemNote] = useState('');
   const [imeis, setImeis] = useState<string[]>(['']);
 
   // Stock Adjustment state for edit quantity changes
@@ -272,6 +277,7 @@ export const StockModal: React.FC<StockModalProps> = ({
         setBoxSize(editItem.boxSize !== undefined ? editItem.boxSize : 10);
         setQty(editItem.qty);
         setColor(editItem.color || '');
+        setItemNote(editItem.note || '');
 
         const existingImeis = editItem.imeis && editItem.imeis.length > 0
           ? [...editItem.imeis]
@@ -304,6 +310,7 @@ export const StockModal: React.FC<StockModalProps> = ({
               }
               return {
                 ...v,
+                note: v.note || '',
                 costPrice: v.autoCostPrice ? '' : v.costPrice,
                 wholesalePrice: v.autoWholesalePrice
                   ? ''
@@ -326,6 +333,7 @@ export const StockModal: React.FC<StockModalProps> = ({
             ram: editItem.ram || (isKeypadCategory(editItem.category) ? '' : '6GB'),
             storage: editItem.storage || (isKeypadCategory(editItem.category) ? '' : '128GB'),
             color: editItem.color || parenColor || '',
+            note: editItem.note || '',
             costPrice: editItem.costPrice,
             wholesalePrice: editItem.wholesalePrice !== undefined ? editItem.wholesalePrice : '',
             salePrice: editItem.salePrice,
@@ -355,12 +363,14 @@ export const StockModal: React.FC<StockModalProps> = ({
         setBoxSize(10);
         setQty(hasMeaningfulDraft && draftData.qty !== undefined ? draftData.qty : '');
         setColor('');
+        setItemNote(draftData.note || '');
         setImeis(draftData.imeis && draftData.imeis.length > 0 ? [...draftData.imeis] : ['']);
 
         if (hasMeaningfulDraft && draftData.variants && draftData.variants.length > 0 && isAndroidCategory(lastCategory)) {
           setVariants(
             draftData.variants.map(v => ({
               ...v,
+              note: v.note || '',
               costPrice: v.autoCostPrice ? '' : v.costPrice,
               wholesalePrice: v.autoWholesalePrice ? '' : v.wholesalePrice,
               salePrice: v.autoSalePrice ? '' : v.salePrice,
@@ -398,6 +408,7 @@ export const StockModal: React.FC<StockModalProps> = ({
         salePrice,
         qty,
         imeis,
+        note: itemNote,
         variants,
       });
     }, 400);
@@ -407,7 +418,7 @@ export const StockModal: React.FC<StockModalProps> = ({
         clearTimeout(draftTimerRef.current);
       }
     };
-  }, [name, category, image, barcode, costPrice, salePrice, qty, imeis, variants, editItem, isOpen, setDraftData]);
+  }, [name, category, image, barcode, costPrice, salePrice, qty, imeis, itemNote, variants, editItem, isOpen, setDraftData]);
 
   const isAndroid = isAndroidCategory(category);
   const isKeypad = isKeypadCategory(category);
@@ -603,6 +614,7 @@ export const StockModal: React.FC<StockModalProps> = ({
       autoSalePrice: false,
       qty: '',
       imeis: [''],
+      note: '',
     };
 
     setVariants(prev => [...prev, newVar]);
@@ -625,6 +637,7 @@ export const StockModal: React.FC<StockModalProps> = ({
       autoSalePrice: false,
       qty: newQty,
       imeis: Array(newQty).fill(''),
+      note: source.note || '',
     };
 
     setVariants(prev => {
@@ -1098,6 +1111,7 @@ export const StockModal: React.FC<StockModalProps> = ({
           autoSalePrice: !hasManualSale && suggSale !== '',
           qty,
           imeis: nextImeis.slice(0, qty),
+          note: v.note?.trim() || undefined,
         };
       });
 
@@ -1342,6 +1356,7 @@ export const StockModal: React.FC<StockModalProps> = ({
           salePrice: sale,
           qty: quantity,
           color: color.trim() || undefined,
+          note: itemNote.trim() || undefined,
           status: editItem?.status || 'ACTIVE',
         },
         editItem ? editItem.id : undefined,
@@ -1917,6 +1932,21 @@ export const StockModal: React.FC<StockModalProps> = ({
                         </div>
                       </div>
 
+                      {/* Variant Note Input */}
+                      <div className="bg-slate-50/70 px-2 py-1.5 rounded-lg border border-slate-200/70">
+                        <label className="flex items-center gap-1 font-bold text-slate-700 mb-0.5 text-[10px]">
+                          <FileText className="w-3 h-3 text-blue-600" />
+                          Variant #{vIdx + 1} Note (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={v.note || ''}
+                          onChange={e => handleUpdateVariantField(vIdx, 'note', e.target.value)}
+                          placeholder="e.g. Box Pack, PTA Approved, Official Warranty, Condition note..."
+                          className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-600 min-h-[32px]"
+                        />
+                      </div>
+
                       {/* STRICT 1-IMEI-PER-BOX DYNAMIC GRID */}
                       <div className="p-2 bg-blue-50/60 border border-blue-200/80 rounded-lg space-y-1.5">
                         <div className="flex items-center justify-between gap-2">
@@ -2129,6 +2159,21 @@ export const StockModal: React.FC<StockModalProps> = ({
                     className="allow-spinner w-full bg-slate-50 border border-blue-400 rounded-lg px-2.5 py-1.5 text-xs tabular-nums font-bold text-blue-700 focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[36px] max-sm:min-h-[42px]"
                   />
                 </div>
+              </div>
+
+              {/* Product Note Input (Single Mode) */}
+              <div className="bg-slate-50/70 px-2.5 py-1.5 rounded-xl border border-slate-200/70">
+                <label className="flex items-center gap-1 font-bold text-slate-700 mb-0.5 text-[10px]">
+                  <FileText className="w-3 h-3 text-blue-600" />
+                  Product Note (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={itemNote}
+                  onChange={e => setItemNote(e.target.value)}
+                  placeholder="e.g. Warranty details, supplier info, box condition..."
+                  className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-600 min-h-[34px]"
+                />
               </div>
 
               {/* If editing and stock quantity is modified, display structured Stock Adjustment audit selector */}
