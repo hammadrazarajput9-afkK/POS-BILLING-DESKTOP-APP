@@ -123,28 +123,48 @@ export const getLastSelectedCategory = (categories: string[]): string => {
 export const isAndroidCategory = (cat: string): boolean => {
   if (!cat) return false;
   const c = cat.toLowerCase().trim();
-  // Exclude non-phone categories
+  // Exclude non-phone & keypad categories
   if (
     c.includes('keypad') ||
     c.includes('feature') ||
     c.includes('button') ||
+    c.includes('bar phone') ||
     c.includes('accessory') ||
     c.includes('accessories') ||
     c.includes('charger') ||
     c.includes('cable') ||
     c.includes('audio') ||
     c.includes('airpod') ||
+    c.includes('earbud') ||
+    c.includes('handsfree') ||
     c.includes('headphone') ||
+    c.includes('speaker') ||
+    c.includes('powerbank') ||
+    c.includes('power bank') ||
+    c.includes('battery') ||
     c.includes('repair') ||
     c.includes('part') ||
     c.includes('cover') ||
     c.includes('case') ||
     c.includes('glass') ||
-    c.includes('protector')
+    c.includes('protector') ||
+    c.includes('sim')
   ) {
     return false;
   }
-  return c.includes('android') || c.includes('smartphone') || (c.includes('smart') && c.includes('mobile'));
+  return (
+    c.includes('android') ||
+    c.includes('smartphone') ||
+    (c.includes('smart') && c.includes('mobile')) ||
+    c.includes('used') ||
+    c.includes('second hand') ||
+    c.includes('pre-owned') ||
+    c.includes('refurbished') ||
+    c.includes('iphone') ||
+    c.includes('box pack') ||
+    c.includes('mobile') ||
+    c.includes('phone')
+  );
 };
 
 export const isKeypadCategory = (cat: string): boolean => {
@@ -423,8 +443,10 @@ export const StockModal: React.FC<StockModalProps> = ({
   const isAndroid = isAndroidCategory(category);
   const isKeypad = isKeypadCategory(category);
   const isMobile = isMobileCategory(category);
+  const showVariantMode = isAndroid || isKeypad || Boolean(editItem && editItem.variants && editItem.variants.length > 0);
 
   useEffect(() => {
+    if (isEditingRef.current) return;
     if (isKeypad) {
       setVariants(prev => prev.map(v => ({
         ...v,
@@ -1068,8 +1090,8 @@ export const StockModal: React.FC<StockModalProps> = ({
       return;
     }
 
-    // UNIFIED MULTI-VARIANT FLOW FOR ANDROID & KEYPAD (Single unified product with variants array)
-    if (isAndroid || isKeypad) {
+    // UNIFIED MULTI-VARIANT FLOW FOR ANDROID, USED & KEYPAD (Single unified product with variants array)
+    if (showVariantMode) {
       if (variants.length === 0) {
         showToast('Please add at least one mobile variant', 'warning');
         return;
@@ -1624,9 +1646,9 @@ export const StockModal: React.FC<StockModalProps> = ({
           </div>
 
           {/* ========================================================= */}
-          {/* MOBILE & KEYPAD MULTI-VARIANT / COLOR SYSTEM               */}
+          {/* MOBILE, USED & KEYPAD MULTI-VARIANT / COLOR SYSTEM         */}
           {/* ========================================================= */}
-          {(isAndroid || isKeypad) ? (
+          {showVariantMode ? (
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">

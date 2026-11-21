@@ -95,6 +95,7 @@ export interface InwardDraftItem {
   imei: string;
   imeis: string[];
   barcode: string;
+  note?: string;
 }
 
 const DRAFT_KEY = 'mobilepos_purchase_draft_v2';
@@ -306,6 +307,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
         imei: '',
         imeis: [],
         barcode: '',
+        note: '',
       },
     ]);
     showToast(`Selected "${inv.name}" (${resolvedCategory}) — enter new stock details`, 'success');
@@ -499,6 +501,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
         imei: nextImeis.filter(Boolean).join(', '),
         imeis: isMob ? nextImeis.slice(0, Math.min(100, q)) : [],
         barcode: it.barcode || '',
+        note: it.note || '',
       };
     });
 
@@ -542,6 +545,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
         imei: '',
         imeis: [],
         barcode: '',
+        note: '',
       },
     ]);
   };
@@ -916,6 +920,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
         barcode: !isMobileCategory(item.category) ? item.barcode?.trim() || undefined : undefined,
         imei: cleanImeis.length > 0 ? cleanImeis.join(', ') : undefined,
         imeis: cleanImeis.length > 0 ? cleanImeis : undefined,
+        note: item.note?.trim() || undefined,
       };
     });
 
@@ -2362,6 +2367,21 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                             </div>
                           </div>
 
+                          {/* Item / Variant Note Box (just like Add Product) */}
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-600 mb-0.5 flex items-center gap-1">
+                              <FileText className="w-3 h-3 text-amber-600" />
+                              Note (Optional)
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="e.g. Box pack, PTA approved, minor scratch, battery 92%..."
+                              value={item.note || ''}
+                              onChange={e => handleItemChange(idx, 'note', e.target.value)}
+                              className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-500 shadow-2xs"
+                            />
+                          </div>
+
                           {/* Dynamic IMEI Boxes for Android/Keypad OR Barcode for Other Categories */}
                           {isMobile ? (
                             <div className="p-2.5 bg-blue-50/70 border border-blue-200 rounded-xl space-y-2">
@@ -2670,6 +2690,11 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                           </div>
                           {i.imei && <div className="text-[10px] text-slate-400 tabular-nums">IMEI: {i.imei}</div>}
                           {i.barcode && <div className="text-[10px] text-slate-400 tabular-nums">Code: {i.barcode}</div>}
+                          {i.note && (
+                            <div className="text-[10px] text-amber-800 bg-amber-50 border border-amber-200/70 rounded px-1.5 py-0.5 mt-0.5 inline-block font-medium">
+                              Note: {i.note}
+                            </div>
+                          )}
                         </td>
                         <td className="py-2 px-3 text-center font-bold">{i.qty}</td>
                         {isAdmin && (
@@ -3002,60 +3027,107 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
           onClose={() => setIsStockModalOpen(false)}
           onSave={(itemData) => {
             const itemsArray = Array.isArray(itemData) ? itemData : [itemData];
+            const expandedRows: InwardDraftItem[] = [];
 
             for (const it of itemsArray) {
-              const q = Math.max(1, Number(it.qty) || 1);
-              const cleanImeis = it.imeis && it.imeis.length > 0
-                ? [...it.imeis]
-                : it.imei
-                ? it.imei.split(',').map(s => s.trim()).filter(Boolean)
-                : [];
-              while (cleanImeis.length < q) cleanImeis.push('');
-              const parsedImei = cleanImeis.filter(Boolean).join(', ');
+              if (it.variants && it.variants.length > 0) {
+                for (const v of it.variants) {
+                  const q = Math.max(1, Number(v.qty) || 1);
+                  const cleanImeis = [...(v.imeis || [])].map(s => s.trim()).filter(Boolean);
+                  while (cleanImeis.length < q) cleanImeis.push('');
+                  const finalImeis = cleanImeis.slice(0, q);
+                  expandedRows.push({
+                    name: it.name,
+                    category: resolveItemCategory(it.category),
+                    qty: q,
+                    ram: v.ram || '',
+                    storage: v.storage || '',
+                    color: v.color || '',
+                    costPrice: v.costPrice !== '' && v.costPrice !== undefined ? Number(v.costPrice) : (it.costPrice || 0),
+                    salePrice: v.salePrice !== '' && v.salePrice !== undefined ? Number(v.salePrice) : (it.salePrice || 0),
+                    wholesalePrice:
+                      v.wholesalePrice !== undefined && v.wholesalePrice !== ''
+                        ? Number(v.wholesalePrice)
+                        : it.wholesalePrice !== undefined
+                        ? Number(it.wholesalePrice)
+                        : '',
+                    imeis: finalImeis,
+                    imei: finalImeis.filter(Boolean).join(', '),
+                    barcode: it.barcode || '',
+                    note: v.note || it.note || '',
+                  });
+                }
+              } else {
+                const q = Math.max(1, Number(it.qty) || 1);
+                const cleanImeis =
+                  it.imeis && it.imeis.length > 0
+                    ? [...it.imeis]
+                    : it.imei
+                    ? it.imei.split(',').map(s => s.trim()).filter(Boolean)
+                    : [];
+                while (cleanImeis.length < q) cleanImeis.push('');
+                const finalImeis = cleanImeis.slice(0, q);
+                expandedRows.push({
+                  name: it.name,
+                  category: resolveItemCategory(it.category),
+                  qty: q,
+                  ram: it.ram || '',
+                  storage: it.storage || '',
+                  color: it.color || '',
+                  costPrice: it.costPrice || 0,
+                  salePrice: it.salePrice || 0,
+                  wholesalePrice: it.wholesalePrice !== undefined ? Number(it.wholesalePrice) : '',
+                  imeis: finalImeis,
+                  imei: finalImeis.filter(Boolean).join(', '),
+                  barcode: it.barcode || '',
+                  note: it.note || '',
+                });
+              }
+            }
 
-              setItems(prev => {
-                const existingIdx = prev.findIndex(
-                  i => i.name.toLowerCase().trim() === it.name.toLowerCase().trim()
+            setItems(prev => {
+              let next = [...prev];
+              for (const row of expandedRows) {
+                const existingIdx = next.findIndex(
+                  i =>
+                    i.name.toLowerCase().trim() === row.name.toLowerCase().trim() &&
+                    (i.category || '').toLowerCase() === (row.category || '').toLowerCase() &&
+                    (i.ram || '').toLowerCase() === (row.ram || '').toLowerCase() &&
+                    (i.storage || '').toLowerCase() === (row.storage || '').toLowerCase() &&
+                    (i.color || '').toLowerCase() === (row.color || '').toLowerCase() &&
+                    Number(i.costPrice || 0) === Number(row.costPrice || 0) &&
+                    Number(i.salePrice || 0) === Number(row.salePrice || 0) &&
+                    Number(i.wholesalePrice || 0) === Number(row.wholesalePrice || 0) &&
+                    (i.note || '').trim().toLowerCase() === (row.note || '').trim().toLowerCase()
                 );
                 if (existingIdx >= 0) {
-                  const copy = [...prev];
-                  const existingImeisList = copy[existingIdx].imeis || (copy[existingIdx].imei ? copy[existingIdx].imei.split(',').map(s => s.trim()).filter(Boolean) : []);
-                  const mergedImeis = [...existingImeisList, ...cleanImeis];
-                  const newQty = (Number(copy[existingIdx].qty) || 0) + q;
+                  const copy = [...next];
+                  const existingImeisList =
+                    copy[existingIdx].imeis ||
+                    (copy[existingIdx].imei ? copy[existingIdx].imei.split(',').map(s => s.trim()).filter(Boolean) : []);
+                  const mergedImeis = [...existingImeisList, ...row.imeis];
+                  const newQty = (Number(copy[existingIdx].qty) || 0) + (Number(row.qty) || 1);
                   while (mergedImeis.length < newQty) mergedImeis.push('');
-
                   copy[existingIdx] = {
                     ...copy[existingIdx],
                     qty: newQty,
-                    costPrice: it.costPrice !== undefined ? it.costPrice : copy[existingIdx].costPrice,
-                    salePrice: it.salePrice !== undefined ? it.salePrice : copy[existingIdx].salePrice,
                     imeis: mergedImeis.slice(0, newQty),
                     imei: mergedImeis.slice(0, newQty).filter(Boolean).join(', '),
-                    barcode: it.barcode || copy[existingIdx].barcode,
+                    barcode: row.barcode || copy[existingIdx].barcode,
                   };
-                  return copy;
+                  next = copy;
+                } else {
+                  next = [...next, row];
                 }
-                return [
-                  ...prev,
-                  {
-                    name: it.name,
-                    category: it.category,
-                    qty: q,
-                    costPrice: it.costPrice || 0,
-                    salePrice: it.salePrice || 0,
-                    imeis: cleanImeis.slice(0, q),
-                    imei: parsedImei,
-                    barcode: it.barcode || '',
-                  },
-                ];
-              });
-            }
+              }
+              return next;
+            });
 
             setIsStockModalOpen(false);
             showToast(
-              itemsArray.length === 1
-                ? `Product "${itemsArray[0].name}" added to inward bill!`
-                : `${itemsArray.length} variants added to inward bill!`,
+              expandedRows.length === 1
+                ? `Product "${expandedRows[0].name}" added to inward bill!`
+                : `${expandedRows.length} variants added to inward bill!`,
               'success'
             );
           }}

@@ -482,11 +482,39 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
   }, [inventory]);
 
   const totalCostValuation = useMemo(() => {
-    return activeItems.reduce((acc, i) => acc + i.costPrice * i.qty, 0);
+    return activeItems.reduce((acc, i) => {
+      if (i.variants && i.variants.length > 0) {
+        const varQtySum = i.variants.reduce((s, v) => s + (Number(v.qty) || 0), 0);
+        if (varQtySum > 0) {
+          return (
+            acc +
+            i.variants.reduce((s, v) => {
+              const vCost = v.costPrice !== '' && v.costPrice !== undefined && Number(v.costPrice) > 0 ? Number(v.costPrice) : i.costPrice;
+              return s + vCost * (Number(v.qty) || 0);
+            }, 0)
+          );
+        }
+      }
+      return acc + i.costPrice * i.qty;
+    }, 0);
   }, [activeItems]);
 
   const totalRetailValuation = useMemo(() => {
-    return activeItems.reduce((acc, i) => acc + i.salePrice * i.qty, 0);
+    return activeItems.reduce((acc, i) => {
+      if (i.variants && i.variants.length > 0) {
+        const varQtySum = i.variants.reduce((s, v) => s + (Number(v.qty) || 0), 0);
+        if (varQtySum > 0) {
+          return (
+            acc +
+            i.variants.reduce((s, v) => {
+              const vSale = v.salePrice !== '' && v.salePrice !== undefined && Number(v.salePrice) > 0 ? Number(v.salePrice) : i.salePrice;
+              return s + vSale * (Number(v.qty) || 0);
+            }, 0)
+          );
+        }
+      }
+      return acc + i.salePrice * i.qty;
+    }, 0);
   }, [activeItems]);
 
   const totalUnits = useMemo(() => {
@@ -1093,7 +1121,17 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                             </td>
                             {isAdmin && (
                               <td className="p-3 text-right tabular-nums text-slate-600 font-medium">
-                                {currency} {item.costPrice.toLocaleString()}
+                                {(() => {
+                                  const costs = (item.variants || [])
+                                    .map(v => Number(v.costPrice))
+                                    .filter(p => !isNaN(p) && p > 0);
+                                  if (costs.length === 0) costs.push(item.costPrice);
+                                  const minCost = Math.min(...costs);
+                                  const maxCost = Math.max(...costs);
+                                  return minCost === maxCost
+                                    ? `${currency} ${minCost.toLocaleString()}`
+                                    : `${currency} ${minCost.toLocaleString()} - ${maxCost.toLocaleString()}`;
+                                })()}
                               </td>
                             )}
                             <td className="p-3 text-right tabular-nums font-bold text-slate-900">
@@ -1269,7 +1307,17 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                   <div>
                     <span className="text-slate-400 block text-[10px] font-bold uppercase">Sale Price</span>
                     <span className="tabular-nums font-black text-blue-600 text-sm sm:text-base">
-                      {currency} {selectedProductPopup.salePrice.toLocaleString()}
+                      {(() => {
+                        const prices = (selectedProductPopup.variants || [])
+                          .map(v => Number(v.salePrice))
+                          .filter(p => !isNaN(p) && p > 0);
+                        if (prices.length === 0) prices.push(selectedProductPopup.salePrice);
+                        const minP = Math.min(...prices);
+                        const maxP = Math.max(...prices);
+                        return minP === maxP
+                          ? `${currency} ${minP.toLocaleString()}`
+                          : `${currency} ${minP.toLocaleString()} - ${maxP.toLocaleString()}`;
+                      })()}
                     </span>
                   </div>
                   <div>

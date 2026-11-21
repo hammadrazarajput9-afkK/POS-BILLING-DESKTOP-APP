@@ -331,6 +331,7 @@ export interface PurchaseItem {
   barcode?: string;
   imei?: string;
   imeis?: string[];
+  note?: string;
 }
 
 export type PurchaseStatus = 'ACTIVE' | 'REVERSED';

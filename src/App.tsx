@@ -7,7 +7,9 @@ import {
   DailyClosingRecord,
   OnlineAccount,
   SupplierPurchase,
+  PurchaseItem,
   InventoryItem,
+  MobileVariant,
   UserAccount,
   SyncCollectionKey,
 } from './types';
@@ -937,6 +939,330 @@ function AppContent() {
     showToast('Online account removed', 'info');
   };
 
+  const findPurchaseInventoryMatchIndex = (list: InventoryItem[], purchaseItem: PurchaseItem): number => {
+    const pName = (purchaseItem.name || '').trim().toLowerCase();
+    const pCat = (purchaseItem.category || '').trim().toLowerCase();
+    const pBarcode = (purchaseItem.barcode || '').trim().toLowerCase();
+
+    if (pBarcode) {
+      const bcIdx = list.findIndex(inv => (inv.barcode || '').trim().toLowerCase() === pBarcode);
+      if (bcIdx >= 0) return bcIdx;
+    }
+
+    if (pCat) {
+      const exactCatIdx = list.findIndex(
+        inv =>
+          (inv.name || '').trim().toLowerCase() === pName &&
+          (inv.category || '').trim().toLowerCase() === pCat
+      );
+      if (exactCatIdx >= 0) return exactCatIdx;
+    }
+
+    return list.findIndex(
+      inv =>
+        (inv.name || '').trim().toLowerCase() === pName &&
+        (!pCat || !(inv.category || '').trim() || (inv.category || '').trim().toLowerCase() === pCat)
+    );
+  };
+
+  const applyPurchaseItemToInventory = (
+    list: InventoryItem[],
+    purchaseItem: PurchaseItem,
+    now: string,
+    defaultCategory: string
+  ): { nextList: InventoryItem[]; changedItem: InventoryItem; imeiEntry: { id: string; name: string; category?: string; imei?: string; imeis?: string[] } } => {
+    const norm = (s?: string) => (s || '').trim().toLowerCase();
+    const splitImeis = (imeis?: string[], imei?: string) =>
+      Array.from(
+        new Set([
+          ...(imeis || []),
+          ...(imei ? imei.split(',') : []),
+        ].map(s => s.trim()).filter(Boolean))
+      );
+
+    const matchIndex = findPurchaseInventoryMatchIndex(list, purchaseItem);
+    const newImeis = splitImeis(purchaseItem.imeis, purchaseItem.imei);
+    const pNote = (purchaseItem.note || '').trim();
+    const pCost = Number(purchaseItem.costPrice) || 0;
+    const pSaleInput = purchaseItem.salePrice && Number(purchaseItem.salePrice) > 0 ? Number(purchaseItem.salePrice) : undefined;
+    const pWholesale = purchaseItem.wholesalePrice !== undefined ? Number(purchaseItem.wholesalePrice) : undefined;
+
+    if (matchIndex >= 0) {
+      const existing = list[matchIndex];
+      const existingImeis = splitImeis(existing.imeis, existing.imei);
+      const combinedImeis = Array.from(new Set([...existingImeis, ...newImeis]));
+      const resolvedSale = pSaleInput ?? existing.salePrice;
+
+      const hasExistingVariants = Boolean(existing.variants && existing.variants.length > 0);
+      const existingWholesaleNum = existing.wholesalePrice !== undefined ? Number(existing.wholesalePrice) : undefined;
+
+      const priceDiffersFromExisting =
+        (pCost > 0 && pCost !== Number(existing.costPrice || 0)) ||
+        (pSaleInput !== undefined && Math.round(pSaleInput) !== Math.round(Number(existing.salePrice || 0))) ||
+        (pWholesale !== undefined && pWholesale !== existingWholesaleNum);
+      const specsDifferFromExisting =
+        norm(purchaseItem.ram) !== norm(existing.ram) ||
+        norm(purchaseItem.storage) !== norm(existing.storage) ||
+        norm(purchaseItem.color) !== norm(existing.color);
+      const noteDiffersFromExisting = norm(pNote) !== norm(existing.note);
+      const hasAnyVariantSignals = Boolean(
+        purchaseItem.ram ||
+          purchaseItem.storage ||
+          purchaseItem.color ||
+          newImeis.length > 0 ||
+          pNote ||
+          priceDiffersFromExisting
+      );
+
+      let updatedVariants: MobileVariant[] | undefined = hasExistingVariants ? [...existing.variants!] : undefined;
+
+      // Preserve pre-existing stock as Variant #1 when incoming stock has different prices, specs, note, or variant traits
+      if (!updatedVariants && existing.qty > 0 && (priceDiffersFromExisting || specsDifferFromExisting || noteDiffersFromExisting || hasAnyVariantSignals)) {
+        updatedVariants = [
+          {
+            id: generateEntityId('VAR'),
+            ram: existing.ram || '',
+            storage: existing.storage || '',
+            color: existing.color || '',
+            costPrice: existing.costPrice,
+            salePrice: existing.salePrice,
+            wholesalePrice: existing.wholesalePrice,
+            qty: existing.qty,
+            imeis: existingImeis,
+            note: existing.note || undefined,
+          },
+        ];
+      }
+
+      if (updatedVariants) {
+        const vIdx = updatedVariants.findIndex(v => {
+          const specsMatch =
+            norm(v.ram) === norm(purchaseItem.ram) &&
+            norm(v.storage) === norm(purchaseItem.storage) &&
+            norm(v.color) === norm(purchaseItem.color);
+          if (!specsMatch) return false;
+
+          const vCost = v.costPrice !== '' && v.costPrice !== undefined ? Number(v.costPrice) : existing.costPrice;
+          const vSale = v.salePrice !== '' && v.salePrice !== undefined ? Number(v.salePrice) : existing.salePrice;
+          const vWholesale =
+            v.wholesalePrice !== '' && v.wholesalePrice !== undefined
+              ? Number(v.wholesalePrice)
+              : existing.wholesalePrice;
+
+          const costMatches = pCost <= 0 || Number(vCost) === pCost;
+          const saleMatches = pSaleInput === undefined || Math.round(Number(vSale)) === Math.round(pSaleInput);
+          const wholesaleMatches =
+            pWholesale === undefined
+              ? vWholesale === existing.wholesalePrice || v.wholesalePrice === '' || v.wholesalePrice === undefined
+              : vWholesale !== undefined && Number(vWholesale) === pWholesale;
+          const noteMatches = norm(v.note) === norm(pNote);
+
+          return costMatches && saleMatches && wholesaleMatches && noteMatches;
+        });
+
+        if (vIdx >= 0) {
+          const targetV = updatedVariants[vIdx];
+          updatedVariants[vIdx] = {
+            ...targetV,
+            qty: (Number(targetV.qty) || 0) + purchaseItem.qty,
+            imeis: Array.from(new Set([...(targetV.imeis || []), ...newImeis])),
+            note: targetV.note || (pNote || undefined),
+          };
+        } else {
+          updatedVariants.push({
+            id: generateEntityId('VAR'),
+            ram: purchaseItem.ram || '',
+            storage: purchaseItem.storage || '',
+            color: purchaseItem.color || '',
+            costPrice: pCost > 0 ? pCost : existing.costPrice,
+            salePrice: resolvedSale,
+            wholesalePrice: pWholesale !== undefined ? pWholesale : existing.wholesalePrice,
+            qty: purchaseItem.qty,
+            imeis: newImeis,
+            note: pNote || undefined,
+          });
+        }
+      }
+
+      // Only update top-level item prices if the product previously had 0 stock (empty restock)
+      const shouldKeepExistingTopPrices = existing.qty > 0;
+      const updatedItem: InventoryItem = {
+        ...existing,
+        category: purchaseItem.category || existing.category,
+        qty: existing.qty + purchaseItem.qty,
+        costPrice: shouldKeepExistingTopPrices ? existing.costPrice : pCost > 0 ? pCost : existing.costPrice,
+        salePrice: shouldKeepExistingTopPrices ? existing.salePrice : resolvedSale,
+        wholesalePrice: shouldKeepExistingTopPrices
+          ? existing.wholesalePrice
+          : pWholesale !== undefined
+          ? pWholesale
+          : existing.wholesalePrice,
+        ram: shouldKeepExistingTopPrices ? existing.ram || purchaseItem.ram : purchaseItem.ram || existing.ram,
+        storage: shouldKeepExistingTopPrices ? existing.storage || purchaseItem.storage : purchaseItem.storage || existing.storage,
+        color: shouldKeepExistingTopPrices ? existing.color || purchaseItem.color : purchaseItem.color || existing.color,
+        note: shouldKeepExistingTopPrices ? existing.note : pNote || existing.note,
+        variants: updatedVariants,
+        barcode: purchaseItem.barcode || existing.barcode,
+        imei: combinedImeis[0] || existing.imei,
+        imeis: combinedImeis.length > 0 ? combinedImeis : undefined,
+        status: existing.status || 'ACTIVE',
+        updatedAt: now,
+      };
+
+      const nextList = [...list];
+      nextList[matchIndex] = updatedItem;
+      return {
+        nextList,
+        changedItem: updatedItem,
+        imeiEntry: {
+          id: existing.id,
+          name: updatedItem.name,
+          category: updatedItem.category,
+          imeis: newImeis,
+        },
+      };
+    }
+
+    const newItemId = generateEntityId('STK');
+    const resolvedNewSale = pSaleInput ?? Math.round(pCost * 1.15);
+    const hasMobileSpecs = Boolean(purchaseItem.ram || purchaseItem.storage || purchaseItem.color || newImeis.length > 0);
+    const newItem: InventoryItem = {
+      id: newItemId,
+      name: purchaseItem.name,
+      category: purchaseItem.category || defaultCategory,
+      costPrice: pCost,
+      salePrice: resolvedNewSale,
+      wholesalePrice: pWholesale,
+      qty: purchaseItem.qty,
+      ram: purchaseItem.ram,
+      storage: purchaseItem.storage,
+      color: purchaseItem.color,
+      note: pNote || undefined,
+      variants: hasMobileSpecs
+        ? [
+            {
+              id: generateEntityId('VAR'),
+              ram: purchaseItem.ram || '',
+              storage: purchaseItem.storage || '',
+              color: purchaseItem.color || '',
+              costPrice: pCost,
+              salePrice: resolvedNewSale,
+              wholesalePrice: pWholesale,
+              qty: purchaseItem.qty,
+              imeis: newImeis,
+              note: pNote || undefined,
+            },
+          ]
+        : undefined,
+      barcode: purchaseItem.barcode,
+      imei: newImeis[0] || purchaseItem.imei,
+      imeis: newImeis.length > 0 ? newImeis : purchaseItem.imeis,
+      status: 'ACTIVE',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    return {
+      nextList: [newItem, ...list],
+      changedItem: newItem,
+      imeiEntry: {
+        id: newItem.id,
+        name: newItem.name,
+        category: newItem.category,
+        imeis: newImeis,
+      },
+    };
+  };
+
+  const rollbackPurchaseItemFromInventory = (
+    list: InventoryItem[],
+    oldItem: PurchaseItem,
+    now: string
+  ): { nextList: InventoryItem[]; changedItem?: InventoryItem; oldItemImeis: string[] } => {
+    const norm = (s?: string) => (s || '').trim().toLowerCase();
+    const oldItemImeis = Array.from(
+      new Set([
+        ...(oldItem.imeis || []),
+        ...(oldItem.imei ? oldItem.imei.split(',') : []),
+      ].map(s => s.trim()).filter(Boolean))
+    );
+
+    const matchIndex = findPurchaseInventoryMatchIndex(list, oldItem);
+    if (matchIndex < 0) {
+      return { nextList: list, oldItemImeis };
+    }
+
+    const existing = list[matchIndex];
+    const existingImeis = Array.from(
+      new Set([
+        ...(existing.imeis || []),
+        ...(existing.imei ? existing.imei.split(',') : []),
+      ].map(s => s.trim()).filter(Boolean))
+    );
+    const remainingImeis = existingImeis.filter(
+      im => !oldItemImeis.some(oIm => oIm.toLowerCase() === im.toLowerCase())
+    );
+
+    let updatedVariants = existing.variants ? [...existing.variants] : undefined;
+    if (updatedVariants && updatedVariants.length > 0) {
+      let targetVIdx = -1;
+
+      if (oldItemImeis.length > 0) {
+        targetVIdx = updatedVariants.findIndex(v =>
+          (v.imeis || []).some(im => oldItemImeis.some(oIm => oIm.toLowerCase() === im.trim().toLowerCase()))
+        );
+      }
+
+      if (targetVIdx < 0) {
+        targetVIdx = updatedVariants.findIndex(v => {
+          const specsMatch =
+            norm(v.ram) === norm(oldItem.ram) &&
+            norm(v.storage) === norm(oldItem.storage) &&
+            norm(v.color) === norm(oldItem.color);
+          const vCost = v.costPrice !== '' && v.costPrice !== undefined ? Number(v.costPrice) : existing.costPrice;
+          const vSale = v.salePrice !== '' && v.salePrice !== undefined ? Number(v.salePrice) : existing.salePrice;
+          const costMatch = (Number(oldItem.costPrice) || 0) === 0 || Number(vCost) === Number(oldItem.costPrice);
+          const saleMatch = !oldItem.salePrice || Math.round(Number(vSale)) === Math.round(Number(oldItem.salePrice));
+          const noteMatch = norm(v.note) === norm(oldItem.note);
+          return specsMatch && costMatch && saleMatch && noteMatch;
+        });
+      }
+
+      if (targetVIdx < 0) {
+        targetVIdx = updatedVariants.findIndex(
+          v =>
+            norm(v.ram) === norm(oldItem.ram) &&
+            norm(v.storage) === norm(oldItem.storage) &&
+            norm(v.color) === norm(oldItem.color)
+        );
+      }
+
+      if (targetVIdx >= 0) {
+        const tv = updatedVariants[targetVIdx];
+        const remainingVImeis = (tv.imeis || []).filter(
+          im => !oldItemImeis.some(oIm => oIm.toLowerCase() === im.trim().toLowerCase())
+        );
+        const newVQty = Math.max(0, (Number(tv.qty) || 0) - oldItem.qty);
+        updatedVariants[targetVIdx] = { ...tv, qty: newVQty, imeis: remainingVImeis };
+      }
+
+      updatedVariants = updatedVariants.filter(v => (Number(v.qty) || 0) > 0 || (v.imeis && v.imeis.length > 0));
+    }
+
+    const rolledBackItem: InventoryItem = {
+      ...existing,
+      qty: Math.max(0, existing.qty - oldItem.qty),
+      variants: updatedVariants && updatedVariants.length > 0 ? updatedVariants : undefined,
+      imei: remainingImeis[0] || undefined,
+      imeis: remainingImeis.length > 0 ? remainingImeis : undefined,
+      updatedAt: now,
+    };
+
+    const nextList = [...list];
+    nextList[matchIndex] = rolledBackItem;
+    return { nextList, changedItem: rolledBackItem, oldItemImeis };
+  };
+
   // Purchases Handlers
   const handleSavePurchase = (
     purchaseData: Omit<SupplierPurchase, 'id'>,
@@ -968,134 +1294,14 @@ function AppContent() {
     let updatedInventory = [...data.inventory];
     const itemsToRegisterImeis: { id: string; name: string; category?: string; imei?: string; imeis?: string[] }[] = [];
     const changedMap = new Map<string, InventoryItem>();
+    const defaultCat = data.categories?.[0] || 'Android Mobile';
 
     if (autoAddToInventory) {
       newPurchase.items.forEach(purchaseItem => {
-        const matchIndex = updatedInventory.findIndex(
-          inv =>
-            inv.name.trim().toLowerCase() === purchaseItem.name.trim().toLowerCase() ||
-            (purchaseItem.barcode && inv.barcode === purchaseItem.barcode)
-        );
-
-        if (matchIndex >= 0) {
-          const existing = updatedInventory[matchIndex];
-          const existingImeis = existing.imeis || (existing.imei ? [existing.imei] : []);
-          const newImeis = purchaseItem.imeis || (purchaseItem.imei ? [purchaseItem.imei] : []);
-          const combinedImeis = Array.from(new Set([...existingImeis, ...newImeis]));
-
-          let updatedVariants = existing.variants ? [...existing.variants] : undefined;
-          if (updatedVariants && (purchaseItem.ram || purchaseItem.storage || purchaseItem.color || newImeis.length > 0)) {
-            const vIdx = updatedVariants.findIndex(
-              v =>
-                (v.ram || '').toLowerCase() === (purchaseItem.ram || '').toLowerCase() &&
-                (v.storage || '').toLowerCase() === (purchaseItem.storage || '').toLowerCase() &&
-                (v.color || '').toLowerCase() === (purchaseItem.color || '').toLowerCase()
-            );
-            if (vIdx >= 0) {
-              const targetV = updatedVariants[vIdx];
-              updatedVariants[vIdx] = {
-                ...targetV,
-                qty: (Number(targetV.qty) || 0) + purchaseItem.qty,
-                costPrice: purchaseItem.costPrice > 0 ? purchaseItem.costPrice : targetV.costPrice,
-                salePrice: purchaseItem.salePrice && purchaseItem.salePrice > 0 ? purchaseItem.salePrice : targetV.salePrice,
-                wholesalePrice: purchaseItem.wholesalePrice !== undefined ? purchaseItem.wholesalePrice : targetV.wholesalePrice,
-                imeis: Array.from(new Set([...(targetV.imeis || []), ...newImeis])),
-              };
-            } else {
-              updatedVariants.push({
-                id: generateEntityId('VAR'),
-                ram: purchaseItem.ram || '',
-                storage: purchaseItem.storage || '',
-                color: purchaseItem.color || '',
-                costPrice: purchaseItem.costPrice,
-                salePrice: purchaseItem.salePrice || existing.salePrice,
-                wholesalePrice: purchaseItem.wholesalePrice !== undefined ? purchaseItem.wholesalePrice : existing.wholesalePrice,
-                qty: purchaseItem.qty,
-                imeis: newImeis,
-              });
-            }
-          }
-
-          const updatedItem: InventoryItem = {
-            ...existing,
-            category: purchaseItem.category || existing.category,
-            qty: existing.qty + purchaseItem.qty,
-            costPrice: purchaseItem.costPrice > 0 ? purchaseItem.costPrice : existing.costPrice,
-            salePrice:
-              purchaseItem.salePrice && purchaseItem.salePrice > 0
-                ? purchaseItem.salePrice
-                : existing.salePrice,
-            wholesalePrice:
-              purchaseItem.wholesalePrice !== undefined
-                ? purchaseItem.wholesalePrice
-                : existing.wholesalePrice,
-            ram: purchaseItem.ram || existing.ram,
-            storage: purchaseItem.storage || existing.storage,
-            color: purchaseItem.color || existing.color,
-            variants: updatedVariants,
-            barcode: purchaseItem.barcode || existing.barcode,
-            imei: combinedImeis[0] || existing.imei,
-            imeis: combinedImeis.length > 0 ? combinedImeis : undefined,
-            status: existing.status || 'ACTIVE',
-            updatedAt: now,
-          };
-
-          updatedInventory[matchIndex] = updatedItem;
-          changedMap.set(updatedItem.id, updatedItem);
-
-          itemsToRegisterImeis.push({
-            id: existing.id,
-            name: updatedItem.name,
-            category: updatedItem.category,
-            imeis: newImeis,
-          });
-        } else {
-          const newItemId = generateEntityId('STK');
-          const newImeis = purchaseItem.imeis || (purchaseItem.imei ? [purchaseItem.imei] : []);
-          const hasMobileSpecs = Boolean(purchaseItem.ram || purchaseItem.storage || purchaseItem.color || newImeis.length > 0);
-          const newItem: InventoryItem = {
-            id: newItemId,
-            name: purchaseItem.name,
-            category: purchaseItem.category || data.categories?.[0] || 'Android Mobile',
-            costPrice: purchaseItem.costPrice,
-            salePrice: purchaseItem.salePrice || Math.round(purchaseItem.costPrice * 1.15),
-            wholesalePrice: purchaseItem.wholesalePrice,
-            qty: purchaseItem.qty,
-            ram: purchaseItem.ram,
-            storage: purchaseItem.storage,
-            color: purchaseItem.color,
-            variants: hasMobileSpecs
-              ? [
-                  {
-                    id: generateEntityId('VAR'),
-                    ram: purchaseItem.ram || '',
-                    storage: purchaseItem.storage || '',
-                    color: purchaseItem.color || '',
-                    costPrice: purchaseItem.costPrice,
-                    salePrice: purchaseItem.salePrice || Math.round(purchaseItem.costPrice * 1.15),
-                    wholesalePrice: purchaseItem.wholesalePrice,
-                    qty: purchaseItem.qty,
-                    imeis: newImeis,
-                  },
-                ]
-              : undefined,
-            barcode: purchaseItem.barcode,
-            imei: purchaseItem.imei,
-            imeis: purchaseItem.imeis,
-            status: 'ACTIVE',
-            createdAt: now,
-            updatedAt: now,
-          };
-          updatedInventory = [newItem, ...updatedInventory];
-          changedMap.set(newItem.id, newItem);
-
-          itemsToRegisterImeis.push({
-            id: newItem.id,
-            name: newItem.name,
-            category: newItem.category,
-            imeis: newImeis,
-          });
-        }
+        const res = applyPurchaseItemToInventory(updatedInventory, purchaseItem, now, defaultCat);
+        updatedInventory = res.nextList;
+        changedMap.set(res.changedItem.id, res.changedItem);
+        itemsToRegisterImeis.push(res.imeiEntry);
       });
     }
 
@@ -1208,56 +1414,13 @@ function AppContent() {
     let updatedInventory = [...data.inventory];
     const oldAllImeis: string[] = [];
 
-    // 1. Roll back previous purchase items & IMEIs from inventory
+    // 1. Roll back previous purchase items & IMEIs from inventory (variant-aware)
     oldPurchase.items.forEach(oldItem => {
-      const oldItemImeis = oldItem.imeis || (oldItem.imei ? oldItem.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
-      oldAllImeis.push(...oldItemImeis);
-
-      const matchIndex = updatedInventory.findIndex(
-        inv =>
-          inv.name.trim().toLowerCase() === oldItem.name.trim().toLowerCase() ||
-          (oldItem.barcode && inv.barcode === oldItem.barcode)
-      );
-
-      if (matchIndex >= 0) {
-        const existing = updatedInventory[matchIndex];
-        const existingImeis =
-          existing.imeis || (existing.imei ? existing.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
-        const remainingImeis = existingImeis.filter(
-          im => !oldItemImeis.some(oIm => oIm.toLowerCase().trim() === im.toLowerCase().trim())
-        );
-
-        let updatedVariants = existing.variants ? [...existing.variants] : undefined;
-        if (updatedVariants) {
-          updatedVariants = updatedVariants
-            .map(v => {
-              const vImeis = (v.imeis || []).filter(
-                im => !oldItemImeis.some(oIm => oIm.toLowerCase().trim() === im.toLowerCase().trim())
-              );
-              const matchesSpecs =
-                (v.ram || '').toLowerCase() === (oldItem.ram || '').toLowerCase() &&
-                (v.storage || '').toLowerCase() === (oldItem.storage || '').toLowerCase() &&
-                (v.color || '').toLowerCase() === (oldItem.color || '').toLowerCase();
-              if (matchesSpecs || (oldItemImeis.length > 0 && vImeis.length !== (v.imeis || []).length)) {
-                const newVQty = Math.max(0, (Number(v.qty) || 0) - oldItem.qty);
-                return { ...v, qty: newVQty, imeis: vImeis };
-              }
-              return v;
-            })
-            .filter(v => (Number(v.qty) || 0) > 0 || (v.imeis && v.imeis.length > 0));
-        }
-
-        const rolledBackItem: InventoryItem = {
-          ...existing,
-          qty: Math.max(0, existing.qty - oldItem.qty),
-          variants: updatedVariants && updatedVariants.length > 0 ? updatedVariants : existing.variants,
-          imei: remainingImeis[0] || undefined,
-          imeis: remainingImeis.length > 0 ? remainingImeis : undefined,
-          updatedAt: now,
-        };
-
-        updatedInventory[matchIndex] = rolledBackItem;
-        changedInventoryMap.set(rolledBackItem.id, rolledBackItem);
+      const rb = rollbackPurchaseItemFromInventory(updatedInventory, oldItem, now);
+      updatedInventory = rb.nextList;
+      oldAllImeis.push(...rb.oldItemImeis);
+      if (rb.changedItem) {
+        changedInventoryMap.set(rb.changedItem.id, rb.changedItem);
       }
     });
 
@@ -1268,134 +1431,14 @@ function AppContent() {
     });
 
     const itemsToRegisterImeis: { id: string; name: string; category?: string; imei?: string; imeis?: string[] }[] = [];
+    const defaultCat = data.categories?.[0] || 'Android Mobile';
 
     if (autoAddToInventory) {
       updatedPurchase.items.forEach(purchaseItem => {
-        const matchIndex = updatedInventory.findIndex(
-          inv =>
-            inv.name.trim().toLowerCase() === purchaseItem.name.trim().toLowerCase() ||
-            (purchaseItem.barcode && inv.barcode === purchaseItem.barcode)
-        );
-
-        if (matchIndex >= 0) {
-          const existing = updatedInventory[matchIndex];
-          const existingImeis = existing.imeis || (existing.imei ? [existing.imei] : []);
-          const newImeis = purchaseItem.imeis || (purchaseItem.imei ? [purchaseItem.imei] : []);
-          const combinedImeis = Array.from(new Set([...existingImeis, ...newImeis]));
-
-          let updatedVariants = existing.variants ? [...existing.variants] : undefined;
-          if (updatedVariants && (purchaseItem.ram || purchaseItem.storage || purchaseItem.color || newImeis.length > 0)) {
-            const vIdx = updatedVariants.findIndex(
-              v =>
-                (v.ram || '').toLowerCase() === (purchaseItem.ram || '').toLowerCase() &&
-                (v.storage || '').toLowerCase() === (purchaseItem.storage || '').toLowerCase() &&
-                (v.color || '').toLowerCase() === (purchaseItem.color || '').toLowerCase()
-            );
-            if (vIdx >= 0) {
-              const targetV = updatedVariants[vIdx];
-              updatedVariants[vIdx] = {
-                ...targetV,
-                qty: (Number(targetV.qty) || 0) + purchaseItem.qty,
-                costPrice: purchaseItem.costPrice > 0 ? purchaseItem.costPrice : targetV.costPrice,
-                salePrice: purchaseItem.salePrice && purchaseItem.salePrice > 0 ? purchaseItem.salePrice : targetV.salePrice,
-                wholesalePrice: purchaseItem.wholesalePrice !== undefined ? purchaseItem.wholesalePrice : targetV.wholesalePrice,
-                imeis: Array.from(new Set([...(targetV.imeis || []), ...newImeis])),
-              };
-            } else {
-              updatedVariants.push({
-                id: generateEntityId('VAR'),
-                ram: purchaseItem.ram || '',
-                storage: purchaseItem.storage || '',
-                color: purchaseItem.color || '',
-                costPrice: purchaseItem.costPrice,
-                salePrice: purchaseItem.salePrice || existing.salePrice,
-                wholesalePrice: purchaseItem.wholesalePrice !== undefined ? purchaseItem.wholesalePrice : existing.wholesalePrice,
-                qty: purchaseItem.qty,
-                imeis: newImeis,
-              });
-            }
-          }
-
-          const updatedItem: InventoryItem = {
-            ...existing,
-            category: purchaseItem.category || existing.category,
-            qty: existing.qty + purchaseItem.qty,
-            costPrice: purchaseItem.costPrice > 0 ? purchaseItem.costPrice : existing.costPrice,
-            salePrice:
-              purchaseItem.salePrice && purchaseItem.salePrice > 0
-                ? purchaseItem.salePrice
-                : existing.salePrice,
-            wholesalePrice:
-              purchaseItem.wholesalePrice !== undefined
-                ? purchaseItem.wholesalePrice
-                : existing.wholesalePrice,
-            ram: purchaseItem.ram || existing.ram,
-            storage: purchaseItem.storage || existing.storage,
-            color: purchaseItem.color || existing.color,
-            variants: updatedVariants,
-            barcode: purchaseItem.barcode || existing.barcode,
-            imei: combinedImeis[0] || existing.imei,
-            imeis: combinedImeis.length > 0 ? combinedImeis : undefined,
-            status: existing.status || 'ACTIVE',
-            updatedAt: now,
-          };
-
-          updatedInventory[matchIndex] = updatedItem;
-          changedInventoryMap.set(updatedItem.id, updatedItem);
-
-          itemsToRegisterImeis.push({
-            id: existing.id,
-            name: updatedItem.name,
-            category: updatedItem.category,
-            imeis: newImeis,
-          });
-        } else {
-          const newItemId = generateEntityId('STK');
-          const newImeis = purchaseItem.imeis || (purchaseItem.imei ? [purchaseItem.imei] : []);
-          const hasMobileSpecs = Boolean(purchaseItem.ram || purchaseItem.storage || purchaseItem.color || newImeis.length > 0);
-          const newItem: InventoryItem = {
-            id: newItemId,
-            name: purchaseItem.name,
-            category: purchaseItem.category || data.categories?.[0] || 'Android Mobile',
-            costPrice: purchaseItem.costPrice,
-            salePrice: purchaseItem.salePrice || Math.round(purchaseItem.costPrice * 1.15),
-            wholesalePrice: purchaseItem.wholesalePrice,
-            qty: purchaseItem.qty,
-            ram: purchaseItem.ram,
-            storage: purchaseItem.storage,
-            color: purchaseItem.color,
-            variants: hasMobileSpecs
-              ? [
-                  {
-                    id: generateEntityId('VAR'),
-                    ram: purchaseItem.ram || '',
-                    storage: purchaseItem.storage || '',
-                    color: purchaseItem.color || '',
-                    costPrice: purchaseItem.costPrice,
-                    salePrice: purchaseItem.salePrice || Math.round(purchaseItem.costPrice * 1.15),
-                    wholesalePrice: purchaseItem.wholesalePrice,
-                    qty: purchaseItem.qty,
-                    imeis: newImeis,
-                  },
-                ]
-              : undefined,
-            barcode: purchaseItem.barcode,
-            imei: purchaseItem.imei,
-            imeis: purchaseItem.imeis,
-            status: 'ACTIVE',
-            createdAt: now,
-            updatedAt: now,
-          };
-          updatedInventory = [newItem, ...updatedInventory];
-          changedInventoryMap.set(newItem.id, newItem);
-
-          itemsToRegisterImeis.push({
-            id: newItem.id,
-            name: newItem.name,
-            category: newItem.category,
-            imeis: newImeis,
-          });
-        }
+        const res = applyPurchaseItemToInventory(updatedInventory, purchaseItem, now, defaultCat);
+        updatedInventory = res.nextList;
+        changedInventoryMap.set(res.changedItem.id, res.changedItem);
+        itemsToRegisterImeis.push(res.imeiEntry);
       });
     }
 
@@ -1490,37 +1533,16 @@ function AppContent() {
     }
 
     const changedInventory: InventoryItem[] = [];
-    const updatedInventory = [...data.inventory];
+    let updatedInventory = [...data.inventory];
     const allPurchaseImeis: string[] = [];
+    const revInvNow = new Date().toISOString();
 
     purchase.items.forEach(purchaseItem => {
-      const itemImeis = purchaseItem.imeis || (purchaseItem.imei ? [purchaseItem.imei] : []);
-      allPurchaseImeis.push(...itemImeis);
-
-      const matchIndex = updatedInventory.findIndex(
-        inv =>
-          inv.name.trim().toLowerCase() === purchaseItem.name.trim().toLowerCase() ||
-          (purchaseItem.barcode && inv.barcode === purchaseItem.barcode)
-      );
-
-      if (matchIndex >= 0) {
-        const existing = updatedInventory[matchIndex];
-        const existingImeis =
-          existing.imeis || (existing.imei ? existing.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
-        const remainingImeis = existingImeis.filter(
-          im => !itemImeis.some(pIm => pIm.toLowerCase().trim() === im.toLowerCase().trim())
-        );
-
-        const now = new Date().toISOString();
-        const updatedItem: InventoryItem = {
-          ...existing,
-          qty: Math.max(0, existing.qty - purchaseItem.qty),
-          imei: remainingImeis.length > 0 ? remainingImeis.join(', ') : undefined,
-          imeis: remainingImeis.length > 0 ? remainingImeis : undefined,
-          updatedAt: now,
-        };
-        updatedInventory[matchIndex] = updatedItem;
-        changedInventory.push(updatedItem);
+      const rb = rollbackPurchaseItemFromInventory(updatedInventory, purchaseItem, revInvNow);
+      updatedInventory = rb.nextList;
+      allPurchaseImeis.push(...rb.oldItemImeis);
+      if (rb.changedItem) {
+        changedInventory.push(rb.changedItem);
       }
     });
 

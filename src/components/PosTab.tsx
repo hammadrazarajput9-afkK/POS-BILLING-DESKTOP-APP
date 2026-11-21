@@ -2233,7 +2233,23 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                                 saleMode === 'wholesale' ? 'text-purple-700' : 'text-blue-600'
                               }`}
                             >
-                              {currency} {getItemUnitPrice(item).toLocaleString()}
+                              {(() => {
+                                const variants = item.variants || [];
+                                if (variants.length > 1) {
+                                  const varPrices = variants
+                                    .map(v => getItemUnitPrice(getVariantPricing(item, v)))
+                                    .filter(p => !isNaN(p) && p > 0);
+                                  if (varPrices.length > 0) {
+                                    const minP = Math.min(...varPrices);
+                                    const maxP = Math.max(...varPrices);
+                                    if (minP !== maxP) {
+                                      return `${currency} ${minP.toLocaleString()} - ${maxP.toLocaleString()}`;
+                                    }
+                                    return `${currency} ${minP.toLocaleString()}`;
+                                  }
+                                }
+                                return `${currency} ${getItemUnitPrice(item).toLocaleString()}`;
+                              })()}
                             </span>
                           </div>
 
@@ -3031,7 +3047,17 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                   <div>
                     <span className="text-slate-400 block text-[10px] font-bold uppercase">Retail Price</span>
                     <span className="tabular-nums font-black text-blue-600 text-sm sm:text-base">
-                      {currency} {selectedProductDetails.salePrice.toLocaleString()}
+                      {(() => {
+                        const prices = (selectedProductDetails.variants || [])
+                          .map(v => Number(v.salePrice))
+                          .filter(p => !isNaN(p) && p > 0);
+                        if (prices.length === 0) prices.push(selectedProductDetails.salePrice);
+                        const minP = Math.min(...prices);
+                        const maxP = Math.max(...prices);
+                        return minP === maxP
+                          ? `${currency} ${minP.toLocaleString()}`
+                          : `${currency} ${minP.toLocaleString()} - ${maxP.toLocaleString()}`;
+                      })()}
                     </span>
                   </div>
                   {selectedProductDetails.wholesalePrice ? (
