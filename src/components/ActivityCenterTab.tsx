@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { ConfirmModal } from './ConfirmModal';
+import { smartMatch } from '../utils/smartSearch';
 
 interface ActivityCenterTabProps {
   activities: ActivityLog[];
@@ -92,15 +93,12 @@ const ActivityCenterTabComponent: React.FC<ActivityCenterTabProps> = ({
   };
 
   const filteredActivities = useMemo(() => {
-    const q = search.toLowerCase().trim();
+    const q = search.trim();
 
     return recent24hActivities
       .filter(act => {
         const matchSearch =
-          !q ||
-          act.title.toLowerCase().includes(q) ||
-          act.details.toLowerCase().includes(q) ||
-          act.category.toLowerCase().includes(q);
+          !q || smartMatch(q, [act.title, act.category], [act.details]);
 
         const matchCat = selectedCat === 'ALL' || act.category === selectedCat;
 

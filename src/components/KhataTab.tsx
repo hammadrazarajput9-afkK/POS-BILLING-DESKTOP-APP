@@ -19,6 +19,7 @@ import { useToast } from './Toast';
 import { CustomerAccountModal, CustomerAccountUpdatePayload } from './CustomerAccountModal';
 import { ConfirmModal } from './ConfirmModal';
 import { buildGoogleMapsTrackUrl } from '../utils/mapsConfig';
+import { smartFilterAndSort } from '../utils/smartSearch';
 
 interface KhataTabProps {
   khata: KhataCustomer[];
@@ -80,18 +81,10 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
   }, [activeAccountCustomer, khata]);
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim();
-    return khata.filter(k => {
-      return (
-        !q ||
-        k.name.toLowerCase().includes(q) ||
-        k.phone.toLowerCase().includes(q) ||
-        (k.phone2 && k.phone2.toLowerCase().includes(q)) ||
-        (k.address && k.address.toLowerCase().includes(q)) ||
-        (k.cnic && k.cnic.toLowerCase().includes(q)) ||
-        (k.shopName && k.shopName.toLowerCase().includes(q))
-      );
-    });
+    return smartFilterAndSort(khata, search, k => ({
+      primary: [k.name, k.phone, k.shopName],
+      secondary: [k.phone2, k.address, k.cnic, k.city, k.ntnNumber],
+    }));
   }, [khata, search]);
 
   const totalOutstanding = useMemo(() => {

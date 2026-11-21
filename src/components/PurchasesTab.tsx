@@ -43,6 +43,7 @@ import { validateImeis, distributeImeiInput, MAX_SINGLE_IMEI_LENGTH, sanitizeSin
 import { generateSinglePurchasePdf } from '../utils/pdfGenerator';
 import { sharePurchaseOnWhatsApp } from '../utils/whatsappInvoice';
 import { compressImage } from '../utils/imageCompressor';
+import { smartFilterAndSort, smartMatch } from '../utils/smartSearch';
 
 interface PurchasesTabProps {
   purchases: SupplierPurchase[];
@@ -248,17 +249,21 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
 
   // Search existing inventory products for inward addition
   const filteredSearchInventory = useMemo(() => {
-    const q = productSearch.toLowerCase().trim();
-    if (!q) return inventory.slice(0, 8);
-    return inventory.filter(inv => {
-      const imeiStr = [inv.imei || '', ...(inv.imeis || [])].join(' ');
-      return (
-        inv.name.toLowerCase().includes(q) ||
-        inv.category.toLowerCase().includes(q) ||
-        (inv.barcode && inv.barcode.toLowerCase().includes(q)) ||
-        imeiStr.toLowerCase().includes(q)
-      );
-    }).slice(0, 15);
+    if (!productSearch.trim()) return inventory.slice(0, 8);
+    return smartFilterAndSort(inventory, productSearch, inv => {
+      const imeiStr = [
+        inv.imei || '',
+        ...(inv.imeis || []),
+        ...(inv.variants?.flatMap(v => v.imeis || []) || []),
+      ].join(' ');
+      const specs = (inv.variants || [])
+        .map(v => `${v.ram || ''} ${v.storage || ''} ${v.color || ''}`)
+        .join(' ');
+      return {
+        primary: [inv.name, inv.category],
+        secondary: [inv.ram, inv.storage, inv.color, specs, inv.barcode, imeiStr],
+      };
+    }).slice(0, 20);
   }, [inventory, productSearch]);
 
   const resolveItemCategory = (rawCat?: string): string => {
@@ -1048,25 +1053,27 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
     return matches.slice(0, 6);
   }, [search, purchases, imeiRecords]);
 
-  // Filtered Purchases list (including deep IMEI & barcode matching)
+  // Filtered Purchases list (including deep IMEI, specs & barcode matching)
   const filteredPurchases = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = search.trim();
+    const qLower = q.toLowerCase();
     return purchases
       .filter(p => {
+        const itemsText = (p.items || [])
+          .map(i => {
+            const imeisStr = [i.imei || '', ...(i.imeis || [])].join(' ');
+            return `${i.name} ${i.category || ''} ${i.ram || ''} ${i.storage || ''} ${i.color || ''} ${i.barcode || ''} ${imeisStr}`;
+          })
+          .join(' ');
+
         const matchesSearch =
           !q ||
-          p.partyName.toLowerCase().includes(q) ||
-          p.billNo.toLowerCase().includes(q) ||
-          (p.partyPhone && p.partyPhone.toLowerCase().includes(q)) ||
           billNosFromImeiRecords.has((p.billNo || '').trim().toLowerCase()) ||
-          p.items.some(i => {
-            const imeisStr = [i.imei || '', ...(i.imeis || [])].join(' ').toLowerCase();
-            return (
-              i.name.toLowerCase().includes(q) ||
-              imeisStr.includes(q) ||
-              (i.barcode && i.barcode.toLowerCase().includes(q))
-            );
-          });
+          smartMatch(
+            qLower,
+            [p.partyName, p.billNo, itemsText],
+            [isAdmin ? p.partyPhone : '', p.notes]
+          );
 
         const isReversed = p.status === 'REVERSED';
         const matchesStatus =
@@ -1085,7 +1092,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
         return matchesSearch && matchesStatus && matchesDate;
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [purchases, search, statusFilter, dateFilter, billNosFromImeiRecords]);
+  }, [purchases, search, statusFilter, dateFilter, billNosFromImeiRecords, isAdmin]);
 
   // Aggregate stats (active non-reversed purchases)
   const stats = useMemo(() => {

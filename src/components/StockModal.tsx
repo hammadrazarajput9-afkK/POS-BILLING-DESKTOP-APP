@@ -185,7 +185,8 @@ export const StockModal: React.FC<StockModalProps> = ({
   isAdmin = true,
   allowCostEntry = false,
 }) => {
-  const canSeeCostAndWholesale = isAdmin || allowCostEntry;
+  const canSeeCostAndWholesale = true;
+  const canSeeProfitSummary = isAdmin;
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -1673,7 +1674,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                           <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-slate-100 text-slate-600 tabular-nums">
                             {currentQty} {currentQty === 1 ? 'Unit' : 'Units'}
                           </span>
-                          {canSeeCostAndWholesale && marginVal > 0 && (
+                          {canSeeProfitSummary && marginVal > 0 && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1 tabular-nums">
                               <TrendingUp className="w-2.5 h-2.5 text-emerald-600" />
                               +{currency} {marginVal.toLocaleString()} ({marginPct}%)
@@ -2013,7 +2014,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                   <span className="text-slate-300 tabular-nums">
                     Sale: <strong className="text-emerald-400">{currency} {totalVariantsSale.toLocaleString()}</strong>
                   </span>
-                  {canSeeCostAndWholesale && (
+                  {canSeeProfitSummary && (
                     <span className="text-slate-300 tabular-nums">
                       Profit: <strong className="text-blue-400">+{currency} {totalVariantsProfit.toLocaleString()}</strong>
                     </span>

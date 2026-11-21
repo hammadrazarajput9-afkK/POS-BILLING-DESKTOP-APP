@@ -30,6 +30,7 @@ import {
 import { useToast } from './Toast';
 import { generateNextReturnNumber, extractItemImeis } from '../utils/imeiManager';
 import { normalizePaymentChannel } from '../utils/accounting';
+import { smartFilterAndSort } from '../utils/smartSearch';
 
 interface SalesReturnModalProps {
   isOpen: boolean;
@@ -147,18 +148,15 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
 
   // Filtered sales for search
   const filteredSales = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim();
-    if (!q) return sales.slice(0, 10);
+    if (!searchQuery.trim()) return sales.slice(0, 10);
 
-    return sales.filter(s => {
+    return smartFilterAndSort(sales, searchQuery, s => {
       const imeiStr = s.items.flatMap(i => i.imeis || (i.imei ? [i.imei] : [])).join(' ');
-      return (
-        s.invNo.toLowerCase().includes(q) ||
-        s.custName.toLowerCase().includes(q) ||
-        (s.custPhone && s.custPhone.includes(q)) ||
-        s.items.some(i => i.name.toLowerCase().includes(q)) ||
-        imeiStr.toLowerCase().includes(q)
-      );
+      const itemNames = s.items.map(i => `${i.name} ${i.variantLabel || ''}`).join(' ');
+      return {
+        primary: [s.invNo, s.custName, s.custPhone],
+        secondary: [itemNames, imeiStr],
+      };
     }).slice(0, 15);
   }, [sales, searchQuery]);
 

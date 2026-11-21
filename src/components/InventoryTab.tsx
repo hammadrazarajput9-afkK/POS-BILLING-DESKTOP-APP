@@ -36,6 +36,7 @@ import { useToast } from './Toast';
 import { ConfirmModal } from './ConfirmModal';
 import { CategoryModal } from './CategoryModal';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
+import { smartFilterAndSort } from '../utils/smartSearch';
 
 interface InventoryTabProps {
   inventory: InventoryItem[];
@@ -447,20 +448,16 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
   }, [inventory]);
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim();
-
-    return unifiedInventory.filter(item => {
-      // Status Filter
+    const preFiltered = unifiedInventory.filter(item => {
       if (statusFilter === 'ACTIVE' && item.status === 'ARCHIVED') return false;
       if (statusFilter === 'ARCHIVED' && item.status !== 'ARCHIVED') return false;
-
-      // Category Filter
       if (categoryFilter !== 'ALL' && item.category !== categoryFilter) return false;
+      return true;
+    });
 
-      // Search Query
-      if (!q) return true;
+    if (!search.trim()) return preFiltered;
 
-      const tokens = q.split(/\s+/).filter(Boolean);
+    return smartFilterAndSort(preFiltered, search, item => {
       const imeiString = [
         item.imei || '',
         ...(item.imeis || []),
@@ -470,8 +467,11 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
       const variantSpecsAndColors = (item.variants || [])
         .map(v => `${v.ram || ''} ${v.storage || ''} ${v.color || ''}`)
         .join(' ');
-      const combinedText = `${item.name} ${item.category} ${item.ram || ''} ${item.storage || ''} ${variantSpecsAndColors} ${item.barcode || ''} ${imeiString}`.toLowerCase();
-      return tokens.every(token => combinedText.includes(token));
+
+      return {
+        primary: [item.name, item.category],
+        secondary: [item.ram, item.storage, item.color, variantSpecsAndColors, item.barcode, imeiString],
+      };
     });
   }, [unifiedInventory, search, categoryFilter, statusFilter]);
 
@@ -540,17 +540,31 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
       return;
     }
 
-    const headers = ['ID', 'Product Name', 'Category', 'Status', 'IMEI', 'Cost Price', 'Sale Price', 'Stock Qty'];
-    const rows = inventory.map(i => [
-      i.id,
-      `"${i.name}"`,
-      `"${i.category}"`,
-      i.status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE',
-      i.imei || '',
-      isAdmin ? i.costPrice : 'Restricted',
-      i.salePrice,
-      i.qty,
-    ]);
+    const headers = isAdmin
+      ? ['ID', 'Product Name', 'Category', 'Status', 'IMEI', 'Cost Price', 'Sale Price', 'Stock Qty']
+      : ['ID', 'Product Name', 'Category', 'Status', 'IMEI', 'Sale Price', 'Stock Qty'];
+    const rows = inventory.map(i =>
+      isAdmin
+        ? [
+            i.id,
+            `"${i.name}"`,
+            `"${i.category}"`,
+            i.status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE',
+            i.imei || '',
+            i.costPrice,
+            i.salePrice,
+            i.qty,
+          ]
+        : [
+            i.id,
+            `"${i.name}"`,
+            `"${i.category}"`,
+            i.status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE',
+            i.imei || '',
+            i.salePrice,
+            i.qty,
+          ]
+    );
 
     const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -566,32 +580,34 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
   return (
     <div className="space-y-4 sm:space-y-6">
       {/* Metric Highlights */}
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-2 lg:grid-cols-4 sm:gap-4">
-        <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4.5 shadow-xs flex flex-col justify-between">
-          <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">
-            Total Capital Invested
-          </span>
-          <h3 className="text-sm sm:text-xl font-extrabold text-slate-900 tabular-nums mt-0.5 sm:mt-1 truncate">
-            {isAdmin ? `${currency} ${totalCostValuation.toLocaleString()}` : '••••••'}
-          </h3>
-          <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">
-            {isAdmin ? 'Stock cost valuation' : 'Restricted (Admin)'}
-          </p>
-        </div>
+      <div className={`grid grid-cols-2 gap-2.5 sm:gap-4 ${isAdmin ? 'sm:grid-cols-2 lg:grid-cols-4' : ''}`}>
+        {isAdmin && (
+          <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4.5 shadow-xs flex flex-col justify-between">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">
+              Total Capital Invested
+            </span>
+            <h3 className="text-sm sm:text-xl font-extrabold text-slate-900 tabular-nums mt-0.5 sm:mt-1 truncate">
+              {currency} {totalCostValuation.toLocaleString()}
+            </h3>
+            <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">
+              Stock cost valuation
+            </p>
+          </div>
+        )}
 
-        <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4.5 shadow-xs flex flex-col justify-between">
-          <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">
-            Expected Retail Revenue
-          </span>
-          <h3 className="text-sm sm:text-xl font-extrabold text-emerald-600 tabular-nums mt-0.5 sm:mt-1 truncate">
-            {isAdmin ? `${currency} ${totalRetailValuation.toLocaleString()}` : '••••••'}
-          </h3>
-          <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">
-            {isAdmin
-              ? `Margin: +${currency} ${(totalRetailValuation - totalCostValuation).toLocaleString()}`
-              : 'Restricted (Admin)'}
-          </p>
-        </div>
+        {isAdmin && (
+          <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4.5 shadow-xs flex flex-col justify-between">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">
+              Expected Retail Revenue
+            </span>
+            <h3 className="text-sm sm:text-xl font-extrabold text-emerald-600 tabular-nums mt-0.5 sm:mt-1 truncate">
+              {currency} {totalRetailValuation.toLocaleString()}
+            </h3>
+            <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">
+              Margin: +{currency} {(totalRetailValuation - totalCostValuation).toLocaleString()}
+            </p>
+          </div>
+        )}
 
         <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4.5 shadow-xs flex flex-col justify-between">
           <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">
@@ -938,7 +954,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                       <th className="p-3">Category</th>
                       <th className="p-3">Status</th>
                       <th className="p-3">IMEI / Barcode</th>
-                      <th className="p-3 text-right">Cost Price</th>
+                      {isAdmin && <th className="p-3 text-right">Cost Price</th>}
                       <th className="p-3 text-right">Sale Price</th>
                       <th className="p-3 text-center">In Stock</th>
                       <th className="p-3 text-center">Actions</th>
@@ -947,7 +963,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                   <tbody className="divide-y divide-slate-100 text-xs">
                     {filtered.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="text-center py-12 text-slate-400">
+                        <td colSpan={isAdmin ? 8 : 7} className="text-center py-12 text-slate-400">
                           <Package className="w-8 h-8 mx-auto mb-2 text-slate-300" />
                           <p className="font-semibold text-slate-700">No matching products found</p>
                           <p className="text-[11px] text-slate-400">Try adjusting your search query or category filter</p>
@@ -1073,9 +1089,11 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                                 <span className="text-slate-400 text-[11px]">--</span>
                               )}
                             </td>
-                            <td className="p-3 text-right tabular-nums text-slate-600 font-medium">
-                              {isAdmin ? `${currency} ${item.costPrice.toLocaleString()}` : '••••'}
-                            </td>
+                            {isAdmin && (
+                              <td className="p-3 text-right tabular-nums text-slate-600 font-medium">
+                                {currency} {item.costPrice.toLocaleString()}
+                              </td>
+                            )}
                             <td className="p-3 text-right tabular-nums font-bold text-slate-900">
                               {(() => {
                                 const prices = (item.variants || []).map(v => Number(v.salePrice)).filter(p => !isNaN(p) && p > 0);

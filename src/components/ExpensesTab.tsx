@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { ConfirmModal } from './ConfirmModal';
+import { smartMatch } from '../utils/smartSearch';
 
 interface ExpensesTabProps {
   expenses: ExpenseItem[];
@@ -54,11 +55,12 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
   const [zoomedImage, setZoomedImage] = useState<{ src: string; title: string } | null>(null);
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim();
+    const q = search.trim();
     return expenses.filter(e => {
       const matchCat = selectedCategory === 'ALL' || e.category === selectedCategory;
-      const matchSearch = !q || e.description.toLowerCase().includes(q);
-      
+      const matchSearch =
+        !q || smartMatch(q, [e.description, e.category], [e.paymentMethod, e.amount]);
+
       let matchDate = true;
       if (selectedDate) {
         const itemDateStr = new Date(e.date).toISOString().substring(0, 10);

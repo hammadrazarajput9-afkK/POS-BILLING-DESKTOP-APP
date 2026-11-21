@@ -36,6 +36,7 @@ import { CustomerLocationPicker, CustomerLocationValue } from './CustomerLocatio
 import { CameraCaptureModal } from './CameraCaptureModal';
 import { buildGoogleMapsTrackUrl, buildGoogleMapsViewUrl } from '../utils/mapsConfig';
 import { compressImage } from '../utils/imageCompressor';
+import { smartMatch } from '../utils/smartSearch';
 
 export interface CustomerAccountUpdatePayload {
   id: string;
@@ -248,22 +249,17 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   }, [history, customerSalesPool]);
 
   const filteredLedger = useMemo(() => {
-    const q = ledgerSearch.toLowerCase().trim();
+    const q = ledgerSearch.trim();
     return runningLedger.filter(tx => {
       if (ledgerFilter !== 'all' && tx.type !== ledgerFilter) return false;
       if (!q) return true;
-      const itemHit = tx.linkedSale?.items.some(it =>
-        it.name.toLowerCase().includes(q) ||
-        (it.imei || '').toLowerCase().includes(q) ||
-        (it.imeis || []).some(im => im.toLowerCase().includes(q)) ||
-        (it.variantLabel || '').toLowerCase().includes(q)
-      );
-      return (
-        (tx.note || '').toLowerCase().includes(q) ||
-        (tx.paymentMethod || '').toLowerCase().includes(q) ||
-        (tx.linkedSale?.invNo || '').toLowerCase().includes(q) ||
-        Boolean(itemHit) ||
-        String(tx.amount).includes(q)
+      const itemsText = (tx.linkedSale?.items || [])
+        .map(it => `${it.name} ${it.variantLabel || ''} ${it.imei || ''} ${(it.imeis || []).join(' ')}`)
+        .join(' ');
+      return smartMatch(
+        q,
+        [tx.note, tx.paymentMethod, tx.linkedSale?.invNo, tx.amount],
+        [itemsText]
       );
     });
   }, [runningLedger, ledgerSearch, ledgerFilter]);

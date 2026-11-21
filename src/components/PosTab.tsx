@@ -41,6 +41,7 @@ import { useFormDraft } from '../hooks/useFormDraft';
 import { generateNextInvoiceNumber, extractItemImeis } from '../utils/imeiManager';
 import { normalizePaymentChannel } from '../utils/accounting';
 import { shareInvoiceOnWhatsApp } from '../utils/whatsappInvoice';
+import { smartFilterAndSort, smartMatch, smartSearchScore } from '../utils/smartSearch';
 
 interface PosTabProps {
   inventory: InventoryItem[];
@@ -259,24 +260,24 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       if (!inRange) return false;
 
       // 2. Intelligent Search Filter (customer, phone, invoice, items, barcodes, IMEIs)
-      const q = historySearch.toLowerCase().trim();
+      const q = historySearch.trim();
       if (!q) return true;
 
-      const custMatch = (sale.custName || '').toLowerCase().includes(q) || (sale.custPhone || '').includes(q);
-      const invMatch = sale.invNo.toLowerCase().includes(q);
-      
-      const itemMatch = sale.items.some(si => {
-        const nameMatch = si.name.toLowerCase().includes(q);
-        const itemImeis = si.imeis || (si.imei ? [si.imei] : []);
-        const imeiMatch = itemImeis.some(im => im.toLowerCase().includes(q));
-        
-        const matchedInventoryItem = inventory.find(i => i.name.toLowerCase() === si.name.toLowerCase() || i.id === si.id);
-        const barcodeMatch = matchedInventoryItem?.barcode && matchedInventoryItem.barcode.toLowerCase().includes(q);
+      const itemNamesAndSpecs = sale.items
+        .map(si => {
+          const itemImeis = si.imeis || (si.imei ? [si.imei] : []);
+          const matchedInventoryItem = inventory.find(
+            i => i.name.toLowerCase() === si.name.toLowerCase() || i.id === si.id
+          );
+          return `${si.name} ${si.variantLabel || ''} ${itemImeis.join(' ')} ${matchedInventoryItem?.barcode || ''}`;
+        })
+        .join(' ');
 
-        return nameMatch || imeiMatch || barcodeMatch;
-      });
-
-      return custMatch || invMatch || itemMatch;
+      return smartMatch(
+        q,
+        [sale.invNo, sale.custName, sale.custPhone, sale.retailerShopName],
+        [itemNamesAndSpecs, sale.notes, sale.paymentMethod]
+      );
     });
   }, [sales, historyRange, historyStartDate, historyEndDate, historySearch, inventory]);
 
@@ -691,45 +692,49 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   // Filtered inventory by search & category (pins recently scanned item at #1 and prioritizes exact matches)
   const filteredItems = useMemo(() => {
     const q = search.toLowerCase().trim();
-    if (!q) {
-      const baseList =
-        selectedCategory === 'ALL'
-          ? activeInventory
-          : activeInventory.filter(item => item.category === selectedCategory);
+    const categoryItems =
+      selectedCategory === 'ALL'
+        ? activeInventory
+        : activeInventory.filter(item => item.category === selectedCategory);
 
+    if (!q) {
       if (lastScannedItem) {
         const scannedInActive = activeInventory.find(i => i.id === lastScannedItem.itemId);
         if (scannedInActive) {
-          return [scannedInActive, ...baseList.filter(i => i.id !== scannedInActive.id)];
+          return [scannedInActive, ...categoryItems.filter(i => i.id !== scannedInActive.id)];
         }
       }
-      return baseList;
+      return categoryItems;
     }
 
-    const tokens = q.split(/\s+/).filter(Boolean);
+    const scored = categoryItems
+      .map((item, idx) => {
+        const imeis = extractItemImeis(item);
+        const imeiLower = imeis.map(im => im.trim().toLowerCase());
+        const barcode = (item.barcode || '').trim().toLowerCase();
+        const variantText = (item.variants || [])
+          .map(v => `${v.ram || ''} ${v.storage || ''} ${v.color || ''}`)
+          .join(' ');
 
-    const matches = activeInventory.filter(item => {
-      const imeiString = extractItemImeis(item).join(' ');
-      const variantText = (item.variants || [])
-        .map(v => `${v.ram || ''} ${v.storage || ''} ${v.color || ''}`)
-        .join(' ');
-      const combinedText = `${item.name} ${item.category} ${item.ram || ''} ${item.storage || ''} ${variantText} ${item.barcode || ''} ${imeiString}`.toLowerCase();
-      const matchSearch = tokens.every(token => combinedText.includes(token));
-      const matchCat = selectedCategory === 'ALL' || item.category === selectedCategory;
+        let score = 0;
+        if (imeiLower.includes(q) || barcode === q) {
+          score = 10000;
+        } else if (imeiLower.some(im => im.startsWith(q)) || barcode.startsWith(q)) {
+          score = 5000;
+        } else {
+          score = smartSearchScore(
+            q,
+            [item.name, item.category],
+            [item.ram, item.storage, item.color, variantText, item.barcode, imeis.join(' ')]
+          );
+        }
 
-      return matchSearch && matchCat;
-    });
+        return { item, score, idx };
+      })
+      .filter(entry => entry.score > 0);
 
-    const getMatchRank = (item: InventoryItem): number => {
-      const imeis = extractItemImeis(item).map(im => im.trim().toLowerCase());
-      const barcode = (item.barcode || '').trim().toLowerCase();
-      if (imeis.includes(q) || barcode === q) return 0;
-      if (imeis.some(im => im.startsWith(q)) || barcode.startsWith(q)) return 1;
-      if (item.name.toLowerCase().startsWith(q)) return 2;
-      return 3;
-    };
-
-    return [...matches].sort((a, b) => getMatchRank(a) - getMatchRank(b));
+    scored.sort((a, b) => (b.score !== a.score ? b.score - a.score : a.idx - b.idx));
+    return scored.map(entry => entry.item);
   }, [activeInventory, search, selectedCategory, lastScannedItem]);
 
   const getVariantLabel = (v: MobileVariant): string => {
@@ -975,11 +980,15 @@ const PosTabComponent: React.FC<PosTabProps> = ({
     }
 
     if (source === 'enter') {
-      const q = clean.toLowerCase();
-      const matchingBySearch = activeInventory.filter(item => {
+      const matchingBySearch = smartFilterAndSort(activeInventory, clean, item => {
         const imeiString = extractItemImeis(item).join(' ');
-        const combined = `${item.name} ${item.category} ${item.barcode || ''} ${imeiString}`.toLowerCase();
-        return q.split(/\s+/).filter(Boolean).every(tok => combined.includes(tok));
+        const variantText = (item.variants || [])
+          .map(v => `${v.ram || ''} ${v.storage || ''} ${v.color || ''}`)
+          .join(' ');
+        return {
+          primary: [item.name, item.category],
+          secondary: [item.ram, item.storage, item.color, variantText, item.barcode, imeiString],
+        };
       });
       if (matchingBySearch.length === 1) {
         const singleMatch = matchingBySearch[0];
