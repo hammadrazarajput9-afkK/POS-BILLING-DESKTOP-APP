@@ -227,7 +227,7 @@ function AppContent() {
   // Safeguard: Ensure salesman role is never on admin-only tabs
   useEffect(() => {
     if (data.currentRole === 'salesman') {
-      const restrictedTabs = ['dashboard', 'reports', 'activity', 'purchases'];
+      const restrictedTabs = ['dashboard', 'reports', 'activity'];
       if (restrictedTabs.includes(activeTab)) {
         setActiveTab('pos');
       }
@@ -942,11 +942,26 @@ function AppContent() {
     purchaseData: Omit<SupplierPurchase, 'id'>,
     autoAddToInventory: boolean
   ) => {
+    const activeRole = data.currentRole || 'admin';
+    if (!hasPermission(activeRole, 'canManagePurchases')) {
+      showToast('Permission Denied: Stock inward entry is not permitted for your role', 'error');
+      return;
+    }
+
+    const isSalesmanUser = activeRole === 'salesman';
     const now = new Date().toISOString();
     const newPurchaseId = generateEntityId('PUR');
     const newPurchase: SupplierPurchase = {
       ...purchaseData,
       id: newPurchaseId,
+      partyPhone: isSalesmanUser ? undefined : purchaseData.partyPhone,
+      paidAmount: isSalesmanUser ? 0 : purchaseData.paidAmount,
+      balanceDue: isSalesmanUser ? purchaseData.totalAmount : purchaseData.balanceDue,
+      paymentMethod: isSalesmanUser ? 'Credit' : purchaseData.paymentMethod,
+      createdByRole: purchaseData.createdByRole || activeRole,
+      createdByUserId: purchaseData.createdByUserId || data.currentUser?.id,
+      createdByName: purchaseData.createdByName || data.currentUser?.name,
+      salesmanEditCount: purchaseData.salesmanEditCount ?? 0,
       updatedAt: now,
     };
 
@@ -1119,7 +1134,12 @@ function AppContent() {
       newPurchase.id
     );
 
-    showToast(`Purchase bill #${newPurchase.billNo} registered!`, 'success');
+    showToast(
+      isSalesmanUser
+        ? `Stock inward #${newPurchase.billNo} saved!`
+        : `Purchase bill #${newPurchase.billNo} registered!`,
+      'success'
+    );
 
     // Immediately persist to dedicated Firestore subcollections ONLY (single source of truth)
     if (autoAddToInventory && affectedInventoryItems.length > 0) {
@@ -1140,14 +1160,47 @@ function AppContent() {
     updatedPurchaseData: Omit<SupplierPurchase, 'id'>,
     autoAddToInventory: boolean
   ) => {
+    const activeRole = data.currentRole || 'admin';
+    if (!hasPermission(activeRole, 'canManagePurchases')) {
+      showToast('Permission Denied: Updating stock inward entries is not permitted for your role', 'error');
+      return;
+    }
+
     const oldPurchase = (data.supplierPurchases || []).find(p => p.id === purchaseId);
     if (!oldPurchase) return;
 
+    const isSalesmanUser = activeRole === 'salesman';
+    if (isSalesmanUser) {
+      const isOwnEntry =
+        oldPurchase.createdByRole === 'salesman' &&
+        (!oldPurchase.createdByUserId || !data.currentUser?.id || oldPurchase.createdByUserId === data.currentUser.id);
+      if (!isOwnEntry) {
+        showToast('You can only edit stock-inward entries that you created.', 'error');
+        return;
+      }
+      if ((oldPurchase.salesmanEditCount || 0) >= 1) {
+        showToast('Edit limit reached: You can only edit a stock-inward entry once.', 'error');
+        return;
+      }
+    }
+
     const now = new Date().toISOString();
+    const preservedPaidAmount = isSalesmanUser ? (oldPurchase.paidAmount || 0) : updatedPurchaseData.paidAmount;
+    const preservedBalanceDue = isSalesmanUser
+      ? Math.max(0, updatedPurchaseData.totalAmount - preservedPaidAmount)
+      : updatedPurchaseData.balanceDue;
     const updatedPurchase: SupplierPurchase = {
       ...updatedPurchaseData,
       id: purchaseId,
+      partyPhone: isSalesmanUser ? oldPurchase.partyPhone : updatedPurchaseData.partyPhone,
+      paidAmount: preservedPaidAmount,
+      balanceDue: preservedBalanceDue,
+      paymentMethod: isSalesmanUser ? oldPurchase.paymentMethod : updatedPurchaseData.paymentMethod,
       status: oldPurchase.status,
+      createdByRole: oldPurchase.createdByRole || activeRole,
+      createdByUserId: oldPurchase.createdByUserId || data.currentUser?.id,
+      createdByName: oldPurchase.createdByName || data.currentUser?.name,
+      salesmanEditCount: isSalesmanUser ? (oldPurchase.salesmanEditCount || 0) + 1 : (oldPurchase.salesmanEditCount || 0),
       updatedAt: now,
     };
 
@@ -1388,7 +1441,12 @@ function AppContent() {
       updatedPurchase.id
     );
 
-    showToast(`Purchase bill #${updatedPurchase.billNo} updated & synced!`, 'success');
+    showToast(
+      isSalesmanUser
+        ? `Stock inward #${updatedPurchase.billNo} updated! (Single edit used)`
+        : `Purchase bill #${updatedPurchase.billNo} updated & synced!`,
+      'success'
+    );
 
     Array.from(changedInventoryMap.values()).forEach(item => {
       saveInventoryItemToFirestore(item, DEFAULT_STORE_ID).catch(() => {});
@@ -1534,6 +1592,11 @@ function AppContent() {
     paymentMethod: string;
     notes?: string;
   }) => {
+    if ((data.currentRole || 'admin') === 'salesman') {
+      showToast('Permission Denied: Supplier payment settlement is restricted to Administrators', 'error');
+      return;
+    }
+
     if (paymentAmount <= 0) {
       showToast('Payment amount must be greater than 0', 'warning');
       return;
@@ -1892,6 +1955,9 @@ function AppContent() {
                 sales={data.sales || []}
                 onlineAccounts={data.onlineAccounts || []}
                 appData={data}
+                isAdmin={(data.currentRole || 'admin') === 'admin'}
+                currentUserId={data.currentUser?.id}
+                currentUserName={data.currentUser?.name}
                 onSavePurchase={handleSavePurchase}
                 onUpdatePurchase={handleUpdatePurchase}
                 onDeletePurchase={handleDeletePurchase}
@@ -2029,6 +2095,7 @@ function AppContent() {
         onAddCategory={handleAddCategory}
         onRenameCategory={handleRenameCategory}
         onStockAdjustment={handleStockAdjustment}
+        isAdmin={(data.currentRole || 'admin') === 'admin'}
       />
 
       <AddKhataModal

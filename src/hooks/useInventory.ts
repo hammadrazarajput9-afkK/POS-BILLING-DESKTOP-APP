@@ -154,7 +154,7 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
           difference: singleItem.qty - existingProduct.qty,
           reason: adjustment.reason,
           notes: adjustment.notes,
-          adjustedBy: 'Admin',
+          adjustedBy: data.currentRole === 'salesman' ? (data.currentUser?.name || 'Salesman') : 'Admin',
         });
       }
 
@@ -486,8 +486,8 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
    * Restore an archived inventory item
    */
   const handleRestoreInventory = (id: string) => {
-    if (!hasPermission(data.currentRole || 'admin', 'canEditInventory')) {
-      showToast('Permission Denied: Modifying inventory is restricted to Administrators', 'error');
+    if (!hasPermission(data.currentRole || 'admin', 'canDeleteInventory')) {
+      showToast('Permission Denied: Restoring archived inventory is restricted to Administrators', 'error');
       return;
     }
 

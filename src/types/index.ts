@@ -351,6 +351,10 @@ export interface SupplierPurchase {
   reversedBy?: string;
   reversalReason?: string;
   reversalNotes?: string;
+  createdByRole?: UserRole;
+  createdByUserId?: string;
+  createdByName?: string;
+  salesmanEditCount?: number;
   updatedAt?: string;
 }
 

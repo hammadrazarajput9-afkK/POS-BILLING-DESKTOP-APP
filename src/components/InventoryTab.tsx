@@ -1143,14 +1143,23 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                                     </>
                                   )}
                                 </div>
-                              ) : (
+                              ) : isArchived ? (
                                 <span
                                   className="inline-flex items-center gap-1 text-[10px] text-slate-400 font-semibold bg-slate-100 px-2 py-0.5 rounded-md cursor-not-allowed"
-                                  title="Editing and deletion locked in Salesman mode"
+                                  title="Archived items locked in Salesman mode"
                                 >
                                   <Lock className="w-3 h-3 text-slate-400" />
                                   Locked
                                 </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenEditModal(item)}
+                                  className="px-2 py-1 text-[11px] font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition inline-flex items-center gap-1 cursor-pointer"
+                                  title="Edit Product"
+                                >
+                                  <Edit2 className="w-3 h-3" /> Edit
+                                </button>
                               )}
                             </td>
                           </tr>
@@ -1421,7 +1430,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                             <span className="truncate">{sup.partyName}</span>
                           </div>
                           <div className="text-[10px] text-slate-500 truncate">
-                            {sup.billCount} bill(s){sup.partyPhone ? ` · ${sup.partyPhone}` : ''}
+                            {sup.billCount} bill(s){isAdmin && sup.partyPhone ? ` · ${sup.partyPhone}` : ''}
                           </div>
                         </div>
                         <span className="tabular-nums text-xs font-black text-emerald-700 shrink-0">
@@ -1480,7 +1489,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                 </button>
               </div>
 
-              {isAdmin && (
+              {(isAdmin || selectedProductPopup.status !== 'ARCHIVED') && (
                 <div className="flex items-center gap-2 pt-1">
                   <button
                     type="button"
@@ -1493,17 +1502,19 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                   >
                     <Edit2 className="w-3.5 h-3.5" /> Edit Product
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const item = selectedProductPopup;
-                      setSelectedProductPopup(null);
-                      setProductToDelete(item);
-                    }}
-                    className="py-2 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 min-h-[38px]"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> Delete
-                  </button>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const item = selectedProductPopup;
+                        setSelectedProductPopup(null);
+                        setProductToDelete(item);
+                      }}
+                      className="py-2 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 min-h-[38px]"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Delete
+                    </button>
+                  )}
                 </div>
               )}
             </div>

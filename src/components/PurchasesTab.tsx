@@ -32,7 +32,8 @@ import {
   Edit2,
   Download,
   MessageCircle,
-  ScanLine
+  ScanLine,
+  Lock
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { ConfirmModal } from './ConfirmModal';
@@ -53,6 +54,8 @@ interface PurchasesTabProps {
   onlineAccounts?: OnlineAccount[];
   appData?: AppData;
   isAdmin?: boolean;
+  currentUserId?: string;
+  currentUserName?: string;
   onSavePurchase: (
     purchase: Omit<SupplierPurchase, 'id'>,
     autoAddToInventory: boolean
@@ -124,6 +127,9 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
   imeiRecords = [],
   sales = [],
   appData,
+  isAdmin = true,
+  currentUserId,
+  currentUserName,
   onSavePurchase,
   onUpdatePurchase,
   onDeletePurchase,
@@ -138,6 +144,14 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
 }) => {
   const { showToast } = useToast();
   const [isRecovering, setIsRecovering] = useState(false);
+
+  const canSalesmanEditPurchase = (p: SupplierPurchase): boolean => {
+    if (isAdmin) return true;
+    if (p.status === 'REVERSED') return false;
+    if (p.createdByRole !== 'salesman') return false;
+    if (p.createdByUserId && currentUserId && p.createdByUserId !== currentUserId) return false;
+    return (p.salesmanEditCount || 0) < 1;
+  };
 
   const handleTriggerRecover = async () => {
     if (!onRecoverMissingPurchases || isRecovering) return;
@@ -437,6 +451,10 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
   };
 
   const openEditModal = (purchase: SupplierPurchase) => {
+    if (!isAdmin && !canSalesmanEditPurchase(purchase)) {
+      showToast('You can only edit your own stock-inward entry once.', 'warning');
+      return;
+    }
     setEditingPurchaseId(purchase.id);
     setPartyName(purchase.partyName || '');
     setPartyPhone(purchase.partyPhone || '');
@@ -896,18 +914,38 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
       };
     });
 
+    const effectivePaymentMethod = isAdmin
+      ? paymentMethod
+      : editingPurchaseId && originalPurchase
+      ? originalPurchase.paymentMethod || 'Credit'
+      : 'Credit';
+    const effectivePaidAmount = isAdmin
+      ? calculatedPaidAmount
+      : editingPurchaseId && originalPurchase
+      ? originalPurchase.paidAmount || 0
+      : 0;
+    const effectiveBalanceDue = isAdmin
+      ? balanceDue
+      : Math.max(0, totalBillAmount - effectivePaidAmount);
+
     const newPurchaseData: Omit<SupplierPurchase, 'id'> = {
       billNo: billNo.trim() || generateInwardBillNo(purchaseDate, purchases),
       partyName: partyName.trim(),
-      partyPhone: partyPhone.trim() || undefined,
+      partyPhone: isAdmin ? partyPhone.trim() || undefined : originalPurchase?.partyPhone || undefined,
       date: purchaseDate,
       items: purchaseItems,
       totalAmount: totalBillAmount,
-      paidAmount: calculatedPaidAmount,
-      balanceDue,
-      paymentMethod,
+      paidAmount: effectivePaidAmount,
+      balanceDue: effectiveBalanceDue,
+      paymentMethod: effectivePaymentMethod,
       notes: notes.trim() || undefined,
       invoiceImage: invoiceImage || undefined,
+      createdByRole: originalPurchase?.createdByRole || (isAdmin ? 'admin' : 'salesman'),
+      createdByUserId: originalPurchase?.createdByUserId || currentUserId,
+      createdByName: originalPurchase?.createdByName || currentUserName || (isAdmin ? 'Admin' : 'Salesman'),
+      salesmanEditCount: editingPurchaseId && !isAdmin
+        ? (originalPurchase?.salesmanEditCount || 0) + 1
+        : originalPurchase?.salesmanEditCount || 0,
     };
 
     if (editingPurchaseId && onUpdatePurchase) {
@@ -918,7 +956,12 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
     }
 
     onSavePurchase(newPurchaseData, autoAddToInventory);
-    showToast(`Purchase bill recorded successfully (${currency} ${totalBillAmount.toLocaleString()})`, 'success');
+    showToast(
+      isAdmin
+        ? `Purchase bill recorded successfully (${currency} ${totalBillAmount.toLocaleString()})`
+        : 'Stock inward entry saved successfully!',
+      'success'
+    );
     clearDraft();
     setIsAddModalOpen(false);
     resetForm();
@@ -1073,15 +1116,17 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
             <span className="p-2 bg-blue-600 text-white rounded-xl shadow-md shadow-blue-500/20">
               <Truck className="w-5 h-5" />
             </span>
-            Supplier Purchases & Stock Inward
+            {isAdmin ? 'Supplier Purchases & Stock Inward' : 'Stock Inward System'}
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            Record supplier bills, scan IMEI to find party, download PDFs &amp; share via WhatsApp
+            {isAdmin
+              ? 'Record supplier bills, scan IMEI to find party, download PDFs & share via WhatsApp'
+              : 'Record stock inward by party name, scan IMEIs & sync directly to inventory'}
           </p>
         </div>
 
         <div className="w-full sm:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-          {onRecoverMissingPurchases && (
+          {isAdmin && onRecoverMissingPurchases && (
             <button
               type="button"
               onClick={handleTriggerRecover}
@@ -1093,7 +1138,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
               {isRecovering ? 'Scanning...' : 'Recover Old Bills'}
             </button>
           )}
-          {onOpenPdfReport && (
+          {isAdmin && onOpenPdfReport && (
             <button
               type="button"
               onClick={onOpenPdfReport}
@@ -1109,57 +1154,94 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-lg shadow-blue-600/25 transition cursor-pointer active:scale-95"
           >
             <Plus className="w-4 h-4" />
-            Add Purchase / Inward Bill
+            {isAdmin ? 'Add Purchase / Inward Bill' : 'Add Stock Inward'}
           </button>
         </div>
       </div>
 
       {/* Metric Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
-        <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-400 mb-1 sm:mb-2">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">Total Purchases</span>
-            <DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 shrink-0" />
+      {isAdmin ? (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+          <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between">
+            <div className="flex items-center justify-between text-slate-400 mb-1 sm:mb-2">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">Total Purchases</span>
+              <DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 shrink-0" />
+            </div>
+            <p className="text-sm sm:text-xl font-black text-slate-900 truncate">
+              {currency} {stats.totalPurchased.toLocaleString()}
+            </p>
+            <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">{purchases.length} total bills</p>
           </div>
-          <p className="text-sm sm:text-xl font-black text-slate-900 truncate">
-            {currency} {stats.totalPurchased.toLocaleString()}
-          </p>
-          <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">{purchases.length} total bills</p>
-        </div>
 
-        <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-400 mb-1 sm:mb-2">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-emerald-600 line-clamp-1">Total Paid</span>
-            <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 shrink-0" />
+          <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between">
+            <div className="flex items-center justify-between text-slate-400 mb-1 sm:mb-2">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-emerald-600 line-clamp-1">Total Paid</span>
+              <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 shrink-0" />
+            </div>
+            <p className="text-sm sm:text-xl font-black text-emerald-700 truncate">
+              {currency} {stats.totalPaid.toLocaleString()}
+            </p>
+            <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Cleared via Cash/Bank</p>
           </div>
-          <p className="text-sm sm:text-xl font-black text-emerald-700 truncate">
-            {currency} {stats.totalPaid.toLocaleString()}
-          </p>
-          <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Cleared via Cash/Bank</p>
-        </div>
 
-        <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-400 mb-1 sm:mb-2">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-rose-600 line-clamp-1">Payables / Due</span>
-            <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-600 shrink-0" />
+          <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between">
+            <div className="flex items-center justify-between text-slate-400 mb-1 sm:mb-2">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-rose-600 line-clamp-1">Payables / Due</span>
+              <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-600 shrink-0" />
+            </div>
+            <p className="text-sm sm:text-xl font-black text-rose-600 truncate">
+              {currency} {stats.totalDue.toLocaleString()}
+            </p>
+            <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Supplier balance</p>
           </div>
-          <p className="text-sm sm:text-xl font-black text-rose-600 truncate">
-            {currency} {stats.totalDue.toLocaleString()}
-          </p>
-          <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Supplier balance</p>
-        </div>
 
-        <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-400 mb-1 sm:mb-2">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-indigo-600 line-clamp-1">Inward Units</span>
-            <Package className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600 shrink-0" />
+          <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between">
+            <div className="flex items-center justify-between text-slate-400 mb-1 sm:mb-2">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-indigo-600 line-clamp-1">Inward Units</span>
+              <Package className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600 shrink-0" />
+            </div>
+            <p className="text-sm sm:text-xl font-black text-indigo-900 truncate">
+              {stats.totalInwardUnits.toLocaleString()} pcs
+            </p>
+            <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Stock inward total</p>
           </div>
-          <p className="text-sm sm:text-xl font-black text-indigo-900 truncate">
-            {stats.totalInwardUnits.toLocaleString()} pcs
-          </p>
-          <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Stock inward total</p>
         </div>
-      </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-2.5 sm:gap-4">
+          <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between">
+            <div className="flex items-center justify-between text-slate-400 mb-1 sm:mb-2">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">Total Entries</span>
+              <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 shrink-0" />
+            </div>
+            <p className="text-sm sm:text-xl font-black text-slate-900 truncate tabular-nums">
+              {purchases.length}
+            </p>
+            <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Stock inward bills</p>
+          </div>
+
+          <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between">
+            <div className="flex items-center justify-between text-slate-400 mb-1 sm:mb-2">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-indigo-600 line-clamp-1">Inward Units</span>
+              <Package className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600 shrink-0" />
+            </div>
+            <p className="text-sm sm:text-xl font-black text-indigo-900 truncate tabular-nums">
+              {stats.totalInwardUnits.toLocaleString()} pcs
+            </p>
+            <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Stock received</p>
+          </div>
+
+          <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between">
+            <div className="flex items-center justify-between text-slate-400 mb-1 sm:mb-2">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-emerald-600 line-clamp-1">Parties</span>
+              <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 shrink-0" />
+            </div>
+            <p className="text-sm sm:text-xl font-black text-emerald-700 truncate tabular-nums">
+              {existingParties.length}
+            </p>
+            <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Supplier parties</p>
+          </div>
+        </div>
+      )}
 
       {/* Search & Filter Toolbar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
@@ -1197,7 +1279,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
 
         <div className="flex items-center gap-2 overflow-x-auto">
           <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-bold">
-            {(['ALL', 'ACTIVE', 'REVERSED', 'PAID', 'DUE'] as const).map(tab => (
+            {(isAdmin ? (['ALL', 'ACTIVE', 'REVERSED', 'PAID', 'DUE'] as const) : (['ALL', 'ACTIVE', 'REVERSED'] as const)).map(tab => (
               <button
                 key={tab}
                 type="button"
@@ -1260,7 +1342,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <Building2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                     <span className="font-black text-sm text-slate-900 truncate">{m.partyName}</span>
-                    {m.partyPhone && (
+                    {isAdmin && m.partyPhone && (
                       <span className="text-[11px] font-semibold text-slate-500 tabular-nums">({m.partyPhone})</span>
                     )}
                   </div>
@@ -1268,7 +1350,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                   <p className="text-[11px] text-slate-500 tabular-nums">
                     IMEI: <strong className="text-blue-700">{m.imei}</strong> • Bill #{m.billNo}
                     {m.date ? ` • ${new Date(m.date).toLocaleDateString()}` : ''}
-                    {m.costPrice !== undefined ? ` • Cost: ${currency} ${m.costPrice.toLocaleString()}` : ''}
+                    {isAdmin && m.costPrice !== undefined ? ` • Cost: ${currency} ${m.costPrice.toLocaleString()}` : ''}
                   </p>
                 </div>
                 {m.purchase && (
@@ -1301,7 +1383,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
               : 'Start logging stock inward and vendor bills to manage your inventory costs and supplier payables.'}
           </p>
           <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
-            {onRecoverMissingPurchases && (
+            {isAdmin && onRecoverMissingPurchases && (
               <button
                 type="button"
                 onClick={handleTriggerRecover}
@@ -1318,7 +1400,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
               className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              Add First Purchase Bill
+              {isAdmin ? 'Add First Purchase Bill' : 'Add First Stock Inward'}
             </button>
           </div>
         </div>
@@ -1331,11 +1413,11 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                 <thead>
                   <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                     <th className="py-3 px-4">Bill & Date</th>
-                    <th className="py-3 px-4">Supplier / Party</th>
+                    <th className="py-3 px-4">{isAdmin ? 'Supplier / Party' : 'Party Name'}</th>
                     <th className="py-3 px-4">Items Summary</th>
-                    <th className="py-3 px-4 text-right">Total Bill</th>
-                    <th className="py-3 px-4 text-right">Paid</th>
-                    <th className="py-3 px-4 text-right">Balance Due</th>
+                    {isAdmin && <th className="py-3 px-4 text-right">Total Bill</th>}
+                    {isAdmin && <th className="py-3 px-4 text-right">Paid</th>}
+                    {isAdmin && <th className="py-3 px-4 text-right">Balance Due</th>}
                     <th className="py-3 px-4 text-center">Physical Bill</th>
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
@@ -1345,6 +1427,8 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                     const isReversed = p.status === 'REVERSED';
                     const isFullyPaid = (p.balanceDue || 0) <= 0;
                     const totalUnits = (p.items || []).reduce((acc, i) => acc + (i.qty || 0), 0);
+                    const salesmanCanEdit = !isAdmin && canSalesmanEditPurchase(p);
+                    const salesmanAlreadyEdited = !isAdmin && !isReversed && p.createdByRole === 'salesman' && (p.salesmanEditCount || 0) >= 1;
 
                     return (
                       <tr key={p.id} className={`transition ${isReversed ? 'bg-rose-50/40 text-slate-500' : 'hover:bg-slate-50/60'}`}>
@@ -1368,7 +1452,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                             <Building2 className={`w-3.5 h-3.5 ${isReversed ? 'text-slate-400' : 'text-blue-600'}`} />
                             <span className={isReversed ? 'line-through text-slate-500' : ''}>{p.partyName}</span>
                           </div>
-                          {p.partyPhone && (
+                          {isAdmin && p.partyPhone && (
                             <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
                               <Phone className="w-3 h-3" />
                               {p.partyPhone}
@@ -1388,36 +1472,42 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                           </span>
                         </td>
 
-                        <td className="py-3 px-4 text-right font-black text-slate-900">
-                          <span className={isReversed ? 'line-through text-slate-400' : ''}>
-                            {currency} {p.totalAmount.toLocaleString()}
-                          </span>
-                        </td>
+                        {isAdmin && (
+                          <td className="py-3 px-4 text-right font-black text-slate-900">
+                            <span className={isReversed ? 'line-through text-slate-400' : ''}>
+                              {currency} {p.totalAmount.toLocaleString()}
+                            </span>
+                          </td>
+                        )}
 
-                        <td className="py-3 px-4 text-right font-bold text-emerald-600">
-                          <span className={isReversed ? 'line-through text-slate-400' : ''}>
-                            {currency} {p.paidAmount.toLocaleString()}
-                          </span>
-                          <div className="text-[9px] text-slate-400 uppercase font-semibold">
-                            via {p.paymentMethod || 'Cash'}
-                          </div>
-                        </td>
+                        {isAdmin && (
+                          <td className="py-3 px-4 text-right font-bold text-emerald-600">
+                            <span className={isReversed ? 'line-through text-slate-400' : ''}>
+                              {currency} {p.paidAmount.toLocaleString()}
+                            </span>
+                            <div className="text-[9px] text-slate-400 uppercase font-semibold">
+                              via {p.paymentMethod || 'Cash'}
+                            </div>
+                          </td>
+                        )}
 
-                        <td className="py-3 px-4 text-right">
-                          {isReversed ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-200 text-slate-700">
-                              CLEARED (REVERSED)
-                            </span>
-                          ) : isFullyPaid ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800">
-                              <CheckCircle2 className="w-3 h-3" /> PAID
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 tabular-nums">
-                              {currency} {p.balanceDue.toLocaleString()} DUE
-                            </span>
-                          )}
-                        </td>
+                        {isAdmin && (
+                          <td className="py-3 px-4 text-right">
+                            {isReversed ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-200 text-slate-700">
+                                CLEARED (REVERSED)
+                              </span>
+                            ) : isFullyPaid ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800">
+                                <CheckCircle2 className="w-3 h-3" /> PAID
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 tabular-nums">
+                                {currency} {p.balanceDue.toLocaleString()} DUE
+                              </span>
+                            )}
+                          </td>
+                        )}
 
                         <td className="py-3 px-4 text-center">
                           {p.invoiceImage ? (
@@ -1441,41 +1531,56 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                               type="button"
                               onClick={() => setSelectedPurchaseForView(p)}
                               className="p-1.5 rounded-lg text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition cursor-pointer"
-                              title="View Purchase Details"
+                              title={isAdmin ? 'View Purchase Details' : 'View Stock Inward Details'}
                             >
                               <Eye className="w-4 h-4" />
                             </button>
 
-                            {!isReversed && onUpdatePurchase && (
+                            {!isReversed && onUpdatePurchase && (isAdmin || salesmanCanEdit) && (
                               <button
                                 type="button"
                                 onClick={() => openEditModal(p)}
-                                className="p-1.5 rounded-lg text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
-                                title="Edit Purchase Bill"
+                                className="p-1.5 rounded-lg text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer flex items-center gap-1"
+                                title={isAdmin ? 'Edit Purchase Bill' : 'Edit Stock Inward (1 edit allowed)'}
                               >
                                 <Edit2 className="w-4 h-4" />
+                                {!isAdmin && <span className="text-[10px] font-bold text-indigo-600">Edit (1x)</span>}
                               </button>
                             )}
 
-                            <button
-                              type="button"
-                              onClick={() => handleDownloadSinglePdf(p)}
-                              className="p-1.5 rounded-lg text-slate-600 hover:text-blue-700 hover:bg-blue-50 transition cursor-pointer"
-                              title="Download Purchase Bill PDF"
-                            >
-                              <Download className="w-4 h-4" />
-                            </button>
+                            {salesmanAlreadyEdited && (
+                              <span
+                                className="inline-flex items-center gap-1 text-[10px] text-slate-400 font-semibold bg-slate-100 px-2 py-1 rounded-lg cursor-not-allowed"
+                                title="Already edited once (locked)"
+                              >
+                                <Lock className="w-3 h-3" />
+                                Edited
+                              </span>
+                            )}
 
-                            <button
-                              type="button"
-                              onClick={() => handleShareWhatsApp(p)}
-                              className="p-1.5 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition cursor-pointer"
-                              title="Send Bill on WhatsApp"
-                            >
-                              <MessageCircle className="w-4 h-4" />
-                            </button>
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadSinglePdf(p)}
+                                className="p-1.5 rounded-lg text-slate-600 hover:text-blue-700 hover:bg-blue-50 transition cursor-pointer"
+                                title="Download Purchase Bill PDF"
+                              >
+                                <Download className="w-4 h-4" />
+                              </button>
+                            )}
 
-                            {!isReversed && p.balanceDue > 0 && (
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => handleShareWhatsApp(p)}
+                                className="p-1.5 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition cursor-pointer"
+                                title="Send Bill on WhatsApp"
+                              >
+                                <MessageCircle className="w-4 h-4" />
+                              </button>
+                            )}
+
+                            {isAdmin && !isReversed && p.balanceDue > 0 && (
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1492,7 +1597,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                               </button>
                             )}
 
-                            {!isReversed && (
+                            {isAdmin && !isReversed && (
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1522,6 +1627,8 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
               const isReversed = p.status === 'REVERSED';
               const isFullyPaid = (p.balanceDue || 0) <= 0;
               const totalUnits = (p.items || []).reduce((acc, i) => acc + (i.qty || 0), 0);
+              const salesmanCanEdit = !isAdmin && canSalesmanEditPurchase(p);
+              const salesmanAlreadyEdited = !isAdmin && !isReversed && p.createdByRole === 'salesman' && (p.salesmanEditCount || 0) >= 1;
 
               return (
                 <div
@@ -1540,15 +1647,15 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                           <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-rose-600 text-white">
                             REVERSED
                           </span>
-                        ) : isFullyPaid ? (
+                        ) : isAdmin && isFullyPaid ? (
                           <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-emerald-100 text-emerald-800">
                             PAID
                           </span>
-                        ) : (
+                        ) : isAdmin ? (
                           <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-rose-100 text-rose-800">
                             DUE
                           </span>
-                        )}
+                        ) : null}
                       </div>
 
                       <h4 className="font-extrabold text-slate-900 text-sm flex items-center gap-1.5 truncate">
@@ -1563,17 +1670,25 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                       </div>
                     </div>
 
-                    <div className="text-right shrink-0">
-                      <span className="text-[10px] text-slate-400 block font-semibold">Total Bill</span>
-                      <span className="tabular-nums font-black text-sm text-slate-900 tabular-nums">
-                        {currency} {p.totalAmount.toLocaleString()}
-                      </span>
-                      {p.balanceDue > 0 && !isReversed && (
-                        <span className="text-[10px] tabular-nums font-bold text-rose-600 block">
-                          Due: {currency} {p.balanceDue.toLocaleString()}
+                    {isAdmin ? (
+                      <div className="text-right shrink-0">
+                        <span className="text-[10px] text-slate-400 block font-semibold">Total Bill</span>
+                        <span className="tabular-nums font-black text-sm text-slate-900 tabular-nums">
+                          {currency} {p.totalAmount.toLocaleString()}
                         </span>
-                      )}
-                    </div>
+                        {p.balanceDue > 0 && !isReversed && (
+                          <span className="text-[10px] tabular-nums font-bold text-rose-600 block">
+                            Due: {currency} {p.balanceDue.toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-right shrink-0">
+                        <span className="inline-block px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 font-extrabold text-xs tabular-nums">
+                          {totalUnits} pcs
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Mobile Touch Action Bar */}
@@ -1589,7 +1704,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                           <span>Photo</span>
                         </button>
                       )}
-                      {!isReversed && p.balanceDue > 0 && (
+                      {isAdmin && !isReversed && p.balanceDue > 0 && (
                         <button
                           type="button"
                           onClick={() => {
@@ -1617,36 +1732,48 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                         <span>View</span>
                       </button>
 
-                      {!isReversed && onUpdatePurchase && (
+                      {!isReversed && onUpdatePurchase && (isAdmin || salesmanCanEdit) && (
                         <button
                           type="button"
                           onClick={() => openEditModal(p)}
-                          className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-xl border border-indigo-200 min-h-[40px] min-w-[40px] flex items-center justify-center cursor-pointer"
-                          title="Edit Purchase Bill"
+                          className="px-2.5 py-2 text-indigo-600 hover:bg-indigo-50 rounded-xl border border-indigo-200 min-h-[40px] flex items-center justify-center gap-1 cursor-pointer font-bold"
+                          title={isAdmin ? 'Edit Purchase Bill' : 'Edit Stock Inward (1 edit allowed)'}
                         >
                           <Edit2 className="w-3.5 h-3.5" />
+                          {!isAdmin && <span className="text-[11px]">Edit (1x)</span>}
                         </button>
                       )}
 
-                      <button
-                        type="button"
-                        onClick={() => handleDownloadSinglePdf(p)}
-                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl border border-blue-200 min-h-[40px] min-w-[40px] flex items-center justify-center cursor-pointer"
-                        title="Download PDF"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                      </button>
+                      {salesmanAlreadyEdited && (
+                        <span className="inline-flex items-center gap-1 text-[10px] text-slate-400 font-semibold bg-slate-100 px-2.5 py-2 rounded-xl min-h-[40px]">
+                          <Lock className="w-3 h-3" />
+                          Edited
+                        </span>
+                      )}
 
-                      <button
-                        type="button"
-                        onClick={() => handleShareWhatsApp(p)}
-                        className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-xl border border-emerald-200 min-h-[40px] min-w-[40px] flex items-center justify-center cursor-pointer"
-                        title="Send on WhatsApp"
-                      >
-                        <MessageCircle className="w-3.5 h-3.5" />
-                      </button>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadSinglePdf(p)}
+                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl border border-blue-200 min-h-[40px] min-w-[40px] flex items-center justify-center cursor-pointer"
+                          title="Download PDF"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                        </button>
+                      )}
 
-                      {!isReversed && (
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => handleShareWhatsApp(p)}
+                          className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-xl border border-emerald-200 min-h-[40px] min-w-[40px] flex items-center justify-center cursor-pointer"
+                          title="Send on WhatsApp"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+
+                      {isAdmin && !isReversed && (
                         <button
                           type="button"
                           onClick={() => {
@@ -1683,12 +1810,22 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                 </div>
                 <div>
                   <h3 className="font-extrabold text-slate-900 text-sm sm:text-base">
-                    {editingPurchaseId ? `Edit Purchase / Inward Bill #${billNo}` : 'Record Supplier Purchase / Stock Inward'}
+                    {editingPurchaseId
+                      ? isAdmin
+                        ? `Edit Purchase / Inward Bill #${billNo}`
+                        : `Edit Stock Inward #${billNo} (1-Time Edit Only)`
+                      : isAdmin
+                      ? 'Record Supplier Purchase / Stock Inward'
+                      : 'Record Stock Inward'}
                   </h3>
                   <p className="text-[11px] text-slate-400">
                     {editingPurchaseId
-                      ? 'Update party details, items, IMEIs, prices or payment status and sync inventory'
-                      : 'Add inventory items directly, upload paper bill, and update ledger'}
+                      ? isAdmin
+                        ? 'Update party details, items, IMEIs, prices or payment status and sync inventory'
+                        : 'You can edit this stock-inward entry once — changes will sync to inventory'
+                      : isAdmin
+                      ? 'Add inventory items directly, upload paper bill, and update ledger'
+                      : 'Select party name, enter stock items & prices, and sync directly to inventory'}
                   </p>
                 </div>
               </div>
@@ -1763,24 +1900,26 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                   <datalist id="supplier-names-list">
                     {existingParties.map((p, idx) => (
                       <option key={idx} value={p.name}>
-                        {p.phone ? `Phone: ${p.phone}` : ''}
+                        {isAdmin && p.phone ? `Phone: ${p.phone}` : ''}
                       </option>
                     ))}
                   </datalist>
                 </div>
 
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    Supplier Phone (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="0300-1234567"
-                    value={partyPhone}
-                    onChange={e => setPartyPhone(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500"
-                  />
-                </div>
+                {isAdmin && (
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Supplier Phone (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="0300-1234567"
+                      value={partyPhone}
+                      onChange={e => setPartyPhone(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 mb-1">
@@ -2273,11 +2412,13 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                                 </div>
                               )}
 
-                              <div className="flex items-center justify-end pt-1 border-t border-blue-100">
-                                <span className="text-xs font-black text-slate-900 tabular-nums">
-                                  Subtotal: {currency} {rowTotal.toLocaleString()}
-                                </span>
-                              </div>
+                              {isAdmin && (
+                                <div className="flex items-center justify-end pt-1 border-t border-blue-100">
+                                  <span className="text-xs font-black text-slate-900 tabular-nums">
+                                    Subtotal: {currency} {rowTotal.toLocaleString()}
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           ) : (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-slate-200/60 text-[11px] items-center">
@@ -2303,11 +2444,13 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                                 />
                               </div>
 
-                              <div className="text-right">
-                                <span className="text-xs font-black text-slate-900 tabular-nums">
-                                  Subtotal: {currency} {rowTotal.toLocaleString()}
-                                </span>
-                              </div>
+                              {isAdmin && (
+                                <div className="text-right">
+                                  <span className="text-xs font-black text-slate-900 tabular-nums">
+                                    Subtotal: {currency} {rowTotal.toLocaleString()}
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -2317,52 +2460,54 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                 </div>
               </div>
 
-              {/* Row 3: Payment Breakdown & Inventory Sync */}
+              {/* Row 3: Payment Breakdown (Admin Only) & Inventory Sync */}
               <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-200/80 space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      Payment Method
-                    </label>
-                    <select
-                      value={paymentMethod}
-                      onChange={e => setPaymentMethod(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500"
-                    >
-                      <option value="Cash">Cash Drawer</option>
-                      <option value="Bank">Bank Account</option>
-                      <option value="JazzCash">JazzCash</option>
-                      <option value="Easypaisa">Easypaisa</option>
-                      <option value="Cheque">Bank Cheque</option>
-                    </select>
-                  </div>
+                {isAdmin && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        Payment Method
+                      </label>
+                      <select
+                        value={paymentMethod}
+                        onChange={e => setPaymentMethod(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500"
+                      >
+                        <option value="Cash">Cash Drawer</option>
+                        <option value="Bank">Bank Account</option>
+                        <option value="JazzCash">JazzCash</option>
+                        <option value="Easypaisa">Easypaisa</option>
+                        <option value="Cheque">Bank Cheque</option>
+                      </select>
+                    </div>
 
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      Amount Paid Now ({currency})
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="Enter paid amount"
-                      value={paidAmount}
-                      onChange={e => setPaidAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-emerald-700 focus:outline-none focus:border-blue-500"
-                    />
-                  </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        Amount Paid Now ({currency})
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="Enter paid amount"
+                        value={paidAmount}
+                        onChange={e => setPaidAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-emerald-700 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
 
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      Balance Due / Payable ({currency})
-                    </label>
-                    <div className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs font-black tabular-nums text-rose-600">
-                      {currency} {balanceDue.toLocaleString()}
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        Balance Due / Payable ({currency})
+                      </label>
+                      <div className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs font-black tabular-nums text-rose-600">
+                        {currency} {balanceDue.toLocaleString()}
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 {/* Auto Inventory Sync Toggle */}
-                <div className="pt-2 border-t border-blue-100 flex items-center justify-between">
+                <div className={`${isAdmin ? 'pt-2 border-t border-blue-100' : ''} flex items-center justify-between gap-3`}>
                   <label className="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer">
                     <input
                       type="checkbox"
@@ -2373,12 +2518,14 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                     <span>Automatically inject & update stock quantities in Inventory</span>
                   </label>
 
-                  <div className="text-right">
-                    <span className="text-[10px] text-slate-500 block uppercase font-bold">Grand Total</span>
-                    <span className="text-base font-black text-slate-900">
-                      {currency} {totalBillAmount.toLocaleString()}
-                    </span>
-                  </div>
+                  {isAdmin && (
+                    <div className="text-right">
+                      <span className="text-[10px] text-slate-500 block uppercase font-bold">Grand Total</span>
+                      <span className="text-base font-black text-slate-900">
+                        {currency} {totalBillAmount.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -2441,7 +2588,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
               </button>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
+            <div className={`grid gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs ${isAdmin ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2'}`}>
               <div>
                 <span className="text-[10px] text-slate-400 block font-bold">Party / Vendor</span>
                 <span className="font-extrabold text-slate-900">{selectedPurchaseForView.partyName}</span>
@@ -2452,22 +2599,26 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                   {new Date(selectedPurchaseForView.date).toLocaleDateString()}
                 </span>
               </div>
-              <div>
-                <span className="text-[10px] text-slate-400 block font-bold">Payment Method</span>
-                <span className="font-bold text-slate-700">{selectedPurchaseForView.paymentMethod}</span>
-              </div>
-              <div>
-                <span className="text-[10px] text-slate-400 block font-bold">Status</span>
-                <span
-                  className={`font-black text-[10px] px-2 py-0.5 rounded-full inline-block ${
-                    selectedPurchaseForView.balanceDue <= 0
-                      ? 'bg-emerald-100 text-emerald-800'
-                      : 'bg-rose-100 text-rose-800'
-                  }`}
-                >
-                  {selectedPurchaseForView.balanceDue <= 0 ? 'FULLY PAID' : 'PENDING DUE'}
-                </span>
-              </div>
+              {isAdmin && (
+                <div>
+                  <span className="text-[10px] text-slate-400 block font-bold">Payment Method</span>
+                  <span className="font-bold text-slate-700">{selectedPurchaseForView.paymentMethod}</span>
+                </div>
+              )}
+              {isAdmin && (
+                <div>
+                  <span className="text-[10px] text-slate-400 block font-bold">Status</span>
+                  <span
+                    className={`font-black text-[10px] px-2 py-0.5 rounded-full inline-block ${
+                      selectedPurchaseForView.balanceDue <= 0
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-rose-100 text-rose-800'
+                    }`}
+                  >
+                    {selectedPurchaseForView.balanceDue <= 0 ? 'FULLY PAID' : 'PENDING DUE'}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Attached Image preview if any */}
@@ -2496,86 +2647,114 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                     <tr>
                       <th className="py-2 px-3">Item</th>
                       <th className="py-2 px-3 text-center">Qty</th>
-                      <th className="py-2 px-3 text-right">Cost Price</th>
-                      <th className="py-2 px-3 text-right">Subtotal</th>
+                      {isAdmin && <th className="py-2 px-3 text-right">Cost Price</th>}
+                      {isAdmin && <th className="py-2 px-3 text-right">Subtotal</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {selectedPurchaseForView.items.map((i, idx) => (
                       <tr key={idx}>
                         <td className="py-2 px-3">
-                          <div className="font-bold text-slate-900">{i.name}</div>
+                          <div className="font-bold text-slate-900">
+                            {i.name}
+                            {(i.ram || i.storage || i.color) && (
+                              <span className="text-[10px] font-semibold text-indigo-600 ml-1.5">
+                                {[i.ram, i.storage, i.color].filter(Boolean).join(' / ')}
+                              </span>
+                            )}
+                          </div>
                           {i.imei && <div className="text-[10px] text-slate-400 tabular-nums">IMEI: {i.imei}</div>}
                           {i.barcode && <div className="text-[10px] text-slate-400 tabular-nums">Code: {i.barcode}</div>}
                         </td>
                         <td className="py-2 px-3 text-center font-bold">{i.qty}</td>
-                        <td className="py-2 px-3 text-right font-medium">
-                          {currency} {i.costPrice.toLocaleString()}
-                        </td>
-                        <td className="py-2 px-3 text-right font-black">
-                          {currency} {(i.costPrice * i.qty).toLocaleString()}
-                        </td>
+                        {isAdmin && (
+                          <td className="py-2 px-3 text-right font-medium">
+                            {currency} {i.costPrice.toLocaleString()}
+                          </td>
+                        )}
+                        {isAdmin && (
+                          <td className="py-2 px-3 text-right font-black">
+                            {currency} {(i.costPrice * i.qty).toLocaleString()}
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot className="bg-slate-50 border-t border-slate-200 font-bold text-xs">
-                    <tr>
-                      <td colSpan={3} className="py-2 px-3 text-right">Grand Total:</td>
-                      <td className="py-2 px-3 text-right font-black text-slate-900">
-                        {currency} {selectedPurchaseForView.totalAmount.toLocaleString()}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td colSpan={3} className="py-2 px-3 text-right text-emerald-700">Amount Paid:</td>
-                      <td className="py-2 px-3 text-right font-black text-emerald-700">
-                        {currency} {selectedPurchaseForView.paidAmount.toLocaleString()}
-                      </td>
-                    </tr>
-                    {selectedPurchaseForView.balanceDue > 0 && (
+                  {isAdmin && (
+                    <tfoot className="bg-slate-50 border-t border-slate-200 font-bold text-xs">
                       <tr>
-                        <td colSpan={3} className="py-2 px-3 text-right text-rose-600">Balance Due:</td>
-                        <td className="py-2 px-3 text-right font-black text-rose-600">
-                          {currency} {selectedPurchaseForView.balanceDue.toLocaleString()}
+                        <td colSpan={3} className="py-2 px-3 text-right">Grand Total:</td>
+                        <td className="py-2 px-3 text-right font-black text-slate-900">
+                          {currency} {selectedPurchaseForView.totalAmount.toLocaleString()}
                         </td>
                       </tr>
-                    )}
-                  </tfoot>
+                      <tr>
+                        <td colSpan={3} className="py-2 px-3 text-right text-emerald-700">Amount Paid:</td>
+                        <td className="py-2 px-3 text-right font-black text-emerald-700">
+                          {currency} {selectedPurchaseForView.paidAmount.toLocaleString()}
+                        </td>
+                      </tr>
+                      {selectedPurchaseForView.balanceDue > 0 && (
+                        <tr>
+                          <td colSpan={3} className="py-2 px-3 text-right text-rose-600">Balance Due:</td>
+                          <td className="py-2 px-3 text-right font-black text-rose-600">
+                            {currency} {selectedPurchaseForView.balanceDue.toLocaleString()}
+                          </td>
+                        </tr>
+                      )}
+                    </tfoot>
+                  )}
                 </table>
               </div>
             </div>
 
             <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
-              {selectedPurchaseForView.status !== 'REVERSED' && onUpdatePurchase && (
+              {selectedPurchaseForView.status !== 'REVERSED' &&
+                onUpdatePurchase &&
+                (isAdmin || canSalesmanEditPurchase(selectedPurchaseForView)) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = selectedPurchaseForView;
+                      setSelectedPurchaseForView(null);
+                      openEditModal(target);
+                    }}
+                    className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                    <span>{isAdmin ? 'Edit Bill' : 'Edit Entry (1 Edit Left)'}</span>
+                  </button>
+                )}
+              {!isAdmin &&
+                selectedPurchaseForView.status !== 'REVERSED' &&
+                selectedPurchaseForView.createdByRole === 'salesman' &&
+                (selectedPurchaseForView.salesmanEditCount || 0) >= 1 && (
+                  <span className="px-3 py-2 bg-slate-100 text-slate-500 text-xs font-bold rounded-xl inline-flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5" />
+                    Edited Once (Locked)
+                  </span>
+                )}
+              {isAdmin && (
                 <button
                   type="button"
-                  onClick={() => {
-                    const target = selectedPurchaseForView;
-                    setSelectedPurchaseForView(null);
-                    openEditModal(target);
-                  }}
-                  className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5"
+                  onClick={() => handleDownloadSinglePdf(selectedPurchaseForView)}
+                  className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm"
                 >
-                  <Edit2 className="w-3.5 h-3.5" />
-                  <span>Edit Bill</span>
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download PDF</span>
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => handleDownloadSinglePdf(selectedPurchaseForView)}
-                className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Download PDF</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleShareWhatsApp(selectedPurchaseForView)}
-                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm"
-              >
-                <MessageCircle className="w-3.5 h-3.5" />
-                <span>Send on WhatsApp</span>
-              </button>
-              {selectedPurchaseForView.balanceDue > 0 && selectedPurchaseForView.status !== 'REVERSED' && (
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => handleShareWhatsApp(selectedPurchaseForView)}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm"
+                >
+                  <MessageCircle className="w-3.5 h-3.5" />
+                  <span>Send on WhatsApp</span>
+                </button>
+              )}
+              {isAdmin && selectedPurchaseForView.balanceDue > 0 && selectedPurchaseForView.status !== 'REVERSED' && (
                 <button
                   type="button"
                   onClick={() => {
@@ -2882,6 +3061,8 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
           sales={sales}
           onAddCategory={onAddCategory || (() => {})}
           onRenameCategory={onRenameCategory}
+          isAdmin={isAdmin}
+          allowCostEntry={true}
         />
       )}
 

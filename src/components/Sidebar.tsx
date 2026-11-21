@@ -41,7 +41,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, adminOnly: true },
     { id: 'pos', label: 'POS & Billing', icon: ShoppingCart },
     { id: 'inventory', label: 'Inventory Master', icon: Boxes },
-    { id: 'purchases', label: 'Purchases (Stock Inward)', icon: Truck, adminOnly: true },
+    {
+      id: 'purchases',
+      label: currentRole === 'salesman' ? 'Stock Inward' : 'Purchases (Stock Inward)',
+      icon: Truck,
+    },
     { id: 'barcode', label: 'Barcode Generator', icon: Barcode },
     { id: 'khata', label: 'Customer Ledger (Credit)', icon: BookOpen },
     { id: 'expenses', label: 'Daily Expense', icon: Receipt },

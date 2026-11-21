@@ -51,9 +51,9 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
     canProcessReturns: false, // Sales return and refund requires admin authority
     canDeleteSale: false,     // Salesman cannot delete sales
     canViewInventory: true,   // View retail items and IMEIs
-    canEditInventory: false,  // Cannot edit product cost, pricing or barcode
+    canEditInventory: true,   // Can edit inventory product details (cost/wholesale hidden)
     canDeleteInventory: false,// Cannot delete or archive products
-    canManagePurchases: false,// Purchases & supplier bills are admin only
+    canManagePurchases: true, // Can record stock inward (party names & item prices only, no payment details)
     canReversePurchase: false,// Purchase reversal is admin only
     canDeletePurchase: false, // Purchase deletion is admin only
     canViewCostAndProfit: false, // Sensitive profit and cost price hidden

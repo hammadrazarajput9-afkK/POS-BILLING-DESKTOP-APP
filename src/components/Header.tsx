@@ -55,7 +55,10 @@ export const Header: React.FC<HeaderProps> = ({
     dashboard: { title: 'Dashboard Overview', subtitle: 'Live business metrics & real-time cash drawer' },
     pos: { title: 'POS & Billing Terminal', subtitle: 'Search products, build cart, print bills' },
     inventory: { title: 'Inventory Master', subtitle: 'Manage phone devices, IMEI tracking, and retail stock' },
-    purchases: { title: 'Supplier Purchases & Stock Inward', subtitle: 'Record stock received from parties and suppliers' },
+    purchases:
+      currentRole === 'salesman'
+        ? { title: 'Stock Inward', subtitle: 'Record inward stock and party names' }
+        : { title: 'Supplier Purchases & Stock Inward', subtitle: 'Record stock received from parties and suppliers' },
     barcode: { title: 'Barcode Label Generator', subtitle: 'Generate and print custom 1D Code128 barcodes' },
     khata: { title: 'Customer Credit & Ledger', subtitle: 'Track customer balances, phone numbers, and payment records' },
     expenses: { title: 'Daily Expense', subtitle: 'Record shop rent, refreshment, utilities and operational costs' },

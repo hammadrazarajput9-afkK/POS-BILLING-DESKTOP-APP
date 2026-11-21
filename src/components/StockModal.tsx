@@ -56,6 +56,8 @@ export interface StockModalProps {
   onStockAdjustment?: (
     adjustment: Omit<StockAdjustment, 'id' | 'adjustedAt'>
   ) => void;
+  isAdmin?: boolean;
+  allowCostEntry?: boolean;
 }
 
 interface StockDraftState {
@@ -180,7 +182,10 @@ export const StockModal: React.FC<StockModalProps> = ({
   onAddCategory,
   onRenameCategory,
   onStockAdjustment,
+  isAdmin = true,
+  allowCostEntry = false,
 }) => {
+  const canSeeCostAndWholesale = isAdmin || allowCostEntry;
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -1165,9 +1170,9 @@ export const StockModal: React.FC<StockModalProps> = ({
           ? v.color?.trim() || `Var #${idx + 1}`
           : [v.ram, v.storage, v.color?.trim()].filter(Boolean).join('/') || `Var #${idx + 1}`;
         const varMissing: string[] = [];
-        if (v.costPrice === '' || v.costPrice === undefined) varMissing.push('Cost Price');
+        if (canSeeCostAndWholesale && (v.costPrice === '' || v.costPrice === undefined)) varMissing.push('Cost Price');
         if (v.salePrice === '' || v.salePrice === undefined) varMissing.push('Sale Price');
-        if (v.wholesalePrice === '' || v.wholesalePrice === undefined) varMissing.push('Wholesale Price');
+        if (canSeeCostAndWholesale && (v.wholesalePrice === '' || v.wholesalePrice === undefined)) varMissing.push('Wholesale Price');
         const emptyImeiIndices = (v.imeis || [])
           .map((im, iIdx) => (!(im || '').trim() ? `#${iIdx + 1}` : null))
           .filter(Boolean) as string[];
@@ -1199,7 +1204,7 @@ export const StockModal: React.FC<StockModalProps> = ({
           difference: totalQuantity - editItem.qty,
           reason: adjustmentReason,
           notes: adjustmentNotes.trim() || undefined,
-          adjustedBy: 'Admin',
+          adjustedBy: isAdmin ? 'Admin' : 'Salesman',
         });
       }
 
@@ -1284,9 +1289,9 @@ export const StockModal: React.FC<StockModalProps> = ({
 
       const singleMissing: string[] = [];
       if (!image) singleMissing.push('Picture');
-      if (costPrice === '') singleMissing.push('Cost Price');
+      if (canSeeCostAndWholesale && costPrice === '') singleMissing.push('Cost Price');
       if (salePrice === '') singleMissing.push('Sale Price');
-      if (wholesalePrice === '') singleMissing.push('Wholesale Price');
+      if (canSeeCostAndWholesale && wholesalePrice === '') singleMissing.push('Wholesale Price');
       if (isMobile) {
         const missingImeiSlots: string[] = [];
         for (let k = 0; k < quantity; k++) {
@@ -1315,7 +1320,7 @@ export const StockModal: React.FC<StockModalProps> = ({
           difference: quantity - editItem.qty,
           reason: adjustmentReason,
           notes: adjustmentNotes.trim() || undefined,
-          adjustedBy: 'Admin',
+          adjustedBy: isAdmin ? 'Admin' : 'Salesman',
         });
       }
 
@@ -1668,7 +1673,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                           <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-slate-100 text-slate-600 tabular-nums">
                             {currentQty} {currentQty === 1 ? 'Unit' : 'Units'}
                           </span>
-                          {marginVal > 0 && (
+                          {canSeeCostAndWholesale && marginVal > 0 && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1 tabular-nums">
                               <TrendingUp className="w-2.5 h-2.5 text-emerald-600" />
                               +{currency} {marginVal.toLocaleString()} ({marginPct}%)
@@ -1798,64 +1803,68 @@ export const StockModal: React.FC<StockModalProps> = ({
                       )}
 
                       {/* Compact Pricing & Quantity Row */}
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50/80 p-2 rounded-lg border border-slate-200/70 items-center">
-                        <div>
-                          <label className="flex items-center justify-between gap-1 font-bold text-slate-700 mb-0.5 text-[10px]" title="Cost Price">
-                            <span className="truncate">1. Cost ({currency})</span>
-                            {isAutoCostHint && (
-                              <span className="px-1 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300/70 text-[9px] font-extrabold shrink-0">
-                                Auto
-                              </span>
-                            )}
-                          </label>
-                          <input
-                            type="number"
-                            min="0"
-                            value={v.costPrice}
-                            onChange={e =>
-                              handleUpdateVariantField(
-                                vIdx,
-                                'costPrice',
-                                e.target.value === '' ? '' : Number(e.target.value)
-                              )
-                            }
-                            placeholder={isAutoCostHint ? String(suggCost) : 'Cost Price'}
-                            className={`w-full rounded-lg px-2 py-1 text-xs tabular-nums font-bold focus:outline-none min-h-[34px] max-sm:min-h-[40px] border transition ${
-                              isAutoCostHint
-                                ? 'bg-amber-50/60 border-amber-300 ring-1 ring-amber-200/60 placeholder:text-amber-700/50 placeholder:font-bold text-slate-900 focus:border-amber-500'
-                                : 'bg-white border-slate-200 focus:border-blue-600'
-                            }`}
-                          />
-                        </div>
+                      <div className={`grid gap-2 bg-slate-50/80 p-2 rounded-lg border border-slate-200/70 items-center ${canSeeCostAndWholesale ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2'}`}>
+                        {canSeeCostAndWholesale && (
+                          <div>
+                            <label className="flex items-center justify-between gap-1 font-bold text-slate-700 mb-0.5 text-[10px]" title="Cost Price">
+                              <span className="truncate">1. Cost ({currency})</span>
+                              {isAutoCostHint && (
+                                <span className="px-1 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300/70 text-[9px] font-extrabold shrink-0">
+                                  Auto
+                                </span>
+                              )}
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={v.costPrice}
+                              onChange={e =>
+                                handleUpdateVariantField(
+                                  vIdx,
+                                  'costPrice',
+                                  e.target.value === '' ? '' : Number(e.target.value)
+                                )
+                              }
+                              placeholder={isAutoCostHint ? String(suggCost) : 'Cost Price'}
+                              className={`w-full rounded-lg px-2 py-1 text-xs tabular-nums font-bold focus:outline-none min-h-[34px] max-sm:min-h-[40px] border transition ${
+                                isAutoCostHint
+                                  ? 'bg-amber-50/60 border-amber-300 ring-1 ring-amber-200/60 placeholder:text-amber-700/50 placeholder:font-bold text-slate-900 focus:border-amber-500'
+                                  : 'bg-white border-slate-200 focus:border-blue-600'
+                              }`}
+                            />
+                          </div>
+                        )}
 
-                        <div>
-                          <label className="flex items-center justify-between gap-1 font-bold text-purple-900 mb-0.5 text-[10px]" title="Wholesale Price">
-                            <span className="truncate">2. Wholesale ({currency})</span>
-                            {isAutoWholesaleHint && (
-                              <span className="px-1 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300/70 text-[9px] font-extrabold shrink-0">
-                                Auto
-                              </span>
-                            )}
-                          </label>
-                          <input
-                            type="number"
-                            min="0"
-                            value={v.wholesalePrice !== undefined ? v.wholesalePrice : ''}
-                            onChange={e =>
-                              handleUpdateVariantField(
-                                vIdx,
-                                'wholesalePrice',
-                                e.target.value === '' ? '' : Number(e.target.value)
-                              )
-                            }
-                            placeholder={isAutoWholesaleHint ? String(suggWholesale) : 'Wholesale'}
-                            className={`w-full rounded-lg px-2 py-1 text-xs tabular-nums font-bold focus:outline-none min-h-[34px] max-sm:min-h-[40px] border transition ${
-                              isAutoWholesaleHint
-                                ? 'bg-amber-50/60 border-amber-300 ring-1 ring-amber-200/60 placeholder:text-amber-700/50 placeholder:font-bold text-purple-950 focus:border-amber-500'
-                                : 'bg-purple-50/70 border-purple-200 text-purple-950 focus:border-purple-600'
-                            }`}
-                          />
-                        </div>
+                        {canSeeCostAndWholesale && (
+                          <div>
+                            <label className="flex items-center justify-between gap-1 font-bold text-purple-900 mb-0.5 text-[10px]" title="Wholesale Price">
+                              <span className="truncate">2. Wholesale ({currency})</span>
+                              {isAutoWholesaleHint && (
+                                <span className="px-1 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300/70 text-[9px] font-extrabold shrink-0">
+                                  Auto
+                                </span>
+                              )}
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={v.wholesalePrice !== undefined ? v.wholesalePrice : ''}
+                              onChange={e =>
+                                handleUpdateVariantField(
+                                  vIdx,
+                                  'wholesalePrice',
+                                  e.target.value === '' ? '' : Number(e.target.value)
+                                )
+                              }
+                              placeholder={isAutoWholesaleHint ? String(suggWholesale) : 'Wholesale'}
+                              className={`w-full rounded-lg px-2 py-1 text-xs tabular-nums font-bold focus:outline-none min-h-[34px] max-sm:min-h-[40px] border transition ${
+                                isAutoWholesaleHint
+                                  ? 'bg-amber-50/60 border-amber-300 ring-1 ring-amber-200/60 placeholder:text-amber-700/50 placeholder:font-bold text-purple-950 focus:border-amber-500'
+                                  : 'bg-purple-50/70 border-purple-200 text-purple-950 focus:border-purple-600'
+                              }`}
+                            />
+                          </div>
+                        )}
 
                         <div>
                           <label className="flex items-center justify-between gap-1 font-bold text-slate-700 mb-0.5 text-[10px]" title="Sale Price">
@@ -1996,15 +2005,19 @@ export const StockModal: React.FC<StockModalProps> = ({
                     <Sparkles className="w-3.5 h-3.5" />
                     {totalVariantsCount} {totalVariantsCount === 1 ? 'Var' : 'Vars'} • {totalVariantsQty} Units
                   </span>
-                  <span className="text-slate-300 tabular-nums">
-                    Cost: <strong className="text-white">{currency} {totalVariantsCost.toLocaleString()}</strong>
-                  </span>
+                  {canSeeCostAndWholesale && (
+                    <span className="text-slate-300 tabular-nums">
+                      Cost: <strong className="text-white">{currency} {totalVariantsCost.toLocaleString()}</strong>
+                    </span>
+                  )}
                   <span className="text-slate-300 tabular-nums">
                     Sale: <strong className="text-emerald-400">{currency} {totalVariantsSale.toLocaleString()}</strong>
                   </span>
-                  <span className="text-slate-300 tabular-nums">
-                    Profit: <strong className="text-blue-400">+{currency} {totalVariantsProfit.toLocaleString()}</strong>
-                  </span>
+                  {canSeeCostAndWholesale && (
+                    <span className="text-slate-300 tabular-nums">
+                      Profit: <strong className="text-blue-400">+{currency} {totalVariantsProfit.toLocaleString()}</strong>
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0 justify-end">
                   <button
@@ -2051,34 +2064,38 @@ export const StockModal: React.FC<StockModalProps> = ({
               )}
 
               {/* Pricing & Quantity Row */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-0.5 text-[10px] sm:text-[11px] truncate" title="Cost Price">
-                    1. Cost Price ({currency})
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={costPrice}
-                    onChange={e => setCostPrice(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder="Cost Price"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs tabular-nums font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[36px] max-sm:min-h-[42px]"
-                  />
-                </div>
+              <div className={`grid gap-2 ${canSeeCostAndWholesale ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2'}`}>
+                {canSeeCostAndWholesale && (
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-0.5 text-[10px] sm:text-[11px] truncate" title="Cost Price">
+                      1. Cost Price ({currency})
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={costPrice}
+                      onChange={e => setCostPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                      placeholder="Cost Price"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs tabular-nums font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[36px] max-sm:min-h-[42px]"
+                    />
+                  </div>
+                )}
 
-                <div>
-                  <label className="block font-bold text-purple-900 mb-0.5 text-[10px] sm:text-[11px] truncate" title="Wholesale Price">
-                    2. Wholesale ({currency})
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={wholesalePrice}
-                    onChange={e => setWholesalePrice(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder="Wholesale Rate"
-                    className="w-full bg-purple-50/60 border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs tabular-nums font-semibold text-purple-950 focus:outline-none focus:border-purple-600 focus:bg-white transition min-h-[36px] max-sm:min-h-[42px]"
-                  />
-                </div>
+                {canSeeCostAndWholesale && (
+                  <div>
+                    <label className="block font-bold text-purple-900 mb-0.5 text-[10px] sm:text-[11px] truncate" title="Wholesale Price">
+                      2. Wholesale ({currency})
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={wholesalePrice}
+                      onChange={e => setWholesalePrice(e.target.value === '' ? '' : Number(e.target.value))}
+                      placeholder="Wholesale Rate"
+                      className="w-full bg-purple-50/60 border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs tabular-nums font-semibold text-purple-950 focus:outline-none focus:border-purple-600 focus:bg-white transition min-h-[36px] max-sm:min-h-[42px]"
+                    />
+                  </div>
+                )}
 
                 <div>
                   <label className="block font-bold text-slate-700 mb-0.5 text-[10px] sm:text-[11px] truncate" title="Sale Price">
