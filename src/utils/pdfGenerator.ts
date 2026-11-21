@@ -66,40 +66,43 @@ export interface GeneratePdfOptions {
 }
 
 /**
- * Deduplicate and clean IMEIs across single item and variants
+ * Deduplicate and clean IMEIs across single item and variants (splits comma/newline-separated IMEIs)
  */
-function extractUniqueImeis(item: InventoryItem): string[] {
+function extractUniqueImeis(item: InventoryItem, soldImeiSet?: Set<string>): string[] {
   const rawList: string[] = [];
 
-  // Check variants
+  const pushTokens = (val?: string | string[]) => {
+    if (!val) return;
+    const arr = Array.isArray(val) ? val : [val];
+    for (const entry of arr) {
+      if (!entry) continue;
+      const parts = String(entry).split(/[,;\r\n]+/);
+      for (const p of parts) {
+        const clean = p.trim();
+        if (clean) rawList.push(clean);
+      }
+    }
+  };
+
+  // Check variants first
   if (Array.isArray(item.variants) && item.variants.length > 0) {
     for (const v of item.variants) {
-      if (Array.isArray(v.imeis)) {
-        rawList.push(...v.imeis);
-      }
+      pushTokens(v.imeis);
     }
   }
 
-  // Check item.imeis array
-  if (Array.isArray(item.imeis)) {
-    rawList.push(...item.imeis);
-  }
+  // Check item.imeis array & item.imei string
+  pushTokens(item.imeis);
+  pushTokens(item.imei);
 
-  // Check item.imei string
-  if (item.imei) {
-    rawList.push(item.imei);
-  }
-
-  // Deduplicate case-insensitively and clean whitespace
+  // Deduplicate strictly and exclude IMEIs already marked SOLD in imeiRecords
   const seen = new Set<string>();
   const unique: string[] = [];
-  for (const imei of rawList) {
-    if (!imei) continue;
-    const clean = String(imei).trim();
-    if (!clean) continue;
-    const key = clean.toLowerCase();
-    if (!seen.has(key)) {
-      seen.add(key);
+  for (const clean of rawList) {
+    const normalizedKey = clean.replace(/[^0-9a-zA-Z]/g, '').toLowerCase() || clean.toLowerCase();
+    if (soldImeiSet && soldImeiSet.has(normalizedKey)) continue;
+    if (!seen.has(normalizedKey)) {
+      seen.add(normalizedKey);
       unique.push(clean);
     }
   }
@@ -238,7 +241,7 @@ export async function generatePdfReport({
   doc.text(`Generated: ${generatedAt}`, pageWidth - 14, 11, { align: 'right' });
 
   const scopeLabel = tab === 'inventory'
-    ? (categoryFilter && categoryFilter !== 'all' ? `Category: ${categoryFilter.toUpperCase()}` : 'Scope: All Categories')
+    ? 'Stock & IMEI Sheet'
     : `Period: ${filterLabel}`;
   doc.text(scopeLabel, pageWidth - 14, 17, { align: 'right' });
 
@@ -246,7 +249,7 @@ export async function generatePdfReport({
   doc.setFontSize(8);
   doc.setTextColor(245, 158, 11); // Gold
   doc.text(
-    tab === 'inventory' ? 'OFFICIAL INVENTORY & PARTY AUDIT' : 'CERTIFIED FINANCIAL REPORT',
+    tab === 'inventory' ? 'OFFICIAL INVENTORY REPORT' : 'CERTIFIED FINANCIAL REPORT',
     pageWidth - 14,
     23,
     { align: 'right' }
@@ -375,7 +378,9 @@ export async function generatePdfReport({
     });
 
   } else if (tab === 'inventory') {
-    // 2. Advanced Professional Inventory & Stock Audit Report
+    // 2. Clean Inventory & IMEI Stock PDF
+    const isAdminUser = (data.currentRole || 'admin') === 'admin';
+    const showFinancials = isAdminUser && includeCostValuation;
     let targetInventory = data.inventory || [];
 
     // Filter by Category if specified
@@ -395,9 +400,43 @@ export async function generatePdfReport({
       targetInventory = targetInventory.filter(i => (i.qty || 0) <= 0);
     }
 
+    const soldImeiSet = new Set<string>();
+    (data.imeiRecords || []).forEach(rec => {
+      if (rec?.status === 'SOLD' && rec.imei) {
+        const normKey = rec.imei.replace(/[^0-9a-zA-Z]/g, '').toLowerCase() || rec.imei.trim().toLowerCase();
+        soldImeiSet.add(normKey);
+      }
+    });
+
+    const getItemTotalCost = (i: InventoryItem): number => {
+      if (i.variants && i.variants.length > 0) {
+        const varQtySum = i.variants.reduce((s, v) => s + (Number(v.qty) || 0), 0);
+        if (varQtySum > 0) {
+          return i.variants.reduce((s, v) => {
+            const c = v.costPrice !== '' && v.costPrice !== undefined && Number(v.costPrice) > 0 ? Number(v.costPrice) : Number(i.costPrice) || 0;
+            return s + c * (Number(v.qty) || 0);
+          }, 0);
+        }
+      }
+      return (Number(i.costPrice) || 0) * (Number(i.qty) || 0);
+    };
+
+    const getItemTotalRetail = (i: InventoryItem): number => {
+      if (i.variants && i.variants.length > 0) {
+        const varQtySum = i.variants.reduce((s, v) => s + (Number(v.qty) || 0), 0);
+        if (varQtySum > 0) {
+          return i.variants.reduce((s, v) => {
+            const p = v.salePrice !== '' && v.salePrice !== undefined && Number(v.salePrice) > 0 ? Number(v.salePrice) : Number(i.salePrice) || 0;
+            return s + p * (Number(v.qty) || 0);
+          }, 0);
+        }
+      }
+      return (Number(i.salePrice) || 0) * (Number(i.qty) || 0);
+    };
+
     const totalItemsCount = targetInventory.reduce((acc, i) => acc + (Number(i.qty) || 0), 0);
-    const totalCostValue = targetInventory.reduce((acc, i) => acc + ((Number(i.costPrice) || 0) * (Number(i.qty) || 0)), 0);
-    const totalRetailValue = targetInventory.reduce((acc, i) => acc + ((Number(i.salePrice) || 0) * (Number(i.qty) || 0)), 0);
+    const totalCostValue = targetInventory.reduce((acc, i) => acc + getItemTotalCost(i), 0);
+    const totalRetailValue = targetInventory.reduce((acc, i) => acc + getItemTotalRetail(i), 0);
     const expectedMargin = totalRetailValue - totalCostValue;
     const marginPercent = totalCostValue > 0 ? ((expectedMargin / totalCostValue) * 100).toFixed(1) : '0';
 
@@ -405,28 +444,20 @@ export async function generatePdfReport({
     const lowStockItems = targetInventory.filter(i => (i.qty || 0) > 0 && (i.qty || 0) <= lowStockThreshold);
     const outOfStockItems = targetInventory.filter(i => (i.qty || 0) <= 0);
 
-    // Title & Scope Row
+    // Title & Scope Row (no category label printed)
     doc.setTextColor(15, 23, 42);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
-    const titleText = categoryFilter && categoryFilter !== 'all'
-      ? `INVENTORY AUDIT: ${categoryFilter.toUpperCase()} CATEGORY`
-      : 'ALL CATEGORIES INVENTORY VALUATION & STOCK AUDIT';
-    doc.text(titleText, 14, yCursor);
+    doc.text('INVENTORY STOCK REPORT', 14, yCursor);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(100, 116, 139);
-    const filterDesc = `Filter Status: ${stockStatusFilter.toUpperCase()} | Valuation Method: FIFO / Cost Basis | Total Products: ${targetInventory.length}`;
+    const filterDesc = `Filter Status: ${stockStatusFilter.toUpperCase()} | Total Products: ${targetInventory.length} | Total Units: ${totalItemsCount}`;
     doc.text(filterDesc, 14, yCursor + 4.5);
     yCursor += 8;
 
-    // --- KPI SUMMARY CARDS (5 Balanced Executive Cards across landscape 269mm width) ---
-    const cardGap = 3.5;
-    const totalAvailWidth = pageWidth - 28;
-    const cardWidth = (totalAvailWidth - (cardGap * 4)) / 5;
-    const cardHeight = 18;
-
+    // --- KPI SUMMARY CARDS (Hide Asset Cost / Retail Value / Margin when Salesman exports) ---
     const kpiCards = [
       {
         title: 'MODELS & TOTAL UNITS',
@@ -436,30 +467,34 @@ export async function generatePdfReport({
         bg: [239, 246, 255],  // Blue 50
         border: [191, 219, 254],
       },
-      {
-        title: 'TOTAL ASSET COST',
-        val: `${currency} ${totalCostValue.toLocaleString()}`,
-        sub: 'Shop Capital Invested',
-        color: [15, 23, 42],  // Slate 900
-        bg: [248, 250, 252],  // Slate 50
-        border: [226, 232, 240],
-      },
-      {
-        title: 'TOTAL RETAIL VALUE',
-        val: `${currency} ${totalRetailValue.toLocaleString()}`,
-        sub: 'Projected Gross Revenue',
-        color: [14, 116, 144], // Cyan 700
-        bg: [236, 254, 255],  // Cyan 50
-        border: [165, 243, 252],
-      },
-      {
-        title: 'PROJECTED MARGIN',
-        val: `${currency} ${expectedMargin.toLocaleString()}`,
-        sub: `Margin Ratio: +${marginPercent}%`,
-        color: [16, 122, 60], // Green 700
-        bg: [240, 253, 244],  // Green 50
-        border: [187, 247, 208],
-      },
+      ...(showFinancials
+        ? [
+            {
+              title: 'TOTAL ASSET COST',
+              val: `${currency} ${totalCostValue.toLocaleString()}`,
+              sub: 'Shop Capital Invested',
+              color: [15, 23, 42],  // Slate 900
+              bg: [248, 250, 252],  // Slate 50
+              border: [226, 232, 240],
+            },
+            {
+              title: 'TOTAL RETAIL VALUE',
+              val: `${currency} ${totalRetailValue.toLocaleString()}`,
+              sub: 'Projected Gross Revenue',
+              color: [14, 116, 144], // Cyan 700
+              bg: [236, 254, 255],  // Cyan 50
+              border: [165, 243, 252],
+            },
+            {
+              title: 'PROJECTED MARGIN',
+              val: `${currency} ${expectedMargin.toLocaleString()}`,
+              sub: `Margin Ratio: +${marginPercent}%`,
+              color: [16, 122, 60], // Green 700
+              bg: [240, 253, 244],  // Green 50
+              border: [187, 247, 208],
+            },
+          ]
+        : []),
       {
         title: 'STOCK AUDIT ALERTS',
         val: `${inStockItems.length} OK | ${lowStockItems.length} Low`,
@@ -469,6 +504,11 @@ export async function generatePdfReport({
         border: [254, 205, 211],
       },
     ];
+
+    const cardGap = 3.5;
+    const totalAvailWidth = pageWidth - 28;
+    const cardWidth = (totalAvailWidth - cardGap * (kpiCards.length - 1)) / kpiCards.length;
+    const cardHeight = 18;
 
     kpiCards.forEach((c, idx) => {
       const x = 14 + idx * (cardWidth + cardGap);
@@ -494,13 +534,9 @@ export async function generatePdfReport({
 
     yCursor += cardHeight + 5;
 
-    // Build Table Rows
-    const tableRows = targetInventory.map((item, idx) => {
-      const stockCost = (Number(item.costPrice) || 0) * (Number(item.qty) || 0);
-      const stockRetail = (Number(item.salePrice) || 0) * (Number(item.qty) || 0);
-
-      // Extract deduplicated unique IMEIs
-      const uniqueImeis = extractUniqueImeis(item);
+    // Build Clean Table Rows (Only Product Name, Quantity, IMEI, Cost Price [Admin only], Sale Price — No Category)
+    const tableRows = targetInventory.map(item => {
+      const uniqueImeis = extractUniqueImeis(item, soldImeiSet);
       let imeiDisplay = '-';
       if (uniqueImeis.length === 1) {
         imeiDisplay = uniqueImeis[0];
@@ -508,70 +544,98 @@ export async function generatePdfReport({
         imeiDisplay = uniqueImeis.map((im, iIdx) => `${iIdx + 1}) ${im}`).join('\n');
       }
 
-      // Resolve Supplier / Party Name
-      const supplierInfo = resolveItemSupplier(item, data, uniqueImeis);
-      const partyText = supplierInfo.billNo
-        ? `${supplierInfo.partyName} (Bill #${supplierInfo.billNo})`
-        : supplierInfo.partyName;
+      // Cost Price display (supports variant cost range)
+      const variantCosts = (item.variants || [])
+        .map(v => Number(v.costPrice))
+        .filter(c => !isNaN(c) && c > 0);
+      if (variantCosts.length === 0) variantCosts.push(Number(item.costPrice) || 0);
+      const minCost = Math.min(...variantCosts);
+      const maxCost = Math.max(...variantCosts);
+      const costText =
+        minCost === maxCost
+          ? `${currency} ${minCost.toLocaleString()}`
+          : `${currency} ${minCost.toLocaleString()} - ${maxCost.toLocaleString()}`;
 
-      // Status
-      const statusText = (item.qty || 0) <= 0
-        ? 'OUT OF STOCK'
-        : (item.qty || 0) <= lowStockThreshold
-          ? 'LOW STOCK'
-          : 'IN STOCK';
+      // Sale Price display (supports variant sale range)
+      const variantSales = (item.variants || [])
+        .map(v => Number(v.salePrice))
+        .filter(p => !isNaN(p) && p > 0);
+      if (variantSales.length === 0) variantSales.push(Number(item.salePrice) || 0);
+      const minSale = Math.min(...variantSales);
+      const maxSale = Math.max(...variantSales);
+      const saleText =
+        minSale === maxSale
+          ? `${currency} ${minSale.toLocaleString()}`
+          : `${currency} ${minSale.toLocaleString()} - ${maxSale.toLocaleString()}`;
 
-      // Specifications
-      const specs = [
+      // Specifications (RAM/Storage & Color — no Category)
+      const variantSpecsList = (item.variants || [])
+        .map(v => [v.ram && v.storage ? `${v.ram}/${v.storage}` : (v.storage || v.ram || ''), v.color || ''].filter(Boolean).join(' • '))
+        .filter(Boolean);
+      const singleSpecs = [
         item.ram && item.storage ? `${item.ram}/${item.storage}` : (item.storage || item.ram || ''),
         item.color || '',
-      ].filter(Boolean).join(' • ');
+      ]
+        .filter(Boolean)
+        .join(' • ');
+      const uniqueSpecs = Array.from(new Set([...variantSpecsList, ...(singleSpecs ? [singleSpecs] : [])])).filter(Boolean);
+      const itemNameWithSpecs = uniqueSpecs.length > 0 ? `${item.name}\n[${uniqueSpecs.join(' | ')}]` : item.name;
 
-      const itemNameWithSpecs = specs ? `${item.name}\n[${specs}]` : item.name;
-
-      return [
-        (idx + 1).toString(),
-        itemNameWithSpecs,
-        item.category || 'General',
-        partyText,
-        (item.qty || 0).toString(),
-        `${currency} ${(item.costPrice || 0).toLocaleString()}`,
-        `${currency} ${(item.salePrice || 0).toLocaleString()}`,
-        `${currency} ${stockCost.toLocaleString()}`,
-        `${currency} ${stockRetail.toLocaleString()}`,
-        imeiDisplay,
-        statusText,
-      ];
+      return showFinancials
+        ? [
+            itemNameWithSpecs,
+            (item.qty || 0).toString(),
+            imeiDisplay,
+            costText,
+            saleText,
+          ]
+        : [
+            itemNameWithSpecs,
+            (item.qty || 0).toString(),
+            imeiDisplay,
+            saleText,
+          ];
     });
+
+    const tableHead = showFinancials
+      ? [['Product Name', 'Qty', 'IMEI', 'Cost Price', 'Sale Price']]
+      : [['Product Name', 'Qty', 'IMEI', 'Sale Price']];
+
+    const tableFoot = showFinancials
+      ? [['TOTAL', `${totalItemsCount} Pcs`, `${targetInventory.length} Products`, '', '']]
+      : [['TOTAL', `${totalItemsCount} Pcs`, `${targetInventory.length} Products`, '']];
+
+    const columnStylesConfig: Record<number, any> = showFinancials
+      ? {
+          0: { cellWidth: 75, fontStyle: 'bold' },
+          1: { cellWidth: 22, halign: 'center', fontStyle: 'bold' },
+          2: { cellWidth: 100 },
+          3: { cellWidth: 36, halign: 'right' },
+          4: { cellWidth: 36, halign: 'right', fontStyle: 'bold' },
+        }
+      : {
+          0: { cellWidth: 85, fontStyle: 'bold' },
+          1: { cellWidth: 24, halign: 'center', fontStyle: 'bold' },
+          2: { cellWidth: 118 },
+          3: { cellWidth: 42, halign: 'right', fontStyle: 'bold' },
+        };
 
     autoTable(doc, {
       startY: yCursor,
-      head: [[
-        '#',
-        'Model Name & Specifications',
-        'Category',
-        'Supplier / Purchase Party',
-        'Qty',
-        'Cost Rate',
-        'Sale Rate',
-        'Stock Cost',
-        'Retail Value',
-        'Dedicated IMEIs / Serials',
-        'Status',
-      ]],
+      head: tableHead,
       body: tableRows,
       theme: 'grid',
       headStyles: {
         fillColor: [15, 23, 42], // Deep Slate 900
         textColor: [255, 255, 255],
         fontStyle: 'bold',
-        fontSize: 7.2,
+        fontSize: 8,
         halign: 'left',
-        cellPadding: 2.2,
+        cellPadding: 2.5,
       },
       styles: {
-        fontSize: 6.8,
-        cellPadding: 2,
+        fontSize: 7.5,
+        cellPadding: 2.2,
         valign: 'middle',
         lineColor: [226, 232, 240],
         lineWidth: 0.15,
@@ -579,52 +643,15 @@ export async function generatePdfReport({
       alternateRowStyles: {
         fillColor: [248, 250, 252], // Slate 50
       },
-      columnStyles: {
-        0: { cellWidth: 7, halign: 'center' },
-        1: { cellWidth: 44, fontStyle: 'bold' },
-        2: { cellWidth: 23 },
-        3: { cellWidth: 32 },
-        4: { cellWidth: 12, halign: 'center', fontStyle: 'bold' },
-        5: { cellWidth: 20, halign: 'right' },
-        6: { cellWidth: 20, halign: 'right' },
-        7: { cellWidth: 26, halign: 'right', fontStyle: 'bold' },
-        8: { cellWidth: 26, halign: 'right' },
-        9: { cellWidth: 38 },
-        10: { cellWidth: 21, halign: 'center', fontStyle: 'bold' },
-      },
-      foot: [[
-        '',
-        'TOTAL AUDITED VALUATION',
-        `${targetInventory.length} Products`,
-        'All Parties Recorded',
-        `${totalItemsCount} Pcs`,
-        '',
-        '',
-        `${currency} ${totalCostValue.toLocaleString()}`,
-        `${currency} ${totalRetailValue.toLocaleString()}`,
-        '',
-        `${inStockItems.length} In Stock`,
-      ]],
+      columnStyles: columnStylesConfig,
+      foot: tableFoot,
       footStyles: {
         fillColor: [241, 245, 249],
         textColor: [15, 23, 42],
         fontStyle: 'bold',
-        fontSize: 7.2,
+        fontSize: 8,
         lineColor: [203, 213, 225],
         lineWidth: 0.2,
-      },
-      didParseCell: (hookData) => {
-        // Highlight Status column
-        if (hookData.section === 'body' && hookData.column.index === 10) {
-          const val = hookData.cell.raw;
-          if (val === 'IN STOCK') {
-            hookData.cell.styles.textColor = [16, 122, 60]; // Green
-          } else if (val === 'LOW STOCK') {
-            hookData.cell.styles.textColor = [194, 65, 12]; // Amber
-          } else if (val === 'OUT OF STOCK') {
-            hookData.cell.styles.textColor = [225, 29, 72]; // Red
-          }
-        }
       },
     });
 

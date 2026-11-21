@@ -299,268 +299,40 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
       </div>
 
       {/* ============================================================== */}
-      {/* SCREEN MODAL DIALOG (Interactive preview with options) */}
+      {/* SCREEN MODAL DIALOG (Compact 2-column no-scroll view)          */}
       {/* ============================================================== */}
-      <div className="print:hidden bg-white rounded-2xl max-w-lg w-full max-w-full overflow-x-hidden p-3.5 sm:p-6 shadow-2xl space-y-4 border border-slate-100 my-auto animate-in fade-in zoom-in-95 max-h-[92vh] flex flex-col">
-        {/* Modal Top Bar */}
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
+      <div className="print:hidden bg-white rounded-2xl max-w-4xl w-full overflow-hidden p-3 sm:p-4 shadow-2xl space-y-2.5 border border-slate-100 my-auto animate-in fade-in zoom-in-95">
+        {/* Compact Modal Top Bar */}
+        <div className="flex items-center justify-between border-b border-slate-100 pb-2 shrink-0 gap-2">
           <div className="flex items-center gap-2 min-w-0">
-            <div className="p-2 bg-blue-50 text-blue-600 rounded-xl shrink-0">
-              <Printer className="w-5 h-5" />
+            <div className="p-1.5 bg-blue-50 text-blue-600 rounded-xl shrink-0">
+              <Printer className="w-4 h-4" />
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex items-center gap-2 flex-wrap">
               <h3 className="font-black text-slate-900 text-sm sm:text-base leading-tight truncate">
-                Customer Invoice & Receipt
+                Invoice #{sale.invNo}
               </h3>
-              <p className="text-[11px] text-slate-400 truncate">
-                Invoice #{sale.invNo} • {new Date(sale.date).toLocaleDateString()}
-              </p>
+              <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase ${paymentStatusColor}`}>
+                {paymentStatusText}
+              </span>
+              <span className="text-[11px] text-slate-400 truncate hidden sm:inline">
+                {new Date(sale.date).toLocaleDateString()} • {new Date(sale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
             </div>
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer shrink-0 ml-1"
+            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Print Format Switcher Toolbar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 bg-slate-50 p-1.5 rounded-xl border border-slate-200 text-xs shrink-0">
-          <span className="text-[11px] font-bold text-slate-500 pl-2">Print Layout:</span>
-          <div className="grid grid-cols-3 sm:flex gap-1 w-full sm:w-auto">
-            <button
-              type="button"
-              onClick={() => setPrintFormat('thermal-80')}
-              className={`px-2.5 py-1.5 sm:py-1 rounded-lg font-bold text-[11px] text-center transition cursor-pointer ${
-                printFormat === 'thermal-80'
-                  ? 'bg-blue-600 text-white shadow-2xs'
-                  : 'text-slate-600 hover:bg-slate-200/60'
-              }`}
-            >
-              80mm Thermal
-            </button>
-            <button
-              type="button"
-              onClick={() => setPrintFormat('thermal-58')}
-              className={`px-2.5 py-1.5 sm:py-1 rounded-lg font-bold text-[11px] text-center transition cursor-pointer ${
-                printFormat === 'thermal-58'
-                  ? 'bg-blue-600 text-white shadow-2xs'
-                  : 'text-slate-600 hover:bg-slate-200/60'
-              }`}
-            >
-              58mm Mini
-            </button>
-            <button
-              type="button"
-              onClick={() => setPrintFormat('a4')}
-              className={`px-2.5 py-1.5 sm:py-1 rounded-lg font-bold text-[11px] text-center transition cursor-pointer ${
-                printFormat === 'a4'
-                  ? 'bg-blue-600 text-white shadow-2xs'
-                  : 'text-slate-600 hover:bg-slate-200/60'
-              }`}
-            >
-              Standard A4
-            </button>
-          </div>
-        </div>
-
-        {/* Scrollable Receipt Preview */}
-        <div className="overflow-y-auto overflow-x-hidden pr-1 flex-1">
-          <div
-            className={`mx-auto bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 tabular-nums text-xs text-slate-800 space-y-4 shadow-inner w-full overflow-x-hidden ${
-              printFormat === 'thermal-58' ? 'max-w-xs' : 'max-w-md'
-            }`}
-          >
-            {/* Shop Header */}
-            <div className="text-center border-b border-dashed border-slate-300 pb-3 space-y-1">
-              {logoSrc ? (
-                <div className="flex justify-center mb-2">
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden bg-white p-0.5 shadow-2xs flex items-center justify-center">
-                    <img
-                      src={logoSrc}
-                      alt={settings.shopName}
-                      className="w-full h-full object-cover rounded-full"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div className="w-12 h-12 bg-blue-600 text-white rounded-full mx-auto flex items-center justify-center font-black mb-1 shadow-xs">
-                  <Store className="w-6 h-6" />
-                </div>
-              )}
-
-              <h2 className="font-black text-sm uppercase tracking-wide text-slate-900">
-                {settings.shopName}
-              </h2>
-              {settings.tagline && <p className="text-[10px] text-slate-500">{settings.tagline}</p>}
-              <p className="text-[10px] text-slate-500">{settings.address}</p>
-              <p className="text-[10px] text-slate-600 font-semibold">Ph: {settings.phone}</p>
-
-              {/* Bold Status Badge */}
-              <div className="pt-2">
-                <span className={`inline-block px-3 py-1 rounded-full text-[10px] font-black tracking-wider uppercase shadow-2xs ${paymentStatusColor}`}>
-                  {paymentStatusText}
-                </span>
-              </div>
-            </div>
-
-            {/* Invoice Metadata */}
-            <div className="space-y-1 text-[11px] text-slate-600 border-b border-dashed border-slate-300 pb-2.5">
-              {sale.saleMode === 'wholesale' && (
-                <div className="bg-purple-100 border border-purple-300 text-purple-900 rounded-lg p-1.5 text-center font-extrabold text-[11px] mb-2 flex items-center justify-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-purple-600 animate-pulse"></span>
-                  <span>WHOLESALE B2B BILL</span>
-                </div>
-              )}
-              <div className="flex justify-between font-bold text-slate-900">
-                <span>Invoice: #{sale.invNo}</span>
-                <span>{new Date(sale.date).toLocaleDateString()}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Retailer / Buyer: <strong className="text-slate-800">{sale.custName || 'Walk-in'}</strong></span>
-                <span>{new Date(sale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-              </div>
-              {sale.retailerShopName && (
-                <div>Shop Name: <span className="font-extrabold text-slate-800">{sale.retailerShopName}</span></div>
-              )}
-              {sale.retailerCity && (
-                <div>City: <span className="font-semibold text-slate-800">{sale.retailerCity}</span></div>
-              )}
-              {sale.retailerNtn && (
-                <div>NTN/GST: <span className="tabular-nums text-slate-800">{sale.retailerNtn}</span></div>
-              )}
-              {sale.custPhone && (
-                <div>Phone: <span className="font-semibold text-slate-800">{sale.custPhone}</span></div>
-              )}
-            </div>
-
-            {/* Itemized Table */}
-            <div className="border-b border-dashed border-slate-300 pb-3 overflow-x-auto">
-              <table className="w-full text-left text-[11px] min-w-[520px] lg:min-w-0">
-                <thead>
-                  <tr className="border-b border-slate-300 text-slate-500 font-bold uppercase text-[10px]">
-                    <th className="pb-1.5">Item</th>
-                    <th className="pb-1.5 text-center">Qty</th>
-                    <th className="pb-1.5 text-right">Price</th>
-                    <th className="pb-1.5 text-right">Total</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200/60">
-                  {sale.items.map((item, idx) => (
-                    <tr key={idx} className="align-top">
-                      <td className="py-1.5">
-                        <div className="font-bold text-slate-900">{item.name}</div>
-                        {item.boxCount && item.boxCount > 0 ? (
-                          <div className="text-[10px] text-purple-700 font-bold">
-                            📦 {item.boxCount} Cartons / Boxes
-                          </div>
-                        ) : null}
-                        {item.imei && (
-                          <div className="text-[10px] text-blue-700 font-bold flex items-center gap-1 mt-0.5">
-                            <Smartphone className="w-3 h-3 text-blue-500 inline" />
-                            <span>IMEI: {item.imei}</span>
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-1.5 text-center font-bold text-slate-800">{item.qty}</td>
-                      <td className="py-1.5 text-right text-slate-600">
-                        {settings.currency} {item.salePrice.toLocaleString()}
-                      </td>
-                      <td className="py-1.5 text-right font-black text-slate-900">
-                        {settings.currency} {(item.salePrice * item.qty).toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Calculations Breakdown */}
-            <div className="space-y-1.5 text-xs">
-              <div className="flex justify-between text-slate-600">
-                <span>Subtotal:</span>
-                <span>{settings.currency} {sale.subtotal.toLocaleString()}</span>
-              </div>
-
-              {sale.wholesaleSavings && sale.wholesaleSavings > 0 ? (
-                <div className="flex justify-between text-purple-700 font-extrabold bg-purple-50 p-1.5 rounded-lg border border-purple-200">
-                  <span>Wholesale B2B Savings:</span>
-                  <span>{settings.currency} {sale.wholesaleSavings.toLocaleString()}</span>
-                </div>
-              ) : null}
-
-              {sale.discount > 0 && (
-                <div className="flex justify-between text-emerald-600 font-semibold">
-                  <span>Discount / Tier:</span>
-                  <span>-{settings.currency} {sale.discount.toLocaleString()}</span>
-                </div>
-              )}
-
-              <div className="flex justify-between items-center text-sm font-black text-slate-900 pt-1.5 border-t border-slate-300">
-                <span>GRAND TOTAL:</span>
-                <span className="text-base text-blue-700">
-                  {settings.currency} {grandTotal.toLocaleString()}
-                </span>
-              </div>
-
-              <div className="flex justify-between text-slate-700 pt-1 border-t border-slate-200 text-[11px]">
-                <span>Payment Mode:</span>
-                <span className="font-bold uppercase">{sale.paymentMethod || 'Cash'}</span>
-              </div>
-
-              <div className="flex justify-between text-emerald-700 font-bold text-[11px]">
-                <span>Amount Paid Now:</span>
-                <span>{settings.currency} {amountPaid.toLocaleString()}</span>
-              </div>
-
-              {amountDue > 0 && (
-                <div className="flex justify-between text-rose-600 font-black text-xs pt-1 border-t border-dashed border-rose-200">
-                  <span>Remaining Khata Balance:</span>
-                  <span>{settings.currency} {amountDue.toLocaleString()}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Custom Per-Bill Note Preview */}
-            {sale.notes && (
-              <div
-                dir="auto"
-                className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-left text-xs text-slate-800 whitespace-pre-wrap"
-              >
-                <span className="font-extrabold text-[10px] uppercase tracking-wider text-amber-800 block mb-0.5">
-                  Bill Note:
-                </span>
-                {sale.notes}
-              </div>
-            )}
-
-            {/* QR Code & Return Policy Footer */}
-            <div className="pt-3 border-t border-dashed border-slate-300 text-center space-y-2">
-              <div className="flex items-center justify-center gap-2 p-2 bg-white rounded-xl border border-slate-200 w-fit mx-auto">
-                <QrCode className="w-8 h-8 text-slate-800" />
-                <div className="text-left text-[9px] text-slate-500 font-sans leading-tight">
-                  <p className="font-bold text-slate-800">Scan to Verify</p>
-                  <p>Digital Receipt #{sale.invNo}</p>
-                </div>
-              </div>
-
-              <div className="space-y-0.5">
-                {footerNoteLines.map((line, idx) => (
-                  <p key={idx} className="text-[10px] text-slate-600 font-sans italic">
-                    {line}
-                  </p>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* Return Status Alert */}
         {sale.returnStatus && sale.returnStatus !== 'NONE' && (
-          <div className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between ${
+          <div className={`px-3 py-1.5 rounded-xl border text-[11px] font-bold flex items-center justify-between ${
             sale.returnStatus === 'FULL'
               ? 'bg-rose-50 border-rose-200 text-rose-700'
               : 'bg-amber-50 border-amber-200 text-amber-700'
@@ -576,115 +348,345 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
           </div>
         )}
 
-        {/* Action Buttons */}
-        <div className="space-y-2 pt-2 border-t border-slate-100 shrink-0">
-          {/* Quick Edit & Delete Row */}
-          {(onEditSale || onDeleteSale) && (
-            <div className="grid grid-cols-2 gap-2">
-              {onEditSale && sale.status !== 'CANCELLED' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onClose();
-                    onEditSale(sale);
-                  }}
-                  className="flex items-center justify-center gap-1.5 py-2 px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold transition cursor-pointer"
-                  title="Load invoice in POS Cart to edit"
-                >
-                  <Edit className="w-3.5 h-3.5 text-blue-600" />
-                  <span>Edit Invoice</span>
-                </button>
-              )}
-              {onDeleteSale && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDeleteMode(sale.status === 'CANCELLED' ? 'permanent' : 'cancel');
-                    setDeleteConfirmOpen(true);
-                  }}
-                  className={`flex items-center justify-center gap-1.5 py-2 px-3 border rounded-xl text-xs font-bold transition cursor-pointer ${
-                    sale.status === 'CANCELLED'
-                      ? 'bg-rose-100 hover:bg-rose-200 text-rose-800 border-rose-300'
-                      : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
-                  }`}
-                  title={sale.status === 'CANCELLED' ? 'Delete Permanently' : 'Delete / Void Invoice'}
-                >
-                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                  <span>{sale.status === 'CANCELLED' ? 'Delete Permanently' : 'Delete / Void Invoice'}</span>
-                </button>
-              )}
+        {/* 2-Column Zero-Scroll Body */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-stretch">
+          {/* LEFT: Compact Receipt Preview */}
+          <div className="md:col-span-7 flex flex-col">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 tabular-nums text-[11px] text-slate-800 space-y-2 shadow-inner flex-1 flex flex-col justify-between">
+              <div className="space-y-2">
+                {/* Compact Shop Header Row */}
+                <div className="flex items-center justify-between gap-2 border-b border-dashed border-slate-300 pb-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    {logoSrc ? (
+                      <div className="w-10 h-10 rounded-full overflow-hidden bg-white p-0.5 shadow-2xs shrink-0 flex items-center justify-center">
+                        <img
+                          src={logoSrc}
+                          alt={settings.shopName}
+                          className="w-full h-full object-cover rounded-full"
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-9 h-9 bg-blue-600 text-white rounded-full flex items-center justify-center font-black shrink-0 shadow-xs">
+                        <Store className="w-4 h-4" />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <h2 className="font-black text-xs uppercase tracking-wide text-slate-900 truncate">
+                        {settings.shopName}
+                      </h2>
+                      <p className="text-[10px] text-slate-500 truncate">
+                        {settings.address} {settings.phone ? `• Ph: ${settings.phone}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  {sale.saleMode === 'wholesale' && (
+                    <span className="px-2 py-0.5 rounded-md bg-purple-100 border border-purple-300 text-purple-900 font-extrabold text-[10px] shrink-0">
+                      WHOLESALE B2B
+                    </span>
+                  )}
+                </div>
+
+                {/* Compact Invoice Metadata */}
+                <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10.5px] text-slate-600 border-b border-dashed border-slate-300 pb-2">
+                  <div className="truncate">
+                    Customer: <strong className="text-slate-900">{sale.custName || 'Walk-in'}</strong>
+                  </div>
+                  <div className="text-right truncate">
+                    Date: <strong className="text-slate-800">{new Date(sale.date).toLocaleDateString()}</strong>
+                  </div>
+                  {sale.custPhone && (
+                    <div className="truncate">
+                      Phone: <strong className="text-slate-800">{sale.custPhone}</strong>
+                    </div>
+                  )}
+                  {sale.retailerShopName && (
+                    <div className="truncate">
+                      Shop: <strong className="text-slate-800">{sale.retailerShopName}</strong>
+                    </div>
+                  )}
+                  {(sale.retailerCity || sale.retailerNtn) && (
+                    <div className="col-span-2 truncate">
+                      {sale.retailerCity ? `City: ${sale.retailerCity}` : ''}{sale.retailerCity && sale.retailerNtn ? ' • ' : ''}{sale.retailerNtn ? `NTN/GST: ${sale.retailerNtn}` : ''}
+                    </div>
+                  )}
+                </div>
+
+                {/* Itemized Table (Full width, no horizontal overflow) */}
+                <div className={`border-b border-dashed border-slate-300 pb-2 ${sale.items.length > 6 ? 'max-h-44 overflow-y-auto pr-1' : ''}`}>
+                  <table className="w-full text-left text-[11px] table-auto">
+                    <thead>
+                      <tr className="border-b border-slate-300 text-slate-500 font-bold uppercase text-[9.5px]">
+                        <th className="pb-1">Item</th>
+                        <th className="pb-1 text-center w-10">Qty</th>
+                        <th className="pb-1 text-right w-20">Price</th>
+                        <th className="pb-1 text-right w-22">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200/60">
+                      {sale.items.map((item, idx) => (
+                        <tr key={idx} className="align-top">
+                          <td className="py-1 pr-2">
+                            <div className="font-bold text-slate-900 leading-tight">{item.name}</div>
+                            {item.boxCount && item.boxCount > 0 ? (
+                              <div className="text-[9.5px] text-purple-700 font-bold">
+                                📦 {item.boxCount} Cartons / Boxes
+                              </div>
+                            ) : null}
+                            {item.imei && (
+                              <div className="text-[9.5px] text-blue-700 font-semibold flex items-center gap-1 mt-0.5 break-all">
+                                <Smartphone className="w-2.5 h-2.5 text-blue-500 shrink-0" />
+                                <span>IMEI: {item.imei}</span>
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-1 text-center font-bold text-slate-800">{item.qty}</td>
+                          <td className="py-1 text-right text-slate-600">
+                            {settings.currency} {item.salePrice.toLocaleString()}
+                          </td>
+                          <td className="py-1 text-right font-black text-slate-900">
+                            {settings.currency} {(item.salePrice * item.qty).toLocaleString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Custom Per-Bill Note Preview */}
+                {sale.notes && (
+                  <div
+                    dir="auto"
+                    className="bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 text-left text-[11px] text-slate-800 whitespace-pre-wrap"
+                  >
+                    <span className="font-extrabold text-[9.5px] uppercase tracking-wider text-amber-800 mr-1">
+                      Note:
+                    </span>
+                    {sale.notes}
+                  </div>
+                )}
+              </div>
+
+              {/* Compact Footer & Return Policy */}
+              <div className="pt-1.5 border-t border-dashed border-slate-300 flex items-center justify-between gap-2 text-[9.5px] text-slate-500">
+                <div className="flex items-center gap-1.5 shrink-0 bg-white px-2 py-1 rounded-lg border border-slate-200">
+                  <QrCode className="w-5 h-5 text-slate-800" />
+                  <span className="font-bold text-slate-700">#{sale.invNo}</span>
+                </div>
+                <div className="text-right leading-tight truncate">
+                  {footerNoteLines.map((line, idx) => (
+                    <p key={idx} className="italic truncate">
+                      {line}
+                    </p>
+                  ))}
+                </div>
+              </div>
             </div>
-          )}
-
-          {/* Direct Bluetooth Thermal Printer Action */}
-          <button
-            type="button"
-            onClick={handleBluetoothPrint}
-            disabled={isPrintingBluetooth}
-            className={`w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-extrabold transition cursor-pointer active:scale-98 shadow-sm ${
-              isPrintingBluetooth
-                ? 'bg-indigo-100 text-indigo-800 cursor-wait border border-indigo-300'
-                : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/20'
-            }`}
-            title="Connect & print directly to paired Bluetooth ESC/POS 80mm/58mm thermal printer"
-          >
-            {isPrintingBluetooth ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin text-white shrink-0" />
-                <span>Connecting to Bluetooth Printer...</span>
-              </>
-            ) : (
-              <>
-                <Bluetooth className="w-4 h-4 shrink-0" />
-                <span>Print via Bluetooth Thermal Printer ({printFormat === 'thermal-58' ? '58mm' : '80mm'})</span>
-              </>
-            )}
-          </button>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={handleCopyText}
-              className="w-full flex items-center justify-center gap-1.5 py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer"
-            >
-              {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4 text-slate-500" />}
-              <span>{copied ? 'Copied!' : 'Copy Text'}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleWhatsApp}
-              className="w-full flex items-center justify-center gap-1.5 py-2.5 px-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-xs transition cursor-pointer active:scale-95"
-              title="Share itemized bill directly with customer on WhatsApp"
-            >
-              <Share2 className="w-4 h-4" />
-              <span>Share via WhatsApp</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handlePrint}
-              className="w-full flex items-center justify-center gap-1.5 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold shadow-lg shadow-blue-600/25 transition cursor-pointer active:scale-95"
-              title="Standard browser print dialog (A4 or thermal driver)"
-            >
-              <Printer className="w-4 h-4" />
-              <span>Standard Print</span>
-            </button>
           </div>
 
-          {onOpenSalesReturn && sale.returnStatus !== 'FULL' && (
-            <button
-              type="button"
-              onClick={() => {
-                onClose();
-                onOpenSalesReturn(sale);
-              }}
-              className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-xl text-xs font-bold transition cursor-pointer"
-            >
-              <span className="text-base">↩️</span>
-              <span>Sales Return & Refund for Inv #{sale.invNo}</span>
-            </button>
-          )}
+          {/* RIGHT: Payment Totals, Print Format & Action Controls */}
+          <div className="md:col-span-5 flex flex-col justify-between gap-2.5">
+            {/* Financial Summary Box */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1.5 text-xs tabular-nums">
+              <div className="flex justify-between text-slate-600 text-[11px]">
+                <span>Subtotal:</span>
+                <span>{settings.currency} {sale.subtotal.toLocaleString()}</span>
+              </div>
+
+              {sale.wholesaleSavings && sale.wholesaleSavings > 0 ? (
+                <div className="flex justify-between text-purple-700 font-bold text-[11px] bg-purple-50 px-2 py-1 rounded-md border border-purple-200">
+                  <span>Wholesale Savings:</span>
+                  <span>{settings.currency} {sale.wholesaleSavings.toLocaleString()}</span>
+                </div>
+              ) : null}
+
+              {sale.discount > 0 && (
+                <div className="flex justify-between text-emerald-600 font-semibold text-[11px]">
+                  <span>Discount / Tier:</span>
+                  <span>-{settings.currency} {sale.discount.toLocaleString()}</span>
+                </div>
+              )}
+
+              <div className="flex justify-between items-center text-sm font-black text-slate-900 pt-1.5 border-t border-slate-200">
+                <span>GRAND TOTAL:</span>
+                <span className="text-base text-blue-700">
+                  {settings.currency} {grandTotal.toLocaleString()}
+                </span>
+              </div>
+
+              <div className="flex justify-between text-emerald-700 font-bold text-[11px] pt-1 border-t border-slate-200/70">
+                <span>Paid ({sale.paymentMethod || 'Cash'}):</span>
+                <span>{settings.currency} {amountPaid.toLocaleString()}</span>
+              </div>
+
+              {amountDue > 0 && (
+                <div className="flex justify-between text-rose-600 font-black text-xs pt-1 border-t border-dashed border-rose-200">
+                  <span>Remaining Balance:</span>
+                  <span>{settings.currency} {amountDue.toLocaleString()}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Print Layout Switcher */}
+            <div className="bg-slate-50 p-1.5 rounded-xl border border-slate-200 space-y-1">
+              <span className="text-[10px] font-bold text-slate-500 px-1 block uppercase tracking-wider">Print Layout</span>
+              <div className="grid grid-cols-3 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setPrintFormat('thermal-80')}
+                  className={`px-2 py-1.5 rounded-lg font-bold text-[11px] text-center transition cursor-pointer ${
+                    printFormat === 'thermal-80'
+                      ? 'bg-blue-600 text-white shadow-2xs'
+                      : 'text-slate-600 hover:bg-slate-200/60'
+                  }`}
+                >
+                  80mm Thermal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPrintFormat('thermal-58')}
+                  className={`px-2 py-1.5 rounded-lg font-bold text-[11px] text-center transition cursor-pointer ${
+                    printFormat === 'thermal-58'
+                      ? 'bg-blue-600 text-white shadow-2xs'
+                      : 'text-slate-600 hover:bg-slate-200/60'
+                  }`}
+                >
+                  58mm Mini
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPrintFormat('a4')}
+                  className={`px-2 py-1.5 rounded-lg font-bold text-[11px] text-center transition cursor-pointer ${
+                    printFormat === 'a4'
+                      ? 'bg-blue-600 text-white shadow-2xs'
+                      : 'text-slate-600 hover:bg-slate-200/60'
+                  }`}
+                >
+                  Standard A4
+                </button>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="space-y-1.5">
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="flex items-center justify-center gap-1.5 py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold shadow-sm shadow-blue-600/20 transition cursor-pointer active:scale-95"
+                  title="Standard browser print dialog (A4 or thermal driver)"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Standard Print</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleWhatsApp}
+                  className="flex items-center justify-center gap-1.5 py-2 px-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-xs transition cursor-pointer active:scale-95"
+                  title="Share itemized bill directly with customer on WhatsApp"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>WhatsApp</span>
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleBluetoothPrint}
+                disabled={isPrintingBluetooth}
+                className={`w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-extrabold transition cursor-pointer active:scale-98 shadow-xs ${
+                  isPrintingBluetooth
+                    ? 'bg-indigo-100 text-indigo-800 cursor-wait border border-indigo-300'
+                    : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/15'
+                }`}
+                title="Connect & print directly to paired Bluetooth ESC/POS 80mm/58mm thermal printer"
+              >
+                {isPrintingBluetooth ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-white shrink-0" />
+                    <span>Connecting Bluetooth...</span>
+                  </>
+                ) : (
+                  <>
+                    <Bluetooth className="w-3.5 h-3.5 shrink-0" />
+                    <span>Bluetooth Thermal Print ({printFormat === 'thermal-58' ? '58mm' : '80mm'})</span>
+                  </>
+                )}
+              </button>
+
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleCopyText}
+                  className="flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[11px] font-bold transition cursor-pointer"
+                >
+                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-slate-500" />}
+                  <span>{copied ? 'Copied!' : 'Copy Text'}</span>
+                </button>
+
+                {onOpenSalesReturn && sale.returnStatus !== 'FULL' ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenSalesReturn(sale);
+                    }}
+                    className="flex items-center justify-center gap-1 py-1.5 px-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-xl text-[11px] font-bold transition cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Sales Return</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="flex items-center justify-center py-1.5 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-[11px] font-bold transition cursor-pointer"
+                  >
+                    Close
+                  </button>
+                )}
+              </div>
+
+              {(onEditSale || onDeleteSale) && (
+                <div className="grid grid-cols-2 gap-1.5">
+                  {onEditSale && sale.status !== 'CANCELLED' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onEditSale(sale);
+                      }}
+                      className="flex items-center justify-center gap-1 py-1.5 px-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-[11px] font-bold transition cursor-pointer"
+                      title="Load invoice in POS Cart to edit"
+                    >
+                      <Edit className="w-3 h-3 text-blue-600" />
+                      <span>Edit Invoice</span>
+                    </button>
+                  )}
+                  {onDeleteSale && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeleteMode(sale.status === 'CANCELLED' ? 'permanent' : 'cancel');
+                        setDeleteConfirmOpen(true);
+                      }}
+                      className={`flex items-center justify-center gap-1 py-1.5 px-2.5 border rounded-xl text-[11px] font-bold transition cursor-pointer ${
+                        !onEditSale || sale.status === 'CANCELLED' ? 'col-span-2 ' : ''
+                      }${
+                        sale.status === 'CANCELLED'
+                          ? 'bg-rose-100 hover:bg-rose-200 text-rose-800 border-rose-300'
+                          : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                      }`}
+                      title={sale.status === 'CANCELLED' ? 'Delete Permanently' : 'Delete / Void Invoice'}
+                    >
+                      <Trash2 className="w-3 h-3 text-rose-600" />
+                      <span>{sale.status === 'CANCELLED' ? 'Delete Permanently' : 'Void / Delete'}</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 

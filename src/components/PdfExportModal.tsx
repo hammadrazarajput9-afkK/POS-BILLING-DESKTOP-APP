@@ -40,6 +40,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
   initialCategory,
 }) => {
   const { showToast } = useToast();
+  const isAdmin = (data.currentRole || 'admin') === 'admin';
   const [filterType, setFilterType] = useState<DateFilterRange['type']>('monthly');
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
@@ -183,13 +184,31 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
       }
 
       const totalUnits = filtered.reduce((a, b) => a + (Number(b.qty) || 0), 0);
-      const totalCost = filtered.reduce((a, b) => a + ((Number(b.costPrice) || 0) * (Number(b.qty) || 0)), 0);
-      const totalRetail = filtered.reduce((a, b) => a + ((Number(b.salePrice) || 0) * (Number(b.qty) || 0)), 0);
+      const totalCost = filtered.reduce((a, b) => {
+        if (b.variants && b.variants.length > 0) {
+          const vq = b.variants.reduce((s, v) => s + (Number(v.qty) || 0), 0);
+          if (vq > 0) {
+            return a + b.variants.reduce((s, v) => s + ((Number(v.costPrice) || Number(b.costPrice) || 0) * (Number(v.qty) || 0)), 0);
+          }
+        }
+        return a + (Number(b.costPrice) || 0) * (Number(b.qty) || 0);
+      }, 0);
+      const totalRetail = filtered.reduce((a, b) => {
+        if (b.variants && b.variants.length > 0) {
+          const vq = b.variants.reduce((s, v) => s + (Number(v.qty) || 0), 0);
+          if (vq > 0) {
+            return a + b.variants.reduce((s, v) => s + ((Number(v.salePrice) || Number(b.salePrice) || 0) * (Number(v.qty) || 0)), 0);
+          }
+        }
+        return a + (Number(b.salePrice) || 0) * (Number(b.qty) || 0);
+      }, 0);
       const margin = totalRetail - totalCost;
 
       return {
         count: `${filtered.length} Products (${totalUnits} Units)`,
-        detail: `Stock Cost: ${currency} ${totalCost.toLocaleString()} | Retail: ${currency} ${totalRetail.toLocaleString()} | Margin: ${currency} ${margin.toLocaleString()}`,
+        detail: isAdmin
+          ? `Stock Cost: ${currency} ${totalCost.toLocaleString()} | Retail: ${currency} ${totalRetail.toLocaleString()} | Margin: ${currency} ${margin.toLocaleString()}`
+          : '',
         scope: selectedCategory === 'all' ? 'All Categories (Entire Store)' : `Category: ${selectedCategory}`,
       };
     }
@@ -267,6 +286,7 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
         categoryFilter: selectedCategory,
         stockStatusFilter,
         includePartyDetails,
+        includeCostValuation: isAdmin,
       });
       showToast('PDF Report generated and downloaded successfully!', 'success');
       onClose();
@@ -395,23 +415,6 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
                 ))}
               </div>
             </div>
-
-            {/* Inward Details & Party Checkbox */}
-            <div className="p-2.5 bg-emerald-50/60 rounded-xl border border-emerald-200/70 space-y-2">
-              <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-emerald-950">
-                <input
-                  type="checkbox"
-                  checked={includePartyDetails}
-                  onChange={e => setIncludePartyDetails(e.target.checked)}
-                  className="w-4 h-4 text-emerald-600 rounded-md border-emerald-300 focus:ring-emerald-500"
-                />
-                <Truck className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-                <span>Include Supplier / Purchase Party Name for Each Device</span>
-              </label>
-              <p className="text-[10px] text-emerald-800/80 pl-6">
-                PDF report will include invoice bill number and supplier party name (e.g. Khan Telecom, Direct Stock) on each record.
-              </p>
-            </div>
           </div>
         ) : (
           /* Date Range for reports including Stock Inward */
@@ -490,12 +493,20 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
         {/* Features Preview List */}
         <div className="text-[11px] text-slate-500 space-y-1">
           <p className="font-bold text-slate-700">What's included in this Professional PDF:</p>
-          <ul className="list-disc pl-4 space-y-0.5">
-            <li>Shop Business Header (Name, Tagline, Phone, Address & Timestamp)</li>
-            <li>No duplicate IMEIs (Unique deduplicated serial numbers per handset)</li>
-            <li>Supplier & Party identification (Vendor bill number and supplier name)</li>
-            <li>A4 Landscape layout with KPI metrics cards and signature lines</li>
-          </ul>
+          {tab === 'inventory' ? (
+            <ul className="list-disc pl-4 space-y-0.5">
+              <li>Shop Business Header (Name, Phone, Address & Timestamp)</li>
+              <li>Clean columns only: Product Name, Qty, IMEI{isAdmin ? ', Cost Price,' : ''} &amp; Sale Price</li>
+              <li>Exact unique IMEIs per unit (no duplicate IMEI numbers)</li>
+              <li>A4 Landscape layout with clean stock count summary</li>
+            </ul>
+          ) : (
+            <ul className="list-disc pl-4 space-y-0.5">
+              <li>Shop Business Header (Name, Tagline, Phone, Address &amp; Timestamp)</li>
+              <li>Itemized transaction breakdown with totals &amp; timestamps</li>
+              <li>Professional layout ready for print or WhatsApp sharing</li>
+            </ul>
+          )}
         </div>
 
         {/* Actions */}
