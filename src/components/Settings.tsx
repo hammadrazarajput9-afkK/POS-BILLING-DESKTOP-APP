@@ -616,20 +616,20 @@ export const Settings: React.FC<SettingsProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-2xl w-full p-5 sm:p-6 shadow-2xl space-y-5 border border-slate-100 my-auto animate-in fade-in zoom-in-95 max-h-[92vh] flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-1.5 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+      <div className="bg-white rounded-xl sm:rounded-2xl max-w-2xl w-full p-3 sm:p-6 shadow-2xl space-y-3 sm:space-y-4 border border-slate-100 my-auto animate-in fade-in zoom-in-95 max-h-[95dvh] sm:max-h-[92vh] flex flex-col">
         {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-blue-600 text-white rounded-xl shadow-md shadow-blue-500/20">
-              <SettingsIcon className="w-5 h-5" />
+        <div className="flex items-center justify-between border-b border-slate-100 pb-2 sm:pb-3 shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 sm:p-2 bg-blue-600 text-white rounded-lg sm:rounded-xl shadow-md shadow-blue-500/20">
+              <SettingsIcon className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
             <div>
-              <h3 className="font-black text-slate-900 text-base">
+              <h3 className="font-black text-slate-900 text-sm sm:text-base leading-tight">
                 Shop Settings & Branding
               </h3>
-              <p className="text-[11px] text-slate-400">
-                Customize shop logo, receipts, currency, themes, and secure data backups
+              <p className="text-[10px] sm:text-[11px] text-slate-400 line-clamp-1">
+                Customize shop logo, receipts, currency, themes & backups
               </p>
             </div>
           </div>
@@ -637,18 +637,18 @@ export const Settings: React.FC<SettingsProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer shrink-0"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         </div>
 
         {/* Subtabs Selector */}
-        <div className="flex items-center gap-1.5 border-b border-slate-100 pb-2 shrink-0 overflow-x-auto max-w-full">
+        <div className="no-scrollbar flex items-center gap-1 border-b border-slate-100 pb-2 shrink-0 overflow-x-auto max-w-full">
           <button
             type="button"
             onClick={() => setActiveSubTab('profile')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 whitespace-nowrap ${
+            className={`px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold transition cursor-pointer shrink-0 whitespace-nowrap ${
               activeSubTab === 'profile'
                 ? 'bg-blue-600 text-white shadow-2xs'
                 : 'text-slate-600 hover:bg-slate-100'
@@ -660,25 +660,25 @@ export const Settings: React.FC<SettingsProps> = ({
           <button
             type="button"
             onClick={() => setActiveSubTab('branding')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 whitespace-nowrap ${
+            className={`px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold transition cursor-pointer shrink-0 whitespace-nowrap ${
               activeSubTab === 'branding'
                 ? 'bg-blue-600 text-white shadow-2xs'
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
-            Themes & Print Layout
+            Themes & Print
           </button>
 
           <button
             type="button"
             onClick={() => setActiveSubTab('backup')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 whitespace-nowrap ${
+            className={`px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold transition cursor-pointer shrink-0 whitespace-nowrap ${
               activeSubTab === 'backup'
                 ? 'bg-blue-600 text-white shadow-2xs'
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
-            Data Backup & Restore
+            Backup & Restore
           </button>
 
           {fullData.currentUser?.role === 'admin' && (
@@ -686,24 +686,24 @@ export const Settings: React.FC<SettingsProps> = ({
               <button
                 type="button"
                 onClick={() => setActiveSubTab('users')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 whitespace-nowrap ${
+                className={`px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold transition cursor-pointer shrink-0 whitespace-nowrap ${
                   activeSubTab === 'users'
                     ? 'bg-blue-600 text-white shadow-2xs'
                     : 'text-slate-600 hover:bg-slate-100'
                 }`}
               >
-                User Management
+                Users
               </button>
               <button
                 type="button"
                 onClick={() => setActiveSubTab('password')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 whitespace-nowrap ${
+                className={`px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold transition cursor-pointer shrink-0 whitespace-nowrap ${
                   activeSubTab === 'password'
                     ? 'bg-blue-600 text-white shadow-2xs'
                     : 'text-slate-600 hover:bg-slate-100'
                 }`}
               >
-                Change Admin Password
+                Security & Password
               </button>
             </>
           )}
@@ -712,35 +712,32 @@ export const Settings: React.FC<SettingsProps> = ({
         {/* Scrollable Form Body */}
         <div className="overflow-y-auto pr-1 flex-1">
           {activeSubTab === 'profile' && (
-            <form onSubmit={handleSave} className="space-y-4">
+            <form onSubmit={handleSave} className="space-y-3 sm:space-y-4">
               {/* Logo Management Grid: Main Shop Logo & Dedicated Invoice Logo */}
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                    <Store className="w-4 h-4 text-blue-600" />
+                  <h4 className="text-[11px] sm:text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <Store className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600" />
                     Branding & Logo Management
                   </h4>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                  {/* Card 1: Main Shop Logo (App Header, Sidebar & Dashboard) */}
-                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-3 flex flex-col justify-between">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 sm:gap-3.5">
+                  {/* Card 1: Main Shop Logo */}
+                  <div className="p-2.5 sm:p-4 bg-slate-50 rounded-xl sm:rounded-2xl border border-slate-200/80 space-y-2 flex flex-col justify-between">
                     <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <label className="block text-xs font-bold text-slate-800">
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[11px] sm:text-xs font-bold text-slate-800">
                           1. Main Shop Logo
                         </label>
-                        <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[9px] font-black uppercase">
-                          App & Dashboard
+                        <span className="px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[9px] font-black uppercase">
+                          App Header
                         </span>
                       </div>
-                      <p className="text-[11px] text-slate-500 mb-3">
-                        Displayed on top header, navigation sidebar, and main dashboard.
-                      </p>
 
-                      <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-3">
                         {formData.shopLogo ? (
-                          <div className="relative group w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden bg-white shadow-md flex items-center justify-center p-1.5 shrink-0 border border-slate-200">
+                          <div className="relative group w-16 h-16 sm:w-24 sm:h-24 rounded-full overflow-hidden bg-white shadow-sm flex items-center justify-center p-1 shrink-0 border border-slate-200">
                             <img
                               src={formData.shopLogo}
                               alt="Shop Logo"
@@ -749,22 +746,22 @@ export const Settings: React.FC<SettingsProps> = ({
                             <button
                               type="button"
                               onClick={handleRemoveLogo}
-                              className="absolute max-lg:bottom-1 max-lg:right-1 max-lg:w-7 max-lg:h-7 max-lg:rounded-full max-lg:bg-slate-900/80 max-lg:opacity-100 lg:inset-0 lg:bg-slate-900/70 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition cursor-pointer lg:rounded-full"
+                              className="absolute max-lg:bottom-0.5 max-lg:right-0.5 max-lg:w-6 max-lg:h-6 max-lg:rounded-full max-lg:bg-slate-900/80 max-lg:opacity-100 lg:inset-0 lg:bg-slate-900/70 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition cursor-pointer lg:rounded-full"
                               title="Remove Shop Logo"
                             >
-                              <Trash2 className="w-5 h-5 text-rose-400" />
+                              <Trash2 className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-rose-400" />
                             </button>
                           </div>
                         ) : (
-                          <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full border-2 border-dashed border-slate-300 bg-white flex flex-col items-center justify-center text-slate-400 shrink-0">
-                            <Store className="w-8 h-8 text-slate-400" />
-                            <span className="text-[10px] font-bold mt-1">No Logo</span>
+                          <div className="w-16 h-16 sm:w-24 sm:h-24 rounded-full border-2 border-dashed border-slate-300 bg-white flex flex-col items-center justify-center text-slate-400 shrink-0">
+                            <Store className="w-6 h-6 sm:w-8 sm:h-8 text-slate-400" />
+                            <span className="text-[9px] font-bold mt-0.5">No Logo</span>
                           </div>
                         )}
 
-                        <div className="flex-1 space-y-2">
+                        <div className="flex-1 space-y-1.5 min-w-0">
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-300 rounded-xl text-xs font-bold text-blue-600 hover:bg-blue-50/50 transition cursor-pointer shadow-2xs">
+                            <label className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-blue-300 rounded-lg text-[11px] font-bold text-blue-600 hover:bg-blue-50/50 transition cursor-pointer shadow-2xs h-7.5">
                               <Upload className="w-3.5 h-3.5" />
                               <span>{formData.shopLogo ? 'Change' : 'Upload'}</span>
                               <input
@@ -778,7 +775,7 @@ export const Settings: React.FC<SettingsProps> = ({
                             <button
                               type="button"
                               onClick={() => setCameraModalConfig({ isOpen: true, target: 'shop' })}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-300 rounded-xl text-xs font-bold text-emerald-700 hover:bg-emerald-100 transition cursor-pointer shadow-2xs"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 border border-emerald-300 rounded-lg text-[11px] font-bold text-emerald-700 hover:bg-emerald-100 transition cursor-pointer shadow-2xs h-7.5"
                               title="Camera Snap"
                             >
                               <Camera className="w-3.5 h-3.5 text-emerald-600" />
@@ -789,14 +786,14 @@ export const Settings: React.FC<SettingsProps> = ({
                               <button
                                 type="button"
                                 onClick={handleRemoveLogo}
-                                className="p-1.5 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                                className="h-7.5 w-7.5 flex items-center justify-center rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 transition cursor-pointer"
                                 title="Remove Logo"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             )}
                           </div>
-                          <p className="text-[10px] text-slate-400">
+                          <p className="text-[10px] text-slate-400 leading-tight">
                             PNG, JPG or Camera (under 2MB).
                           </p>
                         </div>
@@ -805,27 +802,27 @@ export const Settings: React.FC<SettingsProps> = ({
                   </div>
 
                   {/* Card 2: Dedicated Invoice Logo */}
-                  <div className="p-4 bg-indigo-50/40 rounded-2xl border-2 border-indigo-200/90 space-y-3 flex flex-col justify-between">
+                  <div className="p-2.5 sm:p-4 bg-indigo-50/40 rounded-xl sm:rounded-2xl border-2 border-indigo-200/90 space-y-2 flex flex-col justify-between">
                     <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <label className="block text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                          <Receipt className="w-4 h-4 text-indigo-600" />
-                          2. Dedicated Invoice Logo
+                      <div className="flex items-center justify-between mb-1 gap-1">
+                        <label className="block text-[11px] sm:text-xs font-bold text-slate-800 flex items-center gap-1 truncate">
+                          <Receipt className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                          <span className="truncate">2. Invoice Logo</span>
                         </label>
                         {formData.invoiceLogo ? (
-                          <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase tracking-wider flex items-center gap-1">
-                            <Check className="w-3 h-3 stroke-[3]" /> Dedicated Logo Active
+                          <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase tracking-wider flex items-center gap-0.5 shrink-0">
+                            <Check className="w-2.5 h-2.5 stroke-[3]" /> Active
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 text-[9px] font-bold">
-                            Using Shop Logo
+                          <span className="px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-600 text-[9px] font-bold shrink-0">
+                            Shop Logo
                           </span>
                         )}
                       </div>
 
-                      <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-3">
                         {formData.invoiceLogo ? (
-                          <div className="relative group w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden bg-white shadow-md flex items-center justify-center p-1.5 shrink-0 border border-indigo-200">
+                          <div className="relative group w-16 h-16 sm:w-24 sm:h-24 rounded-full overflow-hidden bg-white shadow-sm flex items-center justify-center p-1 shrink-0 border border-indigo-200">
                             <img
                               src={formData.invoiceLogo}
                               alt="Dedicated Invoice Logo"
@@ -834,14 +831,14 @@ export const Settings: React.FC<SettingsProps> = ({
                             <button
                               type="button"
                               onClick={handleRemoveInvoiceLogo}
-                              className="absolute max-lg:bottom-1 max-lg:right-1 max-lg:w-7 max-lg:h-7 max-lg:rounded-full max-lg:bg-slate-900/80 max-lg:opacity-100 lg:inset-0 lg:bg-slate-900/70 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition cursor-pointer lg:rounded-full"
-                              title="Remove Invoice Logo (Use Shop Logo Default)"
+                              className="absolute max-lg:bottom-0.5 max-lg:right-0.5 max-lg:w-6 max-lg:h-6 max-lg:rounded-full max-lg:bg-slate-900/80 max-lg:opacity-100 lg:inset-0 lg:bg-slate-900/70 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition cursor-pointer lg:rounded-full"
+                              title="Remove Invoice Logo"
                             >
-                              <Trash2 className="w-5 h-5 text-rose-400" />
+                              <Trash2 className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-rose-400" />
                             </button>
                           </div>
                         ) : formData.shopLogo ? (
-                          <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full border-2 border-dashed border-indigo-300 bg-white p-0.5 flex flex-col items-center justify-center text-slate-400 shrink-0" title="Using main shop logo as fallback">
+                          <div className="w-16 h-16 sm:w-24 sm:h-24 rounded-full border-2 border-dashed border-indigo-300 bg-white p-0.5 flex flex-col items-center justify-center text-slate-400 shrink-0" title="Using main shop logo">
                             <img
                               src={formData.shopLogo}
                               alt="Default Shop Logo"
@@ -849,17 +846,17 @@ export const Settings: React.FC<SettingsProps> = ({
                             />
                           </div>
                         ) : (
-                          <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full border-2 border-dashed border-indigo-300 bg-white flex flex-col items-center justify-center text-indigo-400 shrink-0">
-                            <Receipt className="w-8 h-8" />
-                            <span className="text-[10px] font-bold mt-1">No Logo</span>
+                          <div className="w-16 h-16 sm:w-24 sm:h-24 rounded-full border-2 border-dashed border-indigo-300 bg-white flex flex-col items-center justify-center text-indigo-400 shrink-0">
+                            <Receipt className="w-6 h-6 sm:w-8 sm:h-8" />
+                            <span className="text-[9px] font-bold mt-0.5">No Logo</span>
                           </div>
                         )}
 
-                        <div className="flex-1 space-y-2">
+                        <div className="flex-1 space-y-1.5 min-w-0">
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-xs">
+                            <label className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold transition cursor-pointer shadow-xs h-7.5">
                               <Upload className="w-3.5 h-3.5" />
-                              <span>{formData.invoiceLogo ? 'Change' : 'Upload Invoice Logo'}</span>
+                              <span>{formData.invoiceLogo ? 'Change' : 'Upload'}</span>
                               <input
                                 type="file"
                                 accept="image/*"
@@ -871,7 +868,7 @@ export const Settings: React.FC<SettingsProps> = ({
                             <button
                               type="button"
                               onClick={() => setCameraModalConfig({ isOpen: true, target: 'invoice' })}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-indigo-300 rounded-xl text-xs font-bold text-indigo-700 hover:bg-indigo-50 transition cursor-pointer shadow-2xs"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-indigo-300 rounded-lg text-[11px] font-bold text-indigo-700 hover:bg-indigo-50 transition cursor-pointer shadow-2xs h-7.5"
                               title="Capture with camera"
                             >
                               <Camera className="w-3.5 h-3.5 text-indigo-600" />
@@ -882,17 +879,17 @@ export const Settings: React.FC<SettingsProps> = ({
                               <button
                                 type="button"
                                 onClick={handleRemoveInvoiceLogo}
-                                className="p-1.5 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                                className="h-7.5 w-7.5 flex items-center justify-center rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 transition cursor-pointer"
                                 title="Reset to Default Shop Logo"
                               >
                                 <Trash2 className="w-3.5 h-3.5 text-rose-500" />
                               </button>
                             )}
                           </div>
-                          <p className="text-[10px] text-slate-500">
+                          <p className="text-[10px] text-slate-500 leading-tight">
                             {formData.invoiceLogo 
-                              ? 'Dedicated invoice logo is active and will print on bills.' 
-                              : 'If left empty, main shop logo will print on invoices.'}
+                              ? 'Prints on bills & thermal receipts.' 
+                              : 'Uses main shop logo if empty.'}
                           </p>
                         </div>
                       </div>
@@ -902,7 +899,7 @@ export const Settings: React.FC<SettingsProps> = ({
               </div>
 
               {/* Shop Details */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3.5">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 mb-1">
                     Shop / Business Name *
@@ -912,7 +909,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     required
                     value={formData.shopName}
                     onChange={e => setFormData({ ...formData, shopName: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white"
+                    className="compact-mobile-input w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg sm:rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white"
                   />
                 </div>
 
@@ -925,7 +922,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     value={formData.tagline}
                     onChange={e => setFormData({ ...formData, tagline: e.target.value })}
                     placeholder="e.g. Sales, Service & Accessories"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white"
+                    className="compact-mobile-input w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg sm:rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white"
                   />
                 </div>
 
@@ -938,7 +935,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     required
                     value={formData.phone}
                     onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white"
+                    className="compact-mobile-input w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg sm:rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white"
                   />
                 </div>
 
@@ -951,7 +948,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     required
                     value={formData.currency}
                     onChange={e => setFormData({ ...formData, currency: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs tabular-nums font-bold focus:outline-none focus:border-blue-500 focus:bg-white"
+                    className="compact-mobile-input w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg sm:rounded-xl text-xs tabular-nums font-bold focus:outline-none focus:border-blue-500 focus:bg-white"
                   />
                 </div>
 
@@ -963,13 +960,13 @@ export const Settings: React.FC<SettingsProps> = ({
                     type="text"
                     value={formData.address}
                     onChange={e => setFormData({ ...formData, address: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white"
+                    className="compact-mobile-input w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg sm:rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white"
                   />
                 </div>
 
                 <div className="sm:col-span-2">
                   <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    Default Low Stock Warning Threshold (Units)
+                    Low Stock Warning Threshold (Units)
                   </label>
                   <input
                     type="number"
@@ -978,88 +975,62 @@ export const Settings: React.FC<SettingsProps> = ({
                     placeholder="Qty"
                     value={(formData.lowStockThreshold as any) ?? ''}
                     onChange={e => setFormData({ ...formData, lowStockThreshold: (e.target.value === '' ? '' : parseInt(e.target.value, 10) || 1) as any })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white"
+                    className="compact-mobile-input w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg sm:rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white"
                   />
-                  <p className="text-[10px] text-slate-400 mt-1">
-                    Products with inventory at or below this count will trigger amber/red reorder badges.
-                  </p>
                 </div>
 
                 {/* Custom Invoice Bottom Note & Return Policy */}
-                <div className="sm:col-span-2 p-3.5 bg-blue-50/50 border border-blue-200/80 rounded-2xl space-y-3">
+                <div className="sm:col-span-2 p-2.5 sm:p-3.5 bg-blue-50/50 border border-blue-200/80 rounded-xl sm:rounded-2xl space-y-2">
                   <div className="flex items-center justify-between gap-2">
-                    <label className="text-xs font-black text-slate-800 flex items-center gap-1.5">
-                      <Receipt className="w-4 h-4 text-blue-600" />
-                      Custom Invoice Bottom Note &amp; Warranty Policy
+                    <label className="text-[11px] sm:text-xs font-black text-slate-800 flex items-center gap-1.5">
+                      <Receipt className="w-3.5 h-3.5 text-blue-600" />
+                      Invoice Note &amp; Warranty Policy
                     </label>
-                    <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
-                      Prints on All Bills &amp; WhatsApp
+                    <span className="text-[9.5px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full shrink-0">
+                      Prints on Bills
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        Custom Invoice Bottom Note
+                      <label className="block text-[10.5px] font-bold text-slate-700 mb-0.5">
+                        Invoice Bottom Note
                       </label>
                       <textarea
                         rows={2}
                         value={formData.receiptFooter || ''}
                         onChange={e => setFormData({ ...formData, receiptFooter: e.target.value })}
-                        placeholder="e.g. Thank you for shopping with us! Goods once sold can be exchanged within 3 days."
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500"
+                        placeholder="e.g. Thank you for shopping with us!"
+                        className="compact-mobile-input w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500"
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        Return &amp; Checking Warranty Policy
+                      <label className="block text-[10.5px] font-bold text-slate-700 mb-0.5">
+                        Warranty / Return Policy
                       </label>
                       <textarea
                         rows={2}
                         value={formData.returnPolicy || ''}
                         onChange={e => setFormData({ ...formData, returnPolicy: e.target.value })}
-                        placeholder="e.g. 7 Days checking warranty. Original invoice required for claims."
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500"
+                        placeholder="e.g. 7 Days checking warranty."
+                        className="compact-mobile-input w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500"
                       />
                     </div>
-                  </div>
-
-                  <div className="bg-white border border-dashed border-slate-300 rounded-xl p-2.5 text-center space-y-0.5">
-                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">
-                      Live Invoice Footer Preview
-                    </span>
-                    {Array.from(
-                      new Set(
-                        [(formData.returnPolicy || '').trim(), (formData.receiptFooter || '').trim()].filter(Boolean)
-                      )
-                    ).length > 0 ? (
-                      Array.from(
-                        new Set(
-                          [(formData.returnPolicy || '').trim(), (formData.receiptFooter || '').trim()].filter(Boolean)
-                        )
-                      ).map((line, i) => (
-                        <p key={i} className="text-[11px] text-slate-700 font-semibold italic">
-                          {line}
-                        </p>
-                      ))
-                    ) : (
-                      <p className="text-[11px] text-slate-400 italic">Thank you for your business!</p>
-                    )}
                   </div>
                 </div>
               </div>
 
               {/* Login Page Customization Section */}
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-4 mt-4">
-                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                  <Store className="w-4 h-4 text-indigo-600" />
-                  Login Page Customization Settings
+              <div className="p-2.5 sm:p-4 bg-slate-50 rounded-xl sm:rounded-2xl border border-slate-200/80 space-y-2.5">
+                <h4 className="text-[11px] sm:text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <Store className="w-3.5 h-3.5 text-indigo-600" />
+                  Login Page Customization
                 </h4>
 
-                <div className="grid grid-cols-1 gap-3.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 items-center">
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      Login Page Brand Name (Go Name) *
+                      Login Brand Name *
                     </label>
                     <input
                       type="text"
@@ -1067,84 +1038,71 @@ export const Settings: React.FC<SettingsProps> = ({
                       value={formData.loginPageName}
                       onChange={e => setFormData({ ...formData, loginPageName: e.target.value })}
                       placeholder="e.g. FMZ SHOP POS"
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500"
+                      className="compact-mobile-input w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500"
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      Login Page Logo
-                    </label>
-                    <div className="flex items-center gap-4">
-                      {formData.loginPageLogo ? (
-                        <div className="relative group w-16 h-16 rounded-xl border border-slate-300 bg-white p-1 flex items-center justify-center shadow-xs overflow-hidden animate-in fade-in">
-                          <img
-                            src={formData.loginPageLogo}
-                            alt="Login Page Logo"
-                            className="w-full h-full object-contain"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setFormData(prev => ({ ...prev, loginPageLogo: '' }));
-                              showToast('Login page logo removed', 'info');
-                            }}
-                            className="absolute max-lg:bottom-1 max-lg:right-1 max-lg:w-7 max-lg:h-7 max-lg:rounded-xl max-lg:bg-slate-900/80 max-lg:opacity-100 lg:inset-0 lg:bg-slate-900/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition cursor-pointer"
-                            title="Remove Logo"
-                          >
-                            <Trash2 className="w-5 h-5 text-rose-300" />
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-300 bg-white flex flex-col items-center justify-center text-slate-400">
-                          <Store className="w-6 h-6" />
-                          <span className="text-[9px] font-bold mt-0.5">No Logo</span>
-                        </div>
-                      )}
-
-                      <div className="flex-1 space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <label className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-blue-300 rounded-xl text-xs font-bold text-blue-600 hover:bg-blue-50/50 transition cursor-pointer shadow-2xs">
-                            <Upload className="w-4 h-4" />
-                            <span>{formData.loginPageLogo ? 'Change Logo Image' : 'Upload Logo Image'}</span>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (!file) return;
-                                if (file.size > 2 * 1024 * 1024) {
-                                  showToast('Logo file size must be under 2MB', 'error');
-                                  return;
-                                }
-                                const reader = new FileReader();
-                                reader.onload = ev => {
-                                  const result = ev.target?.result as string;
-                                  setFormData(prev => ({
-                                    ...prev,
-                                    loginPageLogo: result,
-                                  }));
-                                  showToast('Login page logo uploaded successfully', 'success');
-                                };
-                                reader.readAsDataURL(file);
-                              }}
-                              className="hidden"
-                            />
-                          </label>
-                        </div>
-                        <p className="text-[10px] text-slate-400">
-                          Upload an image file to display specifically on the light-themed clean login screen.
-                        </p>
+                  <div className="flex items-center gap-2.5">
+                    {formData.loginPageLogo ? (
+                      <div className="relative group w-12 h-12 rounded-xl border border-slate-300 bg-white p-1 flex items-center justify-center shadow-xs overflow-hidden shrink-0">
+                        <img
+                          src={formData.loginPageLogo}
+                          alt="Login Page Logo"
+                          className="w-full h-full object-contain"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFormData(prev => ({ ...prev, loginPageLogo: '' }));
+                            showToast('Login page logo removed', 'info');
+                          }}
+                          className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition cursor-pointer"
+                          title="Remove Logo"
+                        >
+                          <Trash2 className="w-4 h-4 text-rose-300" />
+                        </button>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="w-12 h-12 rounded-xl border-2 border-dashed border-slate-300 bg-white flex flex-col items-center justify-center text-slate-400 shrink-0">
+                        <Store className="w-5 h-5" />
+                      </div>
+                    )}
+
+                    <label className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-blue-300 rounded-lg text-[11px] font-bold text-blue-600 hover:bg-blue-50/50 transition cursor-pointer shadow-2xs h-8">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>{formData.loginPageLogo ? 'Change Login Logo' : 'Upload Login Logo'}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (file.size > 2 * 1024 * 1024) {
+                            showToast('Logo file size must be under 2MB', 'error');
+                            return;
+                          }
+                          const reader = new FileReader();
+                          reader.onload = ev => {
+                            const result = ev.target?.result as string;
+                            setFormData(prev => ({
+                              ...prev,
+                              loginPageLogo: result,
+                            }));
+                            showToast('Login page logo uploaded successfully', 'success');
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                        className="hidden"
+                      />
+                    </label>
                   </div>
                 </div>
               </div>
 
-              <div className="pt-2 flex justify-end">
+              <div className="pt-1 flex justify-end">
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold shadow-lg shadow-blue-600/25 transition cursor-pointer"
+                  className="h-8.5 sm:h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg sm:rounded-xl text-xs font-extrabold shadow-md shadow-blue-600/25 transition cursor-pointer"
                 >
                   Save Store Profile
                 </button>
@@ -1153,55 +1111,55 @@ export const Settings: React.FC<SettingsProps> = ({
           )}
 
           {activeSubTab === 'branding' && (
-            <div className="space-y-5">
+            <div className="space-y-3 sm:space-y-4">
               {/* Theme Picker */}
-              <div className="space-y-3">
-                <label className="block text-xs font-bold text-slate-800 flex items-center gap-2">
-                  <Palette className="w-4 h-4 text-blue-600" />
+              <div className="space-y-2">
+                <label className="block text-[11px] sm:text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Palette className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600" />
                   Color Theme Preset
                 </label>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {THEME_OPTIONS.map(theme => (
                     <button
                       key={theme.id}
                       type="button"
                       onClick={() => handleSelectTheme(theme.id)}
-                      className={`p-3 rounded-xl border-2 flex items-center gap-2.5 transition cursor-pointer text-left ${
+                      className={`p-2 sm:p-2.5 rounded-lg sm:rounded-xl border-2 flex items-center gap-2 transition cursor-pointer text-left ${
                         formData.theme === theme.id
                           ? `${theme.border} bg-slate-50 font-bold shadow-xs`
                           : 'border-slate-200 hover:border-slate-300'
                       }`}
                     >
-                      <div className={`w-5 h-5 rounded-full ${theme.accent} shadow-xs flex items-center justify-center text-white`}>
-                        {formData.theme === theme.id && <Check className="w-3 h-3 stroke-[3]" />}
+                      <div className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full shrink-0 ${theme.accent} shadow-xs flex items-center justify-center text-white`}>
+                        {formData.theme === theme.id && <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3 stroke-[3]" />}
                       </div>
-                      <span className="text-xs text-slate-800">{theme.label}</span>
+                      <span className="text-[11px] sm:text-xs text-slate-800 truncate">{theme.label}</span>
                     </button>
                   ))}
                 </div>
               </div>
 
               {/* Dedicated Invoice Logo Quick Setting */}
-              <div className="p-4 bg-indigo-50/50 rounded-2xl border-2 border-indigo-200/80 space-y-3 pt-3">
-                <div className="flex items-center justify-between">
-                  <label className="block text-xs font-bold text-slate-800 flex items-center gap-2">
-                    <Receipt className="w-4 h-4 text-indigo-600" />
-                    Dedicated Invoice & Receipt Logo
+              <div className="p-2.5 sm:p-4 bg-indigo-50/50 rounded-xl sm:rounded-2xl border-2 border-indigo-200/80 space-y-2 sm:space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="block text-[11px] sm:text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Receipt className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600 shrink-0" />
+                    <span>Invoice & Receipt Logo</span>
                   </label>
                   {formData.invoiceLogo ? (
-                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
-                      <Check className="w-3 h-3 stroke-[3]" /> Custom Active
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[9.5px] font-black uppercase tracking-wider flex items-center gap-1 shrink-0">
+                      <Check className="w-2.5 h-2.5 stroke-[3]" /> Custom
                     </span>
                   ) : (
-                    <span className="px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-700 text-[10px] font-bold">
-                      Using Main Shop Logo
+                    <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 text-[9.5px] font-bold shrink-0">
+                      Shop Logo
                     </span>
                   )}
                 </div>
 
-                <div className="flex items-center gap-4">
-                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border border-indigo-200 bg-white p-0.5 flex items-center justify-center shrink-0 shadow-xs">
+                <div className="flex items-center gap-2.5 sm:gap-4">
+                  <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-full overflow-hidden border border-indigo-200 bg-white p-0.5 flex items-center justify-center shrink-0 shadow-xs">
                     {formData.invoiceLogo ? (
                       <img
                         src={formData.invoiceLogo}
@@ -1215,15 +1173,15 @@ export const Settings: React.FC<SettingsProps> = ({
                         className="w-full h-full object-cover rounded-full opacity-60"
                       />
                     ) : (
-                      <Receipt className="w-7 h-7 text-indigo-400" />
+                      <Receipt className="w-5 h-5 sm:w-7 sm:h-7 text-indigo-400" />
                     )}
                   </div>
 
-                  <div className="flex-1 space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-xs">
-                        <Upload className="w-3.5 h-3.5" />
-                        <span>{formData.invoiceLogo ? 'Change Invoice Logo' : 'Upload Separate Logo'}</span>
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <label className="inline-flex items-center gap-1 h-7.5 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold transition cursor-pointer shadow-xs">
+                        <Upload className="w-3 h-3" />
+                        <span>{formData.invoiceLogo ? 'Change Logo' : 'Upload Logo'}</span>
                         <input
                           type="file"
                           accept="image/*"
@@ -1235,45 +1193,45 @@ export const Settings: React.FC<SettingsProps> = ({
                       <button
                         type="button"
                         onClick={() => setCameraModalConfig({ isOpen: true, target: 'invoice' })}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-indigo-300 rounded-xl text-xs font-bold text-indigo-700 hover:bg-indigo-50 transition cursor-pointer shadow-2xs"
+                        className="inline-flex items-center gap-1 h-7.5 px-2.5 py-1 bg-white border border-indigo-300 rounded-lg text-[11px] font-bold text-indigo-700 hover:bg-indigo-50 transition cursor-pointer shadow-2xs"
                       >
-                        <Camera className="w-3.5 h-3.5 text-indigo-600" />
-                        <span>Camera Snap</span>
+                        <Camera className="w-3 h-3 text-indigo-600" />
+                        <span>Camera</span>
                       </button>
 
                       {formData.invoiceLogo && (
                         <button
                           type="button"
                           onClick={handleRemoveInvoiceLogo}
-                          className="px-2.5 py-1.5 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-100 text-[11px] font-semibold transition cursor-pointer"
+                          className="h-7.5 px-2.5 py-1 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 text-[10.5px] font-semibold transition cursor-pointer"
                         >
-                          Reset to Shop Logo
+                          Reset
                         </button>
                       )}
                     </div>
-                    <p className="text-[11px] text-slate-500">
-                      Upload an optional custom logo to print on customer invoices and thermal receipts.
+                    <p className="text-[10px] sm:text-[11px] text-slate-500 leading-snug">
+                      Custom logo printed on customer invoices & thermal receipts.
                     </p>
                   </div>
                 </div>
               </div>
 
               {/* Receipt Footer / Return Policy */}
-              <div className="space-y-2 pt-3 border-t border-slate-100">
-                <label className="block text-xs font-bold text-slate-800">
+              <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                <label className="block text-[11px] sm:text-xs font-bold text-slate-800">
                   Return & Warranty Policy (Receipt Footer)
                 </label>
                 <textarea
-                  rows={3}
+                  rows={2}
                   value={formData.returnPolicy}
                   onChange={e => setFormData({ ...formData, returnPolicy: e.target.value })}
                   placeholder="e.g. 7 Days checking warranty. Original invoice required for any claims."
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white"
+                  className="compact-mobile-input w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white"
                 />
               </div>
 
-              <div className="space-y-2">
-                <label className="block text-xs font-bold text-slate-800">
+              <div className="space-y-1.5">
+                <label className="block text-[11px] sm:text-xs font-bold text-slate-800">
                   Receipt Bottom Tagline
                 </label>
                 <input
@@ -1281,15 +1239,15 @@ export const Settings: React.FC<SettingsProps> = ({
                   value={formData.receiptFooter}
                   onChange={e => setFormData({ ...formData, receiptFooter: e.target.value })}
                   placeholder="Thank you for shopping with us!"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white"
+                  className="compact-mobile-input w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white"
                 />
               </div>
 
-              <div className="pt-2 flex justify-end">
+              <div className="pt-1 flex justify-end">
                 <button
                   type="button"
                   onClick={e => handleSave(e as any)}
-                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold shadow-lg shadow-blue-600/25 transition cursor-pointer"
+                  className="h-8.5 sm:h-9 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg sm:rounded-xl text-xs font-extrabold shadow-md shadow-blue-600/20 transition cursor-pointer"
                 >
                   Save Theme & Layout
                 </button>
@@ -1298,18 +1256,18 @@ export const Settings: React.FC<SettingsProps> = ({
           )}
 
           {activeSubTab === 'backup' && (
-            <div className="space-y-4">
-              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-start gap-3">
-                <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                <div className="text-xs text-slate-700 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-bold text-slate-900">Firebase Firestore Cloud Database</h4>
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase tracking-wider">
-                      Connected & Active
+            <div className="space-y-3">
+              <div className="p-2.5 sm:p-4 bg-emerald-50 border border-emerald-200 rounded-xl sm:rounded-2xl flex items-start gap-2">
+                <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600 shrink-0 mt-0.5" />
+                <div className="text-[11px] sm:text-xs text-slate-700 space-y-0.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <h4 className="font-bold text-slate-900">Firebase Cloud Database</h4>
+                    <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase tracking-wider">
+                      Active
                     </span>
                   </div>
-                  <p className="text-slate-600 font-medium">
-                    Connected to Firebase project: <strong className="tabular-nums text-emerald-700">{firebaseConfig.projectId || 'fmz-shop-pos'}</strong> (Store Partition: <strong className="tabular-nums text-emerald-700">stores/{currentStoreId || 'main_store'}</strong>). All inventory, sales invoices, customer credit ledgers, and expenses automatically sync in your private isolated store.
+                  <p className="text-slate-600 font-medium leading-snug">
+                    Project: <strong className="tabular-nums text-emerald-700">{firebaseConfig.projectId || 'fmz-shop-pos'}</strong> (Store: <strong className="tabular-nums text-emerald-700">stores/{currentStoreId || 'main_store'}</strong>). Data syncs automatically in your private store.
                   </p>
                 </div>
               </div>
@@ -1325,32 +1283,32 @@ export const Settings: React.FC<SettingsProps> = ({
                 const pct = Math.min(100, Math.max(0.5, storageStats.usedPercent));
 
                 return (
-                  <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-2xl space-y-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="p-2.5 sm:p-4 bg-indigo-50/70 border border-indigo-200 rounded-xl sm:rounded-2xl space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-1.5">
                       <div>
-                        <h4 className="font-black text-indigo-950 text-xs flex items-center gap-1.5">
-                          <Database className="w-4 h-4 text-indigo-600" />
-                          Free Photos &amp; Cloud Database Storage Status
+                        <h4 className="font-black text-indigo-950 text-[11px] sm:text-xs flex items-center gap-1.5">
+                          <Database className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600" />
+                          Cloud Storage Status
                         </h4>
-                        <p className="text-[10px] text-indigo-800/80">
-                          Firebase Spark Free Tier provides 1,024 MB (1 GiB) cloud storage for photos &amp; entries
+                        <p className="text-[9.5px] sm:text-[10px] text-indigo-800/80">
+                          1,024 MB (1 GiB) free tier for photos &amp; entries
                         </p>
                       </div>
-                      <span className="px-2.5 py-1 rounded-full bg-indigo-600 text-white text-[10px] font-black tabular-nums">
+                      <span className="px-2 py-0.5 rounded-full bg-indigo-600 text-white text-[9.5px] font-black tabular-nums">
                         {remainingMb >= 1024
-                          ? `${(remainingMb / 1024).toFixed(2)} GB Remaining`
-                          : `${remainingMb.toFixed(1)} MB Remaining`}
+                          ? `${(remainingMb / 1024).toFixed(2)} GB Left`
+                          : `${remainingMb.toFixed(1)} MB Left`}
                       </span>
                     </div>
 
                     <div>
-                      <div className="flex justify-between text-[11px] font-bold text-slate-700 mb-1">
-                        <span>Total Used Storage</span>
+                      <div className="flex justify-between text-[10px] sm:text-[11px] font-bold text-slate-700 mb-1">
+                        <span>Total Used</span>
                         <span className="tabular-nums">
-                          {totalMb.toFixed(2)} MB / {limitMb.toLocaleString()} MB ({storageStats.usedPercent.toFixed(2)}%)
+                          {totalMb.toFixed(2)} / {limitMb.toLocaleString()} MB ({storageStats.usedPercent.toFixed(2)}%)
                         </span>
                       </div>
-                      <div className="w-full h-2.5 bg-white border border-indigo-200 rounded-full overflow-hidden">
+                      <div className="w-full h-2 bg-white border border-indigo-200 rounded-full overflow-hidden">
                         <div
                           className={`h-full transition-all ${
                             pct >= 85 ? 'bg-rose-500' : pct >= 60 ? 'bg-amber-500' : 'bg-indigo-600'
@@ -1360,41 +1318,41 @@ export const Settings: React.FC<SettingsProps> = ({
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
-                      <div className="bg-white p-2.5 rounded-xl border border-indigo-100">
-                        <span className="text-[10px] text-slate-400 block font-semibold">Saved Photos</span>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2 text-[10.5px] sm:text-[11px]">
+                      <div className="bg-white p-2 rounded-lg sm:rounded-xl border border-indigo-100">
+                        <span className="text-[9.5px] text-slate-400 block font-semibold">Saved Photos</span>
                         <span className="font-black text-slate-900 tabular-nums">
                           {storageStats.photoCount} ({photoMb.toFixed(2)} MB)
                         </span>
                       </div>
-                      <div className="bg-white p-2.5 rounded-xl border border-indigo-100">
-                        <span className="text-[10px] text-slate-400 block font-semibold">Entries &amp; Text</span>
+                      <div className="bg-white p-2 rounded-lg sm:rounded-xl border border-indigo-100">
+                        <span className="text-[9.5px] text-slate-400 block font-semibold">Entries &amp; Text</span>
                         <span className="font-black text-slate-900 tabular-nums">{textMb.toFixed(2)} MB</span>
                       </div>
-                      <div className="bg-white p-2.5 rounded-xl border border-indigo-100">
-                        <span className="text-[10px] text-slate-400 block font-semibold">Free Space Left</span>
+                      <div className="bg-white p-2 rounded-lg sm:rounded-xl border border-indigo-100">
+                        <span className="text-[9.5px] text-slate-400 block font-semibold">Free Space Left</span>
                         <span className="font-black text-emerald-700 tabular-nums">{remainingMb.toFixed(1)} MB</span>
                       </div>
-                      <div className="bg-white p-2.5 rounded-xl border border-indigo-100">
-                        <span className="text-[10px] text-slate-400 block font-semibold">Est. Photos Remaining</span>
+                      <div className="bg-white p-2 rounded-lg sm:rounded-xl border border-indigo-100">
+                        <span className="text-[9.5px] text-slate-400 block font-semibold">Est. Photos Left</span>
                         <span className="font-black text-indigo-700 tabular-nums">
                           ~{storageStats.estimatedRemainingPhotos.toLocaleString()}
                         </span>
                       </div>
                     </div>
 
-                    <p className="text-[10px] text-slate-500">
-                      Breakdown: Inventory ({storageStats.photoBreakdown.inventory}) • Khata ({storageStats.photoBreakdown.khata}) • Expenses ({storageStats.photoBreakdown.expenses}) • Purchases ({storageStats.photoBreakdown.purchases}) • Logos ({storageStats.photoBreakdown.logos})
+                    <p className="text-[9.5px] text-slate-500 leading-snug">
+                      Inventory ({storageStats.photoBreakdown.inventory}) • Khata ({storageStats.photoBreakdown.khata}) • Expenses ({storageStats.photoBreakdown.expenses}) • Purchases ({storageStats.photoBreakdown.purchases}) • Logos ({storageStats.photoBreakdown.logos})
                     </p>
                   </div>
                 );
               })()}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3.5">
                 {/* Export Backup */}
-                <div className="p-4 bg-white rounded-2xl border border-slate-200 space-y-3">
+                <div className="p-2.5 sm:p-4 bg-white rounded-xl sm:rounded-2xl border border-slate-200 space-y-2">
                   <div className="flex items-center gap-2">
-                    <Download className="w-5 h-5 text-emerald-600" />
+                    <Download className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600 shrink-0" />
                     <div>
                       <h4 className="font-bold text-slate-900 text-xs">Export Backup</h4>
                       <p className="text-[10px] text-slate-400">Download database JSON file</p>
@@ -1404,23 +1362,23 @@ export const Settings: React.FC<SettingsProps> = ({
                   <button
                     type="button"
                     onClick={() => handleExportData(false)}
-                    className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-md shadow-emerald-600/20"
+                    className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg sm:rounded-xl transition cursor-pointer shadow-sm shadow-emerald-600/20"
                   >
                     Download JSON Backup
                   </button>
                 </div>
 
                 {/* Import / Restore Backup */}
-                <div className="p-4 bg-white rounded-2xl border border-slate-200 space-y-3">
+                <div className="p-2.5 sm:p-4 bg-white rounded-xl sm:rounded-2xl border border-slate-200 space-y-2">
                   <div className="flex items-center gap-2">
-                    <Upload className="w-5 h-5 text-blue-600" />
+                    <Upload className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 shrink-0" />
                     <div>
                       <h4 className="font-bold text-slate-900 text-xs">Restore Backup</h4>
                       <p className="text-[10px] text-slate-400">Upload existing JSON file</p>
                     </div>
                   </div>
 
-                  <label className="block w-full text-center py-2.5 px-4 bg-white border border-blue-300 text-blue-700 hover:bg-blue-50 text-xs font-bold rounded-xl transition cursor-pointer shadow-2xs">
+                  <label className="block w-full text-center py-2 px-3 bg-white border border-blue-300 text-blue-700 hover:bg-blue-50 text-xs font-bold rounded-lg sm:rounded-xl transition cursor-pointer shadow-2xs">
                     <span>Select JSON File</span>
                     <input
                       type="file"
@@ -1433,7 +1391,7 @@ export const Settings: React.FC<SettingsProps> = ({
               </div>
 
               {/* Automatic 7-Day Safety Backups */}
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+              <div className="p-2.5 sm:p-4 bg-slate-50 rounded-xl sm:rounded-2xl border border-slate-200 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <Clock className="w-4 h-4 text-indigo-600 shrink-0" />
@@ -1442,38 +1400,38 @@ export const Settings: React.FC<SettingsProps> = ({
                         Restore from automatic backup
                       </h4>
                       <p className="text-[10px] text-slate-500">
-                        Automatic daily safety snapshots saved locally in IndexedDB (last 7 days)
+                        Automatic daily safety snapshots saved locally (last 7 days)
                       </p>
                     </div>
                   </div>
                 </div>
 
                 {loadingAutoBackups ? (
-                  <p className="text-[11px] text-slate-500 font-semibold py-2">
+                  <p className="text-[11px] text-slate-500 font-semibold py-1.5">
                     Loading automatic snapshots...
                   </p>
                 ) : automaticBackups.length === 0 ? (
-                  <p className="text-[11px] text-slate-500 py-2">
+                  <p className="text-[11px] text-slate-500 py-1.5">
                     No automatic daily backups recorded yet. Snapshots are created automatically as you work.
                   </p>
                 ) : (
-                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                     {automaticBackups.map((snap) => (
                       <div
                         key={snap.id}
-                        className="p-3 bg-white rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                        className="p-2 sm:p-2.5 bg-white rounded-lg sm:rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5"
                       >
-                        <div className="space-y-0.5">
+                        <div className="space-y-0.5 min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="font-extrabold text-slate-800 text-xs tabular-nums">
+                            <span className="font-extrabold text-slate-800 text-[11px] sm:text-xs tabular-nums">
                               {snap.date}
                             </span>
-                            <span className="text-[10px] text-slate-400 tabular-nums">
+                            <span className="text-[9.5px] text-slate-400 tabular-nums">
                               Saved {new Date(snap.createdAt).toLocaleTimeString()}
                             </span>
                           </div>
-                          <p className="text-[10px] text-slate-500 tabular-nums">
-                            {snap.data.inventory?.length || 0} products • {snap.data.sales?.length || 0} sales • {snap.data.khata?.length || 0} khata • {snap.data.expenses?.length || 0} expenses • {snap.data.supplierPurchases?.length || 0} purchases
+                          <p className="text-[9.5px] text-slate-500 tabular-nums truncate">
+                            {snap.data.inventory?.length || 0} products • {snap.data.sales?.length || 0} sales • {snap.data.khata?.length || 0} khata • {snap.data.expenses?.length || 0} expenses
                           </p>
                         </div>
 
@@ -1481,18 +1439,18 @@ export const Settings: React.FC<SettingsProps> = ({
                           <button
                             type="button"
                             onClick={() => downloadJsonBackup(snap.data, `auto_backup_${snap.date}_`)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-bold transition cursor-pointer"
+                            className="inline-flex items-center gap-1 h-7 px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md sm:rounded-lg text-[10.5px] font-bold transition cursor-pointer"
                             title="Download this automatic backup as JSON"
                           >
-                            <Download className="w-3.5 h-3.5" />
+                            <Download className="w-3 h-3" />
                             <span>Download</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => handleSelectAutomaticBackup(snap)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold transition cursor-pointer shadow-xs"
+                            className="inline-flex items-center gap-1 h-7 px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md sm:rounded-lg text-[10.5px] font-bold transition cursor-pointer shadow-xs"
                           >
-                            <RotateCcw className="w-3.5 h-3.5" />
+                            <RotateCcw className="w-3 h-3" />
                             <span>Restore</span>
                           </button>
                         </div>
@@ -1504,15 +1462,15 @@ export const Settings: React.FC<SettingsProps> = ({
 
               {/* Manual Data Recovery (Respects Deleted Tombstones) */}
               {onRecoverMissingData && (
-                <div className="p-4 bg-white rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-start gap-2.5">
-                    <Database className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+                <div className="p-2.5 sm:p-4 bg-white rounded-xl sm:rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-start gap-2">
+                    <Database className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 shrink-0 mt-0.5" />
                     <div>
                       <h4 className="font-bold text-slate-900 text-xs">
                         Recover Missing Records (Manual Scan)
                       </h4>
-                      <p className="text-[10px] text-slate-500 leading-relaxed">
-                        Scans local caches & Cloud Firestore for any unmerged records while strictly respecting deleted item tombstones.
+                      <p className="text-[10px] text-slate-500 leading-snug">
+                        Scans local caches & Cloud Firestore for unmerged records while respecting deleted tombstones.
                       </p>
                     </div>
                   </div>
@@ -1521,7 +1479,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     type="button"
                     onClick={handleManualRecoverMissingData}
                     disabled={isRecoveringData}
-                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 disabled:opacity-60"
+                    className="inline-flex items-center justify-center gap-1.5 h-8 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg sm:rounded-xl text-[11px] font-bold transition cursor-pointer shrink-0 disabled:opacity-60"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isRecoveringData ? 'animate-spin' : ''}`} />
                     <span>{isRecoveringData ? 'Scanning...' : 'Recover Missing Data'}</span>
@@ -1533,13 +1491,13 @@ export const Settings: React.FC<SettingsProps> = ({
           )}
 
           {activeSubTab === 'users' && (
-            <div className="space-y-5 animate-in fade-in duration-200">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="space-y-3 sm:space-y-4 animate-in fade-in duration-200">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-5">
                 {/* Add Salesman Form */}
-                <div className="bg-slate-50/60 p-4 rounded-2xl border border-slate-200/80 space-y-4">
+                <div className="bg-slate-50/60 p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 space-y-2.5">
                   <div className="flex items-center gap-2">
                     <div className="p-1.5 bg-blue-100 text-blue-700 rounded-lg">
-                      <UserPlus className="w-4 h-4" />
+                      <UserPlus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     </div>
                     <div>
                       <h4 className="font-extrabold text-slate-800 text-xs">Add New Salesman Account</h4>
@@ -1547,9 +1505,9 @@ export const Settings: React.FC<SettingsProps> = ({
                     </div>
                   </div>
 
-                  <form onSubmit={handleAddSalesman} className="space-y-3 pt-2">
+                  <form onSubmit={handleAddSalesman} className="space-y-2.5 pt-1">
                     <div>
-                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                      <label className="block text-[9.5px] sm:text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
                         Salesman Full Name *
                       </label>
                       <input
@@ -1558,59 +1516,59 @@ export const Settings: React.FC<SettingsProps> = ({
                         placeholder="e.g. Hammad Raza"
                         value={salesmanName}
                         onChange={e => setSalesmanName(e.target.value)}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-blue-500 focus:bg-white"
+                        className="compact-mobile-input w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg sm:rounded-xl text-xs font-bold focus:outline-none focus:border-blue-500 focus:bg-white"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                      <label className="block text-[9.5px] sm:text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
                         Email Address *
                       </label>
                       <div className="relative">
-                        <Mail className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                        <Mail className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
                         <input
                           type="email"
                           required
                           placeholder="e.g. hammad@shop.com"
                           value={salesmanEmail}
                           onChange={e => setSalesmanEmail(e.target.value)}
-                          className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-blue-500"
+                          className="compact-mobile-input w-full pl-8 pr-2.5 py-1.5 bg-white border border-slate-200 rounded-lg sm:rounded-xl text-xs font-bold focus:outline-none focus:border-blue-500"
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                      <label className="block text-[9.5px] sm:text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
                         Password (Min 6 chars) *
                       </label>
                       <div className="relative">
-                        <Lock className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                        <Lock className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
                         <input
                           type="password"
                           required
                           placeholder="••••••"
                           value={salesmanPassword}
                           onChange={e => setSalesmanPassword(e.target.value)}
-                          className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-blue-500"
+                          className="compact-mobile-input w-full pl-8 pr-2.5 py-1.5 bg-white border border-slate-200 rounded-lg sm:rounded-xl text-xs font-bold focus:outline-none focus:border-blue-500"
                         />
                       </div>
                     </div>
 
                     <button
                       type="submit"
-                      className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-blue-600/10 cursor-pointer"
+                      className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg sm:rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm shadow-blue-600/10 cursor-pointer"
                     >
-                      <UserPlus className="w-4 h-4" />
+                      <UserPlus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                       <span>Create Salesman Account</span>
                     </button>
                   </form>
                 </div>
 
                 {/* Registered Users List */}
-                <div className="bg-slate-50/60 p-4 rounded-2xl border border-slate-200/80 flex flex-col h-full min-h-[300px]">
-                  <div className="flex items-center gap-2 mb-4">
+                <div className="bg-slate-50/60 p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 flex flex-col h-full min-h-[160px] sm:min-h-[280px]">
+                  <div className="flex items-center gap-2 mb-2.5">
                     <div className="p-1.5 bg-indigo-100 text-indigo-700 rounded-lg">
-                      <Users className="w-4 h-4" />
+                      <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     </div>
                     <div>
                       <h4 className="font-extrabold text-slate-800 text-xs">Registered Shop Accounts</h4>
@@ -1618,22 +1576,22 @@ export const Settings: React.FC<SettingsProps> = ({
                     </div>
                   </div>
 
-                  <div className="overflow-y-auto max-h-[220px] pr-1 space-y-2 flex-1">
+                  <div className="overflow-y-auto max-h-[200px] sm:max-h-[220px] pr-1 space-y-1.5 flex-1">
                     {storeScopedUsers.length === 0 ? (
-                      <div className="text-center py-8 text-slate-400 text-[11px] font-bold">
+                      <div className="text-center py-6 text-slate-400 text-[11px] font-bold">
                         No secondary users registered. Add a salesman on the left.
                       </div>
                     ) : (
                       storeScopedUsers.map(usr => (
                         <div
                           key={usr.id}
-                          className="p-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between shadow-3xs gap-2"
+                          className="p-2 sm:p-3 bg-white border border-slate-200 rounded-lg sm:rounded-xl flex items-center justify-between shadow-3xs gap-2"
                         >
                           <div className="space-y-0.5 min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-extrabold text-slate-800 text-xs truncate">{usr.name}</span>
+                              <span className="font-extrabold text-slate-800 text-[11.5px] sm:text-xs truncate">{usr.name}</span>
                               <span
-                                className={`px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider ${
+                                className={`px-1.5 py-0.5 rounded text-[8.5px] sm:text-[9px] font-black uppercase tracking-wider ${
                                   usr.role === 'admin'
                                     ? 'bg-blue-50 text-blue-700 border border-blue-200/55'
                                     : 'bg-amber-50 text-amber-700 border border-amber-200/55'
@@ -1645,15 +1603,15 @@ export const Settings: React.FC<SettingsProps> = ({
                             <p className="text-[10px] text-slate-400 font-semibold tabular-nums truncate">{usr.email}</p>
                           </div>
 
-                          <div className="flex items-center gap-1.5 shrink-0">
+                          <div className="flex items-center gap-1 shrink-0">
                             {usr.role === 'salesman' && (
                               <button
                                 type="button"
                                 onClick={() => handleOpenChangeSalesmanPassword(usr)}
-                                className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 rounded-lg text-[10px] font-extrabold flex items-center gap-1 transition cursor-pointer"
+                                className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 rounded-md sm:rounded-lg text-[10px] font-extrabold flex items-center gap-1 transition cursor-pointer"
                                 title="Change Salesman Password"
                               >
-                                <Key className="w-3.5 h-3.5 text-indigo-600" />
+                                <Key className="w-3 h-3 text-indigo-600" />
                                 <span className="hidden sm:inline">Change Password</span>
                               </button>
                             )}
@@ -1662,10 +1620,10 @@ export const Settings: React.FC<SettingsProps> = ({
                               <button
                                 type="button"
                                 onClick={() => handleDeleteUser(usr.id)}
-                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                                className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md sm:rounded-lg transition cursor-pointer"
                                 title="Delete User"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                               </button>
                             )}
                           </div>
@@ -1679,74 +1637,74 @@ export const Settings: React.FC<SettingsProps> = ({
           )}
 
           {activeSubTab === 'password' && (
-            <div className="space-y-5 animate-in fade-in duration-200">
+            <div className="space-y-3 sm:space-y-4 animate-in fade-in duration-200">
               {/* Authenticator 2FA Security Section */}
-              <div className="bg-gradient-to-r from-indigo-50/90 to-purple-50/90 p-4 rounded-2xl border-2 border-indigo-200/90 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-xs">
-                      <ShieldCheck className="w-5 h-5" />
+              <div className="bg-gradient-to-r from-indigo-50/90 to-purple-50/90 p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border-2 border-indigo-200/90 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 sm:p-2 bg-indigo-600 text-white rounded-lg sm:rounded-xl shadow-xs shrink-0">
+                      <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm">Authenticator 2FA Security</h4>
-                      <p className="text-[11px] text-slate-600 font-medium">
-                        Google Authenticator, Authy, or Microsoft Authenticator (TOTP)
+                      <p className="text-[10px] sm:text-[11px] text-slate-600 font-medium truncate">
+                        Google Authenticator, Authy, or Microsoft TOTP
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center shrink-0">
                     {currentAdminUser?.is2faEnabled ? (
-                      <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-black rounded-full uppercase tracking-wider flex items-center gap-1 border border-emerald-200">
-                        <Check className="w-3 h-3 stroke-[3]" /> 2FA Active
+                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[9.5px] font-black rounded-full uppercase tracking-wider flex items-center gap-1 border border-emerald-200">
+                        <Check className="w-2.5 h-2.5 stroke-[3]" /> Active
                       </span>
                     ) : (
-                      <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-[10px] font-bold rounded-full uppercase tracking-wider border border-amber-200">
-                        Setup Required
+                      <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[9.5px] font-bold rounded-full uppercase tracking-wider border border-amber-200">
+                        Setup
                       </span>
                     )}
                   </div>
                 </div>
 
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-2 border-t border-indigo-100">
-                  <div className="text-xs text-slate-600 space-y-0.5">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pt-2 border-t border-indigo-100">
+                  <div className="text-[11px] sm:text-xs text-slate-600 space-y-0.5">
                     <p className="font-semibold text-slate-800">
-                      Admin Email: <span className="tabular-nums font-bold text-indigo-900">{currentAdminUser?.email || 'admin@fmzpos.com'}</span>
+                      Admin: <span className="tabular-nums font-bold text-indigo-900">{currentAdminUser?.email || 'admin@fmzpos.com'}</span>
                     </p>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-[10px] sm:text-[11px] text-slate-500">
                       {currentAdminUser?.is2faEnabled 
-                        ? '2FA is configured and protecting your login. You can refresh or reset your QR code anytime.'
-                        : 'Click "Setup Now" to generate a QR Code & Secret Key for Google Authenticator.'}
+                        ? '2FA is protecting your login. Refresh QR code anytime.'
+                        : 'Generate a QR Code & Secret Key for Google Authenticator.'}
                     </p>
                   </div>
 
                   <button
                     type="button"
                     onClick={() => setIsTotpSetupOpen(true)}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-md shadow-indigo-600/20 shrink-0 cursor-pointer"
+                    className="h-8 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-lg sm:rounded-xl text-[11px] font-bold transition flex items-center gap-1.5 shadow-sm shadow-indigo-600/20 shrink-0 cursor-pointer"
                   >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>{currentAdminUser?.is2faEnabled ? 'Refresh / Reset QR Code & Setup Key' : 'Setup Authenticator 2FA Now'}</span>
+                    <RefreshCw className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                    <span>{currentAdminUser?.is2faEnabled ? 'Refresh / Reset 2FA Key' : 'Setup 2FA Now'}</span>
                   </button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-5">
                 {/* Change Master Admin Password Form */}
-                <div className="bg-slate-50/60 p-4 rounded-2xl border border-slate-200/80 space-y-4">
+                <div className="bg-slate-50/60 p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 space-y-2.5">
                   <div className="flex items-center gap-2">
                     <div className="p-1.5 bg-blue-100 text-blue-700 rounded-lg">
-                      <Lock className="w-4 h-4" />
+                      <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     </div>
                     <div>
                       <h4 className="font-extrabold text-slate-800 text-xs">Change Master Admin Password</h4>
-                      <p className="text-[10px] text-slate-400">Update your terminal's main gateway password</p>
+                      <p className="text-[10px] text-slate-400">Update terminal main gateway password</p>
                     </div>
                   </div>
 
-                  <form onSubmit={handleChangePassword} className="space-y-3 pt-2">
+                  <form onSubmit={handleChangePassword} className="space-y-2 pt-1">
                     <div>
-                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                      <label className="block text-[9.5px] sm:text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
                         Current Password *
                       </label>
                       <input
@@ -1755,12 +1713,12 @@ export const Settings: React.FC<SettingsProps> = ({
                         placeholder="Enter current password"
                         value={oldPassword}
                         onChange={e => setOldPassword(e.target.value)}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-blue-500 focus:bg-white"
+                        className="compact-mobile-input w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg sm:rounded-xl text-xs font-bold focus:outline-none focus:border-blue-500 focus:bg-white"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                      <label className="block text-[9.5px] sm:text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
                         New Password (Min 6 chars) *
                       </label>
                       <input
@@ -1769,12 +1727,12 @@ export const Settings: React.FC<SettingsProps> = ({
                         placeholder="••••••"
                         value={newPassword}
                         onChange={e => setNewPassword(e.target.value)}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-blue-500"
+                        className="compact-mobile-input w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg sm:rounded-xl text-xs font-bold focus:outline-none focus:border-blue-500"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                      <label className="block text-[9.5px] sm:text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
                         Confirm New Password *
                       </label>
                       <input
@@ -1783,51 +1741,51 @@ export const Settings: React.FC<SettingsProps> = ({
                         placeholder="••••••"
                         value={confirmPassword}
                         onChange={e => setConfirmPassword(e.target.value)}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-blue-500"
+                        className="compact-mobile-input w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg sm:rounded-xl text-xs font-bold focus:outline-none focus:border-blue-500"
                       />
                     </div>
 
                     <button
                       type="submit"
-                      className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-blue-600/10 cursor-pointer"
+                      className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg sm:rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm shadow-blue-600/10 cursor-pointer"
                     >
-                      <Lock className="w-4 h-4" />
+                      <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                       <span>Update Administrator Password</span>
                     </button>
                   </form>
                 </div>
 
                 {/* Change Salesman Password Section */}
-                <div className="bg-slate-50/60 p-4 rounded-2xl border border-slate-200/80 space-y-4">
+                <div className="bg-slate-50/60 p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 space-y-2.5">
                   <div className="flex items-center gap-2">
                     <div className="p-1.5 bg-amber-100 text-amber-700 rounded-lg">
-                      <Key className="w-4 h-4" />
+                      <Key className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     </div>
                     <div>
                       <h4 className="font-extrabold text-slate-800 text-xs">Change Salesman Password (Staff)</h4>
-                      <p className="text-[10px] text-slate-400">Update login password for any registered salesman</p>
+                      <p className="text-[10px] text-slate-400">Update password for any registered salesman</p>
                     </div>
                   </div>
 
                   {storeScopedUsers.filter(u => u.role === 'salesman').length === 0 ? (
-                    <div className="text-center py-8 bg-white border border-slate-200/70 rounded-xl p-4 space-y-2">
-                      <Key className="w-7 h-7 text-slate-300 mx-auto" />
+                    <div className="text-center py-6 bg-white border border-slate-200/70 rounded-xl p-3 space-y-1.5">
+                      <Key className="w-6 h-6 text-slate-300 mx-auto" />
                       <p className="text-xs text-slate-500 font-bold">No Salesman registered yet</p>
                       <p className="text-[10px] text-slate-400">
-                        Create a salesman account from the "User Management" tab first.
+                        Create a salesman account from "User Management" first.
                       </p>
                     </div>
                   ) : (
-                    <form onSubmit={handleUpdateSalesmanPasswordFromTab} className="space-y-3 pt-2">
+                    <form onSubmit={handleUpdateSalesmanPasswordFromTab} className="space-y-2 pt-1">
                       <div>
-                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-[9.5px] sm:text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
                           Select Salesman Staff *
                         </label>
                         <select
                           value={selectedSalesmanIdForTab}
                           onChange={e => setSelectedSalesmanIdForTab(e.target.value)}
                           required
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-amber-500"
+                          className="compact-mobile-input w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg sm:rounded-xl text-xs font-bold focus:outline-none focus:border-amber-500"
                         >
                           <option value="">-- Choose Salesman Account --</option>
                           {storeScopedUsers
@@ -1841,7 +1799,7 @@ export const Settings: React.FC<SettingsProps> = ({
                       </div>
 
                       <div>
-                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-[9.5px] sm:text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
                           New Salesman Password (Min 6 chars) *
                         </label>
                         <input
@@ -1850,12 +1808,12 @@ export const Settings: React.FC<SettingsProps> = ({
                           placeholder="••••••"
                           value={tabSalesmanNewPass}
                           onChange={e => setTabSalesmanNewPass(e.target.value)}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-amber-500"
+                          className="compact-mobile-input w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg sm:rounded-xl text-xs font-bold focus:outline-none focus:border-amber-500"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-[9.5px] sm:text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
                           Confirm New Password *
                         </label>
                         <input
@@ -1864,15 +1822,15 @@ export const Settings: React.FC<SettingsProps> = ({
                           placeholder="••••••"
                           value={tabSalesmanConfirmPass}
                           onChange={e => setTabSalesmanConfirmPass(e.target.value)}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-amber-500"
+                          className="compact-mobile-input w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg sm:rounded-xl text-xs font-bold focus:outline-none focus:border-amber-500"
                         />
                       </div>
 
                       <button
                         type="submit"
-                        className="w-full py-2 px-4 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-amber-600/10 cursor-pointer"
+                        className="w-full py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-lg sm:rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm shadow-amber-600/10 cursor-pointer"
                       >
-                        <Key className="w-4 h-4" />
+                        <Key className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                         <span>Update Salesman Password</span>
                       </button>
                     </form>

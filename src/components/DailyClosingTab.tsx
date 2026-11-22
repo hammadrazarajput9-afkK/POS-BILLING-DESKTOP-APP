@@ -464,49 +464,49 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
   }, [data.dailyClosings, historyFilter, filterDate]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3.5 sm:space-y-5">
       {/* Top Banner & Date Selector */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-slate-200 pb-2.5 sm:pb-4">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-              <Calculator className="w-5 h-5 text-emerald-600" /> Daily Closing & Cash Drawer
+            <h2 className="text-base sm:text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-1.5 sm:gap-2">
+              <Calculator className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600" /> Daily Closing & Cash Drawer
             </h2>
             {isDayFinalized ? (
-              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+              <span className="text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
                 <Lock className="w-3 h-3 text-emerald-700" /> Finalized & Closed
               </span>
             ) : (
-              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
-                <Unlock className="w-3 h-3 text-amber-600" /> Reconciling in Progress
+              <span className="text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
+                <Unlock className="w-3 h-3 text-amber-600" /> Reconciling
               </span>
             )}
           </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Strict opening → period transactions → closing reconciliation. No historical double-counting.
+          <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
+            Strict opening → period transactions → closing reconciliation.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           {onOpenSettings && (
             <button
               type="button"
               onClick={onOpenSettings}
-              className="p-2 text-slate-500 hover:text-slate-800 rounded-xl hover:bg-slate-100 border border-slate-200 transition cursor-pointer"
+              className="h-8 w-8 flex items-center justify-center text-slate-500 hover:text-slate-800 rounded-lg sm:rounded-xl hover:bg-slate-100 border border-slate-200 transition cursor-pointer shrink-0"
               title="Closing Settings"
             >
-              <Sliders className="w-4 h-4" />
+              <Sliders className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
           )}
 
-          <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs shadow-2xs">
+          <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg sm:rounded-xl px-2.5 py-1 text-[11px] sm:text-xs shadow-2xs h-8">
             <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <span className="font-semibold text-slate-600">Business Date:</span>
+            <span className="font-semibold text-slate-600">Date:</span>
             <input
               type="date"
               value={activeDate}
               onChange={e => setActiveDate(e.target.value)}
-              className="font-bold text-slate-900 outline-none bg-transparent cursor-pointer"
+              className="compact-mobile-input font-bold text-slate-900 outline-none bg-transparent cursor-pointer"
             />
           </div>
         </div>
@@ -514,26 +514,26 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
 
       {/* Status Warning Banner for Finalized Day */}
       {isDayFinalized && (
-        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
-          <div className="flex items-start gap-3">
-            <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+        <div className="p-2.5 sm:p-4 bg-emerald-50 border border-emerald-200 rounded-xl sm:rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
+          <div className="flex items-start gap-2 sm:gap-3">
+            <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600 shrink-0 mt-0.5" />
             <div>
-              <h4 className="text-xs font-bold text-emerald-900">
-                Business Date ({activeDate}) is officially Closed & Locked
+              <h4 className="text-[11px] sm:text-xs font-bold text-emerald-900">
+                Business Date ({activeDate}) is Closed & Locked
               </h4>
-              <p className="text-[11px] text-emerald-700 mt-0.5">
-                Saved by <strong>{existingClosingForActiveDate?.closedBy || 'Cashier'}</strong> at {existingClosingForActiveDate?.time}. Opening for next day will carry forward from this closing.
+              <p className="text-[10px] sm:text-[11px] text-emerald-700 mt-0.5">
+                Saved by <strong>{existingClosingForActiveDate?.closedBy || 'Cashier'}</strong> at {existingClosingForActiveDate?.time}.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
               onClick={() => handlePrintRecord(existingClosingForActiveDate!)}
-              className="px-3 py-1.5 bg-white border border-emerald-200 hover:bg-emerald-100 text-emerald-800 font-bold text-xs rounded-xl shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+              className="h-7.5 sm:h-8 px-2.5 bg-white border border-emerald-200 hover:bg-emerald-100 text-emerald-800 font-bold text-[11px] rounded-lg shadow-2xs transition flex items-center gap-1 cursor-pointer"
             >
-              <Printer className="w-3.5 h-3.5" /> Print Closing Slip
+              <Printer className="w-3.5 h-3.5" /> Print Slip
             </button>
             {isAdmin && (
               <button
@@ -544,9 +544,9 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                     showToast(`Closing for ${activeDate} unlocked for adjustments`, 'info');
                   }
                 }}
-                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+                className="h-7.5 sm:h-8 px-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-[11px] rounded-lg shadow-2xs transition flex items-center gap-1 cursor-pointer"
               >
-                <Unlock className="w-3.5 h-3.5" /> Unlock / Edit Closing
+                <Unlock className="w-3.5 h-3.5" /> Unlock / Edit
               </button>
             )}
           </div>
@@ -554,216 +554,216 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
       )}
 
       {/* ACCOUNTING LEDGER BREAKDOWN STRIP (OPENING -> INFLOWS -> OUTFLOWS -> EXPECTED) */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
+      <div className="bg-white rounded-xl sm:rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
         {/* Clean Ledger Header Bar */}
-        <div className="bg-slate-50/90 border-b border-slate-200/80 px-4 sm:px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-blue-50 border border-blue-200/70 text-blue-600 flex items-center justify-center shrink-0">
-              <TrendingUp className="w-4 h-4" />
+        <div className="bg-slate-50/90 border-b border-slate-200/80 px-3 sm:px-5 py-2 sm:py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-blue-50 border border-blue-200/70 text-blue-600 flex items-center justify-center shrink-0">
+              <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
             <div className="min-w-0">
               <h3 className="text-xs sm:text-sm font-extrabold text-slate-900 tracking-tight truncate">
                 Period Accounting Ledger
               </h3>
-              <p className="text-[11px] font-medium text-slate-500 truncate">
-                Since {accounting.previousClosing ? `${accounting.previousClosing.date}${accounting.previousClosing.time ? ` · ${accounting.previousClosing.time}` : ''}` : 'Initial Inception'} · Isolated Channels
+              <p className="text-[10px] sm:text-[11px] font-medium text-slate-500 truncate">
+                Since {accounting.previousClosing ? `${accounting.previousClosing.date}${accounting.previousClosing.time ? ` · ${accounting.previousClosing.time}` : ''}` : 'Initial Inception'}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center justify-between sm:justify-end gap-3 pt-1.5 sm:pt-0 border-t sm:border-t-0 border-slate-200/60 shrink-0">
-            <span className="text-[11px] font-semibold text-slate-500">Expected Total</span>
-            <span className="text-sm sm:text-base font-extrabold text-slate-900 tabular-nums">
+          <div className="flex items-center justify-between sm:justify-end gap-2 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-200/60 shrink-0">
+            <span className="text-[10.5px] sm:text-[11px] font-semibold text-slate-500">Expected Total</span>
+            <span className="text-xs sm:text-base font-extrabold text-slate-900 tabular-nums">
               {currency} {accounting.totalExpectedGrand.toLocaleString()}
             </span>
           </div>
         </div>
 
-        {/* Hairline-Divided 4-Column Channel Ledger Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-200/80 text-xs">
+        {/* Hairline-Divided 4-Column Channel Ledger Grid (2x2 compact on mobile) */}
+        <div className="grid grid-cols-2 xl:grid-cols-4 divide-x divide-y xl:divide-y-0 divide-slate-200/80 text-[10.5px] sm:text-xs">
           {/* Cash Drawer Channel */}
-          <div className="p-4 flex flex-col justify-between gap-3 hover:bg-slate-50/50 transition-colors">
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
-                <span className="font-bold text-slate-900 flex items-center gap-1.5">
-                  <span className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                    <Wallet className="w-3.5 h-3.5" />
+          <div className="p-2.5 sm:p-4 flex flex-col justify-between gap-2 hover:bg-slate-50/50 transition-colors">
+            <div className="space-y-1.5 sm:space-y-2.5">
+              <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-100">
+                <span className="font-bold text-slate-900 flex items-center gap-1 min-w-0">
+                  <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-md sm:rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                    <Wallet className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                   </span>
-                  <span>Cash Drawer</span>
+                  <span className="truncate">Cash</span>
                 </span>
-                <span className="text-[11px] font-semibold text-slate-500 tabular-nums">
-                  Op: {currency} {accounting.cash.opening.toLocaleString()}
+                <span className="text-[9.5px] sm:text-[11px] font-semibold text-slate-500 tabular-nums shrink-0">
+                  Op: {accounting.cash.opening.toLocaleString()}
                 </span>
               </div>
 
-              <div className="space-y-1.5 text-xs">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-600 font-medium">
-                    + Cash Sales ({accounting.periodSales.filter(s => normalizePaymentChannel(s.paymentMethod) === 'Cash').length})
+              <div className="space-y-1 text-[10px] sm:text-xs">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-slate-600 font-medium truncate">
+                    + Sales ({accounting.periodSales.filter(s => normalizePaymentChannel(s.paymentMethod) === 'Cash').length})
                   </span>
-                  <span className="font-bold text-emerald-600 tabular-nums">
+                  <span className="font-bold text-emerald-600 tabular-nums shrink-0">
                     +{accounting.cash.sales.toLocaleString()}
                   </span>
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-600 font-medium">+ Khata Recoveries</span>
-                  <span className="font-bold text-emerald-600 tabular-nums">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-slate-600 font-medium truncate">+ Khata</span>
+                  <span className="font-bold text-emerald-600 tabular-nums shrink-0">
                     +{accounting.cash.khataRecoveries.toLocaleString()}
                   </span>
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-600 font-medium">- Cash Expenses</span>
-                  <span className="font-bold text-rose-600 tabular-nums">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-slate-600 font-medium truncate">- Expenses</span>
+                  <span className="font-bold text-rose-600 tabular-nums shrink-0">
                     -{accounting.cash.expenses.toLocaleString()}
                   </span>
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-600 font-medium">- Supplier Payments</span>
-                  <span className="font-bold text-rose-600 tabular-nums">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-slate-600 font-medium truncate">- Suppliers</span>
+                  <span className="font-bold text-rose-600 tabular-nums shrink-0">
                     -{accounting.cash.supplierPayments.toLocaleString()}
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between">
-              <span className="text-[11px] font-bold text-slate-500">Expected Cash</span>
-              <span className="text-sm sm:text-base font-extrabold text-emerald-700 tabular-nums">
+            <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between gap-1">
+              <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 truncate">Expected</span>
+              <span className="text-xs sm:text-base font-extrabold text-emerald-700 tabular-nums shrink-0">
                 {currency} {accounting.cash.expectedClosing.toLocaleString()}
               </span>
             </div>
           </div>
 
           {/* Bank Accounts Channel */}
-          <div className="p-4 flex flex-col justify-between gap-3 hover:bg-slate-50/50 transition-colors">
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
-                <span className="font-bold text-slate-900 flex items-center gap-1.5">
-                  <span className="w-6 h-6 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                    <Building2 className="w-3.5 h-3.5" />
+          <div className="p-2.5 sm:p-4 flex flex-col justify-between gap-2 hover:bg-slate-50/50 transition-colors">
+            <div className="space-y-1.5 sm:space-y-2.5">
+              <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-100">
+                <span className="font-bold text-slate-900 flex items-center gap-1 min-w-0">
+                  <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-md sm:rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                    <Building2 className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                   </span>
-                  <span>Bank Account</span>
+                  <span className="truncate">Bank</span>
                 </span>
-                <span className="text-[11px] font-semibold text-slate-500 tabular-nums">
-                  Op: {currency} {accounting.bank.opening.toLocaleString()}
+                <span className="text-[9.5px] sm:text-[11px] font-semibold text-slate-500 tabular-nums shrink-0">
+                  Op: {accounting.bank.opening.toLocaleString()}
                 </span>
               </div>
 
-              <div className="space-y-1.5 text-xs">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-600 font-medium">+ Bank Sales</span>
-                  <span className="font-bold text-blue-600 tabular-nums">
+              <div className="space-y-1 text-[10px] sm:text-xs">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-slate-600 font-medium truncate">+ Sales</span>
+                  <span className="font-bold text-blue-600 tabular-nums shrink-0">
                     +{accounting.bank.sales.toLocaleString()}
                   </span>
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-600 font-medium">+ Khata Recoveries</span>
-                  <span className="font-bold text-blue-600 tabular-nums">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-slate-600 font-medium truncate">+ Khata</span>
+                  <span className="font-bold text-blue-600 tabular-nums shrink-0">
                     +{accounting.bank.khataRecoveries.toLocaleString()}
                   </span>
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-600 font-medium">- Expenses / Pur</span>
-                  <span className="font-bold text-rose-600 tabular-nums">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-slate-600 font-medium truncate">- Outflows</span>
+                  <span className="font-bold text-rose-600 tabular-nums shrink-0">
                     -{(accounting.bank.expenses + accounting.bank.supplierPayments).toLocaleString()}
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between">
-              <span className="text-[11px] font-bold text-slate-500">Expected Bank</span>
-              <span className="text-sm sm:text-base font-extrabold text-blue-700 tabular-nums">
+            <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between gap-1">
+              <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 truncate">Expected</span>
+              <span className="text-xs sm:text-base font-extrabold text-blue-700 tabular-nums shrink-0">
                 {currency} {accounting.bank.expectedClosing.toLocaleString()}
               </span>
             </div>
           </div>
 
           {/* JazzCash Channel */}
-          <div className="p-4 flex flex-col justify-between gap-3 hover:bg-slate-50/50 transition-colors">
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
-                <span className="font-bold text-slate-900 flex items-center gap-1.5">
-                  <span className="w-6 h-6 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-                    <Smartphone className="w-3.5 h-3.5" />
+          <div className="p-2.5 sm:p-4 flex flex-col justify-between gap-2 hover:bg-slate-50/50 transition-colors">
+            <div className="space-y-1.5 sm:space-y-2.5">
+              <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-100">
+                <span className="font-bold text-slate-900 flex items-center gap-1 min-w-0">
+                  <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-md sm:rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                    <Smartphone className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                   </span>
-                  <span>JazzCash</span>
+                  <span className="truncate">JazzCash</span>
                 </span>
-                <span className="text-[11px] font-semibold text-slate-500 tabular-nums">
-                  Op: {currency} {accounting.jazzCash.opening.toLocaleString()}
+                <span className="text-[9.5px] sm:text-[11px] font-semibold text-slate-500 tabular-nums shrink-0">
+                  Op: {accounting.jazzCash.opening.toLocaleString()}
                 </span>
               </div>
 
-              <div className="space-y-1.5 text-xs">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-600 font-medium">+ JazzCash Sales</span>
-                  <span className="font-bold text-amber-600 tabular-nums">
+              <div className="space-y-1 text-[10px] sm:text-xs">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-slate-600 font-medium truncate">+ Sales</span>
+                  <span className="font-bold text-amber-600 tabular-nums shrink-0">
                     +{accounting.jazzCash.sales.toLocaleString()}
                   </span>
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-600 font-medium">+ Khata Recoveries</span>
-                  <span className="font-bold text-amber-600 tabular-nums">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-slate-600 font-medium truncate">+ Khata</span>
+                  <span className="font-bold text-amber-600 tabular-nums shrink-0">
                     +{accounting.jazzCash.khataRecoveries.toLocaleString()}
                   </span>
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-600 font-medium">- Expenses / Outflows</span>
-                  <span className="font-bold text-rose-600 tabular-nums">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-slate-600 font-medium truncate">- Outflows</span>
+                  <span className="font-bold text-rose-600 tabular-nums shrink-0">
                     -{(accounting.jazzCash.expenses + accounting.jazzCash.supplierPayments).toLocaleString()}
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between">
-              <span className="text-[11px] font-bold text-slate-500">Expected JazzCash</span>
-              <span className="text-sm sm:text-base font-extrabold text-amber-700 tabular-nums">
+            <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between gap-1">
+              <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 truncate">Expected</span>
+              <span className="text-xs sm:text-base font-extrabold text-amber-700 tabular-nums shrink-0">
                 {currency} {accounting.jazzCash.expectedClosing.toLocaleString()}
               </span>
             </div>
           </div>
 
           {/* Easypaisa Channel */}
-          <div className="p-4 flex flex-col justify-between gap-3 hover:bg-slate-50/50 transition-colors">
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
-                <span className="font-bold text-slate-900 flex items-center gap-1.5">
-                  <span className="w-6 h-6 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center shrink-0">
-                    <CreditCard className="w-3.5 h-3.5" />
+          <div className="p-2.5 sm:p-4 flex flex-col justify-between gap-2 hover:bg-slate-50/50 transition-colors">
+            <div className="space-y-1.5 sm:space-y-2.5">
+              <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-100">
+                <span className="font-bold text-slate-900 flex items-center gap-1 min-w-0">
+                  <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-md sm:rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center shrink-0">
+                    <CreditCard className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                   </span>
-                  <span>Easypaisa</span>
+                  <span className="truncate">Easypaisa</span>
                 </span>
-                <span className="text-[11px] font-semibold text-slate-500 tabular-nums">
-                  Op: {currency} {accounting.easypaisa.opening.toLocaleString()}
+                <span className="text-[9.5px] sm:text-[11px] font-semibold text-slate-500 tabular-nums shrink-0">
+                  Op: {accounting.easypaisa.opening.toLocaleString()}
                 </span>
               </div>
 
-              <div className="space-y-1.5 text-xs">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-600 font-medium">+ Easypaisa Sales</span>
-                  <span className="font-bold text-teal-600 tabular-nums">
+              <div className="space-y-1 text-[10px] sm:text-xs">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-slate-600 font-medium truncate">+ Sales</span>
+                  <span className="font-bold text-teal-600 tabular-nums shrink-0">
                     +{accounting.easypaisa.sales.toLocaleString()}
                   </span>
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-600 font-medium">+ Khata Recoveries</span>
-                  <span className="font-bold text-teal-600 tabular-nums">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-slate-600 font-medium truncate">+ Khata</span>
+                  <span className="font-bold text-teal-600 tabular-nums shrink-0">
                     +{accounting.easypaisa.khataRecoveries.toLocaleString()}
                   </span>
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-600 font-medium">- Expenses / Outflows</span>
-                  <span className="font-bold text-rose-600 tabular-nums">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-slate-600 font-medium truncate">- Outflows</span>
+                  <span className="font-bold text-rose-600 tabular-nums shrink-0">
                     -{(accounting.easypaisa.expenses + accounting.easypaisa.supplierPayments).toLocaleString()}
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between">
-              <span className="text-[11px] font-bold text-slate-500">Expected Easypaisa</span>
-              <span className="text-sm sm:text-base font-extrabold text-teal-700 tabular-nums">
+            <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between gap-1">
+              <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 truncate">Expected</span>
+              <span className="text-xs sm:text-base font-extrabold text-teal-700 tabular-nums shrink-0">
                 {currency} {accounting.easypaisa.expectedClosing.toLocaleString()}
               </span>
             </div>
@@ -877,16 +877,17 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
         </div>
       </div>
 
-      {/* Main Closing Entry Section: 2 Columns (Digital Accounts Main Left, Physical Cash Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left / Main Column: Digital Accounts Count */}
-        <div className="lg:col-span-7 bg-white border border-slate-200/90 rounded-2xl p-5 space-y-4 shadow-xs">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <div>
-              <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-blue-600" /> Digital Accounts Count
+      {/* Main Closing Entry Section: Side-by-Side Digital Accounts & Physical Cash on ALL screens */}
+      <div className="grid grid-cols-2 lg:grid-cols-12 gap-2 sm:gap-5 items-start">
+        {/* Left Column: Digital Accounts Count */}
+        <div className="col-span-1 lg:col-span-7 bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2 sm:p-5 space-y-2 sm:space-y-4 shadow-xs min-w-0">
+          <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-slate-100 pb-2 sm:pb-3">
+            <div className="min-w-0">
+              <h3 className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-1 sm:gap-2 truncate">
+                <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 shrink-0" />
+                <span className="truncate">Digital Accounts</span>
               </h3>
-              <p className="text-[11px] text-slate-400">
+              <p className="hidden sm:block text-[11px] text-slate-400">
                 Enter counted closing balance for each account
               </p>
             </div>
@@ -895,17 +896,17 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
               <button
                 type="button"
                 onClick={openAddAccountModal}
-                className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                className="h-6.5 sm:h-7 px-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-md sm:rounded-lg text-[10px] sm:text-xs font-bold flex items-center gap-0.5 sm:gap-1 transition cursor-pointer shrink-0"
               >
-                <Plus className="w-3.5 h-3.5" /> Add Account
+                <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> Add
               </button>
             )}
           </div>
 
-          {/* Online Accounts Inputs (Non-scrollable, clean single-line layout) */}
+          {/* Online Accounts Inputs */}
           {(data.onlineAccounts || []).length === 0 ? (
-            <div className="text-center py-6 text-slate-400 text-xs border border-slate-200/80 rounded-xl">
-              No digital accounts configured. Click "+ Add Account" to configure.
+            <div className="text-center py-4 sm:py-6 text-slate-400 text-[10px] sm:text-xs border border-slate-200/80 rounded-xl px-1">
+              No accounts. Click + Add.
             </div>
           ) : (
             <>
@@ -1023,8 +1024,8 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                 </table>
               </div>
 
-              {/* Mobile Single-Line Rows (No scroll container) */}
-              <div className="block sm:hidden space-y-2">
+              {/* Ultra-Compact Mobile Side-by-Side Account Rows */}
+              <div className="block sm:hidden space-y-1.5">
                 {(data.onlineAccounts || []).map(acc => {
                   const val = onlineBalances[acc.id] ?? '';
                   const expectedAcc =
@@ -1034,68 +1035,56 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                   return (
                     <div
                       key={acc.id}
-                      className="p-2.5 rounded-xl border border-slate-200/80 bg-slate-50/70 space-y-1"
+                      className="p-1.5 rounded-lg border border-slate-200/80 bg-slate-50/70 space-y-1"
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-bold text-slate-900 text-xs truncate">
-                              {acc.name}
-                            </span>
-                            <span className="text-[9px] bg-blue-50 text-blue-700 border border-blue-200/60 px-1.5 py-0.2 rounded font-bold shrink-0">
-                              {acc.bankType || 'Digital Wallet'}
-                            </span>
-                          </div>
-                          {acc.accountNumber && (
-                            <p className="text-[10px] text-slate-400 tabular-nums truncate">
-                              {acc.accountNumber}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-1 shrink-0">
-                          <input
-                            type="number"
-                            min="0"
-                            disabled={isDayFinalized}
-                            value={val}
-                            onChange={e =>
-                              setOnlineBalances(prev => ({
-                                ...prev,
-                                [acc.id]: e.target.value === '' ? '' : Number(e.target.value),
-                              }))
-                            }
-                            placeholder="Balance"
-                            className="w-24 text-right tabular-nums font-bold text-xs bg-white border border-slate-200 rounded-lg py-1.5 px-2 focus:outline-none focus:border-blue-600 min-h-[38px] disabled:opacity-75 disabled:cursor-not-allowed"
-                          />
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="font-bold text-slate-900 text-[11px] truncate min-w-0">
+                          {acc.name}
+                        </span>
+                        <div className="flex items-center gap-0.5 shrink-0">
                           {isAdmin && !isDayFinalized && onUpdateOnlineAccount && (
                             <button
                               type="button"
                               onClick={() => openEditAccountModal(acc)}
-                              className="text-slate-400 hover:text-blue-600 p-1 rounded transition cursor-pointer"
+                              className="text-slate-400 hover:text-blue-600 p-0.5 rounded transition cursor-pointer"
                               title="Edit Account"
                             >
-                              <Edit2 className="w-3.5 h-3.5" />
+                              <Edit2 className="w-3 h-3" />
                             </button>
                           )}
                           {isAdmin && !isDayFinalized && (
                             <button
                               type="button"
                               onClick={() => setAccountToDelete(acc)}
-                              className="text-slate-300 hover:text-rose-600 p-1 rounded transition cursor-pointer"
+                              className="text-slate-300 hover:text-rose-600 p-0.5 rounded transition cursor-pointer"
                               title="Delete Account"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Trash2 className="w-3 h-3" />
                             </button>
                           )}
                         </div>
                       </div>
 
-                      <div className="flex justify-between items-center text-[10px] text-slate-400 tabular-nums pt-0.5 border-t border-slate-200/50">
-                        <span>Expected: {currency} {expectedAcc.toLocaleString()}</span>
+                      <input
+                        type="number"
+                        min="0"
+                        disabled={isDayFinalized}
+                        value={val}
+                        onChange={e =>
+                          setOnlineBalances(prev => ({
+                            ...prev,
+                            [acc.id]: e.target.value === '' ? '' : Number(e.target.value),
+                          }))
+                        }
+                        placeholder="Balance"
+                        className="compact-mobile-input w-full text-right tabular-nums font-bold text-[11px] bg-white border border-slate-200 rounded-md py-1 px-1.5 h-7 focus:outline-none focus:border-blue-600 disabled:opacity-75 disabled:cursor-not-allowed"
+                      />
+
+                      <div className="flex justify-between items-center text-[9.5px] text-slate-400 tabular-nums">
+                        <span className="truncate">Exp: {expectedAcc.toLocaleString()}</span>
                         {val !== '' && (
-                          <span className={diff === 0 ? 'text-emerald-600 font-bold' : 'text-amber-600 font-bold'}>
-                            Diff: {diff >= 0 ? '+' : ''}{currency} {diff.toLocaleString()}
+                          <span className={`font-bold shrink-0 ${diff === 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                            {diff >= 0 ? '+' : ''}{diff.toLocaleString()}
                           </span>
                         )}
                       </div>
@@ -1103,9 +1092,9 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                   );
                 })}
 
-                <div className="bg-blue-600 text-white rounded-xl p-3 flex items-center justify-between shadow-sm">
-                  <span className="font-extrabold text-xs">Total Counted Digital:</span>
-                  <span className="font-black text-sm tabular-nums">
+                <div className="bg-blue-600 text-white rounded-lg p-2 flex items-center justify-between shadow-2xs gap-1">
+                  <span className="font-bold text-[10px] truncate">Digital Total:</span>
+                  <span className="font-black text-[11px] tabular-nums shrink-0">
                     {currency} {totalOnlineBalance.toLocaleString()}
                   </span>
                 </div>
@@ -1114,135 +1103,53 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
           )}
         </div>
 
-        {/* Right Column: Physical Cash Notes Counter & Finalize Action */}
-        <div className="lg:col-span-5 space-y-4">
-          {/* Physical Cash Notes Counter Card */}
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-5 space-y-4 shadow-xs">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div>
-                <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                  <Wallet className="w-4 h-4 text-emerald-600" /> Physical Cash Notes Counter
-                </h3>
-                <p className="text-[11px] text-slate-400">
-                  Count notes in cash drawer at closing
-                </p>
-              </div>
-              {!isDayFinalized && (
-                <button
-                  type="button"
-                  onClick={handleClearDenominations}
-                  className="text-xs font-semibold text-slate-500 hover:text-rose-600 flex items-center gap-1 transition cursor-pointer"
-                >
-                  <RotateCcw className="w-3 h-3" /> Reset
-                </button>
-              )}
+        {/* Right Column: Physical Cash Notes Counter (Side-by-side on mobile too) */}
+        <div className="col-span-1 lg:col-span-5 bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2 sm:p-5 space-y-2 sm:space-y-4 shadow-xs min-w-0">
+          <div className="flex flex-wrap items-center justify-between gap-1 border-b border-slate-100 pb-2 sm:pb-3">
+            <div className="min-w-0">
+              <h3 className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-1 sm:gap-2 truncate">
+                <Wallet className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 shrink-0" />
+                <span className="truncate">Cash Notes</span>
+              </h3>
+              <p className="hidden sm:block text-[11px] text-slate-400">
+                Count notes in cash drawer at closing
+              </p>
             </div>
+            {!isDayFinalized && (
+              <button
+                type="button"
+                onClick={handleClearDenominations}
+                className="text-[10px] sm:text-xs font-semibold text-slate-500 hover:text-rose-600 flex items-center gap-0.5 sm:gap-1 transition cursor-pointer shrink-0"
+              >
+                <RotateCcw className="w-3 h-3" /> Reset
+              </button>
+            )}
+          </div>
 
-            {/* Desktop Notes Rows Table (>= lg: breakpoint) */}
-            <div className="hidden lg:block border border-slate-200/80 rounded-xl overflow-hidden">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
-                  <tr>
-                    <th className="p-2.5">Currency Note</th>
-                    <th className="p-2.5 text-center">Notes Count</th>
-                    <th className="p-2.5 text-right">Subtotal ({currency})</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {PAK_DENOMINATIONS.map(denom => {
-                    const count = denominations[denom.toString()] || 0;
-                    const rowSubtotal = denom * count;
-
-                    return (
-                      <tr key={denom} className="hover:bg-slate-50/70 transition">
-                        <td className="p-2.5 font-bold text-slate-900 tabular-nums">
-                          <span className="inline-block px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200/60 text-xs">
-                            Rs. {denom.toLocaleString()}
-                          </span>
-                        </td>
-
-                        <td className="p-2.5 text-center">
-                          <input
-                            type="number"
-                            min="0"
-                            disabled={isDayFinalized}
-                            value={count === 0 ? '' : count}
-                            onChange={e =>
-                              handleDenomChange(
-                                denom,
-                                e.target.value === '' ? 0 : Number(e.target.value)
-                              )
-                            }
-                            placeholder="Qty"
-                            className="w-20 text-center tabular-nums font-bold text-xs bg-slate-50 border border-slate-200 rounded-lg py-1 px-2 focus:outline-none focus:border-emerald-600 focus:bg-white disabled:opacity-75 disabled:cursor-not-allowed"
-                          />
-                        </td>
-
-                        <td className="p-2.5 text-right font-extrabold text-slate-900 tabular-nums">
-                          {rowSubtotal.toLocaleString()}
-                        </td>
-                      </tr>
-                    );
-                  })}
-
-                  {/* Loose Coins Row */}
-                  <tr className="bg-slate-50/50">
-                    <td className="p-2.5 font-bold text-slate-700">
-                      <span className="inline-block px-2 py-0.5 rounded-lg bg-amber-50 text-amber-800 border border-amber-200/60 text-xs">
-                        Loose Coins / Change
-                      </span>
-                    </td>
-                    <td className="p-2.5 text-right font-semibold text-slate-500">
-                      Amount:
-                    </td>
-                    <td className="p-2.5 text-right">
-                      <input
-                        type="number"
-                        min="0"
-                        disabled={isDayFinalized}
-                        value={coins === '' ? '' : coins}
-                        onChange={e =>
-                          setCoins(e.target.value === '' ? '' : Number(e.target.value))
-                        }
-                        placeholder="Amount"
-                        className="w-20 text-right tabular-nums font-bold text-xs bg-white border border-slate-200 rounded-lg py-1 px-2 focus:outline-none focus:border-emerald-600 disabled:opacity-75 disabled:cursor-not-allowed"
-                      />
-                    </td>
-                  </tr>
-
-                  {/* Total Cash Notes Row */}
-                  <tr className="bg-emerald-50/60 border-t-2 border-emerald-200">
-                    <td colSpan={2} className="p-3 font-extrabold text-slate-900 text-xs">
-                      Total Physical Counted Cash:
-                    </td>
-                    <td className="p-3 text-right font-extrabold text-emerald-700 text-sm tabular-nums">
-                      {currency} {totalPhysicalCash.toLocaleString()}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            {/* Mobile 2-Column Denomination Grid (< lg: breakpoint) */}
-            <div className="block lg:hidden space-y-3">
-              <div className="grid grid-cols-2 gap-2.5">
+          {/* Desktop Notes Rows Table (>= lg: breakpoint) */}
+          <div className="hidden lg:block border border-slate-200/80 rounded-xl overflow-hidden">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
+                <tr>
+                  <th className="p-2.5">Currency Note</th>
+                  <th className="p-2.5 text-center">Notes Count</th>
+                  <th className="p-2.5 text-right">Subtotal ({currency})</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
                 {PAK_DENOMINATIONS.map(denom => {
                   const count = denominations[denom.toString()] || 0;
                   const rowSubtotal = denom * count;
 
                   return (
-                    <div
-                      key={denom}
-                      className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 flex flex-col justify-between space-y-2 shadow-2xs"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-extrabold text-xs tabular-nums bg-emerald-100/80 text-emerald-800 px-2 py-0.5 rounded-lg border border-emerald-200">
+                    <tr key={denom} className="hover:bg-slate-50/70 transition">
+                      <td className="p-2.5 font-bold text-slate-900 tabular-nums">
+                        <span className="inline-block px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200/60 text-xs">
                           Rs. {denom.toLocaleString()}
                         </span>
-                        <span className="text-[10px] text-slate-400 font-bold">Note</span>
-                      </div>
+                      </td>
 
-                      <div className="flex items-center gap-1.5">
+                      <td className="p-2.5 text-center">
                         <input
                           type="number"
                           min="0"
@@ -1255,109 +1162,177 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                             )
                           }
                           placeholder="Qty"
-                          className="w-full text-center tabular-nums font-bold text-sm bg-white border border-slate-300 rounded-xl py-2 px-2 focus:outline-none focus:border-emerald-600 min-h-[44px] shadow-2xs"
+                          className="w-20 text-center tabular-nums font-bold text-xs bg-slate-50 border border-slate-200 rounded-lg py-1 px-2 focus:outline-none focus:border-emerald-600 focus:bg-white disabled:opacity-75 disabled:cursor-not-allowed"
                         />
-                      </div>
+                      </td>
 
-                      <div className="flex justify-between items-center text-[11px] pt-1.5 border-t border-slate-200/60 tabular-nums">
-                        <span className="text-slate-400 text-[10px]">Total:</span>
-                        <span className="font-extrabold text-slate-800 tabular-nums">
-                          {currency} {rowSubtotal.toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
+                      <td className="p-2.5 text-right font-extrabold text-slate-900 tabular-nums">
+                        {rowSubtotal.toLocaleString()}
+                      </td>
+                    </tr>
                   );
                 })}
-              </div>
 
-              {/* Loose Coins Card */}
-              <div className="bg-amber-50/60 border border-amber-200 rounded-2xl p-3.5 flex items-center justify-between gap-2">
-                <div>
-                  <span className="font-bold text-xs text-amber-900 block">Loose Coins / Change</span>
-                  <span className="text-[10px] text-amber-700">Enter loose coin amount</span>
-                </div>
-                <input
-                  type="number"
-                  min="0"
-                  disabled={isDayFinalized}
-                  value={coins === '' ? '' : coins}
-                  onChange={e =>
-                    setCoins(e.target.value === '' ? '' : Number(e.target.value))
-                  }
-                  placeholder="Amount"
-                  className="w-28 text-right tabular-nums font-bold text-xs bg-white border border-amber-300 rounded-xl p-2.5 focus:outline-none focus:border-amber-600 min-h-[44px]"
-                />
-              </div>
+                {/* Loose Coins Row */}
+                <tr className="bg-slate-50/50">
+                  <td className="p-2.5 font-bold text-slate-700">
+                    <span className="inline-block px-2 py-0.5 rounded-lg bg-amber-50 text-amber-800 border border-amber-200/60 text-xs">
+                      Loose Coins / Change
+                    </span>
+                  </td>
+                  <td className="p-2.5 text-right font-semibold text-slate-500">
+                    Amount:
+                  </td>
+                  <td className="p-2.5 text-right">
+                    <input
+                      type="number"
+                      min="0"
+                      disabled={isDayFinalized}
+                      value={coins === '' ? '' : coins}
+                      onChange={e =>
+                        setCoins(e.target.value === '' ? '' : Number(e.target.value))
+                      }
+                      placeholder="Amount"
+                      className="w-20 text-right tabular-nums font-bold text-xs bg-white border border-slate-200 rounded-lg py-1 px-2 focus:outline-none focus:border-emerald-600 disabled:opacity-75 disabled:cursor-not-allowed"
+                    />
+                  </td>
+                </tr>
 
-              {/* Mobile Total Physical Cash Banner */}
-              <div className="bg-emerald-600 text-white rounded-2xl p-3.5 flex items-center justify-between shadow-md shadow-emerald-600/20">
-                <span className="font-black text-xs">Total Physical Counted Cash:</span>
-                <span className="font-black text-base tabular-nums">
-                  {currency} {totalPhysicalCash.toLocaleString()}
-                </span>
-              </div>
-            </div>
+                {/* Total Cash Notes Row */}
+                <tr className="bg-emerald-50/60 border-t-2 border-emerald-200">
+                  <td colSpan={2} className="p-3 font-extrabold text-slate-900 text-xs">
+                    Total Physical Counted Cash:
+                  </td>
+                  <td className="p-3 text-right font-extrabold text-emerald-700 text-sm tabular-nums">
+                    {currency} {totalPhysicalCash.toLocaleString()}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
 
-          {/* Closing Finalization Box */}
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-5 space-y-3.5 shadow-xs">
-            <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider text-slate-500 flex items-center justify-between">
-              <span>Closing Verification & Authorization</span>
-              {isDayFinalized ? (
-                <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-bold text-[10px]">
-                  Locked
-                </span>
-              ) : (
-                <span className="text-amber-700 bg-amber-50 px-2 py-0.5 rounded font-bold text-[10px]">
-                  Pending Submission
-                </span>
-              )}
-            </h4>
+          {/* Ultra-Compact Mobile Side-by-Side Single-Col Notes Rows (< lg) */}
+          <div className="block lg:hidden space-y-1">
+            {PAK_DENOMINATIONS.map(denom => {
+              const count = denominations[denom.toString()] || 0;
+              const rowSubtotal = denom * count;
 
-            <div className="space-y-2.5 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Cashier / Staff Name *
-                </label>
-                <input
-                  type="text"
-                  disabled={isDayFinalized}
-                  value={closedBy}
-                  onChange={e => setClosedBy(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:outline-none focus:border-emerald-600 focus:bg-white transition disabled:opacity-75 disabled:cursor-not-allowed"
-                />
-              </div>
+              return (
+                <div
+                  key={denom}
+                  className="bg-slate-50 border border-slate-200/80 rounded-lg px-1.5 py-1 flex items-center justify-between gap-1"
+                >
+                  <span className="font-extrabold text-[10px] tabular-nums text-emerald-800 shrink-0 w-10">
+                    {denom}
+                  </span>
 
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Closing Notes & Explanations (Optional)
-                </label>
-                <textarea
-                  rows={2}
-                  disabled={isDayFinalized}
-                  value={closingNotes}
-                  onChange={e => setClosingNotes(e.target.value)}
-                  placeholder="Any shift notes, cash shortages, or hand-over instructions..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:outline-none focus:border-emerald-600 focus:bg-white transition resize-none disabled:opacity-75 disabled:cursor-not-allowed"
-                />
-              </div>
+                  <input
+                    type="number"
+                    min="0"
+                    disabled={isDayFinalized}
+                    value={count === 0 ? '' : count}
+                    onChange={e =>
+                      handleDenomChange(
+                        denom,
+                        e.target.value === '' ? 0 : Number(e.target.value)
+                      )
+                    }
+                    placeholder="0"
+                    className="compact-mobile-input w-12 text-center tabular-nums font-bold text-[11px] bg-white border border-slate-300 rounded-md h-6.5 px-1 focus:outline-none focus:border-emerald-600"
+                  />
 
-              {/* Summary of Expected vs Counted */}
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/70 space-y-1 text-[11px]">
+                  <span className="font-bold text-[9.5px] text-slate-600 tabular-nums truncate text-right min-w-0 flex-1">
+                    {rowSubtotal > 0 ? rowSubtotal.toLocaleString() : '0'}
+                  </span>
+                </div>
+              );
+            })}
+
+            {/* Loose Coins Compact Row */}
+            <div className="bg-amber-50/70 border border-amber-200 rounded-lg px-1.5 py-1 flex items-center justify-between gap-1">
+              <span className="font-bold text-[10px] text-amber-900 shrink-0">Coins</span>
+              <input
+                type="number"
+                min="0"
+                disabled={isDayFinalized}
+                value={coins === '' ? '' : coins}
+                onChange={e =>
+                  setCoins(e.target.value === '' ? '' : Number(e.target.value))
+                }
+                placeholder="0"
+                className="compact-mobile-input w-20 text-right tabular-nums font-bold text-[11px] bg-white border border-amber-300 rounded-md h-6.5 px-1.5 focus:outline-none focus:border-amber-600"
+              />
+            </div>
+
+            {/* Mobile Total Physical Cash Banner */}
+            <div className="bg-emerald-600 text-white rounded-lg p-2 flex items-center justify-between shadow-2xs gap-1">
+              <span className="font-bold text-[10px] truncate">Cash Total:</span>
+              <span className="font-black text-[11px] tabular-nums shrink-0">
+                {currency} {totalPhysicalCash.toLocaleString()}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Full-Width Compact Verification & Authorization Box Below */}
+        <div className="col-span-2 lg:col-span-12 bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-3 sm:p-5 space-y-2.5 sm:space-y-3.5 shadow-xs">
+          <h4 className="font-bold text-slate-900 text-[11px] sm:text-xs uppercase tracking-wider text-slate-500 flex items-center justify-between">
+            <span>Closing Verification & Authorization</span>
+            {isDayFinalized ? (
+              <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-bold text-[10px]">
+                Locked
+              </span>
+            ) : (
+              <span className="text-amber-700 bg-amber-50 px-2 py-0.5 rounded font-bold text-[10px]">
+                Pending Submission
+              </span>
+            )}
+          </h4>
+
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 sm:gap-4 items-start text-xs">
+            <div className="md:col-span-4">
+              <label className="block font-semibold text-slate-700 mb-1 text-[11px] sm:text-xs">
+                Cashier / Staff Name *
+              </label>
+              <input
+                type="text"
+                disabled={isDayFinalized}
+                value={closedBy}
+                onChange={e => setClosedBy(e.target.value)}
+                className="compact-mobile-input w-full bg-slate-50 border border-slate-200 rounded-lg sm:rounded-xl px-2.5 py-1.5 font-medium text-xs focus:outline-none focus:border-emerald-600 focus:bg-white transition disabled:opacity-75 disabled:cursor-not-allowed"
+              />
+            </div>
+
+            <div className="md:col-span-4">
+              <label className="block font-semibold text-slate-700 mb-1 text-[11px] sm:text-xs">
+                Closing Notes (Optional)
+              </label>
+              <input
+                type="text"
+                disabled={isDayFinalized}
+                value={closingNotes}
+                onChange={e => setClosingNotes(e.target.value)}
+                placeholder="Shift notes or shortages..."
+                className="compact-mobile-input w-full bg-slate-50 border border-slate-200 rounded-lg sm:rounded-xl px-2.5 py-1.5 font-medium text-xs focus:outline-none focus:border-emerald-600 focus:bg-white transition disabled:opacity-75 disabled:cursor-not-allowed"
+              />
+            </div>
+
+            <div className="md:col-span-4 space-y-2">
+              <div className="bg-slate-50 p-2 rounded-lg border border-slate-200/70 space-y-0.5 text-[10.5px] sm:text-[11px]">
                 <div className="flex justify-between">
-                  <span className="text-slate-500">System Expected Total:</span>
+                  <span className="text-slate-500">System Expected:</span>
                   <span className="tabular-nums font-bold text-slate-700">
                     {currency} {accounting.totalExpectedGrand.toLocaleString()}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Counted Grand Total:</span>
+                  <span className="text-slate-500">Counted Total:</span>
                   <span className="tabular-nums font-bold text-slate-900">
                     {currency} {grandTotal.toLocaleString()}
                   </span>
                 </div>
-                <div className="flex justify-between pt-1 border-t border-slate-200">
-                  <span className="font-bold text-slate-700">Net Difference:</span>
+                <div className="flex justify-between pt-0.5 border-t border-slate-200">
+                  <span className="font-bold text-slate-700">Difference:</span>
                   <span
                     className={`tabular-nums font-bold ${
                       totalDifference === 0
@@ -1373,23 +1348,19 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                 </div>
               </div>
 
-              {/* Action Buttons */}
               {!isDayFinalized ? (
                 <button
                   type="button"
                   onClick={handleFinalizeClosing}
-                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white text-xs font-extrabold rounded-xl shadow-md shadow-emerald-500/25 transition cursor-pointer flex items-center justify-center gap-2"
+                  className="w-full py-2 sm:py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white text-xs font-extrabold rounded-lg sm:rounded-xl shadow-md shadow-emerald-500/25 transition cursor-pointer flex items-center justify-center gap-1.5"
                 >
-                  <Lock className="w-4 h-4" />
-                  <span>Commit & Finalize Daily Closing ({activeDate})</span>
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Finalize Closing ({activeDate})</span>
                 </button>
               ) : (
-                <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-900 text-center space-y-1">
-                  <p className="text-xs font-bold flex items-center justify-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Day Closed & Recorded
-                  </p>
-                  <p className="text-[10px] text-emerald-700">
-                    Immutable record saved to system ledger. Opening balances for next day are set.
+                <div className="p-2 bg-emerald-50 rounded-lg border border-emerald-200 text-emerald-900 text-center">
+                  <p className="text-[11px] font-bold flex items-center justify-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Day Closed & Recorded
                   </p>
                 </div>
               )}
@@ -1399,19 +1370,19 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
       </div>
 
       {/* History & Past Closings Section */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-5 space-y-4 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+      <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-3 sm:p-5 space-y-3 sm:space-y-4 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-slate-100 pb-2.5 sm:pb-3">
           <div>
-            <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-              <FileText className="w-4 h-4 text-emerald-600" /> Daily Closing Records History ({filteredHistory.length})
+            <h3 className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2">
+              <FileText className="w-4 h-4 text-emerald-600" /> Daily Closing History ({filteredHistory.length})
             </h3>
-            <p className="text-[11px] text-slate-400">
-              Audit opening balances, cash note breakdowns, digital accounts, and reconciliation differences
+            <p className="text-[10px] sm:text-[11px] text-slate-400">
+              Audit opening balances, note breakdowns & digital accounts
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 text-xs max-w-full">
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto max-w-full shrink-0">
+          <div className="flex flex-wrap items-center gap-1.5 text-xs max-w-full">
+            <div className="no-scrollbar flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg sm:rounded-xl overflow-x-auto max-w-full shrink-0">
               {(['all', 'daily', 'weekly', 'monthly', 'yearly'] as const).map(f => (
                 <button
                   key={f}
@@ -1420,7 +1391,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                     setHistoryFilter(f);
                     setFilterDate('');
                   }}
-                  className={`px-2.5 py-1 rounded-lg font-bold capitalize transition cursor-pointer shrink-0 whitespace-nowrap ${
+                  className={`px-2 py-1 rounded-md sm:rounded-lg font-bold capitalize transition cursor-pointer shrink-0 whitespace-nowrap text-[10.5px] sm:text-xs ${
                     historyFilter === f && !filterDate
                       ? 'bg-white text-emerald-700 shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
@@ -1431,8 +1402,8 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
               ))}
             </div>
 
-            <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1">
-              <span className="text-[11px] text-slate-500 font-semibold">Date:</span>
+            <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg sm:rounded-xl px-2 py-1 h-8">
+              <span className="text-[10.5px] text-slate-500 font-semibold">Date:</span>
               <input
                 type="date"
                 value={filterDate}
@@ -1440,13 +1411,13 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                   setFilterDate(e.target.value);
                   setHistoryFilter('all');
                 }}
-                className="bg-transparent font-medium text-xs outline-none text-slate-800 cursor-pointer"
+                className="compact-mobile-input bg-transparent font-medium text-[11px] outline-none text-slate-800 cursor-pointer"
               />
               {filterDate && (
                 <button
                   type="button"
                   onClick={() => setFilterDate('')}
-                  className="text-slate-400 hover:text-slate-600 text-xs ml-1"
+                  className="text-slate-400 hover:text-slate-600 text-xs ml-0.5"
                 >
                   ×
                 </button>
@@ -1482,11 +1453,11 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                   }
                 }
               }}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+              className="h-8 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg sm:rounded-xl shadow-xs transition flex items-center gap-1 cursor-pointer"
               title="Download detailed PDF report for selected period"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Download PDF Report</span>
+              <span>PDF Report</span>
             </button>
           </div>
         </div>

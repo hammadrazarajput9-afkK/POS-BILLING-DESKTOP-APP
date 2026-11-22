@@ -157,10 +157,10 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
       </div>
 
       {/* Main Expenses Container Card */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 sm:p-5 space-y-3.5 sm:space-y-4 shadow-xs max-w-full overflow-hidden">
+      <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 space-y-2.5 sm:space-y-4 shadow-xs max-w-full overflow-hidden">
         {/* Controls Bar */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 sm:gap-3 border-b border-slate-100 pb-3 sm:pb-4">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full lg:w-auto">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2 sm:gap-3 border-b border-slate-100 pb-2.5 sm:pb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 w-full lg:w-auto">
             {/* Search Input */}
             <div className="relative w-full sm:w-60">
               <input
@@ -168,13 +168,13 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Search expense description..."
-                className="w-full pl-3 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-rose-600 focus:bg-white min-h-[40px]"
+                className="compact-mobile-input w-full pl-3 pr-7 h-8 sm:h-9 bg-slate-50 border border-slate-200 rounded-lg sm:rounded-xl text-xs font-medium focus:outline-none focus:border-rose-600 focus:bg-white"
               />
               {search && (
                 <button
                   type="button"
                   onClick={() => setSearch('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm font-bold min-h-[30px] min-w-[30px] flex items-center justify-center cursor-pointer"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm font-bold h-6 w-6 flex items-center justify-center cursor-pointer"
                 >
                   ×
                 </button>
@@ -183,19 +183,19 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
 
             {/* Date Filter & Quick Date Buttons Row */}
             <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
-              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs flex-1 sm:flex-initial min-h-[40px]">
+              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg sm:rounded-xl px-2 h-8 sm:h-9 text-xs flex-1 sm:flex-initial">
                 <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                 <input
                   type="date"
                   value={selectedDate}
                   onChange={e => setSelectedDate(e.target.value)}
-                  className="bg-transparent font-medium outline-none text-slate-800 cursor-pointer text-xs w-full"
+                  className="compact-mobile-input bg-transparent font-medium outline-none text-slate-800 cursor-pointer text-[11px] sm:text-xs w-full"
                 />
                 {selectedDate && (
                   <button
                     type="button"
                     onClick={() => setSelectedDate('')}
-                    className="text-slate-400 hover:text-slate-600 text-xs font-bold px-1 min-h-[30px] min-w-[30px] flex items-center justify-center cursor-pointer"
+                    className="text-slate-400 hover:text-slate-600 text-xs font-bold px-1 flex items-center justify-center cursor-pointer"
                     title="Clear Date Filter"
                   >
                     ×
@@ -204,11 +204,11 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
               </div>
 
               {/* Date Shortcut Pills */}
-              <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl text-xs shrink-0 min-h-[40px]">
+              <div className="flex items-center gap-0.5 bg-slate-100 p-0.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs shrink-0 h-8 sm:h-9">
                 <button
                   type="button"
                   onClick={() => setDateShortcut('all')}
-                  className={`px-2.5 py-1.5 rounded-lg font-semibold transition cursor-pointer text-xs ${
+                  className={`px-2 py-1 rounded-md sm:rounded-lg font-semibold transition cursor-pointer ${
                     !selectedDate ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
@@ -217,7 +217,7 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
                 <button
                   type="button"
                   onClick={() => setDateShortcut('today')}
-                  className={`px-2.5 py-1.5 rounded-lg font-semibold transition cursor-pointer text-xs ${
+                  className={`px-2 py-1 rounded-md sm:rounded-lg font-semibold transition cursor-pointer ${
                     selectedDate === new Date().toISOString().substring(0, 10)
                       ? 'bg-white text-rose-600 shadow-2xs'
                       : 'text-slate-500 hover:text-slate-800'
@@ -228,7 +228,7 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
                 <button
                   type="button"
                   onClick={() => setDateShortcut('yesterday')}
-                  className={`px-2.5 py-1.5 rounded-lg font-semibold transition cursor-pointer text-xs ${
+                  className={`px-2 py-1 rounded-md sm:rounded-lg font-semibold transition cursor-pointer ${
                     selectedDate === new Date(Date.now() - 86400000).toISOString().substring(0, 10)
                       ? 'bg-white text-rose-600 shadow-2xs'
                       : 'text-slate-500 hover:text-slate-800'
@@ -241,12 +241,12 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
           </div>
 
           {/* Action Buttons Row */}
-          <div className="flex items-center gap-2 w-full lg:w-auto">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 w-full lg:w-auto">
             {onOpenPdfReport && (
               <button
                 type="button"
                 onClick={onOpenPdfReport}
-                className="flex-1 sm:flex-initial px-3 py-2 sm:py-2.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-2xs min-h-[42px]"
+                className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-lg sm:rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1 transition cursor-pointer shadow-2xs"
                 title="Export Operational Expenses PDF Report"
               >
                 <FileText className="w-3.5 h-3.5 text-rose-600 shrink-0" />
@@ -259,7 +259,7 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
               <button
                 type="button"
                 onClick={onOpenManageCategories}
-                className="flex-1 sm:flex-initial px-3 py-2 sm:py-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-2xs min-h-[42px]"
+                className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-lg sm:rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1 transition cursor-pointer shadow-2xs"
               >
                 <Tag className="w-3.5 h-3.5 text-purple-600 shrink-0" />
                 <span className="hidden sm:inline">Manage Categories</span>
@@ -270,22 +270,22 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
             <button
               type="button"
               onClick={onOpenAddModal}
-              className="flex-1 sm:flex-initial px-4 py-2 sm:py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md shadow-rose-500/20 flex items-center justify-center gap-1.5 transition cursor-pointer min-h-[42px]"
+              className="h-8 sm:h-9 px-3 sm:px-4 rounded-lg sm:rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] sm:text-xs shadow-sm shadow-rose-500/20 flex items-center justify-center gap-1 transition cursor-pointer"
             >
-              <Plus className="w-4 h-4 shrink-0" />
+              <Plus className="w-3.5 h-3.5 shrink-0" />
               <span>Add Expense</span>
             </button>
           </div>
         </div>
 
         {/* Category Pills Filter - Horizontal Scrolling on Mobile */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-0.5 no-scrollbar text-xs">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 pt-0.5 no-scrollbar text-[11px] sm:text-xs">
           {['ALL', ...categories].map(cat => (
             <button
               key={cat}
               type="button"
               onClick={() => setSelectedCategory(cat)}
-              className={`px-3 py-1.5 rounded-xl font-semibold transition cursor-pointer shrink-0 min-h-[34px] flex items-center ${
+              className={`px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer shrink-0 h-7 flex items-center ${
                 selectedCategory === cat
                   ? 'bg-rose-600 text-white font-bold shadow-xs'
                   : 'bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
@@ -299,10 +299,10 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
         {/* ========================================================= */}
         {/* MOBILE VIEW: Touch-Friendly Compact Expense Cards (< md:) */}
         {/* ========================================================= */}
-        <div className="block md:hidden space-y-2.5">
+        <div className="block md:hidden space-y-2">
           {filtered.length === 0 ? (
-            <div className="text-center py-10 text-slate-400 bg-slate-50/50 rounded-2xl border border-slate-200/80 p-4">
-              <Receipt className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+            <div className="text-center py-8 text-slate-400 bg-slate-50/50 rounded-xl border border-slate-200/80 p-4">
+              <Receipt className="w-7 h-7 mx-auto mb-1.5 text-slate-300" />
               <p className="font-semibold text-slate-600 text-xs">No expenses recorded</p>
               <p className="text-[11px] text-slate-400 mt-0.5">
                 {search || selectedDate ? 'Try clearing your filters' : 'Tap "+ Add Expense" to record expenditure'}
@@ -312,22 +312,22 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
             filtered.map(expense => (
               <div
                 key={expense.id}
-                className="bg-white border border-slate-200/90 rounded-2xl p-3 shadow-2xs space-y-2.5 hover:border-rose-200 transition"
+                className="bg-white border border-slate-200/90 rounded-xl p-2.5 shadow-2xs space-y-1.5 hover:border-rose-200 transition"
               >
-                <div className="flex items-start justify-between gap-2.5">
-                  <div className="flex items-center gap-2.5 min-w-0">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
                     {/* Thumbnail / Photo */}
                     {expense.image ? (
                       <div
                         onClick={() => setZoomedImage({ src: expense.image!, title: expense.description })}
-                        className="w-11 h-11 rounded-xl border border-slate-200 overflow-hidden bg-slate-100 cursor-pointer hover:opacity-80 transition shrink-0 shadow-2xs"
+                        className="w-9 h-9 rounded-lg border border-slate-200 overflow-hidden bg-slate-100 cursor-pointer hover:opacity-80 transition shrink-0 shadow-2xs"
                         title="View receipt picture"
                       >
                         <img src={expense.image} alt="Receipt thumbnail" className="w-full h-full object-cover" />
                       </div>
                     ) : (
-                      <div className="w-11 h-11 rounded-xl border border-slate-200/70 bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
-                        <Receipt className="w-5 h-5 text-slate-400" />
+                      <div className="w-9 h-9 rounded-lg border border-slate-200/70 bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
+                        <Receipt className="w-4 h-4 text-slate-400" />
                       </div>
                     )}
 
@@ -336,7 +336,7 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
                         {expense.description}
                       </h4>
                       <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700">
+                        <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9.5px] font-bold bg-slate-100 text-slate-700">
                           {expense.category}
                         </span>
                         <span className="text-[10px] font-semibold text-slate-500 tabular-nums">
@@ -346,26 +346,26 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
                     </div>
                   </div>
 
-                  {/* Amount & Delete Button */}
+                  {/* Amount & Method */}
                   <div className="text-right shrink-0 flex flex-col items-end">
-                    <span className="tabular-nums font-extrabold text-rose-600 text-sm tabular-nums">
+                    <span className="tabular-nums font-extrabold text-rose-600 text-xs">
                       {currency} {expense.amount.toLocaleString()}
                     </span>
-                    <span className="text-[10px] font-medium text-slate-500 mt-0.5">
+                    <span className="text-[9.5px] font-medium text-slate-500 mt-0.5">
                       {expense.paymentMethod || 'Cash'}
                     </span>
                   </div>
                 </div>
 
                 {isAdmin && (
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                  <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
                     {expense.image ? (
                       <button
                         type="button"
                         onClick={() => setZoomedImage({ src: expense.image!, title: expense.description })}
-                        className="text-blue-600 hover:text-blue-700 font-semibold text-[11px] flex items-center gap-1 cursor-pointer min-h-[36px]"
+                        className="text-blue-600 hover:text-blue-700 font-semibold text-[11px] flex items-center gap-1 cursor-pointer h-6.5 px-1.5 rounded-md hover:bg-blue-50"
                       >
-                        <ImageIcon className="w-3.5 h-3.5" /> View Receipt
+                        <ImageIcon className="w-3 h-3" /> Receipt
                       </button>
                     ) : (
                       <span className="text-[10px] text-slate-400">No Photo</span>
@@ -374,9 +374,9 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
                     <button
                       type="button"
                       onClick={() => setExpenseToDelete(expense)}
-                      className="px-2.5 py-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer text-[11px] font-bold flex items-center gap-1 min-h-[36px]"
+                      className="px-2 h-6.5 text-rose-600 hover:bg-rose-50 rounded-md transition cursor-pointer text-[11px] font-bold flex items-center gap-1"
                     >
-                      <Trash2 className="w-3.5 h-3.5" /> Delete
+                      <Trash2 className="w-3 h-3" /> Delete
                     </button>
                   </div>
                 )}

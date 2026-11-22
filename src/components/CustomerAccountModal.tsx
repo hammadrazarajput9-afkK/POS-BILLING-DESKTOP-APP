@@ -12,6 +12,7 @@ import {
   Calendar,
   ArrowUpRight,
   ArrowDownLeft,
+  ArrowLeft,
   FileText,
   Navigation,
   ExternalLink,
@@ -726,40 +727,81 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/75 backdrop-blur-xs animate-in fade-in">
-      <div className="bg-white rounded-2xl max-w-5xl w-[98vw] shadow-2xl border border-slate-200 animate-in zoom-in-95 max-h-[96vh] flex flex-col overflow-hidden">
-        {/* Top Command Header - Clear & Easy to Use */}
-        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-purple-950 px-5 py-4 text-white shrink-0">
-          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
-            <div className="flex items-start gap-3.5 min-w-0">
+    <div className="fixed inset-0 z-50 bg-slate-50 flex flex-col overflow-hidden animate-in fade-in">
+      <div className="bg-white w-full h-full flex flex-col overflow-hidden">
+        {/* Top Full-Screen Command Header with Prominent Top-Left Back Button */}
+        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-purple-950 px-3 sm:px-5 pt-2.5 pb-3 text-white shrink-0">
+          {/* Top Navigation Bar: Back on Left, Track / Pin Location on Right */}
+          <div className="flex items-center justify-between gap-2 pb-2 border-b border-white/15 mb-2.5">
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg bg-white/15 hover:bg-white/25 text-white font-bold text-xs transition cursor-pointer shrink-0"
+              aria-label="Back to Customer Ledger"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back</span>
+            </button>
+
+            <span className="text-[11px] font-bold text-slate-300 truncate hidden sm:inline">
+              Customer Khata Account • {customer.name}
+            </span>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              {trackLocationUrl ? (
+                <a
+                  href={trackLocationUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="h-8 px-2.5 sm:px-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-[11px] sm:text-xs shadow-sm transition flex items-center gap-1"
+                >
+                  <Navigation className="w-3.5 h-3.5" />
+                  <span className="sm:hidden">Track</span>
+                  <span className="hidden sm:inline">Track Customer Location</span>
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('location')}
+                  className="h-8 px-2.5 sm:px-3 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-[11px] sm:text-xs transition flex items-center gap-1 cursor-pointer shadow-sm"
+                >
+                  <MapPin className="w-3.5 h-3.5 text-amber-300" />
+                  <span className="sm:hidden">Pin Map</span>
+                  <span className="hidden sm:inline">Pin Location on Map</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
               {/* Customer Avatar */}
-              <div className="w-16 h-16 rounded-2xl border-2 border-white/20 overflow-hidden bg-white/10 flex items-center justify-center shrink-0 shadow-md">
+              <div className="w-11 h-11 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl border-2 border-white/20 overflow-hidden bg-white/10 flex items-center justify-center shrink-0 shadow-md">
                 {customer.image ? (
                   <img src={customer.image} alt={customer.name} className="w-full h-full object-cover" />
                 ) : (
-                  <User className="w-8 h-8 text-white/80" />
+                  <User className="w-5 h-5 sm:w-7 sm:h-7 text-white/80" />
                 )}
               </div>
 
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h2 className="text-lg sm:text-xl font-extrabold tracking-tight leading-snug">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <h2 className="text-sm sm:text-lg font-extrabold tracking-tight leading-snug truncate">
                     {customer.name}
                   </h2>
-                  <span className="text-[11px] font-bold text-purple-200 bg-white/10 px-2 py-0.5 rounded-lg border border-white/15">
+                  <span className="text-[10px] font-bold text-purple-200 bg-white/10 px-1.5 py-0.2 rounded border border-white/15">
                     {customer.customerType === 'retailer' || customer.customerType === 'wholesaler'
-                      ? 'Retailer / Wholesaler'
-                      : 'Retail Customer'}
+                      ? 'Retailer'
+                      : 'Retail'}
                   </span>
-                  <span className="text-[11px] font-mono text-slate-300">ID: {customer.id}</span>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-200 mt-1.5">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] sm:text-xs text-slate-200 mt-0.5">
                   <a
                     href={`tel:${customer.phone.replace(/[^0-9+]/g, '')}`}
                     className="flex items-center gap-1 hover:text-white transition font-semibold tabular-nums"
                   >
-                    <Phone className="w-3.5 h-3.5 text-emerald-400" />
+                    <Phone className="w-3 h-3 text-emerald-400" />
                     {customer.phone}
                   </a>
                   {customer.phone2 && (
@@ -767,146 +809,96 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                       href={`tel:${customer.phone2.replace(/[^0-9+]/g, '')}`}
                       className="flex items-center gap-1 text-slate-300 hover:text-white transition tabular-nums"
                     >
-                      <Phone className="w-3 h-3" />
+                      <Phone className="w-2.5 h-2.5" />
                       {customer.phone2}
                     </a>
                   )}
                   {customer.cnic && (
-                    <span className="text-slate-300 tabular-nums">CNIC: {customer.cnic}</span>
+                    <span className="text-slate-300 tabular-nums hidden sm:inline">CNIC: {customer.cnic}</span>
                   )}
-                  {customer.shopName && (
-                    <span className="text-purple-200 font-medium">{customer.shopName}</span>
-                  )}
-                </div>
-
-                {/* Location Line */}
-                <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs">
-                  <span className="flex items-center gap-1 text-slate-300">
-                    <MapPin className={`w-3.5 h-3.5 ${hasGpsPin ? 'text-emerald-400' : 'text-purple-300'}`} />
-                    {customer.address ? (
-                      <span>{customer.address}</span>
-                    ) : (
-                      <span className="italic text-slate-400">Address set nahi hai</span>
-                    )}
-                  </span>
-                  {hasGpsPin && (
-                    <span className="text-[10px] font-bold text-emerald-300 tabular-nums bg-white/10 px-2 py-0.5 rounded-full">
-                      GPS Pinned
+                  {customer.address && (
+                    <span className="flex items-center gap-1 text-slate-300 truncate max-w-[200px] sm:max-w-xs">
+                      <MapPin className={`w-3 h-3 shrink-0 ${hasGpsPin ? 'text-emerald-400' : 'text-purple-300'}`} />
+                      <span className="truncate">{customer.address}</span>
                     </span>
                   )}
                 </div>
               </div>
             </div>
-
-            {/* Header Right: Track Location + Close */}
-            <div className="flex items-center gap-2 shrink-0 self-end lg:self-start">
-              {trackLocationUrl ? (
-                <a
-                  href={trackLocationUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-sm transition flex items-center gap-1.5"
-                >
-                  <Navigation className="w-4 h-4" />
-                  <span>Track Customer Location</span>
-                </a>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('location')}
-                  className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs transition flex items-center gap-1.5 cursor-pointer shadow-sm"
-                >
-                  <MapPin className="w-4 h-4 text-amber-300" />
-                  <span>Pin Location on Map</span>
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={onClose}
-                className="text-white/75 hover:text-white p-2 rounded-xl hover:bg-white/10 transition cursor-pointer"
-                aria-label="Close modal"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
           </div>
 
-          {/* 4 Financial KPI Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mt-4 pt-3.5 border-t border-white/10">
-            <div className="bg-white/10 rounded-xl p-3">
+          {/* 4 Financial KPI Cards - Compact Grid */}
+          <div className="grid grid-cols-4 gap-1.5 sm:gap-2.5 mt-2.5 pt-2.5 border-t border-white/10">
+            <div className="bg-white/10 rounded-lg sm:rounded-xl p-1.5 sm:p-2.5 min-w-0">
               <div className="flex items-center justify-between gap-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">
-                  Pending Balance
+                <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-300 truncate">
+                  Pending
                 </span>
                 {isOverLimit && (
-                  <span className="text-[10px] font-extrabold text-rose-300 flex items-center gap-0.5">
-                    <AlertTriangle className="w-3 h-3" /> Over Limit
-                  </span>
+                  <AlertTriangle className="w-3 h-3 text-rose-300 shrink-0" />
                 )}
               </div>
               <p
-                className={`text-lg font-extrabold tabular-nums mt-0.5 ${
+                className={`text-[11px] sm:text-base font-extrabold tabular-nums mt-0.5 truncate ${
                   customer.balance > 0 ? 'text-amber-300' : 'text-emerald-300'
                 }`}
               >
                 {currency} {customer.balance.toLocaleString()}
               </p>
               {creditUsagePct !== null && (
-                <div className="mt-1.5 space-y-0.5">
-                  <div className="h-1.5 w-full bg-white/15 rounded-full overflow-hidden">
+                <div className="mt-1 hidden sm:block space-y-0.5">
+                  <div className="h-1 w-full bg-white/15 rounded-full overflow-hidden">
                     <div
                       className={`h-full rounded-full ${isOverLimit ? 'bg-rose-400' : 'bg-amber-300'}`}
                       style={{ width: `${creditUsagePct}%` }}
                     />
                   </div>
-                  <p className="text-[10px] text-slate-300 tabular-nums">
-                    Limit: {currency} {customer.creditLimit?.toLocaleString()} ({creditUsagePct}%)
+                  <p className="text-[9px] text-slate-300 tabular-nums">
+                    Limit: {customer.creditLimit?.toLocaleString()} ({creditUsagePct}%)
                   </p>
                 </div>
               )}
             </div>
 
-            <div className="bg-white/10 rounded-xl p-3">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">
-                Total Credit Given
+            <div className="bg-white/10 rounded-lg sm:rounded-xl p-1.5 sm:p-2.5 min-w-0">
+              <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-300 block truncate">
+                Credit
               </span>
-              <p className="text-lg font-extrabold tabular-nums text-white mt-0.5">
+              <p className="text-[11px] sm:text-base font-extrabold tabular-nums text-white mt-0.5 truncate">
                 {currency} {totalCreditGiven.toLocaleString()}
               </p>
-              <p className="text-[10px] text-slate-300 mt-0.5 tabular-nums">
-                {history.filter(t => t.type === 'credit').length} credit entries
+              <p className="text-[9px] text-slate-300 hidden sm:block tabular-nums">
+                {history.filter(t => t.type === 'credit').length} entries
               </p>
             </div>
 
-            <div className="bg-white/10 rounded-xl p-3">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">
-                Total Recovered / Paid
+            <div className="bg-white/10 rounded-lg sm:rounded-xl p-1.5 sm:p-2.5 min-w-0">
+              <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-300 block truncate">
+                Paid
               </span>
-              <p className="text-lg font-extrabold tabular-nums text-emerald-300 mt-0.5">
+              <p className="text-[11px] sm:text-base font-extrabold tabular-nums text-emerald-300 mt-0.5 truncate">
                 {currency} {totalPaymentReceived.toLocaleString()}
               </p>
-              <p className="text-[10px] text-slate-300 mt-0.5 tabular-nums">
-                {history.filter(t => t.type === 'payment').length} payment entries
+              <p className="text-[9px] text-slate-300 hidden sm:block tabular-nums">
+                {history.filter(t => t.type === 'payment').length} entries
               </p>
             </div>
 
-            <div className="bg-white/10 rounded-xl p-3">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">
-                Promise Due Date
+            <div className="bg-white/10 rounded-lg sm:rounded-xl p-1.5 sm:p-2.5 min-w-0">
+              <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-300 block truncate">
+                Due Date
               </span>
               {customer.dueDate ? (
                 <>
-                  <p className="text-sm font-extrabold tabular-nums text-white mt-1">
+                  <p className="text-[11px] sm:text-sm font-extrabold tabular-nums text-white mt-0.5 truncate">
                     {new Date(customer.dueDate).toLocaleDateString([], {
                       month: 'short',
                       day: 'numeric',
-                      year: 'numeric',
                     })}
                   </p>
                   {dueStatus && (
                     <p
-                      className={`text-[10px] font-bold mt-0.5 ${
+                      className={`text-[9px] font-bold truncate ${
                         dueStatus.tone === 'overdue'
                           ? 'text-rose-300'
                           : dueStatus.tone === 'today'
@@ -922,69 +914,69 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setActiveTab('profile')}
-                  className="mt-1 text-xs font-bold text-purple-200 hover:text-white underline cursor-pointer block"
+                  className="mt-0.5 text-[10px] sm:text-xs font-bold text-purple-200 hover:text-white underline cursor-pointer block truncate"
                 >
-                  + Due Date Set Karein
+                  + Set Date
                 </button>
               )}
             </div>
           </div>
         </div>
 
-        {/* Workspace Navigation Tabs + Quick Action Toolbar (Zero Horizontal Scroll) */}
-        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-col gap-2 shrink-0">
-          <div className="flex flex-wrap items-center gap-1.5">
+        {/* Workspace Navigation Tabs + Quick Action Toolbar */}
+        <div className="px-2.5 sm:px-5 py-2 bg-slate-50 border-b border-slate-200 flex flex-col gap-1.5 shrink-0">
+          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
             <button
               type="button"
               onClick={() => setActiveTab('ledger')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              className={`h-7 px-2.5 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap ${
                 activeTab === 'ledger'
                   ? 'bg-slate-900 text-white shadow-2xs'
                   : 'text-slate-700 bg-white border border-slate-200 hover:bg-slate-100'
               }`}
             >
-              <FileText className="w-3.5 h-3.5 text-purple-500" />
-              Ledger History ({history.length})
+              <FileText className="w-3 h-3 text-purple-500" />
+              Ledger ({history.length})
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('location')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              className={`h-7 px-2.5 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap ${
                 activeTab === 'location'
                   ? 'bg-blue-600 text-white shadow-2xs'
                   : 'text-slate-700 bg-white border border-slate-200 hover:bg-slate-100'
               }`}
             >
-              <MapPin className="w-3.5 h-3.5 text-blue-500" />
-              Location & Map
-              {hasGpsPin && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />}
+              <MapPin className="w-3 h-3 text-blue-500" />
+              Map
+              {hasGpsPin && <CheckCircle2 className="w-3 h-3 text-emerald-300" />}
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('invoices')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              className={`h-7 px-2.5 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap ${
                 activeTab === 'invoices'
                   ? 'bg-slate-900 text-white shadow-2xs'
                   : 'text-slate-700 bg-white border border-slate-200 hover:bg-slate-100'
               }`}
             >
-              <ShoppingBag className="w-3.5 h-3.5 text-amber-500" />
-              Invoices & Phones ({customerSales.length})
+              <ShoppingBag className="w-3 h-3 text-amber-500" />
+              Invoices ({customerSales.length})
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('profile')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              className={`h-7 px-2.5 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap ${
                 activeTab === 'profile'
                   ? 'bg-purple-700 text-white shadow-2xs'
                   : 'text-slate-700 bg-white border border-slate-200 hover:bg-slate-100'
               }`}
             >
-              <Edit3 className="w-3.5 h-3.5 text-purple-500" />
-              Edit Profile & Limits
+              <Edit3 className="w-3 h-3 text-purple-500" />
+              Edit Profile
             </button>
           </div>
 
@@ -999,9 +991,9 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                 setNote('');
                 setTxReceiptImage('');
               }}
-              className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+              className="h-7.5 px-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] rounded-lg shadow-xs transition flex items-center gap-1 cursor-pointer"
             >
-              <CreditCard className="w-3.5 h-3.5" />
+              <CreditCard className="w-3 h-3" />
               Add Credit (+)
             </button>
 
@@ -1014,9 +1006,9 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                 setNote('');
                 setTxReceiptImage('');
               }}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+              className="h-7.5 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg shadow-xs transition flex items-center gap-1 cursor-pointer"
             >
-              <DollarSign className="w-3.5 h-3.5" />
+              <DollarSign className="w-3 h-3" />
               Receive Payment (-)
             </button>
 
@@ -1024,28 +1016,28 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
               href={whatsAppUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs rounded-xl transition flex items-center gap-1.5"
+              className="h-7.5 px-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-[11px] rounded-lg transition flex items-center gap-1"
               title="WhatsApp Roman English Statement"
             >
-              <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+              <MessageSquare className="w-3 h-3 text-emerald-600" />
               WhatsApp
             </a>
 
             <button
               type="button"
               onClick={handleDownloadPdfStatement}
-              className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+              className="h-7.5 px-2.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold text-[11px] rounded-lg transition flex items-center gap-1 cursor-pointer"
             >
-              <Download className="w-3.5 h-3.5 text-purple-600" />
+              <Download className="w-3 h-3 text-purple-600" />
               PDF
             </button>
 
             <button
               type="button"
               onClick={handlePrintStatement}
-              className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+              className="h-7.5 px-2.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold text-[11px] rounded-lg transition flex items-center gap-1 cursor-pointer"
             >
-              <Printer className="w-3.5 h-3.5" />
+              <Printer className="w-3 h-3" />
               Print
             </button>
           </div>
@@ -1053,40 +1045,40 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
 
         {/* Inline Transaction Entry Drawer with Camera Picture Attachment */}
         {showTransactor && (
-          <div className="p-4 bg-slate-100 border-b border-slate-200 shrink-0 animate-in slide-in-from-top-2 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+          <div className="p-2.5 sm:p-4 bg-slate-100 border-b border-slate-200 shrink-0 animate-in slide-in-from-top-2 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-bold text-xs text-slate-800 flex items-center gap-1 truncate">
                 {showTransactor === 'credit' ? (
                   <span className="text-rose-600 font-extrabold flex items-center gap-1">
-                    <ArrowUpRight className="w-4 h-4" /> Add Credit (Udhar) to Customer Account
+                    <ArrowUpRight className="w-3.5 h-3.5" /> Add Credit (Udhar)
                   </span>
                 ) : (
                   <span className="text-emerald-600 font-extrabold flex items-center gap-1">
-                    <ArrowDownLeft className="w-4 h-4" /> Receive Payment (Wasooli) from Customer
+                    <ArrowDownLeft className="w-3.5 h-3.5" /> Receive Payment (Wasooli)
                   </span>
                 )}
               </span>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 shrink-0">
                 {showTransactor === 'payment' && customer.balance > 0 && (
                   <button
                     type="button"
                     onClick={() => setAmount(customer.balance)}
-                    className="text-xs font-bold text-purple-700 hover:underline cursor-pointer"
+                    className="text-[11px] font-bold text-purple-700 hover:underline cursor-pointer"
                   >
-                    Full Balance ({currency} {customer.balance.toLocaleString()})
+                    Full ({currency} {customer.balance.toLocaleString()})
                   </button>
                 )}
                 <button
                   type="button"
                   onClick={() => setShowTransactor(null)}
-                  className="text-slate-500 hover:text-slate-700 text-xs font-semibold cursor-pointer"
+                  className="text-slate-500 hover:text-slate-700 text-[11px] font-semibold cursor-pointer px-1.5 py-0.5 rounded bg-white border border-slate-200"
                 >
                   Cancel
                 </button>
               </div>
             </div>
 
-            <form onSubmit={handleSaveTransaction} className="space-y-2.5">
+            <form onSubmit={handleSaveTransaction} className="space-y-2">
               <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
                 <input
                   type="number"
@@ -1095,18 +1087,18 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                   value={amount}
                   onChange={e => setAmount(e.target.value === '' ? '' : Number(e.target.value))}
                   placeholder={`Amount (${currency}) *`}
-                  className="md:col-span-3 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs tabular-nums font-bold focus:outline-none focus:border-purple-600"
+                  className="compact-mobile-input md:col-span-3 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs tabular-nums font-bold focus:outline-none focus:border-purple-600"
                 />
                 <input
                   type="text"
                   value={note}
                   onChange={e => setNote(e.target.value)}
                   placeholder="Remarks (e.g. Mobile model, IMEI, Bill #)"
-                  className="md:col-span-5 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-purple-600"
+                  className="compact-mobile-input md:col-span-5 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-purple-600"
                 />
 
                 {/* Attached Photo Preview / Upload for Transaction */}
-                <div className="md:col-span-4 flex items-center gap-2 bg-white border border-slate-300 rounded-xl px-2 py-1">
+                <div className="md:col-span-4 flex items-center gap-2 bg-white border border-slate-300 rounded-lg px-2 py-1">
                   <input
                     ref={txReceiptFileInputRef}
                     type="file"
@@ -1119,14 +1111,14 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                       <img
                         src={txReceiptImage}
                         alt="Receipt"
-                        className="w-8 h-8 rounded-lg object-cover border border-slate-200 cursor-pointer"
+                        className="w-7 h-7 rounded object-cover border border-slate-200 cursor-pointer"
                         onClick={() => setViewingImageModal(txReceiptImage)}
                       />
                       <span className="text-[10px] font-bold text-emerald-700 truncate">Photo attached</span>
                       <button
                         type="button"
                         onClick={() => setTxReceiptImage('')}
-                        className="text-rose-600 hover:text-rose-700 ml-auto p-1 cursor-pointer"
+                        className="text-rose-600 hover:text-rose-700 ml-auto p-0.5 cursor-pointer"
                         title="Remove photo"
                       >
                         <X className="w-3.5 h-3.5" />
@@ -1134,19 +1126,19 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                     </div>
                   ) : (
                     <div className="flex items-center justify-between w-full">
-                      <span className="text-[11px] text-slate-400 pl-1">Attach Photo (Opt.)</span>
+                      <span className="text-[11px] text-slate-400 pl-1">Photo (Opt.)</span>
                       <div className="flex items-center gap-1">
                         <button
                           type="button"
                           onClick={() => txReceiptFileInputRef.current?.click()}
-                          className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg text-[10px] flex items-center gap-1 cursor-pointer"
+                          className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded text-[10px] flex items-center gap-1 cursor-pointer"
                         >
                           <Upload className="w-3 h-3 text-purple-600" /> Gallery
                         </button>
                         <button
                           type="button"
                           onClick={() => setIsTxCameraOpen(true)}
-                          className="px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg text-[10px] flex items-center gap-1 cursor-pointer"
+                          className="px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded text-[10px] flex items-center gap-1 cursor-pointer"
                         >
                           <Camera className="w-3 h-3" /> Camera
                         </button>
@@ -1156,16 +1148,16 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
                 {showTransactor === 'payment' ? (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-bold text-slate-600">Channel:</span>
+                  <div className="flex flex-wrap items-center gap-1">
+                    <span className="text-[10px] font-bold text-slate-600">Channel:</span>
                     {(['Cash', 'JazzCash', 'Easypaisa', 'Bank'] as const).map(channel => (
                       <button
                         key={channel}
                         type="button"
                         onClick={() => setPaymentMethod(channel)}
-                        className={`px-3 py-1 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                        className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition cursor-pointer ${
                           paymentMethod === channel
                             ? 'border-purple-600 bg-purple-100 text-purple-900'
                             : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'
@@ -1179,13 +1171,13 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
 
                 <button
                   type="submit"
-                  className={`px-5 py-2 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer ${
+                  className={`h-8 px-4 text-white font-bold text-xs rounded-lg shadow-xs transition cursor-pointer ${
                     showTransactor === 'credit'
                       ? 'bg-rose-600 hover:bg-rose-700'
                       : 'bg-emerald-600 hover:bg-emerald-700'
                   }`}
                 >
-                  {showTransactor === 'credit' ? 'Confirm Credit Entry' : 'Confirm Payment Received'}
+                  {showTransactor === 'credit' ? 'Save Credit Entry' : 'Save Payment'}
                 </button>
               </div>
             </form>
@@ -1193,15 +1185,15 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
         )}
 
         {/* Main Workspace Body */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-5 bg-white">
+        <div className="flex-1 overflow-y-auto touch-pan-y p-2.5 sm:p-5 bg-white">
           {/* TAB 1: LEDGER HISTORY */}
           {activeTab === 'ledger' && (
-            <div className="space-y-3">
+            <div className="space-y-2.5 sm:space-y-3">
               {(customer.guarantorName || customer.notes) && (
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/90 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/90 flex flex-wrap items-center justify-between gap-2 text-[11px]">
                   {customer.guarantorName && (
-                    <span className="flex items-center gap-1.5 text-slate-700">
-                      <ShieldCheck className="w-4 h-4 text-purple-600" />
+                    <span className="flex items-center gap-1 text-slate-700">
+                      <ShieldCheck className="w-3.5 h-3.5 text-purple-600" />
                       <strong>Guarantor:</strong> {customer.guarantorName}
                       {customer.guarantorPhone ? ` (${customer.guarantorPhone})` : ''}
                     </span>
@@ -1214,25 +1206,25 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                 </div>
               )}
 
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div className="relative flex-1 max-w-md">
-                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
                     value={ledgerSearch}
                     onChange={e => setLedgerSearch(e.target.value)}
-                    placeholder="Search remarks, amount, or payment channel..."
-                    className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-purple-600 focus:bg-white"
+                    placeholder="Search remarks, amount, or channel..."
+                    className="compact-mobile-input w-full pl-8 pr-3 h-8 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:border-purple-600 focus:bg-white"
                   />
                 </div>
 
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1">
                   {(['all', 'credit', 'payment'] as const).map(f => (
                     <button
                       key={f}
                       type="button"
                       onClick={() => setLedgerFilter(f)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                      className={`h-7 px-2.5 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
                         ledgerFilter === f
                           ? 'bg-slate-900 text-white border-slate-900'
                           : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
@@ -1245,9 +1237,9 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
               </div>
 
               {/* Detailed Itemized Account Statement Cards (Zero horizontal scroll) */}
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 {filteredLedger.length === 0 ? (
-                  <div className="text-center py-12 text-slate-400 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+                  <div className="text-center py-10 text-slate-400 bg-slate-50 rounded-xl border border-slate-200 text-xs">
                     No transactions found. Use "Add Credit (+)" or "Receive Payment (-)" above.
                   </div>
                 ) : (
@@ -1886,16 +1878,16 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between gap-2 shrink-0 bg-slate-50">
-          <span className="text-[11px] text-slate-400">
-            Last updated: {new Date(customer.lastUpdated).toLocaleString()}
+        <div className="px-3 sm:px-5 py-2 border-t border-slate-100 flex items-center justify-between gap-2 shrink-0 bg-slate-50">
+          <span className="text-[10px] sm:text-[11px] text-slate-400 truncate">
+            Updated: {new Date(customer.lastUpdated).toLocaleDateString()}
           </span>
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
+            className="h-8 px-4 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-lg shadow-xs transition cursor-pointer inline-flex items-center gap-1"
           >
-            Close Account
+            <ArrowLeft className="w-3.5 h-3.5" /> Back to Ledgers
           </button>
         </div>
       </div>

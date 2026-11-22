@@ -333,82 +333,82 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
       </div>
 
       {/* Screen View */}
-      <div className="print:hidden space-y-6">
+      <div className="print:hidden space-y-3.5 sm:space-y-5">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
-              <span className="p-2 bg-blue-600 text-white rounded-xl shadow-md shadow-blue-500/20">
-                <Barcode className="w-5 h-5" />
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 sm:gap-4">
+          <div className="min-w-0">
+            <h2 className="text-base sm:text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+              <span className="p-1.5 sm:p-2 bg-blue-600 text-white rounded-lg sm:rounded-xl shadow-md shadow-blue-500/20 shrink-0">
+                <Barcode className="w-4 h-4 sm:w-5 sm:h-5" />
               </span>
-              Barcode Label Generator & Multi-Item A4 Sheet
+              <span className="truncate">Barcode Generator &amp; A4 Sheet</span>
             </h2>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             {printMode === 'single' && (
               <button
                 type="button"
                 onClick={handleDownloadSVG}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold rounded-xl transition cursor-pointer shadow-2xs"
+                className="inline-flex items-center justify-center gap-1.5 h-8 sm:h-9 px-3 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-[11px] sm:text-xs font-bold rounded-lg sm:rounded-xl transition cursor-pointer shadow-2xs"
               >
-                <Download className="w-4 h-4 text-slate-600" />
-                Download SVG
+                <Download className="w-3.5 h-3.5 text-slate-600" />
+                <span>Download SVG</span>
               </button>
             )}
 
             <button
               type="button"
               onClick={handlePrint}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold rounded-xl shadow-lg shadow-blue-600/25 transition cursor-pointer active:scale-95"
+              className="inline-flex items-center justify-center gap-1.5 h-8 sm:h-9 px-3 sm:px-4 bg-blue-600 hover:bg-blue-700 text-white text-[11px] sm:text-xs font-extrabold rounded-lg sm:rounded-xl shadow-md shadow-blue-600/20 transition cursor-pointer active:scale-95"
             >
-              <Printer className="w-4 h-4" />
-              Print A4 Sheet ({printableItemsList.length} Stickers)
+              <Printer className="w-3.5 h-3.5" />
+              <span>Print A4 ({printableItemsList.length})</span>
             </button>
           </div>
         </div>
 
         {/* Mode Switcher Tabs */}
-        <div className="bg-slate-100 p-1.5 rounded-2xl flex items-center gap-2 max-w-md">
+        <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 max-w-md">
           <button
             type="button"
             onClick={() => setPrintMode('batch')}
-            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+            className={`flex-1 py-1.5 px-2.5 rounded-lg text-[11px] sm:text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
               printMode === 'batch'
                 ? 'bg-white text-blue-600 shadow-sm'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Layers className="w-4 h-4" />
-            <span>Multi-Item A4 Sheet ({printableItemsList.length})</span>
+            <Layers className="w-3.5 h-3.5" />
+            <span>Multi-Item Sheet ({printableItemsList.length})</span>
           </button>
 
           <button
             type="button"
             onClick={() => setPrintMode('single')}
-            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+            className={`flex-1 py-1.5 px-2.5 rounded-lg text-[11px] sm:text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
               printMode === 'single'
                 ? 'bg-white text-blue-600 shadow-sm'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Barcode className="w-4 h-4" />
-            <span>Single Product Repeats</span>
+            <Barcode className="w-3.5 h-3.5" />
+            <span>Single Repeats</span>
           </button>
         </div>
 
         {/* Main Content Layout: Configuration Panel vs Live Preview */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 sm:gap-5">
           {/* Controls Column (7 cols) */}
-          <div className="lg:col-span-7 space-y-5">
+          <div className="lg:col-span-7 space-y-3 sm:space-y-4">
             {/* Multi-Product Custom Builder Panel OR Single Item Custom Panel */}
             {printMode === 'batch' ? (
-              <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+              <div className="bg-white p-3 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
                   <div>
-                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-2">
-                      <Layers className="w-4 h-4 text-blue-600" />
-                      Multi-Product Custom Barcode List ({customBatchItems.length} Products)
+                    <h3 className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-blue-600" />
+                      Multi-Product Barcode List ({customBatchItems.length})
                     </h3>
                   </div>
 
@@ -416,26 +416,26 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
                     <button
                       type="button"
                       onClick={handleImportInventoryToBarcodeBatch}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-xl border border-emerald-200/80 transition cursor-pointer"
+                      className="inline-flex items-center gap-1 h-7 sm:h-8 px-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[11px] sm:text-xs rounded-lg border border-emerald-200/80 transition cursor-pointer"
                       title="Import in-stock products from active inventory"
                     >
-                      <Download className="w-3.5 h-3.5" /> Import Stock
+                      <Download className="w-3 h-3" /> Import Stock
                     </button>
                     <button
                       type="button"
                       onClick={handleAddCustomBatchItem}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
+                      className="inline-flex items-center gap-1 h-7 sm:h-8 px-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] sm:text-xs rounded-lg shadow-xs transition cursor-pointer"
                     >
-                      <Plus className="w-3.5 h-3.5" /> Add Row
+                      <Plus className="w-3 h-3" /> Add Row
                     </button>
                     {customBatchItems.length > 0 && (
                       <button
                         type="button"
                         onClick={handleClearAllBatchItems}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-xs rounded-xl border border-rose-200/80 transition cursor-pointer"
+                        className="inline-flex items-center gap-1 h-7 sm:h-8 px-2 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-[11px] sm:text-xs rounded-lg border border-rose-200/80 transition cursor-pointer"
                         title="Delete all demo / batch products permanently"
                       >
-                        <Trash2 className="w-3.5 h-3.5" /> Clear All
+                        <Trash2 className="w-3 h-3" /> Clear
                       </button>
                     )}
                   </div>
@@ -443,32 +443,32 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
 
                 {/* Custom Products List */}
                 {customBatchItems.length === 0 ? (
-                  <div className="text-center py-10 bg-slate-50 rounded-2xl border border-dashed border-slate-300 space-y-2">
-                    <Layers className="w-8 h-8 text-slate-300 mx-auto" />
+                  <div className="text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-300 space-y-2">
+                    <Layers className="w-7 h-7 text-slate-300 mx-auto" />
                     <p className="font-bold text-slate-700 text-xs">No product barcodes in print sheet</p>
-                    <div className="flex items-center justify-center gap-2 pt-2">
+                    <div className="flex items-center justify-center gap-2 pt-1">
                       <button
                         type="button"
                         onClick={handleAddCustomBatchItem}
-                        className="px-3 py-1.5 bg-blue-600 text-white font-bold text-xs rounded-xl hover:bg-blue-700 cursor-pointer"
+                        className="h-8 px-3 bg-blue-600 text-white font-bold text-xs rounded-lg hover:bg-blue-700 cursor-pointer"
                       >
-                        + Add Custom Row
+                        + Add Row
                       </button>
                       <button
                         type="button"
                         onClick={handleImportInventoryToBarcodeBatch}
-                        className="px-3 py-1.5 bg-emerald-600 text-white font-bold text-xs rounded-xl hover:bg-emerald-700 cursor-pointer"
+                        className="h-8 px-3 bg-emerald-600 text-white font-bold text-xs rounded-lg hover:bg-emerald-700 cursor-pointer"
                       >
-                        Import Inventory Stock
+                        Import Stock
                       </button>
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-3 max-h-[460px] overflow-y-auto pr-1">
+                  <div className="space-y-2 sm:space-y-2.5 max-h-[380px] sm:max-h-[460px] overflow-y-auto pr-0.5">
                     {customBatchItems.map((item, idx) => (
                       <div
                         key={item.id}
-                        className="p-3.5 bg-slate-50/70 border border-slate-200 rounded-xl space-y-2.5 hover:border-blue-300 transition"
+                        className="p-2.5 sm:p-3.5 bg-slate-50/70 border border-slate-200 rounded-xl space-y-2 hover:border-blue-300 transition"
                       >
                         <div className="flex items-center justify-between">
                           <span className="w-6 h-6 rounded-lg bg-blue-600 text-white tabular-nums font-bold text-xs flex items-center justify-center">
@@ -511,34 +511,34 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
-                          <div className="sm:col-span-6">
+                        <div className="grid grid-cols-2 sm:grid-cols-12 gap-2">
+                          <div className="col-span-2 sm:col-span-6">
                             <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5">
-                              Product Name / Title *
+                              Product Name *
                             </label>
                             <input
                               type="text"
                               value={item.title}
                               onChange={e => handleUpdateBatchItem(item.id, 'title', e.target.value)}
                               placeholder="e.g. Samsung Galaxy A15, 20W Charger"
-                              className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500"
+                              className="compact-mobile-input w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500"
                             />
                           </div>
 
-                          <div className="sm:col-span-6">
+                          <div className="col-span-2 sm:col-span-6">
                             <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5">
-                              Color / Model / Subtitle
+                              Subtitle / Variant
                             </label>
                             <input
                               type="text"
                               value={item.subtitle}
                               onChange={e => handleUpdateBatchItem(item.id, 'subtitle', e.target.value)}
-                              placeholder="e.g. Black • 6GB/128GB, Type-C"
-                              className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium focus:outline-none focus:border-blue-500"
+                              placeholder="e.g. Black • 6GB/128GB"
+                              className="compact-mobile-input w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium focus:outline-none focus:border-blue-500"
                             />
                           </div>
 
-                          <div className="sm:col-span-5">
+                          <div className="col-span-1 sm:col-span-5">
                             <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5">
                               Price ({settings.currency})
                             </label>
@@ -554,27 +554,27 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
                                 )
                               }
                               placeholder="Price"
-                              className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs tabular-nums font-bold text-emerald-700 focus:outline-none focus:border-blue-500"
+                              className="compact-mobile-input w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs tabular-nums font-bold text-emerald-700 focus:outline-none focus:border-blue-500"
                             />
                           </div>
 
-                          <div className="sm:col-span-7">
+                          <div className="col-span-1 sm:col-span-7">
                             <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 flex items-center justify-between">
-                              <span>Barcode Value</span>
+                              <span>Barcode</span>
                               <button
                                 type="button"
                                 onClick={() => handleGenerateBarcodeForItem(item.id)}
                                 className="text-[10px] text-blue-600 font-bold hover:underline cursor-pointer flex items-center gap-0.5"
                               >
-                                <RefreshCw className="w-2.5 h-2.5" /> Auto Barcode
+                                <RefreshCw className="w-2.5 h-2.5" /> Auto
                               </button>
                             </label>
                             <input
                               type="text"
                               value={item.barcode}
                               onChange={e => handleUpdateBatchItem(item.id, 'barcode', e.target.value)}
-                              placeholder="Barcode number / code"
-                              className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs tabular-nums font-bold text-blue-700 focus:outline-none focus:border-blue-500"
+                              placeholder="Code"
+                              className="compact-mobile-input w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs tabular-nums font-bold text-blue-700 focus:outline-none focus:border-blue-500"
                             />
                           </div>
                         </div>
@@ -583,43 +583,43 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
                   </div>
                 )}
 
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
+                  <div className="flex items-center gap-1.5">
                     <button
                       type="button"
                       onClick={handleAddCustomBatchItem}
-                      className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+                      className="h-7 sm:h-8 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-[11px] flex items-center justify-center gap-1 transition cursor-pointer"
                     >
-                      <Plus className="w-3.5 h-3.5 text-blue-600" /> + Add Product Row
+                      <Plus className="w-3 h-3 text-blue-600" /> Add Row
                     </button>
                     <button
                       type="button"
                       onClick={handleImportInventoryToBarcodeBatch}
-                      className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 border border-emerald-200 transition cursor-pointer"
+                      className="h-7 sm:h-8 px-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-lg text-[11px] flex items-center justify-center gap-1 border border-emerald-200 transition cursor-pointer"
                     >
-                      <Download className="w-3.5 h-3.5 text-emerald-600" /> Import Real Stock
+                      <Download className="w-3 h-3 text-emerald-600" /> Import Stock
                     </button>
                   </div>
 
-                  <span className="font-semibold text-slate-600">
-                    Total Stickers on Sheet: <strong className="text-blue-700 tabular-nums text-sm">{printableItemsList.length}</strong> (~{Math.ceil(printableItemsList.length / (sheetColumns * 8))} A4 Pages)
+                  <span className="font-semibold text-[11px] text-slate-600">
+                    Stickers: <strong className="text-blue-700 tabular-nums">{printableItemsList.length}</strong> (~{Math.ceil(printableItemsList.length / (sheetColumns * 8))} A4)
                   </span>
                 </div>
               </div>
             ) : (
               /* Custom Single Product Mode */
-              <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-2">
-                    <Tag className="w-4 h-4 text-blue-600" />
-                    Custom Single Product Barcode Details
+              <div className="bg-white p-3 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <h3 className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5 text-blue-600" />
+                    Single Product Barcode Details
                   </h3>
                 </div>
 
                 {/* Manual Fields */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
-                  <div className="sm:col-span-2">
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                <div className="grid grid-cols-2 gap-2.5 sm:gap-3.5 pt-0.5">
+                  <div className="col-span-2">
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
                       Product Name / Title *
                     </label>
                     <input
@@ -627,19 +627,19 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
                       value={productTitle}
                       onChange={e => setProductTitle(e.target.value)}
                       placeholder="e.g. Samsung Galaxy S24 Ultra, Fast Charger"
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white"
+                      className="compact-mobile-input w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center justify-between">
-                      <span>Barcode / Code128 Value</span>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5 flex items-center justify-between">
+                      <span>Barcode</span>
                       <button
                         type="button"
                         onClick={handleGenerateRandomBarcode}
-                        className="text-blue-600 hover:text-blue-800 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                        className="text-blue-600 hover:text-blue-800 text-[10px] font-bold flex items-center gap-0.5 cursor-pointer"
                       >
-                        <RefreshCw className="w-3 h-3" /> Auto Generate
+                        <RefreshCw className="w-2.5 h-2.5" /> Auto
                       </button>
                     </label>
                     <input
@@ -647,13 +647,13 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
                       value={barcodeValue}
                       onChange={e => setBarcodeValue(e.target.value)}
                       placeholder="e.g. 890123456789"
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs tabular-nums font-bold text-blue-700 focus:outline-none focus:border-blue-500 focus:bg-white"
+                      className="compact-mobile-input w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs tabular-nums font-bold text-blue-700 focus:outline-none focus:border-blue-500 focus:bg-white"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      Selling Price ({settings.currency})
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                      Price ({settings.currency})
                     </label>
                     <input
                       type="number"
@@ -661,26 +661,26 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
                       value={sellingPrice}
                       onChange={e => setSellingPrice(e.target.value === '' ? '' : Number(e.target.value))}
                       placeholder="Price"
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-emerald-700 focus:outline-none focus:border-blue-500 focus:bg-white"
+                      className="compact-mobile-input w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-emerald-700 focus:outline-none focus:border-blue-500 focus:bg-white"
                     />
                   </div>
 
-                  <div className="sm:col-span-2">
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      Custom Subtitle / Color / Model
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                      Subtitle / Color
                     </label>
                     <input
                       type="text"
                       value={customSubtitle}
                       onChange={e => setCustomSubtitle(e.target.value)}
-                      placeholder="e.g. 256GB Titanium Gray, Black, Type-C"
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white"
+                      placeholder="e.g. Black, 256GB"
+                      className="compact-mobile-input w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white"
                     />
                   </div>
 
-                  <div className="sm:col-span-2">
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      Number of Stickers / Copies to Print on Sheet
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                      Stickers Count
                     </label>
                     <input
                       type="number"
@@ -689,7 +689,7 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
                       value={labelQuantity}
                       placeholder="Qty"
                       onChange={e => setLabelQuantity(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value, 10) || 1))}
-                      className="allow-spinner w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs tabular-nums font-bold text-blue-700 focus:outline-none focus:border-blue-500 focus:bg-white"
+                      className="compact-mobile-input allow-spinner w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs tabular-nums font-bold text-blue-700 focus:outline-none focus:border-blue-500 focus:bg-white"
                     />
                   </div>
                 </div>
@@ -697,31 +697,31 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
             )}
 
             {/* Layout & Printer Sheet Configuration */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
-              <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-2">
-                <Sliders className="w-4 h-4 text-blue-600" />
-                Sheet Layout & Printer Settings
+            <div className="bg-white p-3 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
+              <h3 className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                <Sliders className="w-3.5 h-3.5 text-blue-600" />
+                Sheet Layout &amp; Printer Settings
               </h3>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+              <div className="grid grid-cols-3 gap-2 sm:gap-3.5">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    Label Sticker Size
+                  <label className="block text-[10px] sm:text-[11px] font-bold text-slate-700 mb-0.5">
+                    Sticker Size
                   </label>
                   <select
                     value={labelSize}
                     onChange={e => setLabelSize(e.target.value as any)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500"
+                    className="compact-mobile-input w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] sm:text-xs font-semibold focus:outline-none focus:border-blue-500"
                   >
-                    <option value="standard">Standard (50mm x 35mm)</option>
-                    <option value="compact">Compact (40mm x 25mm)</option>
-                    <option value="jewelry">Small / Cable Tag (30mm x 20mm)</option>
+                    <option value="standard">50x35mm</option>
+                    <option value="compact">40x25mm</option>
+                    <option value="jewelry">30x20mm</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    Print Copies (Quantity)
+                  <label className="block text-[10px] sm:text-[11px] font-bold text-slate-700 mb-0.5">
+                    Print Qty
                   </label>
                   <input
                     type="number"
@@ -730,22 +730,22 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
                     value={labelQuantity}
                     placeholder="Qty"
                     onChange={e => setLabelQuantity(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value, 10) || 1))}
-                    className="allow-spinner w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-center focus:outline-none focus:border-blue-500"
+                    className="compact-mobile-input allow-spinner w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] sm:text-xs font-bold text-center focus:outline-none focus:border-blue-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    Columns Per Sheet
+                  <label className="block text-[10px] sm:text-[11px] font-bold text-slate-700 mb-0.5">
+                    Columns
                   </label>
                   <select
                     value={sheetColumns}
                     onChange={e => setSheetColumns(parseInt(e.target.value) || 3)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500"
+                    className="compact-mobile-input w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] sm:text-xs font-semibold focus:outline-none focus:border-blue-500"
                   >
-                    <option value={2}>2 Columns (Thermal / Roll)</option>
-                    <option value={3}>3 Columns (Standard A4 Sticker Sheet)</option>
-                    <option value={4}>4 Columns (Dense A4 Sheet)</option>
+                    <option value={2}>2 Cols</option>
+                    <option value={3}>3 Cols (A4)</option>
+                    <option value={4}>4 Cols</option>
                   </select>
                 </div>
               </div>
@@ -872,11 +872,11 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
           </div>
 
           {/* Live Preview Column (5 cols) */}
-          <div className="lg:col-span-5 space-y-4">
-            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
+          <div className="lg:col-span-5 space-y-3">
+            <div className="bg-white p-3 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-blue-600" />
+                <h3 className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-blue-600" />
                   Live Sticker Tag Preview
                 </h3>
                 <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-full">
@@ -886,19 +886,19 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
 
               {/* Tag Card Visualizer */}
               {printMode === 'batch' ? (
-                <div className="space-y-3">
-                  <div className="p-3 bg-slate-100 rounded-2xl border border-slate-200 max-h-96 overflow-y-auto">
+                <div className="space-y-2.5">
+                  <div className="p-2.5 sm:p-3 bg-slate-100 rounded-xl border border-slate-200 max-h-72 sm:max-h-96 overflow-y-auto">
                     <p className="text-[10px] font-bold uppercase text-slate-500 mb-2">
                       A4 Sheet Grid Preview ({printableItemsList.length} items on sheet):
                     </p>
                     <div
-                      className="grid gap-2"
+                      className="grid gap-1.5 sm:gap-2"
                       style={{ gridTemplateColumns: `repeat(${sheetColumns}, minmax(0, 1fr))` }}
                     >
                       {printableItemsList.slice(0, 12).map((item, idx) => (
                         <div
                           key={idx}
-                          className="bg-white border border-slate-300 rounded-lg p-2 text-center flex flex-col items-center justify-between text-[10px] shadow-2xs"
+                          className="bg-white border border-slate-300 rounded-lg p-1.5 sm:p-2 text-center flex flex-col items-center justify-between text-[10px] shadow-2xs"
                         >
                           {showShopName && (
                             <span className="font-extrabold text-[9px] uppercase tracking-wider text-slate-800 truncate w-full border-b border-slate-100 pb-0.5">
@@ -925,8 +925,8 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
                   </div>
                 </div>
               ) : (
-                <div className="flex items-center justify-center p-6 bg-slate-100 rounded-2xl border border-slate-200">
-                  <div className="bg-white border-2 border-slate-300 rounded-xl p-4 shadow-md max-w-xs w-full flex flex-col items-center justify-between text-center space-y-1">
+                <div className="flex items-center justify-center p-3.5 sm:p-6 bg-slate-100 rounded-xl border border-slate-200">
+                  <div className="bg-white border-2 border-slate-300 rounded-xl p-3 sm:p-4 shadow-md max-w-xs w-full flex flex-col items-center justify-between text-center space-y-1">
                     {showShopName && (
                       <div className="text-[11px] font-black uppercase tracking-wider text-slate-900 border-b border-slate-200 w-full pb-1">
                         {settings.shopName}
@@ -946,7 +946,7 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
                     )}
 
                     {/* Single SVG Barcode */}
-                    <div className="py-2 w-full flex items-center justify-center overflow-hidden">
+                    <div className="py-1.5 w-full flex items-center justify-center overflow-hidden">
                       <svg ref={singleSvgRef} className="max-w-full"></svg>
                     </div>
 
@@ -960,23 +960,19 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
               )}
 
               {/* Print Notice & Quick Sheet Preview */}
-              <div className="text-xs text-slate-500 space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                <p className="font-semibold text-slate-700">
-                  Ready to print {printableItemsList.length} stickers in a {sheetColumns}-column A4 layout.
-                </p>
-                <p className="text-[11px] text-slate-500">
-                  Fits on standard A4 adhesive sticker sheets (e.g. 24 or 30 labels/page) as well as continuous thermal label rolls.
-                </p>
+              <div className="text-[11px] text-slate-500 space-y-1 bg-slate-50 p-2.5 rounded-xl border border-slate-200 flex items-center justify-between gap-2">
+                <span className="font-semibold text-slate-700">
+                  {printableItemsList.length} stickers ({sheetColumns}-col A4 layout)
+                </span>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="inline-flex items-center justify-center gap-1.5 h-8 px-3.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg shadow-sm transition cursor-pointer shrink-0"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Print Sheet</span>
+                </button>
               </div>
-
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-lg shadow-blue-600/25 transition cursor-pointer"
-              >
-                <Printer className="w-4 h-4" />
-                Print A4 Barcode Sheet Now
-              </button>
             </div>
           </div>
         </div>

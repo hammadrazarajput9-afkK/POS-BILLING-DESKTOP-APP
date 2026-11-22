@@ -1891,13 +1891,13 @@ function AppContent() {
 
         {/* Scrollable Tab Content - Optimized with Conditional Rendering (Unmounts Inactive Tabs) */}
         <main
-          className={`flex-1 overflow-y-auto ${
+          className={`flex-1 overflow-y-auto touch-pan-y ${
             activeTab === 'pos'
-              ? 'p-2 sm:p-3 lg:p-3 pb-4 lg:pb-4'
-              : 'p-2.5 sm:p-5 pb-6 lg:pb-6'
+              ? 'p-2 sm:p-3 lg:p-3 pb-24 lg:pb-4'
+              : 'p-2.5 sm:p-5 pb-24 lg:pb-6'
           }`}
         >
-          <div className={activeTab === 'pos' ? 'w-full flex flex-col min-h-0' : 'max-w-7xl mx-auto'}>
+          <div className={activeTab === 'pos' ? 'w-full flex flex-col lg:min-h-0' : 'max-w-7xl mx-auto'}>
             {activeTab === 'dashboard' && (data.currentRole || 'admin') === 'admin' && (
               <DashboardTab
                 data={data}

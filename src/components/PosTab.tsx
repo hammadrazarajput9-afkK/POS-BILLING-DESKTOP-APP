@@ -1827,14 +1827,14 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   }, [filteredSales]);
 
   return (
-    <div className="space-y-2.5 sm:space-y-3 flex flex-col flex-1 min-h-0">
+    <div className="space-y-2 sm:space-y-3 flex flex-col lg:flex-1 lg:min-h-0">
       {/* Sub-tab Navigation Panel */}
-      <div className="flex items-center justify-between gap-2 bg-white border border-slate-200/80 rounded-2xl p-1.5 sm:p-2 shadow-xs w-full max-w-full overflow-hidden shrink-0">
+      <div className="flex items-center justify-between gap-2 bg-white border border-slate-200/80 rounded-xl sm:rounded-2xl p-1 sm:p-2 shadow-xs w-full max-w-full overflow-hidden shrink-0">
         <div className="flex bg-slate-100 p-0.5 sm:p-1 rounded-xl w-full sm:w-fit gap-1">
           <button
             type="button"
             onClick={() => setPosSubTab('billing')}
-            className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer h-9 sm:h-9.5 ${
+            className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-2.5 sm:px-4 py-1 rounded-lg text-[11px] sm:text-xs font-extrabold transition cursor-pointer h-8 sm:h-9.5 ${
               posSubTab === 'billing'
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -1846,7 +1846,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
           <button
             type="button"
             onClick={() => setPosSubTab('history')}
-            className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer h-9 sm:h-9.5 ${
+            className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-2.5 sm:px-4 py-1 rounded-lg text-[11px] sm:text-xs font-extrabold transition cursor-pointer h-8 sm:h-9.5 ${
               posSubTab === 'history'
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -1864,12 +1864,12 @@ const PosTabComponent: React.FC<PosTabProps> = ({
           </button>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {onOpenPosSettings && (
             <button
               type="button"
               onClick={onOpenPosSettings}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200/80 text-xs font-bold transition cursor-pointer"
+              className="inline-flex items-center gap-1 px-2.5 py-1 sm:py-1.5 rounded-lg sm:rounded-xl bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200/80 text-[11px] sm:text-xs font-bold transition cursor-pointer h-8 sm:h-9 shrink-0 whitespace-nowrap"
               title="POS & Billing Settings (Enable / Disable Payment Accounts)"
             >
               <Sliders className="w-3.5 h-3.5 text-blue-600" />
@@ -1888,9 +1888,9 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       </div>
 
       {posSubTab === 'billing' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 items-start flex-1 min-h-0">
-          {/* Left Column: Catalog & Search (7 Cols) - Sticky scrollable catalog on desktop */}
-          <div className="lg:col-span-7 flex flex-col min-h-0 lg:sticky lg:top-0 lg:max-h-[calc(100dvh-7.5rem)] space-y-2.5 sm:space-y-3">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5 sm:gap-4 items-start lg:flex-1 lg:min-h-0">
+          {/* Left Column: Catalog & Search (7 Cols) - Sticky scrollable catalog on desktop, natural document scroll on mobile */}
+          <div className="lg:col-span-7 flex flex-col lg:min-h-0 lg:sticky lg:top-0 lg:max-h-[calc(100dvh-7.5rem)] space-y-2 sm:space-y-3">
             {/* Mode Switcher Banner: Retail vs Wholesale Mode (Compact on mobile) */}
             <div className={`border rounded-2xl p-2 sm:p-3 shadow-xs flex items-center justify-between gap-2 shrink-0 transition ${
               saleMode === 'wholesale'
@@ -1954,7 +1954,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
             </div>
 
             {/* Search & Category Filter Bar */}
-            <div className="bg-white border border-slate-200/90 rounded-2xl p-2.5 sm:p-3 space-y-2 shadow-xs shrink-0">
+            <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2 sm:p-3 space-y-1.5 sm:space-y-2 shadow-xs shrink-0">
               {duplicateScanAlert && (
                 <div className="bg-rose-50 border border-rose-300 text-rose-900 rounded-xl px-3 py-2 flex items-start justify-between gap-2 shadow-xs animate-in fade-in">
                   <div className="flex items-start gap-2 min-w-0">
@@ -1996,7 +1996,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                     }
                   }}
                   placeholder="Scan IMEI / barcode or search product..."
-                  className="w-full pl-8.5 pr-20 sm:pr-24 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white transition h-9 sm:h-10"
+                  className="compact-mobile-input w-full pl-8.5 pr-20 sm:pr-24 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white transition h-8.5 sm:h-10"
                 />
                 <div className="absolute right-1 flex items-center gap-1">
                   {search && (
@@ -2015,7 +2015,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                       setCameraScannerTarget('productSearch');
                       setIsCameraScannerOpen(true);
                     }}
-                    className="px-2 sm:px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-xs flex items-center gap-1 text-[11px] font-extrabold cursor-pointer transition h-7 sm:h-8"
+                    className="px-2 sm:px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-xs flex items-center gap-1 text-[10.5px] sm:text-[11px] font-extrabold cursor-pointer transition h-6.5 sm:h-8"
                     title="Live Camera Barcode & IMEI Scanner"
                   >
                     <Camera className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
@@ -2025,13 +2025,13 @@ const PosTabComponent: React.FC<PosTabProps> = ({
               </div>
 
               <div className="flex items-center justify-between gap-1.5 text-xs w-full max-w-full">
-                <div className="flex-1 min-w-0 flex items-center gap-1 overflow-x-auto scrollbar-thin pb-0.5 pt-0.5 touch-pan-x max-w-full">
+                <div className="flex-1 min-w-0 flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5 touch-pan-x max-w-full">
                   {['ALL', ...categories].map(cat => (
                     <button
                       key={cat}
                       type="button"
                       onClick={() => setSelectedCategory(cat)}
-                      className={`px-2.5 py-1 rounded-xl font-bold text-[11px] sm:text-xs whitespace-nowrap transition shrink-0 cursor-pointer ${
+                      className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg sm:rounded-xl font-bold text-[10px] sm:text-xs whitespace-nowrap transition shrink-0 cursor-pointer h-6.5 sm:h-7.5 inline-flex items-center ${
                         selectedCategory === cat
                           ? 'bg-blue-600 text-white shadow-xs'
                           : 'bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200'
@@ -2044,7 +2044,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                     <select
                       value={selectedCategory}
                       onChange={e => setSelectedCategory(e.target.value)}
-                      className="px-2 py-1 rounded-xl bg-slate-100 text-slate-700 text-[11px] sm:text-xs font-bold border border-slate-200 shrink-0 cursor-pointer outline-none"
+                      className="compact-mobile-input px-2 py-0.5 sm:py-1 rounded-lg sm:rounded-xl bg-slate-100 text-slate-700 text-[10px] sm:text-xs font-bold border border-slate-200 shrink-0 cursor-pointer outline-none h-6.5 sm:h-7.5"
                     >
                       <option value="ALL">All ({categories.length})</option>
                       {categories.map(c => (
@@ -2060,7 +2060,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                   <button
                     type="button"
                     onClick={() => onOpenSalesReturn(null)}
-                    className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-xl text-[10px] sm:text-xs font-bold transition cursor-pointer shrink-0 shadow-xs whitespace-nowrap h-7 sm:h-8"
+                    className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-0.5 sm:py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-bold transition cursor-pointer shrink-0 shadow-xs whitespace-nowrap h-6.5 sm:h-7.5"
                     title="Process Customer Sales Return & Refund"
                   >
                     <RotateCcw className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-700" />
@@ -2071,8 +2071,8 @@ const PosTabComponent: React.FC<PosTabProps> = ({
               </div>
             </div>
 
-            {/* Product Cards Grid - Compact Responsive Daraz Style */}
-            <div ref={productGridRef} className="flex-1 min-h-0 overflow-y-auto pr-1 sm:pr-1.5 scrollbar-thin touch-pan-y space-y-2">
+            {/* Product Cards Grid - Compact 4-Column Horizontal Grid on Mobile */}
+            <div ref={productGridRef} className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto pr-0.5 sm:pr-1.5 space-y-2">
               {/* Recently Scanned IMEI / Barcode Banner */}
               {lastScannedItem && (() => {
                 const scannedObj = activeInventory.find(i => i.id === lastScannedItem.itemId);
@@ -2127,7 +2127,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                   </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-2 sm:gap-3 pb-16 lg:pb-3">
+                <div className="grid grid-cols-4 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-1.5 sm:gap-2.5 pb-16 lg:pb-3">
                   {filteredItems.map(item => {
                     const inCartQtyForItem = cart
                       .filter(c => c.id === item.id)
@@ -2147,7 +2147,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                       <div
                         key={item.id}
                         onClick={() => setSelectedProductDetails(item)}
-                        className={`bg-white border rounded-2xl p-2 sm:p-2.5 shadow-2xs hover:shadow-lg transition-all duration-200 cursor-pointer flex flex-col justify-between group relative ${
+                        className={`bg-white border rounded-xl sm:rounded-2xl p-1.5 sm:p-2.5 shadow-2xs hover:shadow-lg transition-all duration-150 cursor-pointer flex flex-col justify-between group relative min-w-0 ${
                           isLastScanned
                             ? 'border-emerald-500 ring-2 ring-emerald-400/70 bg-emerald-50/15'
                             : remainingStock <= 0
@@ -2155,9 +2155,9 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                             : 'border-slate-200/90 hover:border-blue-500'
                         }`}
                       >
-                        <div>
-                          {/* Daraz / Amazon Style Product Photo Container (Height optimized for mobile preview) */}
-                          <div className="relative w-full h-24 sm:h-36 rounded-xl overflow-hidden bg-slate-50 border border-slate-100 flex items-center justify-center p-1.5 sm:p-2 group-hover:scale-[1.02] transition-transform duration-200">
+                        <div className="min-w-0">
+                          {/* Compact Product Image Frame */}
+                          <div className="relative w-full h-14 sm:h-32 rounded-lg sm:rounded-xl overflow-hidden bg-slate-50 border border-slate-100 flex items-center justify-center p-1 sm:p-1.5 group-hover:scale-[1.02] transition-transform duration-200">
                             {item.image ? (
                               <img
                                 src={item.image}
@@ -2166,20 +2166,20 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                                 loading="lazy"
                               />
                             ) : (
-                              <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-black text-sm sm:text-lg shadow-inner">
+                              <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-black text-xs sm:text-lg shadow-inner">
                                 {item.name.charAt(0).toUpperCase()}
                               </div>
                             )}
 
                             {isLastScanned && (
-                              <span className="absolute top-1.5 left-1.5 text-[8px] sm:text-[9px] font-black px-1.5 py-0.2 rounded-full bg-emerald-600 text-white shadow-xs">
-                                Scanned ✓
+                              <span className="absolute top-1 left-1 text-[7.5px] sm:text-[9px] font-black px-1 py-0.2 rounded-full bg-emerald-600 text-white shadow-xs">
+                                ✓
                               </span>
                             )}
 
                             {/* Remaining Stock Badge */}
                             <span
-                              className={`absolute top-1.5 right-1.5 text-[8px] sm:text-[9px] font-extrabold px-1.5 py-0.2 rounded-full tabular-nums shadow-xs backdrop-blur-xs ${
+                              className={`absolute top-1 right-1 text-[7.5px] sm:text-[9px] font-extrabold px-1 sm:px-1.5 py-0.2 rounded-full tabular-nums shadow-xs backdrop-blur-xs ${
                                 remainingStock > 2
                                   ? 'bg-emerald-500/90 text-white'
                                   : remainingStock > 0
@@ -2187,7 +2187,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                                   : 'bg-rose-500/90 text-white'
                               }`}
                             >
-                              {remainingStock > 0 ? `${remainingStock} left` : 'Out'}
+                              {remainingStock > 0 ? remainingStock : '0'}
                             </span>
 
                             {/* Click for Details Hint on desktop hover */}
@@ -2196,40 +2196,23 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                             </div>
                           </div>
 
-                          {/* Category, RAM/Storage & Color Variants Badge */}
-                          <div className="mt-1.5 flex items-center gap-1 flex-wrap">
-                            <span className="inline-block text-[8px] sm:text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded truncate max-w-[100px]">
-                              {item.category}
-                            </span>
-                            {itemSpecs.slice(0, 1).map((sp, sIdx) => (
-                              <span
-                                key={sIdx}
-                                className="inline-block text-[8px] sm:text-[9px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/70 px-1 py-0.5 rounded"
-                              >
-                                {sp}
-                              </span>
-                            ))}
-                            {item.variants && item.variants.length > 0 && (
-                              <span className="inline-block text-[8px] sm:text-[9px] font-bold text-purple-700 bg-purple-50 border border-purple-200/60 px-1 py-0.5 rounded">
-                                {item.variants.length} {item.variants.length === 1 ? 'Var' : 'Vars'}
-                              </span>
-                            )}
-                          </div>
-
                           {/* Product Title */}
-                          <h4 className="font-extrabold text-slate-900 text-[11px] sm:text-xs line-clamp-2 mt-1 leading-tight group-hover:text-blue-600 transition">
+                          <h4 className="font-extrabold text-slate-900 text-[9.5px] sm:text-xs line-clamp-2 mt-1 sm:mt-1.5 leading-tight group-hover:text-blue-600 transition">
                             {item.name}
                           </h4>
+
+                          {/* Quiet Inline Specs & Category Metadata */}
+                          <p className="text-[8px] sm:text-[9.5px] text-slate-500 font-semibold truncate mt-0.5 leading-tight">
+                            {itemSpecs.length > 0 ? itemSpecs[0] : item.category}
+                            {item.variants && item.variants.length > 1 ? ` · ${item.variants.length}v` : ''}
+                          </p>
                         </div>
 
                         {/* Price & Add to Cart Action */}
-                        <div className="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between gap-1">
+                        <div className="mt-1 sm:mt-2 pt-1 sm:pt-1.5 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-1 min-w-0">
                           <div className="min-w-0">
-                            <span className="text-[8px] sm:text-[9px] text-slate-400 block uppercase font-semibold">
-                              {saleMode === 'wholesale' ? 'W/S' : 'Price'}
-                            </span>
                             <span
-                              className={`tabular-nums font-extrabold text-[11px] sm:text-xs tabular-nums truncate block ${
+                              className={`tabular-nums font-extrabold text-[9px] sm:text-xs truncate block ${
                                 saleMode === 'wholesale' ? 'text-purple-700' : 'text-blue-600'
                               }`}
                             >
@@ -2243,7 +2226,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                                     const minP = Math.min(...varPrices);
                                     const maxP = Math.max(...varPrices);
                                     if (minP !== maxP) {
-                                      return `${currency} ${minP.toLocaleString()} - ${maxP.toLocaleString()}`;
+                                      return `${currency} ${minP.toLocaleString()}+`;
                                     }
                                     return `${currency} ${minP.toLocaleString()}`;
                                   }
@@ -2253,12 +2236,12 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                             </span>
                           </div>
 
-                          <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                          <div className="flex items-center" onClick={e => e.stopPropagation()}>
                             <button
                               type="button"
                               onClick={() => addToCart(item)}
                               disabled={remainingStock <= 0}
-                              className={`px-2 py-1 font-bold rounded-lg text-[10px] sm:text-xs flex items-center gap-0.5 transition cursor-pointer h-7 sm:h-7.5 shrink-0 shadow-2xs ${
+                              className={`w-full sm:w-auto px-1.5 sm:px-2 py-0.5 sm:py-1 font-bold rounded-md sm:rounded-lg text-[9px] sm:text-xs inline-flex items-center justify-center gap-0.5 transition cursor-pointer h-6 sm:h-7.5 shrink-0 shadow-2xs ${
                                 remainingStock <= 0
                                   ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
                                   : saleMode === 'wholesale'
@@ -2267,7 +2250,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                               }`}
                               title="Add directly to bill"
                             >
-                              <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                              <Plus className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" />
                               <span>Add</span>
                             </button>
                           </div>
@@ -2344,26 +2327,26 @@ const PosTabComponent: React.FC<PosTabProps> = ({
         </div>
       ) : (
         /* ================= HISTORY SUB-TAB VIEW ================= */
-        <div className="space-y-6 flex-1 min-h-0 overflow-y-auto pr-1 pb-6 scrollbar-thin">
+        <div className="space-y-3 sm:space-y-5 lg:flex-1 lg:min-h-0 lg:overflow-y-auto pr-0.5 pb-12 lg:pb-6">
           {/* Filters & Actions Control Bar */}
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-2.5 sm:p-4 shadow-xs space-y-2.5 sm:space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 sm:gap-4">
               {/* Intelligent Search Input */}
               <div className="md:col-span-6 relative flex items-center">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
                   value={historySearch}
                   onChange={e => setHistorySearch(e.target.value)}
-                  placeholder="Scan invoice barcode, IMEI, customer name..."
-                  className="w-full pl-9 pr-24 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[44px]"
+                  placeholder="Scan invoice, IMEI, customer name..."
+                  className="compact-mobile-input w-full pl-8.5 pr-20 sm:pr-24 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white transition h-8.5 sm:h-10"
                 />
-                <div className="absolute right-1.5 flex items-center gap-1">
+                <div className="absolute right-1 flex items-center gap-1">
                   {historySearch && (
                     <button
                       type="button"
                       onClick={() => setHistorySearch('')}
-                      className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                      className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
                       title="Clear search"
                     >
                       <X className="w-3.5 h-3.5" />
@@ -2375,23 +2358,23 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                       setCameraScannerTarget('historySearch');
                       setIsCameraScannerOpen(true);
                     }}
-                    className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-xs flex items-center gap-1 text-[11px] font-extrabold cursor-pointer transition min-h-[36px]"
+                    className="px-2 sm:px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-xs flex items-center gap-1 text-[10.5px] sm:text-[11px] font-extrabold cursor-pointer transition h-6.5 sm:h-8"
                     title="Live Camera Barcode Scanner"
                   >
-                    <Camera className="w-3.5 h-3.5" />
+                    <Camera className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                     <span>Scan</span>
                   </button>
                 </div>
               </div>
 
               {/* Range Selector Buttons */}
-              <div className="md:col-span-6 flex flex-wrap gap-1.5 items-center justify-start md:justify-end">
+              <div className="md:col-span-6 flex items-center gap-1 overflow-x-auto no-scrollbar justify-start md:justify-end">
                 {(['today', 'weekly', 'monthly', 'yearly', 'custom'] as const).map(range => (
                   <button
                     key={range}
                     type="button"
                     onClick={() => setHistoryRange(range)}
-                    className={`px-3 py-2 rounded-lg text-xs font-extrabold uppercase tracking-wider transition cursor-pointer ${
+                    className={`px-2 sm:px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-extrabold uppercase tracking-wider transition cursor-pointer shrink-0 h-7 sm:h-8 inline-flex items-center ${
                       historyRange === range
                         ? 'bg-blue-600 text-white shadow-xs'
                         : 'bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
@@ -2405,94 +2388,94 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
             {/* Custom Specific Date Range Selectors */}
             {historyRange === 'custom' && (
-              <div className="flex flex-wrap items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200/60 text-xs">
-                <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-4 bg-slate-50 p-2.5 sm:p-3.5 rounded-xl border border-slate-200/60 text-xs">
+                <div className="flex items-center gap-1.5">
                   <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">From:</span>
                   <input
                     type="date"
                     value={historyStartDate}
                     onChange={e => setHistoryStartDate(e.target.value)}
-                    className="bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-semibold text-slate-700 focus:outline-none focus:border-blue-600"
+                    className="compact-mobile-input bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-semibold text-slate-700 focus:outline-none focus:border-blue-600"
                   />
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">To:</span>
                   <input
                     type="date"
                     value={historyEndDate}
                     onChange={e => setHistoryEndDate(e.target.value)}
-                    className="bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-semibold text-slate-700 focus:outline-none focus:border-blue-600"
+                    className="compact-mobile-input bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-semibold text-slate-700 focus:outline-none focus:border-blue-600"
                   />
                 </div>
               </div>
             )}
 
             {/* Print and WhatsApp Share Actions for Filters */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100">
-              <p className="text-xs text-slate-500 font-medium">
-                Showing <strong className="text-slate-800">{filteredSales.length}</strong> invoices matching filter criteria.
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+              <p className="text-[11px] sm:text-xs text-slate-500 font-medium">
+                Showing <strong className="text-slate-800">{filteredSales.length}</strong> invoices
               </p>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <button
                   type="button"
                   onClick={handlePrintHistoryReport}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs"
+                  className="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold transition cursor-pointer h-7.5 sm:h-8.5"
                 >
-                  <Printer className="w-3.5 h-3.5" />
+                  <Printer className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                   <span>Print Report</span>
                 </button>
                 <button
                   type="button"
                   onClick={handleShareHistoryReport}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs"
+                  className="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold transition cursor-pointer h-7.5 sm:h-8.5"
                 >
-                  <Share2 className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Share Report on WhatsApp</span>
+                  <Share2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-600" />
+                  <span>WhatsApp</span>
                 </button>
               </div>
             </div>
           </div>
 
           {/* Quick Net Metrics Summary */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
-            <div className="bg-white border border-slate-200/80 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-2xs flex flex-col justify-between">
-              <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider line-clamp-1">Net Sales Volume</p>
-              <p className="text-sm sm:text-xl font-extrabold tabular-nums text-blue-600 mt-0.5 sm:mt-1 truncate">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3.5">
+            <div className="bg-white border border-slate-200/80 rounded-xl sm:rounded-2xl p-2 sm:p-3.5 shadow-2xs flex flex-col justify-between">
+              <p className="text-[9.5px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider line-clamp-1">Net Sales Volume</p>
+              <p className="text-xs sm:text-lg font-extrabold tabular-nums text-blue-600 mt-0.5 truncate">
                 {currency} {stats.netRevenue.toLocaleString()}
               </p>
-              <p className="text-[10px] text-slate-500 mt-0.5 sm:mt-1 font-semibold truncate">{stats.totalInvoices} active bills</p>
+              <p className="text-[9.5px] sm:text-[10px] text-slate-500 mt-0.5 font-semibold truncate">{stats.totalInvoices} active bills</p>
             </div>
 
-            <div className="bg-white border border-slate-200/80 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-2xs flex flex-col justify-between">
-              <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider line-clamp-1">Credit Receivables</p>
-              <p className="text-sm sm:text-xl font-extrabold tabular-nums text-purple-600 mt-0.5 sm:mt-1 truncate">
+            <div className="bg-white border border-slate-200/80 rounded-xl sm:rounded-2xl p-2 sm:p-3.5 shadow-2xs flex flex-col justify-between">
+              <p className="text-[9.5px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider line-clamp-1">Credit Receivables</p>
+              <p className="text-xs sm:text-lg font-extrabold tabular-nums text-purple-600 mt-0.5 truncate">
                 {currency} {stats.totalCredit.toLocaleString()}
               </p>
-              <p className="text-[10px] text-slate-500 mt-0.5 sm:mt-1 font-semibold truncate">balance due</p>
+              <p className="text-[9.5px] sm:text-[10px] text-slate-500 mt-0.5 font-semibold truncate">balance due</p>
             </div>
 
-            <div className="bg-white border border-slate-200/80 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-2xs flex flex-col justify-between">
-              <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider line-clamp-1">Cancelled Bills</p>
-              <p className="text-sm sm:text-xl font-extrabold tabular-nums text-rose-600 mt-0.5 sm:mt-1 truncate">
+            <div className="bg-white border border-slate-200/80 rounded-xl sm:rounded-2xl p-2 sm:p-3.5 shadow-2xs flex flex-col justify-between">
+              <p className="text-[9.5px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider line-clamp-1">Cancelled Bills</p>
+              <p className="text-xs sm:text-lg font-extrabold tabular-nums text-rose-600 mt-0.5 truncate">
                 {stats.cancelledCount} Bills
               </p>
-              <p className="text-[10px] text-slate-500 mt-0.5 sm:mt-1 font-semibold truncate">Void: {currency} {stats.cancelledSum.toLocaleString()}</p>
+              <p className="text-[9.5px] sm:text-[10px] text-slate-500 mt-0.5 font-semibold truncate">Void: {currency} {stats.cancelledSum.toLocaleString()}</p>
             </div>
 
-            <div className="bg-white border border-slate-200/80 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-2xs flex flex-col justify-between">
-              <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider line-clamp-1">Total Invoices</p>
-              <p className="text-sm sm:text-xl font-extrabold tabular-nums text-slate-900 mt-0.5 sm:mt-1 truncate">
+            <div className="bg-white border border-slate-200/80 rounded-xl sm:rounded-2xl p-2 sm:p-3.5 shadow-2xs flex flex-col justify-between">
+              <p className="text-[9.5px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider line-clamp-1">Total Invoices</p>
+              <p className="text-xs sm:text-lg font-extrabold tabular-nums text-slate-900 mt-0.5 truncate">
                 {filteredSales.length} Bills
               </p>
-              <p className="text-[10px] text-slate-500 mt-0.5 sm:mt-1 font-semibold truncate">all records</p>
+              <p className="text-[9.5px] sm:text-[10px] text-slate-500 mt-0.5 font-semibold truncate">all records</p>
             </div>
           </div>
 
           {/* Historical Invoices List */}
-          <div className="space-y-3">
+          <div className="space-y-2 sm:space-y-3">
             {filteredSales.length === 0 ? (
-              <div className="text-center py-20 bg-white rounded-3xl border border-slate-200 text-xs text-slate-400 space-y-2">
-                <FileText className="w-12 h-12 mx-auto text-slate-300" />
+              <div className="text-center py-12 bg-white rounded-2xl border border-slate-200 text-xs text-slate-400 space-y-2">
+                <FileText className="w-10 h-10 mx-auto text-slate-300" />
                 <p className="font-bold text-slate-600">No matching sales records found</p>
                 <p className="text-slate-400 max-w-xs mx-auto">Try typing another query or selecting a different date range filter above.</p>
               </div>
@@ -2502,7 +2485,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                 return (
                   <div
                     key={sale.invNo}
-                    className={`bg-white border rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 transition hover:shadow-xs ${
+                    className={`bg-white border rounded-xl sm:rounded-2xl p-2.5 sm:p-4 flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-4 transition hover:shadow-xs ${
                       isCancelled 
                         ? 'border-red-100 bg-red-50/20' 
                         : sale.invoiceType === 'credit'
@@ -2511,73 +2494,68 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                     }`}
                   >
                     {/* Left Info Column */}
-                    <div className="space-y-2.5 min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-black text-slate-900 text-sm tabular-nums tracking-wider">
+                    <div className="space-y-1.5 min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="font-black text-slate-900 text-xs sm:text-sm tabular-nums tracking-wider">
                           #{sale.invNo}
                         </span>
                         
                         {/* Status Badges */}
                         {isCancelled ? (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-100 text-rose-700 border border-rose-200">
-                            CANCELLED / VOID
+                          <span className="text-[9px] sm:text-[10px] font-bold px-1.5 py-0.2 rounded bg-rose-100 text-rose-700 border border-rose-200">
+                            VOID
                           </span>
                         ) : sale.invoiceType === 'credit' ? (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-100 text-purple-700 border border-purple-200">
-                            CREDIT / KHATA
+                          <span className="text-[9px] sm:text-[10px] font-bold px-1.5 py-0.2 rounded bg-purple-100 text-purple-700 border border-purple-200">
+                            CREDIT
                           </span>
                         ) : (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-200">
-                            CASH COMPLETED
+                          <span className="text-[9px] sm:text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-700 border border-emerald-200">
+                            CASH
                           </span>
                         )}
 
-                        <span className="text-[11px] font-semibold text-slate-400 tabular-nums">
-                          {new Date(sale.date).toLocaleString()}
+                        <span className="text-[10px] sm:text-[11px] font-semibold text-slate-400 tabular-nums">
+                          {new Date(sale.date).toLocaleDateString()} {new Date(sale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
 
                       {/* Customer Info */}
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] sm:text-xs">
                         <p className="font-bold text-slate-800">
-                          Customer: <span className="font-extrabold text-blue-600">{sale.custName}</span>
+                          <span className="font-extrabold text-blue-600">{sale.custName}</span>
                         </p>
                         {sale.custPhone && (
-                          <p className="text-slate-500 tabular-nums">
-                            Phone: <span className="font-bold text-slate-700">{sale.custPhone}</span>
-                          </p>
+                          <p className="text-slate-500 tabular-nums">{sale.custPhone}</p>
                         )}
-                        <span className="text-slate-300">|</span>
-                        <p className="text-slate-500">
-                          Channel: <span className="font-bold text-slate-700">{sale.paymentMethod}</span>
-                        </p>
+                        <span className="text-slate-300">•</span>
+                        <p className="text-slate-500 font-semibold">{sale.paymentMethod}</p>
                       </div>
 
                       {/* Sold items view with Barcodes and IMEIs */}
-                      <div className="bg-slate-50/80 border border-slate-100 p-3 rounded-xl space-y-1.5 max-w-2xl">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Items Sold:</p>
+                      <div className="bg-slate-50/80 border border-slate-100 p-2 sm:p-2.5 rounded-lg sm:rounded-xl space-y-1 max-w-2xl">
                         <div className="divide-y divide-slate-100">
                           {sale.items.map((it, idx) => (
-                            <div key={idx} className="py-1 text-xs flex flex-wrap items-center justify-between gap-2">
+                            <div key={idx} className="py-0.5 text-[11px] sm:text-xs flex flex-wrap items-center justify-between gap-1.5">
                               <div className="flex items-center gap-1.5 min-w-0">
-                                <span className="font-extrabold text-slate-800 truncate">{it.name}</span>
-                                <span className="font-semibold text-slate-400 text-[11px]">x{it.qty}</span>
+                                <span className="font-bold text-slate-800 truncate">{it.name}</span>
+                                <span className="font-semibold text-slate-400 text-[10px]">x{it.qty}</span>
                               </div>
                               <div className="flex flex-wrap items-center gap-1">
                                 {it.barcode && (
-                                  <span className="text-[9px] tabular-nums font-bold bg-slate-200/70 text-slate-600 px-1.5 py-0.5 rounded border border-slate-300/30">
-                                    Barcode: {it.barcode}
+                                  <span className="text-[9px] tabular-nums font-bold bg-slate-200/70 text-slate-600 px-1 py-0.2 rounded">
+                                    #{it.barcode}
                                   </span>
                                 )}
                                 {it.imeis && it.imeis.length > 0 ? (
                                   it.imeis.map((im, uIdx) => (
-                                    <span key={uIdx} className="text-[9px] tabular-nums font-bold bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200">
-                                      IMEI: {im}
+                                    <span key={uIdx} className="text-[9px] tabular-nums font-bold bg-blue-50 text-blue-700 px-1 py-0.2 rounded border border-blue-200">
+                                      {im}
                                     </span>
                                   ))
                                 ) : it.imei ? (
-                                  <span className="text-[9px] tabular-nums font-bold bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200">
-                                    IMEI: {it.imei}
+                                  <span className="text-[9px] tabular-nums font-bold bg-blue-50 text-blue-700 px-1 py-0.2 rounded border border-blue-200">
+                                    {it.imei}
                                   </span>
                                 ) : null}
                               </div>
@@ -2590,31 +2568,30 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                       {sale.notes && (
                         <p
                           dir="auto"
-                          className={`text-xs px-3 py-1.5 rounded-xl font-medium border ${
+                          className={`text-[11px] px-2.5 py-1 rounded-lg font-medium border ${
                             isCancelled
                               ? 'text-rose-700 bg-rose-50 border-rose-100'
                               : 'text-slate-800 bg-amber-50 border-amber-200/80'
                           }`}
                         >
-                          <strong>{isCancelled ? 'Log Notes:' : 'Bill Note:'}</strong> {sale.notes}
+                          <strong>{isCancelled ? 'Note:' : 'Note:'}</strong> {sale.notes}
                         </p>
                       )}
                     </div>
 
                     {/* Right Price & Actions Column */}
-                    <div className="flex flex-col items-end gap-3 shrink-0 self-start md:self-center">
-                      <div className="text-right">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Grand Total</p>
-                        <p className="text-xl font-black tabular-nums text-slate-900 leading-none mt-1">
+                    <div className="flex flex-row md:flex-col items-center md:items-end justify-between gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
+                      <div className="text-left md:text-right">
+                        <p className="text-[15px] sm:text-lg font-black tabular-nums text-slate-900 leading-none">
                           {currency} {sale.grandTotal.toLocaleString()}
                         </p>
                         {sale.invoiceType === 'credit' && (
-                          <div className="mt-1 flex flex-col text-right">
-                            <span className="text-[10px] text-emerald-600 font-bold tabular-nums">
-                              Paid: {currency} {(sale.amountPaid || 0).toLocaleString()}
+                          <div className="mt-0.5 flex items-center md:justify-end gap-2 text-[10px] tabular-nums font-bold">
+                            <span className="text-emerald-600">
+                              Pd: {currency} {(sale.amountPaid || 0).toLocaleString()}
                             </span>
                             {sale.amountDue && sale.amountDue > 0 ? (
-                              <span className="text-[10px] text-rose-600 font-bold tabular-nums">
+                              <span className="text-rose-600">
                                 Due: {currency} {sale.amountDue.toLocaleString()}
                               </span>
                             ) : null}
@@ -2622,12 +2599,12 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                         )}
                       </div>
 
-                      {/* Actions */}
-                      <div className="flex flex-wrap items-center justify-end gap-1.5">
+                      {/* Compact Actions */}
+                      <div className="flex items-center gap-1">
                         <button
                           type="button"
                           onClick={() => onViewReceipt(sale)}
-                          className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition cursor-pointer"
+                          className="h-7.5 w-7.5 sm:h-8 sm:w-8 inline-flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition cursor-pointer"
                           title="Print Invoice Bill"
                         >
                           <Printer className="w-3.5 h-3.5" />
@@ -2636,7 +2613,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                         <button
                           type="button"
                           onClick={() => handleShareWhatsapp(sale)}
-                          className="p-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg transition cursor-pointer"
+                          className="h-7.5 w-7.5 sm:h-8 sm:w-8 inline-flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg transition cursor-pointer"
                           title="Share Invoice on WhatsApp"
                         >
                           <Share2 className="w-3.5 h-3.5 text-emerald-600" />
@@ -2646,7 +2623,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                           <button
                             type="button"
                             onClick={() => handleOpenEditModal(sale)}
-                            className="p-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition cursor-pointer"
+                            className="h-7.5 w-7.5 sm:h-8 sm:w-8 inline-flex items-center justify-center bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition cursor-pointer"
                             title="Edit Invoice (Modify items or details)"
                           >
                             <Edit className="w-3.5 h-3.5" />
@@ -2656,7 +2633,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                         <button
                           type="button"
                           onClick={() => handleOpenDeleteModal(sale)}
-                          className={`p-2 rounded-lg transition cursor-pointer ${
+                          className={`h-7.5 w-7.5 sm:h-8 sm:w-8 inline-flex items-center justify-center rounded-lg transition cursor-pointer ${
                             isCancelled
                               ? 'bg-rose-100 hover:bg-rose-200 text-rose-800'
                               : 'bg-rose-50 hover:bg-rose-100 text-rose-700'

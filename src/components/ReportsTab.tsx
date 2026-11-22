@@ -388,63 +388,59 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3.5 sm:space-y-5">
       {/* Top Header */}
-      <div className="border-b border-slate-200 dark:border-neutral-800 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="border-b border-slate-200 dark:border-neutral-800 pb-2.5 sm:pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div>
-          <h2 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-            <PieChart className="w-5 h-5 text-blue-600" /> Comprehensive Business Reports
+          <h2 className="text-base sm:text-xl font-extrabold text-slate-900 dark:text-white tracking-tight flex items-center gap-1.5 sm:gap-2">
+            <PieChart className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" /> Business Reports
           </h2>
         </div>
 
-        <div className="text-right">
-          <span className="text-[11px] font-bold px-3 py-1 bg-blue-50 dark:bg-neutral-800 text-blue-700 dark:text-blue-400 rounded-full border border-blue-200 dark:border-neutral-700">
+        <div className="text-left sm:text-right">
+          <span className="text-[10px] font-bold px-2.5 py-0.5 bg-blue-50 dark:bg-neutral-800 text-blue-700 dark:text-blue-400 rounded-full border border-blue-200 dark:border-neutral-700">
             Created by HAMMAD RAZA DEVELOPMENT
           </span>
         </div>
       </div>
 
       {/* UNIVERSAL DATE RANGE FILTER TOOLBAR */}
-      <div className="bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-2xl p-3.5 shadow-xs space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-neutral-800 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-              <Calendar className="w-4 h-4" />
+      <div className="bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-xl sm:rounded-2xl p-2.5 sm:p-3.5 shadow-xs space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5">
+            <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-blue-50 dark:bg-neutral-800 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+              <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
-            <div>
-              <span className="font-extrabold text-xs text-slate-900 dark:text-white uppercase tracking-wide">
-                Date Range Filter
-              </span>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-bold px-2.5 py-1 bg-blue-50 dark:bg-neutral-800 text-blue-700 dark:text-blue-300 rounded-lg border border-blue-200 dark:border-neutral-700">
-              Active: {dateFilterMode === 'today' && 'Today'}
-              {dateFilterMode === 'week' && 'This Week'}
-              {dateFilterMode === 'month' && 'This Month'}
-              {dateFilterMode === '6month' && 'Last 6 Months'}
-              {dateFilterMode === 'year' && 'This Year'}
-              {dateFilterMode === 'custom' && 'Specific Date Range'}
-              {dateFilterMode === 'all' && 'All Time'}
+            <span className="font-extrabold text-[11px] sm:text-xs text-slate-900 dark:text-white uppercase tracking-wide">
+              Date Range
             </span>
           </div>
+          <span className="text-[10px] sm:text-[11px] font-bold px-2 py-0.5 bg-blue-50 dark:bg-neutral-800 text-blue-700 dark:text-blue-300 rounded-lg border border-blue-200 dark:border-neutral-700">
+            Active: {dateFilterMode === 'today' && 'Today'}
+            {dateFilterMode === 'week' && 'This Week'}
+            {dateFilterMode === 'month' && 'This Month'}
+            {dateFilterMode === '6month' && 'Last 6 Months'}
+            {dateFilterMode === 'year' && 'This Year'}
+            {dateFilterMode === 'custom' && 'Custom Date'}
+            {dateFilterMode === 'all' && 'All Time'}
+          </span>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5 text-xs pt-1">
+        <div className="no-scrollbar flex items-center gap-1.5 text-xs overflow-x-auto max-w-full">
           {[
             { id: 'today', label: 'Today' },
-            { id: 'week', label: 'This Week' },
-            { id: 'month', label: 'This Month' },
+            { id: 'week', label: 'Week' },
+            { id: 'month', label: 'Month' },
             { id: '6month', label: '6 Months' },
-            { id: 'year', label: 'This Year' },
-            { id: 'custom', label: 'Custom Date Range' },
+            { id: 'year', label: 'Year' },
+            { id: 'custom', label: 'Custom' },
             { id: 'all', label: 'All Time' },
           ].map(opt => (
             <button
               key={opt.id}
               type="button"
               onClick={() => setDateFilterMode(opt.id as DateFilterMode)}
-              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer ${
+              className={`px-2.5 py-1 rounded-lg sm:rounded-xl font-bold text-[11px] sm:text-xs transition cursor-pointer shrink-0 whitespace-nowrap ${
                 dateFilterMode === opt.id
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-neutral-300 hover:bg-slate-200 dark:hover:bg-neutral-700'
@@ -456,23 +452,23 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
         </div>
 
         {dateFilterMode === 'custom' && (
-          <div className="pt-2.5 border-t border-slate-100 dark:border-neutral-800 flex flex-wrap items-center gap-3 text-xs animate-in fade-in">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-slate-600 dark:text-neutral-400">From (Kahan se):</span>
+          <div className="pt-2 border-t border-slate-100 dark:border-neutral-800 flex flex-wrap items-center gap-2 text-xs animate-in fade-in">
+            <div className="flex items-center gap-1.5">
+              <span className="font-bold text-slate-600 dark:text-neutral-400 text-[11px]">From:</span>
               <input
                 type="date"
                 value={customStartDate}
                 onChange={e => setCustomStartDate(e.target.value)}
-                className="bg-slate-50 dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 text-slate-900 dark:text-white rounded-lg px-2.5 py-1 text-xs font-semibold outline-none focus:border-blue-600 cursor-pointer"
+                className="compact-mobile-input bg-slate-50 dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 text-slate-900 dark:text-white rounded-lg px-2 py-1 text-[11px] font-semibold outline-none focus:border-blue-600 cursor-pointer h-7.5"
               />
             </div>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-slate-600 dark:text-neutral-400">To (Kahan tak):</span>
+            <div className="flex items-center gap-1.5">
+              <span className="font-bold text-slate-600 dark:text-neutral-400 text-[11px]">To:</span>
               <input
                 type="date"
                 value={customEndDate}
                 onChange={e => setCustomEndDate(e.target.value)}
-                className="bg-slate-50 dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 text-slate-900 dark:text-white rounded-lg px-2.5 py-1 text-xs font-semibold outline-none focus:border-blue-600 cursor-pointer"
+                className="compact-mobile-input bg-slate-50 dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 text-slate-900 dark:text-white rounded-lg px-2 py-1 text-[11px] font-semibold outline-none focus:border-blue-600 cursor-pointer h-7.5"
               />
             </div>
             {(customStartDate || customEndDate) && (
@@ -484,7 +480,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                 }}
                 className="text-[11px] text-rose-600 hover:underline font-bold cursor-pointer"
               >
-                Clear Dates
+                Clear
               </button>
             )}
           </div>
@@ -492,39 +488,39 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
       </div>
 
       {/* Top 5 Quick Summary KPI Cards */}
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5 sm:gap-4">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 sm:gap-3.5">
         {/* Sales Revenue */}
         <div
           onClick={() => setActiveReportModal('sales')}
-          className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs cursor-pointer hover:border-blue-500 hover:shadow-md transition flex flex-col justify-between"
+          className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl sm:rounded-2xl p-2 sm:p-3.5 shadow-xs cursor-pointer hover:border-blue-500 hover:shadow-md transition flex flex-col justify-between"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 line-clamp-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 line-clamp-1">
               Sales Revenue
             </span>
-            <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 shrink-0" />
+            <Eye className="w-3.5 h-3.5 text-blue-600 shrink-0" />
           </div>
-          <h3 className="text-sm sm:text-xl font-extrabold text-slate-900 dark:text-white tabular-nums mt-0.5 sm:mt-1 truncate">
+          <h3 className="text-sm sm:text-xl font-extrabold text-slate-900 dark:text-white tabular-nums mt-0.5 truncate">
             {currency} {totalSalesRevenue.toLocaleString()}
           </h3>
-          <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">{filteredSales.length} Invoices</p>
+          <p className="text-[10px] sm:text-xs text-slate-400 truncate">{filteredSales.length} Invoices</p>
         </div>
 
         {/* Wholesale B2B Sales */}
         <div
           onClick={() => setActiveReportModal('wholesale')}
-          className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs cursor-pointer hover:border-purple-500 hover:shadow-md transition flex flex-col justify-between"
+          className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl sm:rounded-2xl p-2 sm:p-3.5 shadow-xs cursor-pointer hover:border-purple-500 hover:shadow-md transition flex flex-col justify-between"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400 line-clamp-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400 line-clamp-1">
               Wholesale B2B
             </span>
-            <Store className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-600 shrink-0" />
+            <Store className="w-3.5 h-3.5 text-purple-600 shrink-0" />
           </div>
-          <h3 className="text-sm sm:text-xl font-extrabold text-purple-700 dark:text-purple-400 tabular-nums mt-0.5 sm:mt-1 truncate">
+          <h3 className="text-sm sm:text-xl font-extrabold text-purple-700 dark:text-purple-400 tabular-nums mt-0.5 truncate">
             {currency} {totalWholesaleRevenue.toLocaleString()}
           </h3>
-          <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">{wholesaleSales.length} Invoices</p>
+          <p className="text-[10px] sm:text-xs text-slate-400 truncate">{wholesaleSales.length} Invoices</p>
         </div>
 
         {/* Net Profit */}
@@ -536,26 +532,26 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
             }
             setActiveReportModal('pnl');
           }}
-          className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs cursor-pointer hover:border-emerald-500 hover:shadow-md transition flex flex-col justify-between"
+          className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl sm:rounded-2xl p-2 sm:p-3.5 shadow-xs cursor-pointer hover:border-emerald-500 hover:shadow-md transition flex flex-col justify-between"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 line-clamp-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 line-clamp-1">
               Net Profit
             </span>
-            <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 shrink-0" />
+            <Eye className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
           </div>
           {data.currentRole === 'salesman' ? (
-            <span className="text-[10px] sm:text-xs font-bold text-slate-400 block mt-1">Restricted</span>
+            <span className="text-[10px] sm:text-xs font-bold text-slate-400 block mt-0.5">Restricted</span>
           ) : (
             <>
               <h3
-                className={`text-sm sm:text-xl font-extrabold tabular-nums mt-0.5 sm:mt-1 truncate ${
+                className={`text-sm sm:text-xl font-extrabold tabular-nums mt-0.5 truncate ${
                   netProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600'
                 }`}
               >
                 {currency} {netProfit.toLocaleString()}
               </h3>
-              <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">Margin: {netMarginPercent}%</p>
+              <p className="text-[10px] sm:text-xs text-slate-400 truncate">Margin: {netMarginPercent}%</p>
             </>
           )}
         </div>
@@ -563,305 +559,305 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
         {/* Expenses */}
         <div
           onClick={() => setActiveReportModal('expenses')}
-          className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs cursor-pointer hover:border-rose-500 hover:shadow-md transition flex flex-col justify-between"
+          className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl sm:rounded-2xl p-2 sm:p-3.5 shadow-xs cursor-pointer hover:border-rose-500 hover:shadow-md transition flex flex-col justify-between"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 line-clamp-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 line-clamp-1">
               Total Expenses
             </span>
-            <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-600 shrink-0" />
+            <Eye className="w-3.5 h-3.5 text-rose-600 shrink-0" />
           </div>
-          <h3 className="text-sm sm:text-xl font-extrabold text-rose-600 dark:text-rose-400 tabular-nums mt-0.5 sm:mt-1 truncate">
+          <h3 className="text-sm sm:text-xl font-extrabold text-rose-600 dark:text-rose-400 tabular-nums mt-0.5 truncate">
             {currency} {totalExpenses.toLocaleString()}
           </h3>
-          <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">{filteredExpenses.length} Records</p>
+          <p className="text-[10px] sm:text-xs text-slate-400 truncate">{filteredExpenses.length} Records</p>
         </div>
 
         {/* Stock Valuation */}
         <div
           onClick={() => setActiveReportModal('inventory')}
-          className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs cursor-pointer hover:border-indigo-500 hover:shadow-md transition flex flex-col justify-between col-span-2 sm:col-span-1"
+          className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl sm:rounded-2xl p-2 sm:p-3.5 shadow-xs cursor-pointer hover:border-indigo-500 hover:shadow-md transition flex flex-col justify-between col-span-2 sm:col-span-1"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 line-clamp-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 line-clamp-1">
               Stock Value
             </span>
-            <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600 shrink-0" />
+            <Eye className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
           </div>
-          <h3 className="text-sm sm:text-xl font-extrabold text-slate-900 dark:text-white tabular-nums mt-0.5 sm:mt-1 truncate">
+          <h3 className="text-sm sm:text-xl font-extrabold text-slate-900 dark:text-white tabular-nums mt-0.5 truncate">
             {currency} {stockValuationCost.toLocaleString()}
           </h3>
-          <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">{totalStockUnits} Units in stock</p>
+          <p className="text-[10px] sm:text-xs text-slate-400 truncate">{totalStockUnits} Units in stock</p>
         </div>
       </div>
 
       {/* ALL DETAIL REPORT CARDS SUITE */}
       <div>
-        <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-2">
+        <h3 className="text-[11px] sm:text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-1.5 sm:mb-2">
           Available Detail Reports
         </h3>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1.5 sm:gap-2">
           {/* WHOLESALE & RETAILER B2B REPORT CARD */}
           <div
             onClick={() => setActiveReportModal('wholesale')}
-            className="bg-white dark:bg-neutral-900 border border-purple-300 dark:border-purple-800 rounded-xl p-2.5 shadow-xs hover:border-purple-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between relative overflow-hidden"
+            className="bg-white dark:bg-neutral-900 border border-purple-300 dark:border-purple-800 rounded-xl p-2 sm:p-2.5 shadow-xs hover:border-purple-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between relative overflow-hidden"
           >
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between gap-1.5">
-                <div className="w-7 h-7 rounded-lg bg-purple-50 dark:bg-purple-950 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-1">
+                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-purple-50 dark:bg-purple-950 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
                   <Store className="w-3.5 h-3.5" />
                 </div>
-                <span className="text-[9px] font-extrabold px-1.5 py-0.5 bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 rounded-md">
+                <span className="text-[9px] font-extrabold px-1.5 py-0.2 bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 rounded">
                   B2B
                 </span>
               </div>
               <div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-xs leading-tight line-clamp-1">
-                  Wholesale & Retailer B2B
+                <h4 className="font-bold text-slate-900 dark:text-white text-[11px] sm:text-xs leading-tight line-clamp-1">
+                  Wholesale B2B
                 </h4>
-                <p className="text-[10px] text-slate-500 dark:text-neutral-400 mt-0.5 leading-snug line-clamp-2">
-                  Retailer sales, wholesale cost, profit & discounts
+                <p className="text-[9.5px] sm:text-[10px] text-slate-500 dark:text-neutral-400 mt-0.5 leading-snug line-clamp-1">
+                  Retailer sales, cost, profit
                 </p>
               </div>
             </div>
-            <div className="mt-2 pt-1.5 border-t border-purple-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-purple-600 dark:text-purple-400">
-              <span className="truncate">{wholesaleSales.length} Wholesale Invoices</span>
-              <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
+            <div className="mt-1.5 pt-1 border-t border-purple-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-purple-600 dark:text-purple-400">
+              <span className="truncate">{wholesaleSales.length} Invoices</span>
+              <ArrowUpRight className="w-3 h-3 shrink-0" />
             </div>
           </div>
 
           {/* 1. Sales Report Card */}
           <div
             onClick={() => setActiveReportModal('sales')}
-            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2.5 shadow-xs hover:border-blue-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
+            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2 sm:p-2.5 shadow-xs hover:border-blue-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
           >
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5">
+                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
                   <ShoppingBag className="w-3.5 h-3.5" />
                 </div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-xs leading-tight line-clamp-1">
+                <h4 className="font-bold text-slate-900 dark:text-white text-[11px] sm:text-xs leading-tight line-clamp-1">
                   Sales & Invoices
                 </h4>
               </div>
-              <p className="text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-2">
-                Itemized sales, customer invoices, cash vs credit split
+              <p className="text-[9.5px] sm:text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-1">
+                Itemized sales & invoices
               </p>
             </div>
-            <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-blue-600 dark:text-blue-400">
+            <div className="mt-1.5 pt-1 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-blue-600 dark:text-blue-400">
               <span>View Report</span>
-              <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
+              <ArrowUpRight className="w-3 h-3 shrink-0" />
             </div>
           </div>
 
           {/* 2. Daily Expenses Report Card */}
           <div
             onClick={() => setActiveReportModal('expenses')}
-            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2.5 shadow-xs hover:border-rose-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
+            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2 sm:p-2.5 shadow-xs hover:border-rose-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
           >
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5">
+                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
                   <Receipt className="w-3.5 h-3.5" />
                 </div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-xs leading-tight line-clamp-1">
+                <h4 className="font-bold text-slate-900 dark:text-white text-[11px] sm:text-xs leading-tight line-clamp-1">
                   Daily Expenses
                 </h4>
               </div>
-              <p className="text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-2">
-                Expenditure log by date, category & payment channel
+              <p className="text-[9.5px] sm:text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-1">
+                Expenditure log by category
               </p>
             </div>
-            <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-rose-600 dark:text-rose-400">
+            <div className="mt-1.5 pt-1 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-rose-600 dark:text-rose-400">
               <span>View Report</span>
-              <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
+              <ArrowUpRight className="w-3 h-3 shrink-0" />
             </div>
           </div>
 
           {/* 3. Inventory Stock Valuation Card */}
           <div
             onClick={() => setActiveReportModal('inventory')}
-            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2.5 shadow-xs hover:border-indigo-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
+            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2 sm:p-2.5 shadow-xs hover:border-indigo-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
           >
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5">
+                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
                   <Package className="w-3.5 h-3.5" />
                 </div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-xs leading-tight line-clamp-1">
-                  Inventory & Valuation
+                <h4 className="font-bold text-slate-900 dark:text-white text-[11px] sm:text-xs leading-tight line-clamp-1">
+                  Inventory Value
                 </h4>
               </div>
-              <p className="text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-2">
-                Stock levels, cost value, retail value & low stock alerts
+              <p className="text-[9.5px] sm:text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-1">
+                Stock levels, cost & retail
               </p>
             </div>
-            <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+            <div className="mt-1.5 pt-1 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
               <span>View Report</span>
-              <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
+              <ArrowUpRight className="w-3 h-3 shrink-0" />
             </div>
           </div>
 
           {/* 4. Customer Credit / Khata Report Card */}
           <div
             onClick={() => setActiveReportModal('khata')}
-            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2.5 shadow-xs hover:border-purple-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
+            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2 sm:p-2.5 shadow-xs hover:border-purple-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
           >
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5">
+                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
                   <BookOpen className="w-3.5 h-3.5" />
                 </div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-xs leading-tight line-clamp-1">
-                  Customer Credit & Khata
+                <h4 className="font-bold text-slate-900 dark:text-white text-[11px] sm:text-xs leading-tight line-clamp-1">
+                  Customer Khata
                 </h4>
               </div>
-              <p className="text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-2">
-                Outstanding credit, customer accounts & recoveries
+              <p className="text-[9.5px] sm:text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-1">
+                Credit accounts & recoveries
               </p>
             </div>
-            <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-purple-600 dark:text-purple-400">
+            <div className="mt-1.5 pt-1 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-purple-600 dark:text-purple-400">
               <span>View Report</span>
-              <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
+              <ArrowUpRight className="w-3 h-3 shrink-0" />
             </div>
           </div>
 
           {/* 5. Profit & Loss Statement Card */}
           <div
             onClick={() => setActiveReportModal('pnl')}
-            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2.5 shadow-xs hover:border-emerald-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
+            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2 sm:p-2.5 shadow-xs hover:border-emerald-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
           >
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5">
+                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
                   <TrendingUp className="w-3.5 h-3.5" />
                 </div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-xs leading-tight line-clamp-1">
+                <h4 className="font-bold text-slate-900 dark:text-white text-[11px] sm:text-xs leading-tight line-clamp-1">
                   Profit & Loss
                 </h4>
               </div>
-              <p className="text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-2">
-                Revenue, cost of sales, expenses & net margin
+              <p className="text-[9.5px] sm:text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-1">
+                Revenue, COGS & net margin
               </p>
             </div>
-            <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+            <div className="mt-1.5 pt-1 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
               <span>View Report</span>
-              <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
+              <ArrowUpRight className="w-3 h-3 shrink-0" />
             </div>
           </div>
 
           {/* 6. Daily Closing Report Card */}
           <div
             onClick={() => setActiveReportModal('closings')}
-            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2.5 shadow-xs hover:border-teal-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
+            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2 sm:p-2.5 shadow-xs hover:border-teal-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
           >
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0">
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5">
+                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0">
                   <Calculator className="w-3.5 h-3.5" />
                 </div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-xs leading-tight line-clamp-1">
-                  Daily Closing & Cash
+                <h4 className="font-bold text-slate-900 dark:text-white text-[11px] sm:text-xs leading-tight line-clamp-1">
+                  Daily Closing
                 </h4>
               </div>
-              <p className="text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-2">
-                Physical cash counts, digital balances & reconciliation
+              <p className="text-[9.5px] sm:text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-1">
+                Cash counts & digital sync
               </p>
             </div>
-            <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-teal-600 dark:text-teal-400">
+            <div className="mt-1.5 pt-1 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-teal-600 dark:text-teal-400">
               <span>View Report</span>
-              <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
+              <ArrowUpRight className="w-3 h-3 shrink-0" />
             </div>
           </div>
 
           {/* 7. Purchases & Stock Inward Card */}
           <div
             onClick={() => setActiveReportModal('purchases')}
-            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2.5 shadow-xs hover:border-amber-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
+            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2 sm:p-2.5 shadow-xs hover:border-amber-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
           >
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5">
+                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
                   <Layers className="w-3.5 h-3.5" />
                 </div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-xs leading-tight line-clamp-1">
+                <h4 className="font-bold text-slate-900 dark:text-white text-[11px] sm:text-xs leading-tight line-clamp-1">
                   Purchases Ledger
                 </h4>
               </div>
-              <p className="text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-2">
-                Stock inward acquisition history & purchase cost
+              <p className="text-[9.5px] sm:text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-1">
+                Stock inward & purchase cost
               </p>
             </div>
-            <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-amber-600 dark:text-amber-400">
+            <div className="mt-1.5 pt-1 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-amber-600 dark:text-amber-400">
               <span>View Report</span>
-              <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
+              <ArrowUpRight className="w-3 h-3 shrink-0" />
             </div>
           </div>
 
           {/* 8. Top Selling Products Card */}
           <div
             onClick={() => setActiveReportModal('top_products')}
-            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2.5 shadow-xs hover:border-orange-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
+            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2 sm:p-2.5 shadow-xs hover:border-orange-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
           >
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-orange-50 dark:bg-orange-950/60 text-orange-600 dark:text-orange-400 flex items-center justify-center shrink-0">
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5">
+                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-orange-50 dark:bg-orange-950/60 text-orange-600 dark:text-orange-400 flex items-center justify-center shrink-0">
                   <TrendingUp className="w-3.5 h-3.5" />
                 </div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-xs leading-tight line-clamp-1">
-                  Top Selling Products
+                <h4 className="font-bold text-slate-900 dark:text-white text-[11px] sm:text-xs leading-tight line-clamp-1">
+                  Top Products
                 </h4>
               </div>
-              <p className="text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-2">
-                Sales ranking by units sold, volume & profit
+              <p className="text-[9.5px] sm:text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-1">
+                Best sellers by units & profit
               </p>
             </div>
-            <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-orange-600 dark:text-orange-400">
+            <div className="mt-1.5 pt-1 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-orange-600 dark:text-orange-400">
               <span>View Report</span>
-              <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
+              <ArrowUpRight className="w-3 h-3 shrink-0" />
             </div>
           </div>
 
           {/* 9. Returns & Refunds Report Card */}
           <div
             onClick={() => setActiveReportModal('returns')}
-            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2.5 shadow-xs hover:border-amber-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
+            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2 sm:p-2.5 shadow-xs hover:border-amber-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
           >
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5">
+                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
                   <RotateCcw className="w-3.5 h-3.5" />
                 </div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-xs leading-tight line-clamp-1">
+                <h4 className="font-bold text-slate-900 dark:text-white text-[11px] sm:text-xs leading-tight line-clamp-1">
                   Returns & Refunds
                 </h4>
               </div>
-              <p className="text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-2">
-                Restored inventory, IMEIs, refunds & reversed margin
+              <p className="text-[9.5px] sm:text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-1">
+                Restored IMEIs & refunds
               </p>
             </div>
-            <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-amber-600 dark:text-amber-400">
+            <div className="mt-1.5 pt-1 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-amber-600 dark:text-amber-400">
               <span className="truncate">{(data.salesReturns || []).length} Returns</span>
-              <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
+              <ArrowUpRight className="w-3 h-3 shrink-0" />
             </div>
           </div>
         </div>
       </div>
 
       {/* Sales Invoices Audit Table */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-5 space-y-4 shadow-xs">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+      <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 space-y-2.5 sm:space-y-4 shadow-xs">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-2 sm:pb-3 gap-2">
           <div>
-            <h4 className="font-bold text-slate-900 text-sm">Completed Sales History & Invoices</h4>
-            <p className="text-xs text-slate-500 mt-0.5">Audit trail of processed customer purchases</p>
+            <h4 className="font-bold text-slate-900 text-xs sm:text-sm">Completed Sales History</h4>
+            <p className="text-[10.5px] sm:text-xs text-slate-500 mt-0.5">Audit trail of processed invoices</p>
           </div>
           <button
             type="button"
             onClick={() => setActiveReportModal('sales')}
-            className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1"
+            className="text-[11px] sm:text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-0.5 shrink-0"
           >
-            <span>Full Sales Report</span>
+            <span>Full Report</span>
             <ArrowUpRight className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -1033,21 +1029,21 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                 </button>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => handleShareWhatsAppReport(activeReportModal)}
-                  className="w-full sm:w-auto px-3 py-2 sm:py-1.5 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 font-bold text-xs whitespace-normal rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer"
+                  className="h-8 px-2.5 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 font-bold text-[11px] rounded-lg sm:rounded-xl flex items-center justify-center gap-1 transition cursor-pointer"
                 >
-                  <Share2 className="w-3.5 h-3.5 shrink-0" /> <span>Send to WhatsApp</span>
+                  <Share2 className="w-3.5 h-3.5 shrink-0" /> <span>WhatsApp</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={handlePrintCurrentReport}
-                  className="w-full sm:w-auto px-3.5 py-2 sm:py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs whitespace-normal rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-blue-500/20 transition cursor-pointer"
+                  className="h-8 px-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] rounded-lg sm:rounded-xl flex items-center justify-center gap-1 shadow-md shadow-blue-500/20 transition cursor-pointer"
                 >
-                  <Printer className="w-3.5 h-3.5 shrink-0" /> <span>Download / Print PDF</span>
+                  <Printer className="w-3.5 h-3.5 shrink-0" /> <span>Print PDF</span>
                 </button>
 
                 <button
@@ -1061,27 +1057,27 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
             </div>
 
             {/* In-Modal Quick Date Range Filter */}
-            <div className="bg-slate-50 dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-xl p-2.5 space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 font-bold text-xs text-slate-700 dark:text-neutral-300">
+            <div className="bg-slate-50 dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-xl p-2 space-y-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-1.5">
+                <div className="flex items-center gap-1 font-bold text-[11px] text-slate-700 dark:text-neutral-300">
                   <Calendar className="w-3.5 h-3.5 text-blue-600" />
-                  <span>Timeframe Filter:</span>
+                  <span>Filter:</span>
                 </div>
-                <div className="flex flex-wrap items-center gap-1 text-[11px]">
+                <div className="no-scrollbar flex items-center gap-1 text-[10.5px] overflow-x-auto max-w-full">
                   {[
                     { id: 'today', label: 'Today' },
-                    { id: 'week', label: 'This Week' },
-                    { id: 'month', label: 'This Month' },
+                    { id: 'week', label: 'Week' },
+                    { id: 'month', label: 'Month' },
                     { id: '6month', label: '6 Months' },
-                    { id: 'year', label: 'This Year' },
-                    { id: 'custom', label: 'Custom Date' },
+                    { id: 'year', label: 'Year' },
+                    { id: 'custom', label: 'Custom' },
                     { id: 'all', label: 'All Time' },
                   ].map(opt => (
                     <button
                       key={opt.id}
                       type="button"
                       onClick={() => setDateFilterMode(opt.id as DateFilterMode)}
-                      className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+                      className={`px-2 py-0.5 rounded-md font-bold transition cursor-pointer shrink-0 whitespace-nowrap ${
                         dateFilterMode === opt.id
                           ? 'bg-blue-600 text-white shadow-2xs'
                           : 'bg-white dark:bg-neutral-800 text-slate-600 dark:text-neutral-300 border border-slate-200 dark:border-neutral-700 hover:bg-slate-100 dark:hover:bg-neutral-700'
@@ -1094,20 +1090,20 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
               </div>
 
               {dateFilterMode === 'custom' && (
-                <div className="pt-2 border-t border-slate-200 dark:border-neutral-800 flex flex-wrap items-center gap-2 text-xs">
-                  <span className="font-semibold text-slate-500 dark:text-neutral-400">From:</span>
+                <div className="pt-1.5 border-t border-slate-200 dark:border-neutral-800 flex flex-wrap items-center gap-2 text-xs">
+                  <span className="font-semibold text-slate-500 dark:text-neutral-400 text-[11px]">From:</span>
                   <input
                     type="date"
                     value={customStartDate}
                     onChange={e => setCustomStartDate(e.target.value)}
-                    className="bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 text-slate-900 dark:text-white px-2 py-0.5 rounded-lg text-xs"
+                    className="compact-mobile-input bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 text-slate-900 dark:text-white px-2 py-0.5 rounded-lg text-[11px]"
                   />
-                  <span className="font-semibold text-slate-500 dark:text-neutral-400">To:</span>
+                  <span className="font-semibold text-slate-500 dark:text-neutral-400 text-[11px]">To:</span>
                   <input
                     type="date"
                     value={customEndDate}
                     onChange={e => setCustomEndDate(e.target.value)}
-                    className="bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 text-slate-900 dark:text-white px-2 py-0.5 rounded-lg text-xs"
+                    className="compact-mobile-input bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 text-slate-900 dark:text-white px-2 py-0.5 rounded-lg text-[11px]"
                   />
                 </div>
               )}

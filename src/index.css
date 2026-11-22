@@ -838,20 +838,34 @@
   }
 }
 
-/* Custom scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* Hide visible scrollbars globally while keeping scroll behavior smooth and intact */
+html,
+body,
+*,
+*::before,
+*::after {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
 }
-::-webkit-scrollbar-track {
-  background: #f1f5f9;
+
+*::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
 }
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
+
+.no-scrollbar,
+.scrollbar-thin {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: #2563eb;
+
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-thin::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
 /* Dashboard Animations */
@@ -1118,7 +1132,7 @@ button:active:not(:disabled),
   .compact-mobile-input {
     font-size: 12px !important;
   }
-  .overflow-y-auto, [role="dialog"], .mobile-bottom-sheet {
+  [role="dialog"], .mobile-bottom-sheet {
     overscroll-behavior: contain;
   }
 }

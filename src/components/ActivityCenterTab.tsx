@@ -154,80 +154,80 @@ const ActivityCenterTabComponent: React.FC<ActivityCenterTabProps> = ({
   };
 
   return (
-    <div className="space-y-4 sm:space-y-6 w-full max-w-full overflow-x-hidden">
+    <div className="space-y-3 sm:space-y-5 w-full max-w-full overflow-x-hidden">
       {/* 24-Hour Rolling Window Information Banner */}
-      <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-2xl p-4.5 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center font-bold shrink-0">
-            <History className="w-5 h-5 text-white" />
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-white/10 flex items-center justify-center font-bold shrink-0">
+            <History className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
           </div>
-          <div>
-            <h3 className="font-extrabold text-sm sm:text-base">
+          <div className="min-w-0">
+            <h3 className="font-extrabold text-xs sm:text-base truncate">
               24-Hour Rolling Activity Window
             </h3>
-            <p className="text-xs text-blue-100">
-              Only actions performed within the last 24 hours are retained. Older changes are cleared daily.
+            <p className="text-[10.5px] sm:text-xs text-blue-100 line-clamp-2">
+              Only actions performed within the last 24 hours are retained. Older changes clear daily.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] tabular-nums bg-white/20 px-3 py-1.5 rounded-xl font-bold">
-            {recent24hActivities.length} Actions Recorded in 24h
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-[10px] sm:text-[11px] tabular-nums bg-white/20 px-2.5 py-1 rounded-lg sm:rounded-xl font-bold">
+            {recent24hActivities.length} Actions in 24h
           </span>
         </div>
       </div>
 
       {/* Metrics Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3.5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3.5">
         <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs flex flex-col justify-between">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 line-clamp-1">24h Total</span>
-          <h3 className="text-sm sm:text-2xl font-extrabold tabular-nums text-slate-900 tabular-nums mt-0.5 sm:mt-1 truncate">{stats.total}</h3>
-          <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Live activities</p>
+          <h3 className="text-sm sm:text-2xl font-extrabold tabular-nums text-slate-900 mt-0.5 truncate">{stats.total}</h3>
+          <p className="text-[10px] sm:text-[11px] text-slate-400 truncate">Live activities</p>
         </div>
 
         <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs flex flex-col justify-between">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 line-clamp-1">Sales Done</span>
-          <h3 className="text-sm sm:text-2xl font-extrabold tabular-nums text-emerald-600 tabular-nums mt-0.5 sm:mt-1 truncate">{stats.sales}</h3>
-          <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Invoices made</p>
+          <h3 className="text-sm sm:text-2xl font-extrabold tabular-nums text-emerald-600 mt-0.5 truncate">{stats.sales}</h3>
+          <p className="text-[10px] sm:text-[11px] text-slate-400 truncate">Invoices made</p>
         </div>
 
         <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs flex flex-col justify-between">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 line-clamp-1">Stock Updates</span>
-          <h3 className="text-sm sm:text-2xl font-extrabold tabular-nums text-blue-600 tabular-nums mt-0.5 sm:mt-1 truncate">{stats.inventory}</h3>
-          <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Stock modified</p>
+          <h3 className="text-sm sm:text-2xl font-extrabold tabular-nums text-blue-600 mt-0.5 truncate">{stats.inventory}</h3>
+          <p className="text-[10px] sm:text-[11px] text-slate-400 truncate">Stock modified</p>
         </div>
 
         <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs flex flex-col justify-between">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 line-clamp-1">Expenses Logged</span>
-          <h3 className="text-sm sm:text-2xl font-extrabold tabular-nums text-rose-600 tabular-nums mt-0.5 sm:mt-1 truncate">{stats.expense}</h3>
-          <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Disbursements</p>
+          <h3 className="text-sm sm:text-2xl font-extrabold tabular-nums text-rose-600 mt-0.5 truncate">{stats.expense}</h3>
+          <p className="text-[10px] sm:text-[11px] text-slate-400 truncate">Disbursements</p>
         </div>
       </div>
 
       {/* Main Audit Feed Card */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 sm:p-5 space-y-4 shadow-xs overflow-hidden">
+      <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 space-y-2.5 sm:space-y-4 shadow-xs overflow-hidden">
         {/* Controls Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 border-b border-slate-100 pb-2.5 sm:pb-4">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
             <div className="relative w-full sm:w-64">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Search audit trail..."
-                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white h-9.5"
+                className="compact-mobile-input w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg sm:rounded-xl text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white h-8 sm:h-9"
               />
             </div>
 
-            <div className="flex items-center gap-1.5 text-xs overflow-x-auto pb-1 max-w-full shrink-0">
+            <div className="no-scrollbar flex items-center gap-1 text-xs overflow-x-auto max-w-full shrink-0">
               {['ALL', 'Sale', 'Inventory', 'Purchase', 'Khata', 'Expense', 'Settings'].map(cat => (
                 <button
                   key={cat}
                   type="button"
                   onClick={() => setSelectedCat(cat)}
-                  className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer shrink-0 whitespace-nowrap text-xs ${
+                  className={`px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer shrink-0 whitespace-nowrap text-[11px] sm:text-xs ${
                     selectedCat === cat
                       ? 'bg-blue-600 text-white font-bold'
                       : 'bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
@@ -239,42 +239,42 @@ const ActivityCenterTabComponent: React.FC<ActivityCenterTabProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-1.5">
             {onOpenPdfReport && (
               <button
                 type="button"
                 onClick={onOpenPdfReport}
-                className="flex-1 sm:flex-initial px-3 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-2xs h-9.5"
+                className="h-8 px-2.5 rounded-lg sm:rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[11px] flex items-center justify-center gap-1 transition cursor-pointer shadow-2xs"
                 title="Export System Audit Log PDF Report"
               >
-                <FileText className="w-3.5 h-3.5 text-rose-600 shrink-0" /> <span className="truncate">PDF</span>
+                <FileText className="w-3.5 h-3.5 text-rose-600 shrink-0" /> <span>PDF</span>
               </button>
             )}
 
             <button
               type="button"
               onClick={handleExportCSV}
-              className="flex-1 sm:flex-initial px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer h-9.5"
+              className="h-8 px-2.5 rounded-lg sm:rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-[11px] flex items-center justify-center gap-1 transition cursor-pointer"
             >
-              <Download className="w-3.5 h-3.5 text-blue-600 shrink-0" /> <span className="truncate">CSV</span>
+              <Download className="w-3.5 h-3.5 text-blue-600 shrink-0" /> <span>CSV</span>
             </button>
 
             <button
               type="button"
               onClick={() => setShowClearConfirm(true)}
-              className="flex-1 sm:flex-initial px-3 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer h-9.5"
+              className="h-8 px-2.5 rounded-lg sm:rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[11px] flex items-center justify-center gap-1 transition cursor-pointer"
             >
-              <Trash2 className="w-3.5 h-3.5 shrink-0" /> <span className="truncate">Clear</span>
+              <Trash2 className="w-3.5 h-3.5 shrink-0" /> <span>Clear</span>
             </button>
           </div>
         </div>
 
         {/* Audit Trail List */}
-        <div className="space-y-2.5 max-h-[550px] overflow-y-auto pr-1">
+        <div className="space-y-2 max-h-[420px] sm:max-h-[550px] overflow-y-auto pr-0.5">
           {filteredActivities.length === 0 ? (
-            <div className="text-center py-16 text-slate-400 space-y-2">
-              <Clock className="w-8 h-8 mx-auto text-slate-300" />
-              <p className="font-semibold text-slate-600">No actions recorded in the last 24 hours</p>
+            <div className="text-center py-12 text-slate-400 space-y-2">
+              <Clock className="w-7 h-7 mx-auto text-slate-300" />
+              <p className="font-semibold text-xs text-slate-600">No actions recorded in the last 24 hours</p>
               <p className="text-[11px] text-slate-400">
                 Any sale, inventory change, purchase, or expense will appear here automatically.
               </p>
@@ -286,33 +286,33 @@ const ActivityCenterTabComponent: React.FC<ActivityCenterTabProps> = ({
               return (
                 <div
                   key={act.id}
-                  className="p-3.5 rounded-xl border border-slate-100 bg-slate-50/60 hover:bg-slate-50 hover:border-slate-200 transition flex items-start justify-between gap-3 text-xs"
+                  className="p-2.5 sm:p-3 rounded-xl border border-slate-100 bg-slate-50/60 hover:bg-slate-50 hover:border-slate-200 transition flex items-start justify-between gap-2 text-xs"
                 >
-                  <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-white border border-slate-200/80 flex items-center justify-center shrink-0 shadow-2xs mt-0.5">
+                  <div className="flex items-start gap-2 sm:gap-3 min-w-0">
+                    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white border border-slate-200/80 flex items-center justify-center shrink-0 shadow-2xs mt-0.5">
                       {getCategoryIcon(act.category)}
                     </div>
 
                     <div className="space-y-0.5 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${getBadgeStyle(act.category)}`}>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={`text-[9.5px] font-bold px-1.5 py-0.2 rounded-full border ${getBadgeStyle(act.category)}`}>
                           {act.category}
                         </span>
-                        <h4 className="font-bold text-slate-900 text-xs">
+                        <h4 className="font-bold text-slate-900 text-[11px] sm:text-xs truncate">
                           {act.title}
                         </h4>
                       </div>
-                      <p className="text-slate-600 text-[11px]">
+                      <p className="text-slate-600 text-[10.5px] sm:text-[11px] leading-snug">
                         {act.details}
                       </p>
                     </div>
                   </div>
 
                   <div className="text-right shrink-0">
-                    <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
+                    <span className="text-[9.5px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
                       {diff}
                     </span>
-                    <p className="text-[10px] text-slate-400 tabular-nums mt-1">
+                    <p className="text-[9.5px] text-slate-400 tabular-nums mt-0.5">
                       {time}
                     </p>
                   </div>

@@ -149,43 +149,47 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
       </div>
 
       {/* Main Khata Table */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-5 space-y-4 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+      <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 space-y-2.5 sm:space-y-4 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 border-b border-slate-100 pb-2.5 sm:pb-4">
           <div>
-            <h3 className="font-bold text-slate-900 text-base">Customer Credit & Ledger Accounts</h3>
-            <p className="text-xs text-slate-500">
-              Track outstanding balances, view customer accounts, pin locations & record ledger payments
+            <h3 className="font-bold text-slate-900 text-sm sm:text-base">Customer Credit &amp; Ledger Accounts</h3>
+            <p className="text-[11px] sm:text-xs text-slate-500">
+              Tap any customer to open full-screen ledger, track location &amp; record entries
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             {onOpenPdfReport && (
               <button
                 type="button"
                 onClick={onOpenPdfReport}
-                className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200/80 transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                className="h-8 sm:h-9 px-2.5 sm:px-3.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[11px] sm:text-xs rounded-lg sm:rounded-xl border border-rose-200/80 transition flex items-center gap-1 cursor-pointer shadow-2xs"
                 title="Export Customer Khata & Receivables PDF Report"
               >
-                <FileText className="w-3.5 h-3.5 text-rose-600" /> Export PDF Report
+                <FileText className="w-3.5 h-3.5 text-rose-600" />
+                <span className="sm:hidden">PDF</span>
+                <span className="hidden sm:inline">Export PDF Report</span>
               </button>
             )}
             <button
               onClick={onOpenAddModal}
-              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-md shadow-purple-500/20 transition flex items-center gap-1.5 cursor-pointer"
+              className="h-8 sm:h-9 px-3 sm:px-4 bg-purple-600 hover:bg-purple-700 text-white font-bold text-[11px] sm:text-xs rounded-lg sm:rounded-xl shadow-sm shadow-purple-500/20 transition flex items-center gap-1.5 cursor-pointer"
             >
-              <UserPlus className="w-4 h-4" /> Add Customer Account
+              <UserPlus className="w-3.5 h-3.5" />
+              <span className="sm:hidden">Add Customer</span>
+              <span className="hidden sm:inline">Add Customer Account</span>
             </button>
           </div>
         </div>
 
         {/* Search */}
         <div className="relative">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search by customer name, phone, CNIC, shop name, or address..."
-            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-purple-600 focus:bg-white transition"
+            className="compact-mobile-input w-full pl-8.5 pr-4 h-8 sm:h-9 bg-slate-50 border border-slate-200 rounded-lg sm:rounded-xl text-xs font-medium focus:outline-none focus:border-purple-600 focus:bg-white transition"
           />
         </div>
 
@@ -341,10 +345,10 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
         </div>
 
         {/* Mobile Customer Cards View (< lg: breakpoint) */}
-        <div className="block lg:hidden space-y-3">
+        <div className="block lg:hidden space-y-2">
           {filtered.length === 0 ? (
-            <div className="text-center py-10 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-400 space-y-1">
-              <BookOpen className="w-8 h-8 mx-auto text-slate-300" />
+            <div className="text-center py-8 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-400 space-y-1">
+              <BookOpen className="w-7 h-7 mx-auto text-slate-300" />
               <p className="font-semibold text-slate-700">No khata accounts found</p>
               <p className="text-[11px] text-slate-400">Add customers to maintain customer credit ledgers</p>
             </div>
@@ -361,22 +365,22 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
                 <div
                   key={cust.id}
                   onClick={() => setActiveAccountCustomer(cust)}
-                  className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-xs transition hover:border-purple-300 cursor-pointer"
+                  className="bg-white border border-slate-200 rounded-xl p-2.5 space-y-2 shadow-2xs transition hover:border-purple-300 cursor-pointer"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-11 h-11 rounded-xl bg-purple-100 text-purple-700 font-bold flex items-center justify-center shrink-0 border border-purple-200 overflow-hidden">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-9 h-9 rounded-lg bg-purple-100 text-purple-700 font-bold flex items-center justify-center shrink-0 border border-purple-200 overflow-hidden">
                         {cust.image ? (
                           <img src={cust.image} alt={cust.name} className="w-full h-full object-cover" />
                         ) : (
-                          <User className="w-6 h-6 text-purple-600" />
+                          <User className="w-4.5 h-4.5 text-purple-600" />
                         )}
                       </div>
                       <div className="min-w-0">
-                        <h4 className="font-bold text-slate-900 text-sm leading-snug truncate">
+                        <h4 className="font-bold text-slate-900 text-xs leading-snug truncate">
                           {cust.name}
                         </h4>
-                        <p className="text-xs text-slate-500 tabular-nums flex items-center gap-1 mt-0.5">
+                        <p className="text-[11px] text-slate-500 tabular-nums flex items-center gap-1">
                           <Phone className="w-3 h-3 text-slate-400" />
                           <span>{cust.phone}</span>
                         </p>
@@ -385,7 +389,7 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
 
                     <div className="text-right shrink-0">
                       <span
-                        className={`text-xs font-black tabular-nums ${
+                        className={`text-[11px] font-black tabular-nums ${
                           cust.balance > 0 ? 'text-rose-700' : 'text-emerald-700'
                         }`}
                       >
@@ -395,21 +399,21 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
                   </div>
 
                   {cust.address && (
-                    <p className="text-[11px] text-slate-500 flex items-center gap-1 bg-slate-50 p-2 rounded-xl border border-slate-100 truncate">
+                    <p className="text-[10px] text-slate-500 flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-lg border border-slate-100 truncate">
                       <MapPin className={`w-3 h-3 shrink-0 ${hasGps ? 'text-emerald-600' : 'text-slate-400'}`} />
                       <span className="truncate">{cust.address}</span>
                     </p>
                   )}
 
-                  {/* Mobile Touch Action Bar */}
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs" onClick={e => e.stopPropagation()}>
-                    <div className="flex items-center gap-1.5">
+                  {/* Mobile Compact Action Bar */}
+                  <div className="flex items-center justify-between pt-1.5 border-t border-slate-100 text-[11px]" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center gap-1">
                       <a
                         href={`tel:${cust.phone.replace(/[^0-9+]/g, '')}`}
-                        className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold flex items-center gap-1.5 transition min-h-[42px] min-w-[42px] justify-center"
+                        className="h-7 w-7 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold flex items-center justify-center transition"
                         title="Direct Call"
                       >
-                        <Phone className="w-4 h-4 text-slate-600" />
+                        <Phone className="w-3.5 h-3.5 text-slate-600" />
                       </a>
 
                       {trackUrl && (
@@ -417,10 +421,10 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
                           href={trackUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="p-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl font-bold flex items-center gap-1.5 transition border border-blue-200 min-h-[42px] min-w-[42px] justify-center"
+                          className="h-7 w-7 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg font-bold flex items-center justify-center transition border border-blue-200"
                           title="Track Location in Google Maps"
                         >
-                          <Navigation className="w-4 h-4 text-blue-600" />
+                          <Navigation className="w-3.5 h-3.5 text-blue-600" />
                         </a>
                       )}
 
@@ -428,29 +432,29 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
                         href={getWhatsAppReminderUrl(cust)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="p-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl font-bold flex items-center gap-1.5 transition border border-emerald-200 min-h-[42px] min-w-[42px] justify-center"
+                        className="h-7 w-7 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg font-bold flex items-center justify-center transition border border-emerald-200"
                         title="WhatsApp Reminder"
                       >
-                        <MessageSquare className="w-4 h-4 text-emerald-600" />
+                        <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
                       </a>
                     </div>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1">
                       <button
                         type="button"
                         onClick={() => setActiveAccountCustomer(cust)}
-                        className="px-3.5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs transition flex items-center gap-1.5 min-h-[42px] cursor-pointer shadow-xs"
+                        className="h-7 px-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg text-[11px] transition flex items-center gap-1 cursor-pointer shadow-2xs"
                       >
-                        <ExternalLink className="w-3.5 h-3.5" /> Open Ledger
+                        <ExternalLink className="w-3 h-3" /> Open Ledger
                       </button>
 
                       {isAdmin && (
                         <button
                           type="button"
                           onClick={() => setCustomerToDelete(cust)}
-                          className="p-2.5 text-slate-400 hover:text-rose-600 rounded-xl hover:bg-rose-50 transition border border-slate-200 min-h-[42px] min-w-[42px] flex items-center justify-center cursor-pointer"
+                          className="h-7 w-7 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition border border-slate-200 flex items-center justify-center cursor-pointer"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       )}
                     </div>
