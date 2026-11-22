@@ -2515,6 +2515,17 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                           </span>
                         )}
 
+                        {sale.returnStatus === 'FULL' && (
+                          <span className="text-[9px] sm:text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-200">
+                            RETURNED
+                          </span>
+                        )}
+                        {sale.returnStatus === 'PARTIAL' && (
+                          <span className="text-[9px] sm:text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-200">
+                            PARTIAL RETURN
+                          </span>
+                        )}
+
                         <span className="text-[10px] sm:text-[11px] font-semibold text-slate-400 tabular-nums">
                           {new Date(sale.date).toLocaleDateString()} {new Date(sale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
@@ -2537,9 +2548,14 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                         <div className="divide-y divide-slate-100">
                           {sale.items.map((it, idx) => (
                             <div key={idx} className="py-0.5 text-[11px] sm:text-xs flex flex-wrap items-center justify-between gap-1.5">
-                              <div className="flex items-center gap-1.5 min-w-0">
+                              <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                                 <span className="font-bold text-slate-800 truncate">{it.name}</span>
                                 <span className="font-semibold text-slate-400 text-[10px]">x{it.qty}</span>
+                                {(it.returnedQty || 0) > 0 && (
+                                  <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-200">
+                                    Returned{it.returnReason ? `: ${it.returnReason}` : ''}
+                                  </span>
+                                )}
                               </div>
                               <div className="flex flex-wrap items-center gap-1">
                                 {it.barcode && (

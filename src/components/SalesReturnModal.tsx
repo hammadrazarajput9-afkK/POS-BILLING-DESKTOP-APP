@@ -25,12 +25,14 @@ import {
   Smartphone,
   CreditCard,
   FileText,
-  Clock
+  Clock,
+  Camera
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { generateNextReturnNumber, extractItemImeis } from '../utils/imeiManager';
 import { normalizePaymentChannel } from '../utils/accounting';
 import { smartFilterAndSort } from '../utils/smartSearch';
+import { BarcodeScannerModal } from './BarcodeScannerModal';
 
 interface SalesReturnModalProps {
   isOpen: boolean;
@@ -41,6 +43,8 @@ interface SalesReturnModalProps {
   salesReturns?: SalesReturnRecord[];
   initialSale?: SaleRecord | null;
   onlineAccounts?: OnlineAccount[];
+  khata?: KhataCustomer[];
+  imeiRecords?: ImeiRecord[];
   onProcessReturn: (returnRecord: SalesReturnRecord) => void;
 }
 
@@ -64,12 +68,15 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
   salesReturns = [],
   initialSale = null,
   onlineAccounts = [],
+  khata = [],
+  imeiRecords = [],
   onProcessReturn,
 }) => {
   const { showToast } = useToast();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSale, setSelectedSale] = useState<SaleRecord | null>(initialSale);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
 
   // Return Form State
   const [selectedItemIds, setSelectedItemIds] = useState<Record<string, boolean>>({});
@@ -80,6 +87,7 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
 
   const [overallReason, setOverallReason] = useState<string>('Defective / Faulty Product');
   const [refundPaymentMethod, setRefundPaymentMethod] = useState<PaymentMethod>('Cash');
+  const [deductFromKhata, setDeductFromKhata] = useState<boolean>(false);
   const [accountId, setAccountId] = useState<string>('');
   const [returnDate, setReturnDate] = useState<string>(() => new Date().toISOString().substring(0, 10));
   const [returnedBy, setReturnedBy] = useState<string>('Admin');
@@ -87,8 +95,27 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
 
   // Matching online accounts for refund payment method
   const matchingAccounts = useMemo(() => {
+    if (refundPaymentMethod === 'Credit Adjustment') return [];
     return onlineAccounts.filter(a => normalizePaymentChannel(a.bankType || a.name) === refundPaymentMethod);
   }, [onlineAccounts, refundPaymentMethod]);
+
+  const linkedKhataCustomer = useMemo(() => {
+    if (!selectedSale) return undefined;
+    if (selectedSale.khataCustomerId) {
+      const byId = khata.find(c => c.id === selectedSale.khataCustomerId);
+      if (byId) return byId;
+    }
+    const normPhone = (selectedSale.custPhone || '').replace(/[^0-9]/g, '');
+    if (normPhone.length >= 7) {
+      const byPhone = khata.find(c => (c.phone || '').replace(/[^0-9]/g, '') === normPhone);
+      if (byPhone) return byPhone;
+    }
+    const normName = (selectedSale.custName || '').trim().toLowerCase();
+    if (normName && normName !== 'walk-in customer') {
+      return khata.find(c => c.name.trim().toLowerCase() === normName);
+    }
+    return undefined;
+  }, [selectedSale, khata]);
 
   useEffect(() => {
     if (matchingAccounts.length === 1) {
@@ -102,34 +129,72 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
     }
   }, [refundPaymentMethod, matchingAccounts, accountId]);
 
-  // Sync initial sale if provided
-  useEffect(() => {
-    if (initialSale) {
-      setSelectedSale(initialSale);
-      initializeFormForSale(initialSale);
-    }
-  }, [initialSale]);
-
-  const initializeFormForSale = (sale: SaleRecord) => {
+  const initializeFormForSale = (sale: SaleRecord, scannedCode?: string) => {
+    const cleanCode = (scannedCode || '').trim().toLowerCase();
     const initSelected: Record<string, boolean> = {};
     const initQtys: Record<string, number> = {};
     const initImeis: Record<string, string[]> = {};
     const initReasons: Record<string, string> = {};
     const initRefunds: Record<string, number> = {};
 
+    // Check if scanned code matches a specific IMEI or barcode inside this sale
+    let matchedSpecificItem = false;
+    if (cleanCode) {
+      matchedSpecificItem = sale.items.some(item => {
+        const alreadyRet = item.returnedQty || 0;
+        if (Math.max(0, item.qty - alreadyRet) <= 0) return false;
+        const imeis = extractItemImeis(item);
+        return (
+          imeis.some(im => im.toLowerCase() === cleanCode) ||
+          (item.barcode || '').trim().toLowerCase() === cleanCode
+        );
+      });
+    }
+
     sale.items.forEach((item, idx) => {
       const key = `${item.id}_${idx}`;
       const alreadyReturned = item.returnedQty || 0;
       const remainingQty = Math.max(0, item.qty - alreadyReturned);
+      if (remainingQty <= 0) return;
 
-      if (remainingQty > 0) {
+      const rawItemImeis = extractItemImeis(item);
+      const alreadyRetImeis = (item.returnedImeis || []).map(x => x.toLowerCase());
+      const returnableImeis = rawItemImeis.filter(im => !alreadyRetImeis.includes(im.toLowerCase()));
+      const imeiPool = returnableImeis.length > 0 ? returnableImeis : rawItemImeis;
+
+      const exactImeiMatch = cleanCode
+        ? imeiPool.find(im => im.toLowerCase() === cleanCode)
+        : undefined;
+      const exactBarcodeMatch = cleanCode
+        ? (item.barcode || '').trim().toLowerCase() === cleanCode
+        : false;
+
+      const shouldSelect = matchedSpecificItem
+        ? Boolean(exactImeiMatch || exactBarcodeMatch)
+        : true;
+
+      initReasons[key] = 'Defective / Faulty Product';
+
+      if (shouldSelect) {
         initSelected[key] = true;
-        initQtys[key] = remainingQty;
-        initReasons[key] = 'Defective / Faulty Product';
-        initRefunds[key] = remainingQty * item.salePrice;
-
-        const itemImeis = item.imeis || (item.imei ? item.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
-        initImeis[key] = itemImeis.slice(0, remainingQty);
+        if (exactImeiMatch) {
+          initQtys[key] = 1;
+          initImeis[key] = [exactImeiMatch];
+          initRefunds[key] = item.salePrice;
+        } else if (exactBarcodeMatch) {
+          initQtys[key] = 1;
+          initImeis[key] = imeiPool.slice(0, 1);
+          initRefunds[key] = item.salePrice;
+        } else {
+          initQtys[key] = remainingQty;
+          initImeis[key] = imeiPool.slice(0, remainingQty);
+          initRefunds[key] = remainingQty * item.salePrice;
+        }
+      } else {
+        initSelected[key] = false;
+        initQtys[key] = 1;
+        initImeis[key] = [];
+        initRefunds[key] = item.salePrice;
       }
     });
 
@@ -138,26 +203,156 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
     setSelectedImeis(initImeis);
     setItemReasons(initReasons);
     setItemRefundAmounts(initRefunds);
-    setRefundPaymentMethod(sale.paymentMethod || 'Cash');
+
+    const isCreditSale = sale.invoiceType === 'credit';
+    if (isCreditSale) {
+      setRefundPaymentMethod('Credit Adjustment');
+      setDeductFromKhata(true);
+    } else {
+      setRefundPaymentMethod(sale.paymentMethod || 'Cash');
+      setDeductFromKhata(false);
+    }
   };
 
-  const handleSelectSale = (sale: SaleRecord) => {
+  // Sync initial sale if provided
+  useEffect(() => {
+    if (isOpen && initialSale) {
+      setSelectedSale(initialSale);
+      initializeFormForSale(initialSale);
+    } else if (isOpen && !initialSale) {
+      setSelectedSale(null);
+      setSearchQuery('');
+    }
+  }, [isOpen, initialSale]);
+
+  const handleSelectSale = (sale: SaleRecord, scannedCode?: string) => {
     setSelectedSale(sale);
-    initializeFormForSale(sale);
+    initializeFormForSale(sale, scannedCode);
+  };
+
+  const handleScanCodeInReturn = (rawCode: string) => {
+    const code = (rawCode || '').trim();
+    if (!code) return;
+    const lower = code.toLowerCase();
+
+    // Case A: Already inside a selected invoice -> select matching IMEI/item
+    if (selectedSale) {
+      let hit = false;
+      selectedSale.items.forEach((item, idx) => {
+        const key = `${item.id}_${idx}`;
+        const alreadyRet = item.returnedQty || 0;
+        const remainingQty = Math.max(0, item.qty - alreadyRet);
+        if (remainingQty <= 0) return;
+
+        const imeis = extractItemImeis(item);
+        const matchedImei = imeis.find(im => im.toLowerCase() === lower);
+        const matchedBarcode = (item.barcode || '').trim().toLowerCase() === lower;
+
+        if (matchedImei || matchedBarcode) {
+          hit = true;
+          setSelectedItemIds(prev => ({ ...prev, [key]: true }));
+          if (matchedImei) {
+            setSelectedImeis(prev => {
+              const cur = prev[key] || [];
+              const next = cur.includes(matchedImei) ? cur : [...cur, matchedImei];
+              const targetQty = Math.min(remainingQty, Math.max(1, next.length));
+              setReturnQtys(qPrev => ({ ...qPrev, [key]: targetQty }));
+              setItemRefundAmounts(rPrev => ({ ...rPrev, [key]: targetQty * item.salePrice }));
+              return { ...prev, [key]: next.slice(0, remainingQty) };
+            });
+          } else {
+            setReturnQtys(qPrev => ({ ...qPrev, [key]: 1 }));
+            setItemRefundAmounts(rPrev => ({ ...rPrev, [key]: item.salePrice }));
+          }
+          showToast(`Selected "${item.name}" (${code}) for return!`, 'success');
+        }
+      });
+      if (!hit) {
+        showToast(`Code "${code}" does not match any item in Invoice #${selectedSale.invNo}`, 'warning');
+      }
+      return;
+    }
+
+    // Case B: Step 1 -> find invoice by Inv #, IMEI, imeiRecords, or Barcode
+    setSearchQuery(code);
+    const activeSales = sales.filter(s => s.status !== 'CANCELLED');
+
+    const byInv = activeSales.find(
+      s => s.invNo.trim().toLowerCase() === lower || `#${s.invNo.trim().toLowerCase()}` === lower
+    );
+    if (byInv) {
+      if (byInv.returnStatus === 'FULL') {
+        showToast(`Invoice #${byInv.invNo} is already fully returned.`, 'warning');
+        return;
+      }
+      handleSelectSale(byInv);
+      showToast(`Invoice #${byInv.invNo} selected!`, 'success');
+      return;
+    }
+
+    const byImeiSales = activeSales.filter(s =>
+      s.items.some(it => extractItemImeis(it).some(im => im.toLowerCase() === lower))
+    );
+    if (byImeiSales.length > 0) {
+      const openSale = byImeiSales.find(s => s.returnStatus !== 'FULL');
+      if (!openSale) {
+        showToast(`IMEI ${code} invoice is already fully returned.`, 'warning');
+        return;
+      }
+      handleSelectSale(openSale, code);
+      showToast(`Invoice #${openSale.invNo} matched for IMEI ${code}!`, 'success');
+      return;
+    }
+
+    const imeiRecord = imeiRecords.find(r => r.imei.toLowerCase() === lower && r.invoiceNo);
+    if (imeiRecord?.invoiceNo) {
+      const recSale = activeSales.find(
+        s => s.invNo.toLowerCase() === imeiRecord.invoiceNo!.toLowerCase()
+      );
+      if (recSale) {
+        if (recSale.returnStatus === 'FULL') {
+          showToast(`Invoice #${recSale.invNo} is already fully returned.`, 'warning');
+          return;
+        }
+        handleSelectSale(recSale, code);
+        showToast(`Invoice #${recSale.invNo} matched via IMEI ledger!`, 'success');
+        return;
+      }
+    }
+
+    const byBarcodeSales = activeSales.filter(
+      s =>
+        s.returnStatus !== 'FULL' &&
+        s.items.some(it => (it.barcode || '').trim().toLowerCase() === lower)
+    );
+    if (byBarcodeSales.length === 1) {
+      handleSelectSale(byBarcodeSales[0], code);
+      showToast(`Invoice #${byBarcodeSales[0].invNo} matched for barcode ${code}!`, 'success');
+      return;
+    }
+
+    if (byBarcodeSales.length > 1) {
+      showToast(`Found ${byBarcodeSales.length} invoices with barcode ${code}. Select one below.`, 'info');
+      return;
+    }
+
+    showToast(`No active sale invoice found for "${code}"`, 'warning');
   };
 
   // Filtered sales for search
   const filteredSales = useMemo(() => {
-    if (!searchQuery.trim()) return sales.slice(0, 10);
+    const activeSales = sales.filter(s => s.status !== 'CANCELLED');
+    if (!searchQuery.trim()) return activeSales.slice(0, 15);
 
-    return smartFilterAndSort(sales, searchQuery, s => {
-      const imeiStr = s.items.flatMap(i => i.imeis || (i.imei ? [i.imei] : [])).join(' ');
+    return smartFilterAndSort(activeSales, searchQuery, s => {
+      const imeiStr = s.items.flatMap(i => extractItemImeis(i)).join(' ');
+      const barcodesStr = s.items.map(i => i.barcode || '').join(' ');
       const itemNames = s.items.map(i => `${i.name} ${i.variantLabel || ''}`).join(' ');
       return {
         primary: [s.invNo, s.custName, s.custPhone],
-        secondary: [itemNames, imeiStr],
+        secondary: [itemNames, imeiStr, barcodesStr],
       };
-    }).slice(0, 15);
+    }).slice(0, 20);
   }, [sales, searchQuery]);
 
   const toggleItemSelection = (key: string) => {
@@ -263,6 +458,8 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
           refundAmount: refundAmt,
           imeis: chosenImeis.length > 0 ? chosenImeis : undefined,
           imei: chosenImeis.length > 0 ? chosenImeis.join(', ') : undefined,
+          variantId: item.variantId,
+          variantLabel: item.variantLabel,
           returnReason: reason,
         });
 
@@ -287,6 +484,10 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
 
     const netProfitDeducted = Math.max(0, totalRefund - totalCostReversed);
     const returnNo = generateNextReturnNumber(salesReturns);
+    const willDeductFromKhata =
+      refundPaymentMethod === 'Credit Adjustment' ||
+      (deductFromKhata && Boolean(linkedKhataCustomer || selectedSale.invoiceType === 'credit'));
+    const khataDeductedAmount = willDeductFromKhata ? totalRefund : 0;
 
     const returnRecord: SalesReturnRecord = {
       id: 'RET-' + Date.now(),
@@ -294,7 +495,8 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
       originalInvNo: selectedSale.invNo,
       customerName: selectedSale.custName,
       customerPhone: selectedSale.custPhone,
-      khataCustomerId: selectedSale.khataCustomerId,
+      khataCustomerId: linkedKhataCustomer?.id || selectedSale.khataCustomerId,
+      khataDeductedAmount: khataDeductedAmount > 0 ? khataDeductedAmount : undefined,
       items: returnItems,
       totalRefundAmount: totalRefund,
       refundPaymentMethod,
@@ -308,7 +510,6 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
     };
 
     onProcessReturn(returnRecord);
-    showToast(`Return #${returnNo} processed successfully! Stock restored.`, 'success');
     onClose();
   };
 
@@ -361,15 +562,44 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                 </span>
               </div>
 
-              <div className="relative">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Search by Invoice # (e.g. 948201), Customer, or IMEI..."
-                  className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-amber-500 focus:bg-white"
-                />
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && searchQuery.trim()) {
+                        e.preventDefault();
+                        handleScanCodeInReturn(searchQuery);
+                      }
+                    }}
+                    placeholder="Search or scan Invoice #, IMEI, Barcode, or Customer..."
+                    className="compact-mobile-input w-full pl-9 pr-20 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-amber-500 focus:bg-white"
+                  />
+                  <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery('')}
+                        className="p-1 text-slate-400 hover:text-slate-600 rounded cursor-pointer"
+                        title="Clear"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setIsScannerOpen(true)}
+                      className="h-7 px-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[11px] font-extrabold flex items-center gap-1 shadow-xs transition cursor-pointer"
+                      title="Scan Product Barcode or 15-Digit IMEI"
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>Scan</span>
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
@@ -466,9 +696,20 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
 
               {/* Items Return Table */}
               <div className="space-y-2">
-                <label className="block text-xs font-bold text-slate-800">
-                  Select Product(s) to Return & Adjust Quantity
-                </label>
+                <div className="flex items-center justify-between gap-2">
+                  <label className="block text-xs font-bold text-slate-800">
+                    Select Product(s) to Return & Adjust Quantity
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setIsScannerOpen(true)}
+                    className="h-7 px-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer shadow-2xs shrink-0"
+                    title="Scan IMEI or Barcode from this invoice"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>Scan IMEI</span>
+                  </button>
+                </div>
 
                 <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
                   {selectedSale.items.map((item, idx) => {
@@ -621,9 +862,20 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                   </label>
                   <select
                     value={refundPaymentMethod}
-                    onChange={e => setRefundPaymentMethod(e.target.value as PaymentMethod)}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-amber-500"
+                    onChange={e => {
+                      const nextMethod = e.target.value as PaymentMethod;
+                      setRefundPaymentMethod(nextMethod);
+                      if (nextMethod === 'Credit Adjustment') {
+                        setDeductFromKhata(true);
+                      }
+                    }}
+                    className="compact-mobile-input w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-amber-500"
                   >
+                    {(selectedSale.invoiceType === 'credit' || linkedKhataCustomer) && (
+                      <option value="Credit Adjustment">
+                        Credit / Khata Account Adjustment (Deduct Udhar)
+                      </option>
+                    )}
                     <option value="Cash">Cash Return (Physical Counter Cash)</option>
                     <option value="Bank">Bank Account Transfer</option>
                     <option value="JazzCash">JazzCash Wallet</option>
@@ -690,13 +942,53 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                 </div>
               </div>
 
+              {/* Linked Customer Credit / Khata Deduction Preview */}
+              {(linkedKhataCustomer || selectedSale.invoiceType === 'credit') && (
+                <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={refundPaymentMethod === 'Credit Adjustment' ? true : deductFromKhata}
+                      disabled={refundPaymentMethod === 'Credit Adjustment'}
+                      onChange={e => setDeductFromKhata(e.target.checked)}
+                      className="mt-0.5 rounded text-purple-600 focus:ring-purple-500 cursor-pointer"
+                    />
+                    <div>
+                      <span className="font-extrabold text-purple-950 block">
+                        Deduct from Customer Credit / Khata Account
+                      </span>
+                      <span className="text-[11px] text-purple-700">
+                        {linkedKhataCustomer
+                          ? `${linkedKhataCustomer.name} • Current Udhar: ${currency} ${linkedKhataCustomer.balance.toLocaleString()}`
+                          : `Credit Invoice Customer: ${selectedSale.custName}`}
+                        {refundPaymentMethod === 'Credit Adjustment'
+                          ? ' (No cash leaves drawer)'
+                          : ''}
+                      </span>
+                    </div>
+                  </label>
+                  {linkedKhataCustomer && (refundPaymentMethod === 'Credit Adjustment' || deductFromKhata) && (
+                    <div className="text-left sm:text-right shrink-0 bg-white px-2.5 py-1.5 rounded-lg border border-purple-200 tabular-nums">
+                      <span className="block text-[9.5px] font-bold uppercase text-purple-600">
+                        New Khata Balance
+                      </span>
+                      <span className="font-black text-purple-900">
+                        {currency} {Math.max(0, linkedKhataCustomer.balance - totalRefund).toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Total Refund Banner */}
               <div className="p-3.5 bg-amber-500 text-white rounded-xl flex items-center justify-between shadow-md shadow-amber-500/20">
                 <div className="flex items-center gap-2">
                   <DollarSign className="w-5 h-5" />
                   <div>
                     <p className="text-[10px] uppercase tracking-wider font-bold opacity-90">
-                      Total Refund to Customer
+                      {refundPaymentMethod === 'Credit Adjustment'
+                        ? 'Total Credit Deducted from Khata'
+                        : 'Total Refund to Customer'}
                     </p>
                     <p className="text-lg font-black leading-tight">
                       {currency} {totalRefund.toLocaleString()}
@@ -705,8 +997,12 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                 </div>
 
                 <div className="text-right text-[11px] opacity-90">
-                  <p>Stock will be restored instantly</p>
-                  <p>IMEIs will be set back to Available</p>
+                  <p>Stock &amp; IMEIs restored instantly</p>
+                  <p>
+                    {refundPaymentMethod === 'Credit Adjustment' || (deductFromKhata && linkedKhataCustomer)
+                      ? 'Khata balance & return reason updated'
+                      : 'Sale return recorded'}
+                  </p>
                 </div>
               </div>
 
@@ -731,6 +1027,15 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* Live Barcode / IMEI Camera Scanner for Sales Return */}
+      <BarcodeScannerModal
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        onScan={handleScanCodeInReturn}
+        title="Scan Returned Phone IMEI or Barcode"
+        placeholder="Scan IMEI or product barcode to find sale..."
+      />
     </div>
   );
 };

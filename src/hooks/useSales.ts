@@ -128,6 +128,7 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
 
     // 3. Khata ledger calculation
     let updatedKhata = data.khata;
+    let resolvedKhataCustomerId = saleWithTs.khataCustomerId;
     let newKhataCustomerToCreate: KhataCustomer | undefined;
     let khataAtomicUpdate: {
       customerId: string;
@@ -145,14 +146,19 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
       let matched = false;
       const txId = generateEntityId('TX');
       const txDate = now;
+      const saleNormPhone = (saleWithTs.custPhone || '').replace(/[^0-9]/g, '');
+      const saleNormName = (saleWithTs.custName || '').trim().toLowerCase();
 
       updatedKhata = data.khata.map(c => {
+        const cNormPhone = (c.phone || '').replace(/[^0-9]/g, '');
         const isTarget = saleWithTs.khataCustomerId
           ? c.id === saleWithTs.khataCustomerId
-          : c.name.toLowerCase() === (saleWithTs.custName || '').toLowerCase();
+          : (saleNormName && c.name.trim().toLowerCase() === saleNormName) ||
+            (saleNormPhone.length >= 7 && cNormPhone === saleNormPhone);
 
         if (isTarget) {
           matched = true;
+          resolvedKhataCustomerId = c.id;
           const newBal = c.balance + saleWithTs.amountDue!;
           khataAtomicUpdate = {
             customerId: c.id,
@@ -188,6 +194,7 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
       // If no matching customer was found in Khata, create one automatically
       if (!matched && saleWithTs.custName && saleWithTs.custName !== 'Walk-in Customer') {
         const newCustId = saleWithTs.khataCustomerId || generateEntityId('KHT');
+        resolvedKhataCustomerId = newCustId;
         const newCust: KhataCustomer = {
           id: newCustId,
           name: saleWithTs.custName,
@@ -219,6 +226,10 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
           },
         };
       }
+    }
+
+    if (resolvedKhataCustomerId && !saleWithTs.khataCustomerId) {
+      saleWithTs.khataCustomerId = resolvedKhataCustomerId;
     }
 
     const activityData: ActivityLog = {
@@ -588,26 +599,138 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
 
   const handleSaveSalesReturn = (returnRecord: SalesReturnRecord) => {
     const now = new Date().toISOString();
+    const origSale = data.sales.find(s => s.invNo === returnRecord.originalInvNo);
+
+    const applyReturnToInventoryItem = (inv: typeof data.inventory[number]) => {
+      const matchingReturns = returnRecord.items.filter(
+        ri => ri.productId === inv.id || ri.itemId === inv.id || ri.name === inv.name
+      );
+      if (matchingReturns.length === 0) return null;
+
+      const totalRestoredQty = matchingReturns.reduce((sum, ri) => sum + (Number(ri.qty) || 0), 0);
+      const retImeis = matchingReturns.flatMap(ri => ri.imeis || (ri.imei ? [ri.imei] : []));
+      const existingImeis =
+        inv.imeis || (inv.imei ? inv.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
+      const combinedImeis = Array.from(new Set([...existingImeis, ...retImeis]));
+
+      let updatedVariants = inv.variants;
+      if (inv.variants && inv.variants.length > 0) {
+        updatedVariants = inv.variants.map(v => {
+          const vReturns = matchingReturns.filter(ri => {
+            if (ri.variantId && v.id) return ri.variantId === v.id;
+            const vLabel = `${v.ram}${v.storage ? `/${v.storage}` : ''}${v.color ? ` (${v.color})` : ''}`;
+            return ri.variantLabel && ri.variantLabel === vLabel;
+          });
+          if (vReturns.length === 0) return v;
+          const vAddQty = vReturns.reduce((sum, ri) => sum + (Number(ri.qty) || 0), 0);
+          const vRetImeis = vReturns.flatMap(ri => ri.imeis || (ri.imei ? [ri.imei] : []));
+          const curVImeis = Array.isArray(v.imeis) ? v.imeis.filter(Boolean) : [];
+          return {
+            ...v,
+            qty: (Number(v.qty) || 0) + vAddQty,
+            imeis: Array.from(new Set([...curVImeis, ...vRetImeis])),
+          };
+        });
+      }
+
+      return {
+        ...inv,
+        qty: inv.qty + totalRestoredQty,
+        updatedAt: now,
+        imei: combinedImeis.length > 0 ? combinedImeis.join(', ') : undefined,
+        imeis: combinedImeis.length > 0 ? combinedImeis : undefined,
+        variants: updatedVariants,
+      };
+    };
+
+    const applyReturnToSale = (sale: SaleRecord): SaleRecord => {
+      const alreadyRefunded = sale.totalRefunded || 0;
+      const newRefundTotal = alreadyRefunded + returnRecord.totalRefundAmount;
+      const isFull = newRefundTotal >= sale.grandTotal;
+      const updatedItems = sale.items.map(sItem => {
+        const matchedRetItems = returnRecord.items.filter(ri => {
+          const idMatch = ri.productId === sItem.id || ri.itemId === sItem.id;
+          const variantMatch = !ri.variantId || !sItem.variantId || ri.variantId === sItem.variantId;
+          const sImeis = sItem.imeis || (sItem.imei ? sItem.imei.split(',').map(x => x.trim()).filter(Boolean) : []);
+          const rImeis = ri.imeis || (ri.imei ? [ri.imei] : []);
+          const imeiMatch = rImeis.length === 0 || sImeis.length === 0 || rImeis.some(im => sImeis.includes(im));
+          return idMatch && variantMatch && imeiMatch;
+        });
+        if (matchedRetItems.length === 0) return sItem;
+
+        const addRetQty = matchedRetItems.reduce((sum, ri) => sum + (Number(ri.qty) || 0), 0);
+        const addRetImeis = matchedRetItems.flatMap(ri => ri.imeis || (ri.imei ? [ri.imei] : []));
+        const prevRetImeis = sItem.returnedImeis || [];
+        const mergedRetImeis = Array.from(new Set([...prevRetImeis, ...addRetImeis]));
+        const latestReason =
+          matchedRetItems.map(ri => ri.returnReason).filter(Boolean).join(', ') ||
+          returnRecord.reason;
+        const combinedReason = sItem.returnReason
+          ? Array.from(new Set([sItem.returnReason, latestReason])).join('; ')
+          : latestReason;
+
+        return {
+          ...sItem,
+          returnedQty: Math.min(sItem.qty, (sItem.returnedQty || 0) + addRetQty),
+          returnedImeis: mergedRetImeis.length > 0 ? mergedRetImeis : sItem.returnedImeis,
+          returnReason: combinedReason,
+          returnedAt: now,
+        };
+      });
+
+      const allItemsFullyReturned = updatedItems.every(it => (it.returnedQty || 0) >= it.qty);
+      return {
+        ...sale,
+        updatedAt: now,
+        items: updatedItems,
+        returnStatus: isFull || allItemsFullyReturned ? ('FULL' as const) : ('PARTIAL' as const),
+        totalRefunded: newRefundTotal,
+      };
+    };
+
+    const resolveTargetKhataCustomer = (khataList: KhataCustomer[]): KhataCustomer | undefined => {
+      const candidateId = returnRecord.khataCustomerId || origSale?.khataCustomerId;
+      if (candidateId) {
+        const byId = khataList.find(c => c.id === candidateId);
+        if (byId) return byId;
+      }
+      const normPhone = (returnRecord.customerPhone || origSale?.custPhone || '').replace(/[^0-9]/g, '');
+      if (normPhone.length >= 7) {
+        const byPhone = khataList.find(c => (c.phone || '').replace(/[^0-9]/g, '') === normPhone);
+        if (byPhone) return byPhone;
+      }
+      const normName = (returnRecord.customerName || origSale?.custName || '').trim().toLowerCase();
+      if (normName && normName !== 'walk-in customer') {
+        const byName = khataList.find(c => c.name.trim().toLowerCase() === normName);
+        if (byName) return byName;
+      }
+      return undefined;
+    };
+
+    const matchedKhataCust = resolveTargetKhataCustomer(data.khata);
+    const shouldDeductKhata =
+      typeof returnRecord.khataDeductedAmount === 'number'
+        ? returnRecord.khataDeductedAmount > 0
+        : returnRecord.refundPaymentMethod === 'Credit Adjustment' || origSale?.invoiceType === 'credit';
+
+    const khataDeductAmount =
+      shouldDeductKhata && matchedKhataCust
+        ? typeof returnRecord.khataDeductedAmount === 'number'
+          ? Math.max(0, returnRecord.khataDeductedAmount)
+          : returnRecord.totalRefundAmount
+        : 0;
+
     const returnWithTs: SalesReturnRecord = {
       ...returnRecord,
+      khataCustomerId: matchedKhataCust?.id || returnRecord.khataCustomerId,
+      khataDeductedAmount: khataDeductAmount > 0 ? khataDeductAmount : undefined,
       updatedAt: now,
     };
 
     const restoredInvToSync: typeof data.inventory = [];
     data.inventory.forEach(inv => {
-      const retItem = returnWithTs.items.find(ri => ri.productId === inv.id || ri.name === inv.name);
-      if (retItem) {
-        const retImeis = retItem.imeis || (retItem.imei ? [retItem.imei] : []);
-        const existingImeis = inv.imeis || (inv.imei ? inv.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
-        const combinedImeis = Array.from(new Set([...existingImeis, ...retImeis]));
-        restoredInvToSync.push({
-          ...inv,
-          qty: inv.qty + retItem.qty,
-          updatedAt: now,
-          imei: combinedImeis.length > 0 ? combinedImeis.join(', ') : undefined,
-          imeis: combinedImeis.length > 0 ? combinedImeis : undefined,
-        });
-      }
+      const nextInv = applyReturnToInventoryItem(inv);
+      if (nextInv) restoredInvToSync.push(nextInv);
     });
 
     let syncedImeiRecords = data.imeiRecords || [];
@@ -623,56 +746,56 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
       }
     });
 
-    const origSale = data.sales.find(s => s.invNo === returnWithTs.originalInvNo);
-    const updatedSaleToSync: SaleRecord | undefined = origSale
-      ? {
-          ...origSale,
-          updatedAt: now,
-          returnStatus: (origSale.totalRefunded || 0) + returnWithTs.totalRefundAmount >= origSale.grandTotal ? 'FULL' : 'PARTIAL',
-          totalRefunded: (origSale.totalRefunded || 0) + returnWithTs.totalRefundAmount,
-        }
-      : undefined;
+    const updatedSaleToSync: SaleRecord | undefined = origSale ? applyReturnToSale(origSale) : undefined;
+
+    const returnedItemsSummary = returnWithTs.items.map(ri => ({
+      name: ri.name,
+      variantLabel: ri.variantLabel,
+      qty: ri.qty,
+      imeis: ri.imeis && ri.imeis.length > 0 ? ri.imeis : ri.imei ? [ri.imei] : undefined,
+      reason: ri.returnReason || returnWithTs.reason,
+      refundAmount: ri.refundAmount,
+    }));
+    const productReasonSummary = returnedItemsSummary
+      .map(
+        it =>
+          `${it.name}${it.variantLabel ? ` (${it.variantLabel})` : ''} x${it.qty}${
+            it.imeis?.length ? ` [IMEI: ${it.imeis.join(', ')}]` : ''
+          } — Returned (${it.reason})`
+      )
+      .join(' | ');
+    const khataReturnTxId = generateEntityId('TX');
+    const combinedReturnReason =
+      Array.from(new Set(returnedItemsSummary.map(i => i.reason).filter(Boolean))).join(', ') ||
+      returnWithTs.reason;
 
     let updatedKhataToSync: KhataCustomer | undefined;
-    if (returnWithTs.khataCustomerId && returnWithTs.totalRefundAmount > 0) {
-      const targetCust = data.khata.find(c => c.id === returnWithTs.khataCustomerId);
-      if (targetCust) {
-        updatedKhataToSync = {
-          ...targetCust,
-          balance: Math.max(0, targetCust.balance - returnWithTs.totalRefundAmount),
-          lastUpdated: now,
-          updatedAt: now,
-          history: [
-            {
-              id: generateEntityId('TX'),
-              date: now,
-              type: 'debit' as const,
-              amount: returnWithTs.totalRefundAmount,
-              note: `Sales Return #${returnWithTs.returnNo} for Inv #${returnWithTs.originalInvNo}`,
-            },
-            ...targetCust.history,
-          ],
-        };
-      }
+    if (matchedKhataCust && khataDeductAmount > 0) {
+      updatedKhataToSync = {
+        ...matchedKhataCust,
+        balance: Math.max(0, matchedKhataCust.balance - khataDeductAmount),
+        lastUpdated: now,
+        updatedAt: now,
+        history: [
+          {
+            id: khataReturnTxId,
+            date: now,
+            type: 'debit' as const,
+            amount: khataDeductAmount,
+            paymentMethod: returnWithTs.refundPaymentMethod,
+            returnNo: returnWithTs.returnNo,
+            originalInvNo: returnWithTs.originalInvNo,
+            returnReason: combinedReturnReason,
+            returnedItemsSummary,
+            note: `Sales Return #${returnWithTs.returnNo} for Inv #${returnWithTs.originalInvNo} • ${productReasonSummary}`,
+          },
+          ...matchedKhataCust.history,
+        ],
+      };
     }
 
     setData(prev => {
-      const updatedInventory = prev.inventory.map(inv => {
-        const retItem = returnWithTs.items.find(ri => ri.productId === inv.id || ri.name === inv.name);
-        if (retItem) {
-          const retImeis = retItem.imeis || (retItem.imei ? [retItem.imei] : []);
-          const existingImeis = inv.imeis || (inv.imei ? inv.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
-          const combinedImeis = Array.from(new Set([...existingImeis, ...retImeis]));
-          return {
-            ...inv,
-            qty: inv.qty + retItem.qty,
-            updatedAt: now,
-            imei: combinedImeis.length > 0 ? combinedImeis.join(', ') : undefined,
-            imeis: combinedImeis.length > 0 ? combinedImeis : undefined,
-          };
-        }
-        return inv;
-      });
+      const updatedInventory = prev.inventory.map(inv => applyReturnToInventoryItem(inv) || inv);
 
       let updatedImeiRecords = prev.imeiRecords || [];
       returnWithTs.items.forEach(retItem => {
@@ -687,44 +810,41 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
         }
       });
 
-      const updatedSales = prev.sales.map(s => {
-        if (s.invNo === returnWithTs.originalInvNo) {
-          const alreadyRefunded = s.totalRefunded || 0;
-          const newRefundTotal = alreadyRefunded + returnWithTs.totalRefundAmount;
-          const isFull = newRefundTotal >= s.grandTotal;
-          return {
-            ...s,
-            updatedAt: now,
-            returnStatus: isFull ? ('FULL' as const) : ('PARTIAL' as const),
-            totalRefunded: newRefundTotal,
-          };
-        }
-        return s;
-      });
+      const updatedSales = prev.sales.map(s =>
+        s.invNo === returnWithTs.originalInvNo ? applyReturnToSale(s) : s
+      );
 
       let updatedKhata = prev.khata;
-      if (returnWithTs.khataCustomerId && returnWithTs.totalRefundAmount > 0) {
-        updatedKhata = prev.khata.map(c => {
-          if (c.id === returnWithTs.khataCustomerId) {
-            return {
-              ...c,
-              balance: Math.max(0, c.balance - returnWithTs.totalRefundAmount),
-              lastUpdated: now,
-              updatedAt: now,
-              history: [
-                {
-                  id: generateEntityId('TX'),
-                  date: now,
-                  type: 'debit' as const,
-                  amount: returnWithTs.totalRefundAmount,
-                  note: `Sales Return #${returnWithTs.returnNo} for Inv #${returnWithTs.originalInvNo}`,
-                },
-                ...c.history,
-              ],
-            };
-          }
-          return c;
-        });
+      if (khataDeductAmount > 0) {
+        const prevTarget = resolveTargetKhataCustomer(prev.khata);
+        if (prevTarget) {
+          updatedKhata = prev.khata.map(c => {
+            if (c.id === prevTarget.id) {
+              return {
+                ...c,
+                balance: Math.max(0, c.balance - khataDeductAmount),
+                lastUpdated: now,
+                updatedAt: now,
+                history: [
+                  {
+                    id: khataReturnTxId,
+                    date: now,
+                    type: 'debit' as const,
+                    amount: khataDeductAmount,
+                    paymentMethod: returnWithTs.refundPaymentMethod,
+                    returnNo: returnWithTs.returnNo,
+                    originalInvNo: returnWithTs.originalInvNo,
+                    returnReason: combinedReturnReason,
+                    returnedItemsSummary,
+                    note: `Sales Return #${returnWithTs.returnNo} for Inv #${returnWithTs.originalInvNo} • ${productReasonSummary}`,
+                  },
+                  ...c.history,
+                ],
+              };
+            }
+            return c;
+          });
+        }
       }
 
       return {
@@ -748,12 +868,17 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
     logActivity(
       'Sale',
       `Processed Return #${returnWithTs.returnNo} for Inv #${returnWithTs.originalInvNo}`,
-      `Customer: ${returnWithTs.customerName} | Refunded: ${data.settings.currency} ${returnWithTs.totalRefundAmount.toLocaleString()} via ${returnWithTs.refundPaymentMethod} | Stock & IMEIs restored | Reason: ${returnWithTs.reason}`,
+      `Customer: ${returnWithTs.customerName} | Refunded: ${data.settings.currency} ${returnWithTs.totalRefundAmount.toLocaleString()} via ${returnWithTs.refundPaymentMethod}${khataDeductAmount > 0 ? ` | Khata Deducted: ${data.settings.currency} ${khataDeductAmount.toLocaleString()}` : ''} | Stock & IMEIs restored | Reason: ${combinedReturnReason}`,
       'return',
       returnWithTs.returnNo
     );
 
-    showToast(`Return #${returnWithTs.returnNo} completed & stock updated!`, 'success');
+    showToast(
+      khataDeductAmount > 0
+        ? `Return #${returnWithTs.returnNo} processed! Stock restored & ${data.settings.currency} ${khataDeductAmount.toLocaleString()} deducted from customer Khata.`
+        : `Return #${returnWithTs.returnNo} completed & stock updated!`,
+      'success'
+    );
   };
 
   return {

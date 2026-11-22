@@ -90,6 +90,17 @@ export interface KhataTransaction {
   accountId?: string;
   note?: string;
   receiptImage?: string;
+  returnNo?: string;
+  originalInvNo?: string;
+  returnReason?: string;
+  returnedItemsSummary?: Array<{
+    name: string;
+    variantLabel?: string;
+    qty: number;
+    imeis?: string[];
+    reason: string;
+    refundAmount: number;
+  }>;
 }
 
 export interface KhataCustomer {
@@ -218,6 +229,7 @@ export type PaymentMethod =
   | 'Card'
   | 'Load'
   | 'Digital Wallet'
+  | 'Credit Adjustment'
   | 'Other'
   | (string & {});
 
@@ -236,6 +248,9 @@ export interface SaleItem {
   costPrice: number;
   qty: number;
   returnedQty?: number;
+  returnedImeis?: string[];
+  returnReason?: string;
+  returnedAt?: string;
   barcode?: string;
   variantId?: string;
   variantLabel?: string;
@@ -281,6 +296,8 @@ export interface SalesReturnItem {
   refundAmount: number;
   imei?: string;
   imeis?: string[];
+  variantId?: string;
+  variantLabel?: string;
   returnReason: string;
 }
 
@@ -291,6 +308,7 @@ export interface SalesReturnRecord {
   customerName: string;
   customerPhone?: string;
   khataCustomerId?: string;
+  khataDeductedAmount?: number;
   items: SalesReturnItem[];
   totalRefundAmount: number;
   refundPaymentMethod: PaymentMethod;

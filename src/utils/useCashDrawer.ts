@@ -355,7 +355,7 @@ export function useCashDrawer(
       totalCostReversedInPeriod += Number(ret.totalCostReversed) || 0;
       totalProfitLostFromReturns += Number(ret.netProfitDeducted) || 0;
 
-      if (refundAmt > 0) {
+      if (refundAmt > 0 && ret.refundPaymentMethod !== 'Credit Adjustment') {
         const channel = normalizePaymentChannel(ret.refundPaymentMethod);
         const isCash = channel === 'Cash';
 

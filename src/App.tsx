@@ -2002,6 +2002,7 @@ function AppContent() {
                 khata={data.khata}
                 settings={data.settings}
                 sales={data.sales || []}
+                salesReturns={data.salesReturns || []}
                 isAdmin={(data.currentRole || 'admin') === 'admin'}
                 onOpenAddModal={() => setAddKhataModalOpen(true)}
                 onOpenSettleModal={cust => {
@@ -2259,6 +2260,8 @@ function AppContent() {
         }}
         sales={data.sales || []}
         inventory={data.inventory}
+        imeiRecords={data.imeiRecords || []}
+        khata={data.khata || []}
         currency={data.settings.currency}
         salesReturns={data.salesReturns || []}
         initialSale={salesReturnInitialSale}

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { KhataCustomer, SaleRecord, ShopSettings } from '../types';
+import { KhataCustomer, SaleItem, SaleRecord, SalesReturnRecord, ShopSettings } from '../types';
 import {
   X,
   User,
@@ -29,6 +29,7 @@ import {
   Copy,
   Save,
   Image as ImageIcon,
+  RotateCcw,
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -68,6 +69,7 @@ interface CustomerAccountModalProps {
   onClose: () => void;
   settings: ShopSettings;
   sales?: SaleRecord[];
+  salesReturns?: SalesReturnRecord[];
   isAdmin?: boolean;
   onAddTransaction: (
     customerId: string,
@@ -90,6 +92,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   onClose,
   settings,
   sales = [],
+  salesReturns = [],
   isAdmin = true,
   onAddTransaction,
   onUpdateCustomer,
@@ -184,6 +187,11 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     tx: KhataCustomer['history'][number],
     pool: SaleRecord[]
   ): SaleRecord | undefined => {
+    if (tx.originalInvNo) {
+      const targetOrig = tx.originalInvNo.trim().toLowerCase();
+      const byOrig = pool.find(s => s.invNo.trim().toLowerCase() === targetOrig);
+      if (byOrig) return byOrig;
+    }
     const noteStr = tx.note || '';
     const invMatch =
       noteStr.match(/(INV-[A-Z0-9-]+)/i) ||
@@ -209,6 +217,24 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     return undefined;
   };
 
+  const findLinkedReturnForTx = (
+    tx: KhataCustomer['history'][number],
+    pool: SalesReturnRecord[]
+  ): SalesReturnRecord | undefined => {
+    if (tx.returnNo) {
+      const byRetNo = pool.find(r => r.returnNo.trim().toLowerCase() === tx.returnNo!.trim().toLowerCase());
+      if (byRetNo) return byRetNo;
+    }
+    const noteStr = tx.note || '';
+    const retMatch = noteStr.match(/(RET-[A-Z0-9-]+)/i);
+    if (retMatch && retMatch[1]) {
+      const targetRet = retMatch[1].trim().toLowerCase();
+      const byNoteRet = pool.find(r => r.returnNo.trim().toLowerCase() === targetRet);
+      if (byNoteRet) return byNoteRet;
+    }
+    return undefined;
+  };
+
   const customerSalesPool = useMemo(() => {
     if (!customer) return sales;
     const normPhone = customer.phone.replace(/[^0-9]/g, '');
@@ -224,6 +250,66 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     return matched.length > 0 ? matched : sales.filter(s => s.status !== 'CANCELLED');
   }, [customer, sales]);
 
+  const customerSalesReturns = useMemo(() => {
+    if (!customer) return salesReturns;
+    const normPhone = customer.phone.replace(/[^0-9]/g, '');
+    const normName = customer.name.trim().toLowerCase();
+    const matched = salesReturns.filter(r => {
+      if (r.khataCustomerId && r.khataCustomerId === customer.id) return true;
+      const rPhone = (r.customerPhone || '').replace(/[^0-9]/g, '');
+      if (normPhone.length >= 7 && rPhone && rPhone === normPhone) return true;
+      if (normName && (r.customerName || '').trim().toLowerCase() === normName) return true;
+      return customerSalesPool.some(s => s.invNo === r.originalInvNo);
+    });
+    return matched.length > 0 ? matched : salesReturns;
+  }, [customer, salesReturns, customerSalesPool]);
+
+  const getSaleItemReturnMeta = (saleInvNo: string | undefined, item: SaleItem) => {
+    const directQty = item.returnedQty || 0;
+    const directImeis = Array.isArray(item.returnedImeis) ? item.returnedImeis : [];
+    const directReason = item.returnReason || '';
+
+    const matchingReturns = saleInvNo
+      ? salesReturns.filter(r => r.originalInvNo === saleInvNo)
+      : [];
+
+    let recordQty = 0;
+    const recordReasons: string[] = [];
+    const recordImeis: string[] = [];
+
+    for (const r of matchingReturns) {
+      for (const ri of r.items) {
+        const idMatches = ri.productId === item.id;
+        const variantMatches =
+          !ri.variantId || !item.variantId || ri.variantId === item.variantId;
+        const nameMatches =
+          (ri.name || '').trim().toLowerCase() === (item.name || '').trim().toLowerCase();
+        if ((idMatches && variantMatches) || (!ri.productId && nameMatches)) {
+          recordQty += ri.qty || 0;
+          const rsn = (r.reason || '').trim();
+          if (rsn && !recordReasons.includes(rsn)) recordReasons.push(rsn);
+          if (Array.isArray(ri.imeis)) {
+            ri.imeis.forEach(im => {
+              if (im && !recordImeis.includes(im)) recordImeis.push(im);
+            });
+          }
+        }
+      }
+    }
+
+    const returnedQty = Math.max(directQty, recordQty);
+    const returnedImeis = directImeis.length > 0 ? directImeis : recordImeis;
+    const returnReason =
+      directReason || (recordReasons.length > 0 ? recordReasons.join(', ') : '');
+
+    return {
+      isReturned: returnedQty > 0,
+      returnedQty,
+      returnedImeis,
+      returnReason,
+    };
+  };
+
   const runningLedger = useMemo(() => {
     let running = 0;
     const sorted = [...history].sort(
@@ -238,29 +324,49 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
         running -= tx.amount;
       }
       const linkedSale = findLinkedSaleForTx(tx, customerSalesPool);
+      const linkedReturn = findLinkedReturnForTx(tx, customerSalesReturns);
+      const isSalesReturn =
+        tx.type === 'debit' ||
+        Boolean(tx.returnNo) ||
+        Boolean(linkedReturn) ||
+        (tx.note || '').toLowerCase().includes('sales return');
       return {
         ...tx,
         prevBalance,
         runningBalance: running,
         linkedSale,
+        linkedReturn,
+        isSalesReturn,
       };
     });
 
     return calculated.reverse();
-  }, [history, customerSalesPool]);
+  }, [history, customerSalesPool, customerSalesReturns]);
 
   const filteredLedger = useMemo(() => {
     const q = ledgerSearch.trim();
     return runningLedger.filter(tx => {
-      if (ledgerFilter !== 'all' && tx.type !== ledgerFilter) return false;
+      if (ledgerFilter === 'credit' && tx.type !== 'credit') return false;
+      if (ledgerFilter === 'payment' && tx.type === 'credit') return false;
       if (!q) return true;
       const itemsText = (tx.linkedSale?.items || [])
-        .map(it => `${it.name} ${it.variantLabel || ''} ${it.imei || ''} ${(it.imeis || []).join(' ')}`)
+        .map(it => `${it.name} ${it.variantLabel || ''} ${it.imei || ''} ${(it.imeis || []).join(' ')} ${it.returnReason || ''}`)
+        .join(' ');
+      const returnItemsText = (tx.returnedItemsSummary || tx.linkedReturn?.items || [])
+        .map(ri => `${ri.name} ${ri.variantLabel || ''} ${(ri.imeis || []).join(' ')}`)
         .join(' ');
       return smartMatch(
         q,
-        [tx.note, tx.paymentMethod, tx.linkedSale?.invNo, tx.amount],
-        [itemsText]
+        [
+          tx.note,
+          tx.paymentMethod,
+          tx.linkedSale?.invNo,
+          tx.returnNo,
+          tx.originalInvNo,
+          tx.returnReason,
+          tx.amount,
+        ],
+        [itemsText, returnItemsText]
       );
     });
   }, [runningLedger, ledgerSearch, ledgerFilter]);
@@ -405,7 +511,11 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
         const lines = sale.items.map(it => {
           const imeis =
             Array.isArray(it.imeis) && it.imeis.length > 0 ? it.imeis.join(', ') : it.imei;
-          return `${it.name}${it.variantLabel ? ` (${it.variantLabel})` : ''} x${it.qty} @ ${currency} ${it.salePrice.toLocaleString()}${imeis ? ` [IMEI: ${imeis}]` : ''}`;
+          const retMeta = getSaleItemReturnMeta(sale.invNo, it);
+          const returnSuffix = retMeta.isReturned
+            ? ` [RETURNED${retMeta.returnedQty > 1 ? ` x${retMeta.returnedQty}` : ''}${retMeta.returnReason ? ` - Reason: ${retMeta.returnReason}` : ''}]`
+            : '';
+          return `${it.name}${it.variantLabel ? ` (${it.variantLabel})` : ''} x${it.qty} @ ${currency} ${it.salePrice.toLocaleString()}${imeis ? ` [IMEI: ${imeis}]` : ''}${returnSuffix}`;
         });
         const meta: string[] = [`Bill: ${currency} ${sale.grandTotal.toLocaleString()}`];
         if ((sale.amountPaid || 0) > 0) {
@@ -421,13 +531,34 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
       };
 
       const tableRows = runningLedger.map(tx => {
-        const itemsText = formatSaleItemsText(tx.linkedSale);
+        const retSummary =
+          tx.returnedItemsSummary && tx.returnedItemsSummary.length > 0
+            ? tx.returnedItemsSummary
+                .map(
+                  ri =>
+                    `${ri.name}${ri.variantLabel ? ` (${ri.variantLabel})` : ''} x${ri.qty}${ri.imeis && ri.imeis.length > 0 ? ` [IMEI: ${ri.imeis.join(', ')}]` : ''} - Returned (Reason: ${ri.reason})`
+                )
+                .join('\n')
+            : tx.linkedReturn && tx.linkedReturn.items.length > 0
+            ? tx.linkedReturn.items
+                .map(
+                  ri =>
+                    `${ri.name}${ri.variantLabel ? ` (${ri.variantLabel})` : ''} x${ri.qty}${ri.imeis && ri.imeis.length > 0 ? ` [IMEI: ${ri.imeis.join(', ')}]` : ''} - Returned (Reason: ${tx.returnReason || tx.linkedReturn?.reason || 'Returned'})`
+                )
+                .join('\n')
+            : '';
+
+        const itemsText = tx.isSalesReturn ? retSummary : formatSaleItemsText(tx.linkedSale);
         const detailCell = itemsText
-          ? `${tx.note || `Invoice #${tx.linkedSale?.invNo}`}\n${itemsText}`
+          ? `${tx.note || (tx.isSalesReturn ? `Return #${tx.returnNo || ''}` : `Invoice #${tx.linkedSale?.invNo}`)}\n${itemsText}`
           : tx.note || '--';
         return [
           new Date(tx.date).toLocaleDateString(),
-          tx.type === 'credit' ? 'Credit (+)' : `Paid (${tx.paymentMethod || 'Cash'})`,
+          tx.type === 'credit'
+            ? 'Credit (+)'
+            : tx.isSalesReturn
+            ? 'Returned (-)'
+            : `Paid (${tx.paymentMethod || 'Cash'})`,
           detailCell,
           `${currency} ${tx.prevBalance.toLocaleString()}`,
           `${tx.type === 'credit' ? '+' : '-'} ${currency} ${tx.amount.toLocaleString()}`,
@@ -472,8 +603,36 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
 
     const rows = runningLedger
       .map(tx => {
+        const retItemsHtml = tx.isSalesReturn
+          ? (() => {
+              const rItems =
+                tx.returnedItemsSummary && tx.returnedItemsSummary.length > 0
+                  ? tx.returnedItemsSummary
+                  : (tx.linkedReturn?.items || []).map(ri => ({
+                      name: ri.name,
+                      variantLabel: ri.variantLabel,
+                      qty: ri.qty,
+                      imeis: ri.imeis,
+                      reason: tx.returnReason || tx.linkedReturn?.reason || 'Returned',
+                      refundAmount: ri.qty * ri.salePrice,
+                    }));
+              if (rItems.length === 0) return '';
+              return `<div style="margin-top: 4px; padding: 5px 7px; background: #fffbeb; border-left: 2px solid #d97706; font-size: 11px;">
+                ${rItems
+                  .map(
+                    ri => `<div style="margin-bottom: 2px;">
+                      <strong>${ri.name}</strong>${ri.variantLabel ? ` (${ri.variantLabel})` : ''} &times; ${ri.qty}
+                      <span style="color: #b45309; font-weight: bold;"> [Returned - Reason: ${ri.reason}]</span>
+                      ${ri.imeis && ri.imeis.length > 0 ? `<div style="font-size: 10px; color: #475569;">IMEI: ${ri.imeis.join(', ')}</div>` : ''}
+                    </div>`
+                  )
+                  .join('')}
+              </div>`;
+            })()
+          : '';
+
         const itemsHtml =
-          tx.linkedSale && tx.linkedSale.items.length > 0
+          !tx.isSalesReturn && tx.linkedSale && tx.linkedSale.items.length > 0
             ? `<div style="margin-top: 4px; padding: 5px 7px; background: #f8fafc; border-left: 2px solid #7e22ce; font-size: 11px;">
                 ${tx.linkedSale.items
                   .map(it => {
@@ -481,8 +640,10 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                       Array.isArray(it.imeis) && it.imeis.length > 0
                         ? it.imeis.join(', ')
                         : it.imei;
+                    const retMeta = getSaleItemReturnMeta(tx.linkedSale?.invNo, it);
                     return `<div style="margin-bottom: 2px;">
                       <strong>${it.name}</strong>${it.variantLabel ? ` (${it.variantLabel})` : ''} &times; ${it.qty} @ ${currency} ${it.salePrice.toLocaleString()} = <strong>${currency} ${(it.salePrice * it.qty).toLocaleString()}</strong>
+                      ${retMeta.isReturned ? `<span style="margin-left: 6px; padding: 1px 5px; background: #fef3c7; color: #b45309; border-radius: 4px; font-size: 10px; font-weight: bold;">Returned${retMeta.returnReason ? ` (${retMeta.returnReason})` : ''}</span>` : ''}
                       ${imeis ? `<div style="font-size: 10px; color: #475569;">IMEI: ${imeis}</div>` : ''}
                     </div>`;
                   })
@@ -497,17 +658,17 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
         return `
         <tr>
           <td style="padding: 8px; border-bottom: 1px solid #eee; vertical-align: top;">${new Date(tx.date).toLocaleDateString()}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; font-weight: bold; color: ${tx.type === 'credit' ? '#b91c1c' : '#15803d'};">
-            ${tx.type === 'credit' ? 'Credit (+)' : `Paid (${tx.paymentMethod || 'Cash'})`}
+          <td style="padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; font-weight: bold; color: ${tx.type === 'credit' ? '#b91c1c' : tx.isSalesReturn ? '#b45309' : '#15803d'};">
+            ${tx.type === 'credit' ? 'Credit (+)' : tx.isSalesReturn ? 'Returned (-)' : `Paid (${tx.paymentMethod || 'Cash'})`}
           </td>
           <td style="padding: 8px; border-bottom: 1px solid #eee; vertical-align: top;">
             <div>${tx.note || '-'}</div>
-            ${itemsHtml}
+            ${retItemsHtml || itemsHtml}
           </td>
           <td style="padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; text-align: right; font-variant-numeric: tabular-nums; color: #64748b;">
             ${currency} ${tx.prevBalance.toLocaleString()}
           </td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; color: ${tx.type === 'credit' ? '#b91c1c' : '#15803d'};">
+          <td style="padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; color: ${tx.type === 'credit' ? '#b91c1c' : tx.isSalesReturn ? '#b45309' : '#15803d'};">
             ${tx.type === 'credit' ? '+' : '-'} ${currency} ${tx.amount.toLocaleString()}
           </td>
           <td style="padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; text-align: right; font-variant-numeric: tabular-nums; font-weight: 800;">
@@ -1246,7 +1407,22 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                   filteredLedger.map((tx, idx) => {
                     const d = new Date(tx.date);
                     const isCredit = tx.type === 'credit';
+                    const isReturn = tx.isSalesReturn;
                     const sale = tx.linkedSale;
+                    const retRecord = tx.linkedReturn;
+                    const returnedSummaryItems =
+                      tx.returnedItemsSummary && tx.returnedItemsSummary.length > 0
+                        ? tx.returnedItemsSummary
+                        : (retRecord?.items || []).map(ri => ({
+                            name: ri.name,
+                            variantLabel: ri.variantLabel,
+                            qty: ri.qty,
+                            imeis: ri.imeis,
+                            reason: tx.returnReason || retRecord?.reason || 'Returned',
+                            refundAmount: ri.qty * ri.salePrice,
+                          }));
+                    const effectiveReturnReason =
+                      tx.returnReason || retRecord?.reason || returnedSummaryItems[0]?.reason || '';
 
                     return (
                       <div
@@ -1254,6 +1430,8 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                         className={`rounded-xl border p-3 sm:p-3.5 transition ${
                           isCredit
                             ? 'bg-rose-50/30 border-rose-200/80 hover:border-rose-300'
+                            : isReturn
+                            ? 'bg-amber-50/40 border-amber-200/90 hover:border-amber-300'
                             : 'bg-emerald-50/30 border-emerald-200/80 hover:border-emerald-300'
                         }`}
                       >
@@ -1265,6 +1443,10 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-rose-100 text-rose-800 font-extrabold text-[11px]">
                                   <ArrowUpRight className="w-3 h-3" /> Credit Added (+)
                                 </span>
+                              ) : isReturn ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-100 text-amber-900 font-extrabold text-[11px] border border-amber-200">
+                                  <RotateCcw className="w-3 h-3 text-amber-700" /> Product Returned (-)
+                                </span>
                               ) : (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 font-extrabold text-[11px]">
                                   <ArrowDownLeft className="w-3 h-3" /> Payment Received (-)
@@ -1272,8 +1454,14 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                               )}
 
                               <span className="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-white border border-slate-200 text-slate-700">
-                                {isCredit ? 'Udhar / Credit' : tx.paymentMethod || 'Cash'}
+                                {isCredit ? 'Udhar / Credit' : tx.paymentMethod || (isReturn ? 'Credit Adjustment' : 'Cash')}
                               </span>
+
+                              {(tx.returnNo || retRecord?.returnNo) && (
+                                <span className="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-amber-100/80 border border-amber-200 text-amber-900 tabular-nums">
+                                  {tx.returnNo || retRecord?.returnNo}
+                                </span>
+                              )}
 
                               {sale && (
                                 <span className="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-800 tabular-nums">
@@ -1316,7 +1504,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                               <span className="block text-[9px] font-bold uppercase text-slate-400">Entry</span>
                               <span
                                 className={`text-xs font-extrabold tabular-nums ${
-                                  isCredit ? 'text-rose-600' : 'text-emerald-600'
+                                  isCredit ? 'text-rose-600' : isReturn ? 'text-amber-700' : 'text-emerald-600'
                                 }`}
                               >
                                 {isCredit ? '+' : '-'} {currency} {tx.amount.toLocaleString()}
@@ -1366,13 +1554,66 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                           </div>
                         </div>
 
+                        {/* Returned Products Breakdown & Reason inside Sales Return Ledger Entry */}
+                        {isReturn && (returnedSummaryItems.length > 0 || effectiveReturnReason) && (
+                          <div className="mt-2.5 pt-2.5 border-t border-amber-200/70 bg-white/95 rounded-xl p-2.5 space-y-1.5">
+                            <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider text-amber-800">
+                              <span className="flex items-center gap-1">
+                                <RotateCcw className="w-3 h-3 text-amber-700" />
+                                Returned Products ({returnedSummaryItems.length || 1})
+                              </span>
+                              {effectiveReturnReason && (
+                                <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-200 normal-case font-extrabold">
+                                  Returned — Reason: {effectiveReturnReason}
+                                </span>
+                              )}
+                            </div>
+
+                            {returnedSummaryItems.length > 0 && (
+                              <div className="divide-y divide-amber-100">
+                                {returnedSummaryItems.map((ri, rIdx) => (
+                                  <div
+                                    key={rIdx}
+                                    className="py-1.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs"
+                                  >
+                                    <div className="min-w-0 flex flex-wrap items-center gap-1.5">
+                                      <span className="font-bold text-slate-900">{ri.name}</span>
+                                      {ri.variantLabel && (
+                                        <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-slate-100 text-slate-700">
+                                          {ri.variantLabel}
+                                        </span>
+                                      )}
+                                      <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-200">
+                                        Returned • {ri.reason || effectiveReturnReason || 'Returned'}
+                                      </span>
+                                      {ri.imeis && ri.imeis.length > 0 && (
+                                        <span className="text-[11px] font-mono text-indigo-700 break-all">
+                                          IMEI: {ri.imeis.join(', ')}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-right tabular-nums shrink-0 text-[11px] text-amber-800 font-bold">
+                                      Qty {ri.qty} • -{currency} {(ri.refundAmount || 0).toLocaleString()}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         {/* Full Itemized Invoice Product Breakdown inside Ledger */}
-                        {sale && sale.items && sale.items.length > 0 && (
+                        {!isReturn && sale && sale.items && sale.items.length > 0 && (
                           <div className="mt-2.5 pt-2.5 border-t border-slate-200/70 bg-white/90 rounded-xl p-2.5 space-y-1.5">
                             <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">
                               <span className="flex items-center gap-1 text-indigo-800">
                                 <ShoppingBag className="w-3 h-3" />
                                 Purchased Items ({sale.items.length})
+                                {sale.returnStatus && (
+                                  <span className="ml-1 px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-200">
+                                    {sale.returnStatus === 'FULL' ? 'Returned' : 'Partial Return'}
+                                  </span>
+                                )}
                               </span>
                               <div className="flex flex-wrap items-center gap-2.5 tabular-nums text-slate-600">
                                 <span>Bill: <strong>{currency} {sale.grandTotal.toLocaleString()}</strong></span>
@@ -1390,23 +1631,40 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                                   Array.isArray(item.imeis) && item.imeis.length > 0
                                     ? item.imeis.join(', ')
                                     : item.imei;
+                                const retMeta = getSaleItemReturnMeta(sale.invNo, item);
                                 return (
                                   <div
                                     key={itemIdx}
-                                    className="py-1.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs"
+                                    className={`py-1.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs ${
+                                      retMeta.isReturned ? 'bg-amber-50/50 rounded-lg px-2 -mx-1' : ''
+                                    }`}
                                   >
                                     <div className="min-w-0">
-                                      <span className="font-bold text-slate-900">
-                                        {item.name}
-                                      </span>
-                                      {item.variantLabel && (
-                                        <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.2 rounded bg-slate-100 text-slate-700">
-                                          {item.variantLabel}
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        <span className={`font-bold ${retMeta.isReturned && retMeta.returnedQty >= item.qty ? 'text-slate-600 line-through' : 'text-slate-900'}`}>
+                                          {item.name}
+                                        </span>
+                                        {item.variantLabel && (
+                                          <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-slate-100 text-slate-700">
+                                            {item.variantLabel}
+                                          </span>
+                                        )}
+                                        {retMeta.isReturned && (
+                                          <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300">
+                                            <RotateCcw className="w-2.5 h-2.5 text-amber-700" />
+                                            Returned{retMeta.returnedQty > 1 || retMeta.returnedQty < item.qty ? ` (x${retMeta.returnedQty})` : ''}
+                                            {retMeta.returnReason ? ` • Reason: ${retMeta.returnReason}` : ''}
+                                          </span>
+                                        )}
+                                      </div>
+                                      {imeis && (
+                                        <span className="block text-[11px] font-mono text-indigo-700 break-all mt-0.5">
+                                          IMEI: {imeis}
                                         </span>
                                       )}
-                                      {imeis && (
-                                        <span className="block sm:inline sm:ml-2 text-[11px] font-mono text-indigo-700 break-all">
-                                          IMEI: {imeis}
+                                      {retMeta.returnedImeis.length > 0 && (
+                                        <span className="block text-[10px] font-mono font-bold text-amber-800 break-all mt-0.5">
+                                          Returned IMEI: {retMeta.returnedImeis.join(', ')}
                                         </span>
                                       )}
                                     </div>
@@ -1591,6 +1849,11 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                           >
                             {sale.invoiceType === 'credit' ? 'Credit / Udhar' : sale.paymentMethod}
                           </span>
+                          {(sale.returnStatus === 'FULL' || sale.returnStatus === 'PARTIAL') && (
+                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-lg bg-amber-100 text-amber-900 border border-amber-300">
+                              {sale.returnStatus === 'FULL' ? 'RETURNED' : 'PARTIAL RETURN'}
+                            </span>
+                          )}
                         </div>
 
                         <div className="flex flex-wrap items-center gap-3 tabular-nums text-[11px]">
@@ -1612,21 +1875,42 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                             Array.isArray(item.imeis) && item.imeis.length > 0
                               ? item.imeis.join(', ')
                               : item.imei;
+                          const retMeta = getSaleItemReturnMeta(sale.invNo, item);
                           return (
                             <div
                               key={i}
-                              className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 bg-white px-2.5 py-1.5 rounded-lg border border-slate-200/70"
+                              className={`flex flex-col sm:flex-row sm:items-center justify-between gap-1 px-2.5 py-1.5 rounded-lg border ${
+                                retMeta.isReturned
+                                  ? 'bg-amber-50/70 border-amber-300'
+                                  : 'bg-white border-slate-200/70'
+                              }`}
                             >
                               <div className="min-w-0">
-                                <span className="font-bold text-slate-800">{item.name}</span>
-                                {item.variantLabel && (
-                                  <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
-                                    {item.variantLabel}
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className={`font-bold ${retMeta.isReturned && retMeta.returnedQty >= item.qty ? 'text-slate-600 line-through' : 'text-slate-800'}`}>
+                                    {item.name}
+                                  </span>
+                                  {item.variantLabel && (
+                                    <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
+                                      {item.variantLabel}
+                                    </span>
+                                  )}
+                                  {retMeta.isReturned && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300">
+                                      <RotateCcw className="w-2.5 h-2.5 text-amber-700" />
+                                      Returned{retMeta.returnedQty > 1 || retMeta.returnedQty < item.qty ? ` (x${retMeta.returnedQty})` : ''}
+                                      {retMeta.returnReason ? ` • Reason: ${retMeta.returnReason}` : ''}
+                                    </span>
+                                  )}
+                                </div>
+                                {imeis && (
+                                  <span className="block text-[11px] font-mono text-indigo-700 break-all mt-0.5">
+                                    [IMEI: {imeis}]
                                   </span>
                                 )}
-                                {imeis && (
-                                  <span className="block sm:inline sm:ml-2 text-[11px] font-mono text-indigo-700 break-all">
-                                    [IMEI: {imeis}]
+                                {retMeta.returnedImeis.length > 0 && (
+                                  <span className="block text-[10px] font-mono font-bold text-amber-800 break-all mt-0.5">
+                                    Returned IMEI: {retMeta.returnedImeis.join(', ')}
                                   </span>
                                 )}
                               </div>

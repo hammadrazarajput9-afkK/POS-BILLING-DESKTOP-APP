@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { KhataCustomer, SaleRecord, ShopSettings } from '../types';
+import { KhataCustomer, SaleRecord, SalesReturnRecord, ShopSettings } from '../types';
 import {
   Search,
   UserPlus,
@@ -25,6 +25,7 @@ interface KhataTabProps {
   khata: KhataCustomer[];
   settings: ShopSettings;
   sales?: SaleRecord[];
+  salesReturns?: SalesReturnRecord[];
   isAdmin?: boolean;
   onOpenAddModal: () => void;
   onOpenSettleModal: (customer: KhataCustomer) => void;
@@ -49,6 +50,7 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
   khata,
   settings,
   sales = [],
+  salesReturns = [],
   isAdmin = true,
   onOpenAddModal,
   onDeleteCustomer,
@@ -80,12 +82,20 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
     return khata.find(k => k.id === activeAccountCustomer.id) || null;
   }, [activeAccountCustomer, khata]);
 
+  const sortedByHighestUdhar = useMemo(() => {
+    return [...khata].sort((a, b) => {
+      const balDiff = (b.balance || 0) - (a.balance || 0);
+      if (balDiff !== 0) return balDiff;
+      return new Date(b.lastUpdated || 0).getTime() - new Date(a.lastUpdated || 0).getTime();
+    });
+  }, [khata]);
+
   const filtered = useMemo(() => {
-    return smartFilterAndSort(khata, search, k => ({
+    return smartFilterAndSort(sortedByHighestUdhar, search, k => ({
       primary: [k.name, k.phone, k.shopName],
       secondary: [k.phone2, k.address, k.cnic, k.city, k.ntnNumber],
     }));
-  }, [khata, search]);
+  }, [sortedByHighestUdhar, search]);
 
   const totalOutstanding = useMemo(() => {
     return khata.reduce((acc, k) => acc + k.balance, 0);
@@ -477,6 +487,7 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
           }}
           settings={settings}
           sales={sales}
+          salesReturns={salesReturns}
           isAdmin={isAdmin}
           onAddTransaction={onAddTransaction}
           onUpdateCustomer={onUpdateCustomer}

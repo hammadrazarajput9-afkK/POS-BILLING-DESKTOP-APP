@@ -269,9 +269,13 @@ export function calculateAccountingSummary(
       .filter(p => isChannelAccount(p))
       .reduce((sum, p) => sum + (Number(p.paidAmount) || 0), 0);
 
-    // Sales return refund outflow
+    // Sales return refund outflow (exclude non-cash Credit Adjustment returns)
     const salesRefunds = periodSalesReturns
-      .filter(r => isChannelAccount({ paymentMethod: r.refundPaymentMethod, accountId: r.accountId }))
+      .filter(
+        r =>
+          r.refundPaymentMethod !== 'Credit Adjustment' &&
+          isChannelAccount({ paymentMethod: r.refundPaymentMethod, accountId: r.accountId })
+      )
       .reduce((sum, r) => sum + (Number(r.totalRefundAmount) || 0), 0);
 
     const netMovement = sales + khataRecoveries + purchaseReversals - expenses - supplierPayments - salesRefunds;
@@ -341,7 +345,11 @@ export function calculateAccountingSummary(
       .reduce((sum, p) => sum + (Number(p.paidAmount) || 0), 0);
 
     const salesRefunds = periodSalesReturns
-      .filter(r => matchesAccount({ paymentMethod: r.refundPaymentMethod, accountId: r.accountId }, acc.id, channel, allOnlineAccounts))
+      .filter(
+        r =>
+          r.refundPaymentMethod !== 'Credit Adjustment' &&
+          matchesAccount({ paymentMethod: r.refundPaymentMethod, accountId: r.accountId }, acc.id, channel, allOnlineAccounts)
+      )
       .reduce((sum, r) => sum + (Number(r.totalRefundAmount) || 0), 0);
 
     const netMovement = sales + khataRecoveries + purchaseReversals - expenses - supplierPayments - salesRefunds;
