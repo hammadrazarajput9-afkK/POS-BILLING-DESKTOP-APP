@@ -44,6 +44,10 @@ import { generateSinglePurchasePdf } from '../utils/pdfGenerator';
 import { sharePurchaseOnWhatsApp } from '../utils/whatsappInvoice';
 import { compressImage } from '../utils/imageCompressor';
 import { smartFilterAndSort, smartMatch } from '../utils/smartSearch';
+import { SupplierAccountModal, SupplierAccountSummary } from './SupplierAccountModal';
+
+const normalizeSupplierKey = (name?: string): string =>
+  (name || 'Unknown Supplier').trim().replace(/\s+/g, ' ').toLowerCase();
 
 interface PurchasesTabProps {
   purchases: SupplierPurchase[];
@@ -171,7 +175,9 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
   const [isScannerModalOpen, setIsScannerModalOpen] = useState(false);
   const [scannerTarget, setScannerTarget] = useState<{ itemIdx: number; imeiIdx: number } | null>(null);
 
-  // Modals
+  // Modals & Unified Supplier Account State
+  const [activeSupplierKey, setActiveSupplierKey] = useState<string | null>(null);
+  const [isPartyDropdownOpen, setIsPartyDropdownOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingPurchaseId, setEditingPurchaseId] = useState<string | null>(null);
   const [isStockModalOpen, setIsStockModalOpen] = useState(false);
@@ -454,6 +460,15 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
 
   const openAddModal = () => {
     resetForm();
+    setIsPartyDropdownOpen(false);
+    setIsAddModalOpen(true);
+  };
+
+  const openAddModalForSupplier = (supplierName: string, supplierPhone?: string) => {
+    resetForm();
+    setPartyName(supplierName);
+    if (supplierPhone) setPartyPhone(supplierPhone);
+    setIsPartyDropdownOpen(false);
     setIsAddModalOpen(true);
   };
 
@@ -968,11 +983,12 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
     onSavePurchase(newPurchaseData, autoAddToInventory);
     showToast(
       isAdmin
-        ? `Purchase bill recorded successfully (${currency} ${totalBillAmount.toLocaleString()})`
-        : 'Stock inward entry saved successfully!',
+        ? `Stock inward recorded in ${newPurchaseData.partyName} account (${currency} ${totalBillAmount.toLocaleString()})`
+        : `Stock inward saved in ${newPurchaseData.partyName} account!`,
       'success'
     );
     clearDraft();
+    setActiveSupplierKey(normalizeSupplierKey(newPurchaseData.partyName));
     setIsAddModalOpen(false);
     resetForm();
   };
@@ -1058,28 +1074,91 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
     return matches.slice(0, 6);
   }, [search, purchases, imeiRecords]);
 
-  // Filtered Purchases list (including deep IMEI, specs & barcode matching)
-  const filteredPurchases = useMemo(() => {
+  // Unified Supplier Accounts (one account per supplier grouping all bills & stock inward history)
+  const supplierAccounts = useMemo<SupplierAccountSummary[]>(() => {
+    const groups = new Map<string, SupplierPurchase[]>();
+    purchases.forEach(p => {
+      const key = normalizeSupplierKey(p.partyName);
+      const list = groups.get(key) || [];
+      list.push(p);
+      groups.set(key, list);
+    });
+
+    const accounts: SupplierAccountSummary[] = [];
+    groups.forEach((rawBills, key) => {
+      const bills = [...rawBills].sort(
+        (a, b) =>
+          new Date(b.date).getTime() - new Date(a.date).getTime() ||
+          new Date(b.updatedAt || b.date).getTime() - new Date(a.updatedAt || a.date).getTime()
+      );
+
+      let canonicalName = bills[0]?.partyName?.trim() || 'Unknown Supplier';
+      let latestPhone: string | undefined;
+      let activeBillsCount = 0;
+      let reversedBillsCount = 0;
+      let totalUnits = 0;
+      let totalAmount = 0;
+      let totalPaid = 0;
+      let totalDue = 0;
+
+      for (const b of bills) {
+        if (!latestPhone && b.partyPhone && b.partyPhone.trim()) {
+          latestPhone = b.partyPhone.trim();
+        }
+        if (b.status === 'REVERSED') {
+          reversedBillsCount += 1;
+          continue;
+        }
+        activeBillsCount += 1;
+        totalAmount += b.totalAmount || 0;
+        totalPaid += b.paidAmount || 0;
+        totalDue += b.balanceDue || 0;
+        (b.items || []).forEach(it => {
+          totalUnits += it.qty || 0;
+        });
+      }
+
+      if (!canonicalName) canonicalName = 'Unknown Supplier';
+
+      accounts.push({
+        key,
+        partyName: canonicalName,
+        partyPhone: latestPhone,
+        bills,
+        activeBillsCount,
+        reversedBillsCount,
+        totalUnits,
+        totalAmount,
+        totalPaid,
+        totalDue,
+        latestDate: bills[0]?.date || new Date().toISOString(),
+      });
+    });
+
+    return accounts.sort((a, b) => {
+      if (isAdmin && b.totalDue !== a.totalDue) {
+        return b.totalDue - a.totalDue;
+      }
+      return new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime();
+    });
+  }, [purchases, isAdmin]);
+
+  const activeSupplierAccount = useMemo(
+    () => (activeSupplierKey ? supplierAccounts.find(s => s.key === activeSupplierKey) || null : null),
+    [activeSupplierKey, supplierAccounts]
+  );
+
+  // Filtered Supplier Accounts for list view
+  const filteredSupplierAccounts = useMemo(() => {
     const q = search.trim();
     const qLower = q.toLowerCase();
-    return purchases
-      .filter(p => {
-        const itemsText = (p.items || [])
-          .map(i => {
-            const imeisStr = [i.imei || '', ...(i.imeis || [])].join(' ');
-            return `${i.name} ${i.category || ''} ${i.ram || ''} ${i.storage || ''} ${i.color || ''} ${i.barcode || ''} ${imeisStr}`;
-          })
-          .join(' ');
 
-        const matchesSearch =
-          !q ||
-          billNosFromImeiRecords.has((p.billNo || '').trim().toLowerCase()) ||
-          smartMatch(
-            qLower,
-            [p.partyName, p.billNo, itemsText],
-            [isAdmin ? p.partyPhone : '', p.notes]
-          );
+    return supplierAccounts.filter(acc => {
+      const accountMatchByHeader =
+        !q ||
+        smartMatch(qLower, [acc.partyName], [isAdmin ? acc.partyPhone : '']);
 
+      const matchingBills = acc.bills.filter(p => {
         const isReversed = p.status === 'REVERSED';
         const matchesStatus =
           statusFilter === 'ALL'
@@ -1093,11 +1172,44 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
             : !isReversed && (p.balanceDue || 0) > 0;
 
         const matchesDate = !dateFilter || p.date.startsWith(dateFilter);
+        if (!matchesStatus || !matchesDate) return false;
 
-        return matchesSearch && matchesStatus && matchesDate;
-      })
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [purchases, search, statusFilter, dateFilter, billNosFromImeiRecords, isAdmin]);
+        if (!q) return true;
+        if (accountMatchByHeader) return true;
+
+        const itemsText = (p.items || [])
+          .map(i => {
+            const imeisStr = [i.imei || '', ...(i.imeis || [])].join(' ');
+            return `${i.name} ${i.category || ''} ${i.ram || ''} ${i.storage || ''} ${i.color || ''} ${i.barcode || ''} ${imeisStr}`;
+          })
+          .join(' ');
+
+        return (
+          billNosFromImeiRecords.has((p.billNo || '').trim().toLowerCase()) ||
+          smartMatch(
+            qLower,
+            [p.partyName, p.billNo, itemsText],
+            [isAdmin ? p.partyPhone : '', p.notes]
+          )
+        );
+      });
+
+      return matchingBills.length > 0;
+    });
+  }, [supplierAccounts, search, statusFilter, dateFilter, billNosFromImeiRecords, isAdmin]);
+
+  // Supplier autocomplete suggestions inside Add/Edit Purchase modal
+  const matchingFormSuppliers = useMemo(() => {
+    const q = partyName.trim().toLowerCase();
+    if (!q) return supplierAccounts.slice(0, 12);
+    return supplierAccounts
+      .filter(
+        s =>
+          s.partyName.toLowerCase().includes(q) ||
+          (isAdmin && s.partyPhone && s.partyPhone.toLowerCase().includes(q))
+      )
+      .slice(0, 12);
+  }, [supplierAccounts, partyName, isAdmin]);
 
   // Aggregate stats (active non-reversed purchases)
   const stats = useMemo(() => {
@@ -1366,8 +1478,15 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                     {isAdmin && m.costPrice !== undefined ? ` • Cost: ${currency} ${m.costPrice.toLocaleString()}` : ''}
                   </p>
                 </div>
-                {m.purchase && (
-                  <div className="flex items-center gap-1 shrink-0">
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setActiveSupplierKey(normalizeSupplierKey(m.partyName))}
+                    className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[11px] font-bold cursor-pointer transition"
+                  >
+                    Open Account
+                  </button>
+                  {m.purchase && (
                     <button
                       type="button"
                       onClick={() => setSelectedPurchaseForView(m.purchase!)}
@@ -1375,16 +1494,16 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                     >
                       View Bill
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Purchases List */}
-      {filteredPurchases.length === 0 ? (
+      {/* Unified Supplier Accounts List */}
+      {filteredSupplierAccounts.length === 0 ? (
         <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center space-y-3">
           <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto text-slate-400">
             <Truck className="w-6 h-6" />
@@ -1419,211 +1538,113 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
         </div>
       ) : (
         <>
-          {/* Desktop Data Table (>= lg: breakpoint) */}
+          {/* Desktop Unified Supplier Accounts Table (>= lg: breakpoint) */}
           <div className="hidden lg:block bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    <th className="py-3 px-4">Bill & Date</th>
-                    <th className="py-3 px-4">{isAdmin ? 'Supplier / Party' : 'Party Name'}</th>
-                    <th className="py-3 px-4">Items Summary</th>
-                    {isAdmin && <th className="py-3 px-4 text-right">Total Bill</th>}
-                    {isAdmin && <th className="py-3 px-4 text-right">Paid</th>}
+                    <th className="py-3 px-4">{isAdmin ? 'Supplier Account' : 'Supplier / Party'}</th>
+                    <th className="py-3 px-4">Stock Inward Summary</th>
+                    <th className="py-3 px-4">Last Inward</th>
+                    {isAdmin && <th className="py-3 px-4 text-right">Total Purchased</th>}
+                    {isAdmin && <th className="py-3 px-4 text-right">Total Paid</th>}
                     {isAdmin && <th className="py-3 px-4 text-right">Balance Due</th>}
-                    <th className="py-3 px-4 text-center">Physical Bill</th>
-                    <th className="py-3 px-4 text-right">Actions</th>
+                    <th className="py-3 px-4 text-right">Account Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                  {filteredPurchases.map(p => {
-                    const isReversed = p.status === 'REVERSED';
-                    const isFullyPaid = (p.balanceDue || 0) <= 0;
-                    const totalUnits = (p.items || []).reduce((acc, i) => acc + (i.qty || 0), 0);
-                    const salesmanCanEdit = !isAdmin && canSalesmanEditPurchase(p);
-                    const salesmanAlreadyEdited = !isAdmin && !isReversed && p.createdByRole === 'salesman' && (p.salesmanEditCount || 0) >= 1;
-
+                  {filteredSupplierAccounts.map(acc => {
+                    const isSettled = acc.totalDue <= 0;
                     return (
-                      <tr key={p.id} className={`transition ${isReversed ? 'bg-rose-50/40 text-slate-500' : 'hover:bg-slate-50/60'}`}>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-1.5 tabular-nums font-bold text-slate-900">
-                            <span>#{p.billNo}</span>
-                            {isReversed && (
-                              <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-rose-600 text-white">
-                                REVERSED
+                      <tr
+                        key={acc.key}
+                        onClick={() => setActiveSupplierKey(acc.key)}
+                        className="hover:bg-blue-50/40 transition cursor-pointer"
+                      >
+                        <td className="py-3.5 px-4">
+                          <div className="font-extrabold text-slate-900 flex items-center gap-2 text-sm">
+                            <span className="p-1.5 rounded-lg bg-blue-50 text-blue-600 shrink-0">
+                              <Building2 className="w-4 h-4" />
+                            </span>
+                            <span>{acc.partyName}</span>
+                          </div>
+                          {isAdmin && acc.partyPhone && (
+                            <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5 ml-8 tabular-nums">
+                              <Phone className="w-3 h-3 text-slate-400" />
+                              {acc.partyPhone}
+                            </div>
+                          )}
+                        </td>
+
+                        <td className="py-3.5 px-4">
+                          <div className="font-bold text-slate-800 tabular-nums">
+                            {acc.activeBillsCount} Bill{acc.activeBillsCount === 1 ? '' : 's'}
+                            {acc.reversedBillsCount > 0 && (
+                              <span className="text-[10px] text-rose-500 font-semibold ml-1.5">
+                                ({acc.reversedBillsCount} Reversed)
                               </span>
                             )}
                           </div>
-                          <div className="text-[10px] text-slate-400 flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            {new Date(p.date).toLocaleDateString()}
-                          </div>
+                          <span className="text-[11px] text-slate-500 tabular-nums">
+                            {acc.totalUnits.toLocaleString()} total inward units
+                          </span>
                         </td>
 
-                        <td className="py-3 px-4">
-                          <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                            <Building2 className={`w-3.5 h-3.5 ${isReversed ? 'text-slate-400' : 'text-blue-600'}`} />
-                            <span className={isReversed ? 'line-through text-slate-500' : ''}>{p.partyName}</span>
+                        <td className="py-3.5 px-4">
+                          <div className="text-xs font-semibold text-slate-700 flex items-center gap-1 tabular-nums">
+                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                            {new Date(acc.latestDate).toLocaleDateString()}
                           </div>
-                          {isAdmin && p.partyPhone && (
-                            <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
-                              <Phone className="w-3 h-3" />
-                              {p.partyPhone}
-                            </div>
-                          )}
-                          {isReversed && p.reversalReason && (
-                            <div className="text-[10px] text-rose-600 font-semibold mt-0.5">
-                              Reversed: {p.reversalReason}
-                            </div>
-                          )}
-                        </td>
-
-                        <td className="py-3 px-4">
-                          <span className="font-bold text-slate-800">{p.items?.length || 0} product(s)</span>
-                          <span className="text-[10px] text-slate-500 block">
-                            {totalUnits} inward units {isReversed && '(Restored out)'}
+                          <span className="text-[10px] text-slate-400 tabular-nums">
+                            Latest #{acc.bills[0]?.billNo || '-'}
                           </span>
                         </td>
 
                         {isAdmin && (
-                          <td className="py-3 px-4 text-right font-black text-slate-900">
-                            <span className={isReversed ? 'line-through text-slate-400' : ''}>
-                              {currency} {p.totalAmount.toLocaleString()}
-                            </span>
+                          <td className="py-3.5 px-4 text-right font-black text-slate-900 tabular-nums">
+                            {currency} {acc.totalAmount.toLocaleString()}
                           </td>
                         )}
 
                         {isAdmin && (
-                          <td className="py-3 px-4 text-right font-bold text-emerald-600">
-                            <span className={isReversed ? 'line-through text-slate-400' : ''}>
-                              {currency} {p.paidAmount.toLocaleString()}
-                            </span>
-                            <div className="text-[9px] text-slate-400 uppercase font-semibold">
-                              via {p.paymentMethod || 'Cash'}
-                            </div>
+                          <td className="py-3.5 px-4 text-right font-bold text-emerald-600 tabular-nums">
+                            {currency} {acc.totalPaid.toLocaleString()}
                           </td>
                         )}
 
                         {isAdmin && (
-                          <td className="py-3 px-4 text-right">
-                            {isReversed ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-200 text-slate-700">
-                                CLEARED (REVERSED)
-                              </span>
-                            ) : isFullyPaid ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800">
-                                <CheckCircle2 className="w-3 h-3" /> PAID
+                          <td className="py-3.5 px-4 text-right">
+                            {isSettled ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800">
+                                <CheckCircle2 className="w-3 h-3" />
+                                SETTLED
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 tabular-nums">
-                                {currency} {p.balanceDue.toLocaleString()} DUE
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 tabular-nums">
+                                {currency} {acc.totalDue.toLocaleString()} DUE
                               </span>
                             )}
                           </td>
                         )}
 
-                        <td className="py-3 px-4 text-center">
-                          {p.invoiceImage ? (
+                        <td className="py-3.5 px-4 text-right" onClick={e => e.stopPropagation()}>
+                          <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"
-                              onClick={() => setZoomImage(p.invoiceImage!)}
-                              className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-[10px] font-bold transition cursor-pointer border border-blue-200"
-                              title="View Scanned Physical Bill"
+                              onClick={() => openAddModalForSupplier(acc.partyName, acc.partyPhone)}
+                              className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-[11px] font-extrabold inline-flex items-center gap-1 transition cursor-pointer"
                             >
-                              <Camera className="w-3 h-3" />
-                              <span>Photo</span>
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Inward</span>
                             </button>
-                          ) : (
-                            <span className="text-[10px] text-slate-400 italic">No bill photo</span>
-                          )}
-                        </td>
-
-                        <td className="py-3 px-4 text-right">
-                          <div className="flex items-center justify-end gap-1">
                             <button
                               type="button"
-                              onClick={() => setSelectedPurchaseForView(p)}
-                              className="p-1.5 rounded-lg text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition cursor-pointer"
-                              title={isAdmin ? 'View Purchase Details' : 'View Stock Inward Details'}
+                              onClick={() => setActiveSupplierKey(acc.key)}
+                              className="px-3 py-1.5 bg-slate-900 hover:bg-blue-600 text-white rounded-lg text-[11px] font-extrabold inline-flex items-center gap-1 transition cursor-pointer shadow-xs"
                             >
-                              <Eye className="w-4 h-4" />
+                              <span>Open Account</span>
                             </button>
-
-                            {!isReversed && onUpdatePurchase && (isAdmin || salesmanCanEdit) && (
-                              <button
-                                type="button"
-                                onClick={() => openEditModal(p)}
-                                className="p-1.5 rounded-lg text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer flex items-center gap-1"
-                                title={isAdmin ? 'Edit Purchase Bill' : 'Edit Stock Inward (1 edit allowed)'}
-                              >
-                                <Edit2 className="w-4 h-4" />
-                                {!isAdmin && <span className="text-[10px] font-bold text-indigo-600">Edit (1x)</span>}
-                              </button>
-                            )}
-
-                            {salesmanAlreadyEdited && (
-                              <span
-                                className="inline-flex items-center gap-1 text-[10px] text-slate-400 font-semibold bg-slate-100 px-2 py-1 rounded-lg cursor-not-allowed"
-                                title="Already edited once (locked)"
-                              >
-                                <Lock className="w-3 h-3" />
-                                Edited
-                              </span>
-                            )}
-
-                            {isAdmin && (
-                              <button
-                                type="button"
-                                onClick={() => handleDownloadSinglePdf(p)}
-                                className="p-1.5 rounded-lg text-slate-600 hover:text-blue-700 hover:bg-blue-50 transition cursor-pointer"
-                                title="Download Purchase Bill PDF"
-                              >
-                                <Download className="w-4 h-4" />
-                              </button>
-                            )}
-
-                            {isAdmin && (
-                              <button
-                                type="button"
-                                onClick={() => handleShareWhatsApp(p)}
-                                className="p-1.5 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition cursor-pointer"
-                                title="Send Bill on WhatsApp"
-                              >
-                                <MessageCircle className="w-4 h-4" />
-                              </button>
-                            )}
-
-                            {isAdmin && !isReversed && p.balanceDue > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedPurchaseForSettlement(p);
-                                  setSettlementAmount(p.balanceDue);
-                                  setSettlementMethod('Cash');
-                                  setSettlementNotes('');
-                                }}
-                                className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-extrabold flex items-center gap-1 shadow-xs transition cursor-pointer"
-                                title="Settle Outstanding Supplier Due Balance"
-                              >
-                                <CreditCard className="w-3 h-3" />
-                                <span>Pay Due</span>
-                              </button>
-                            )}
-
-                            {isAdmin && !isReversed && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setPurchaseToReverse(p);
-                                  setReversalReason('Goods Returned to Supplier');
-                                  setReversalNotes('');
-                                }}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                                title="Cancel & Reverse Purchase Bill"
-                              >
-                                <RotateCcw className="w-4 h-4" />
-                              </button>
-                            )}
                           </div>
                         </td>
                       </tr>
@@ -1634,173 +1655,90 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
             </div>
           </div>
 
-          {/* Mobile Purchase Cards View (< lg: breakpoint) */}
+          {/* Mobile Compact Supplier Account Cards View (< lg: breakpoint) */}
           <div className="block lg:hidden space-y-2">
-            {filteredPurchases.map(p => {
-              const isReversed = p.status === 'REVERSED';
-              const isFullyPaid = (p.balanceDue || 0) <= 0;
-              const totalUnits = (p.items || []).reduce((acc, i) => acc + (i.qty || 0), 0);
-              const salesmanCanEdit = !isAdmin && canSalesmanEditPurchase(p);
-              const salesmanAlreadyEdited = !isAdmin && !isReversed && p.createdByRole === 'salesman' && (p.salesmanEditCount || 0) >= 1;
-
+            {filteredSupplierAccounts.map(acc => {
+              const isSettled = acc.totalDue <= 0;
               return (
                 <div
-                  key={p.id}
-                  className={`bg-white border rounded-xl p-2.5 space-y-2 shadow-2xs transition ${
-                    isReversed ? 'border-rose-200 bg-rose-50/20' : 'border-slate-200'
-                  }`}
+                  key={acc.key}
+                  onClick={() => setActiveSupplierKey(acc.key)}
+                  className="bg-white border border-slate-200 rounded-xl p-2.5 space-y-2 shadow-2xs active:bg-slate-50 transition cursor-pointer"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="space-y-0.5 min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="tabular-nums font-extrabold text-[11px] text-slate-900">
-                          #{p.billNo}
-                        </span>
-                        {isReversed ? (
-                          <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-rose-600 text-white">
-                            REVERSED
-                          </span>
-                        ) : isAdmin && isFullyPaid ? (
-                          <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-emerald-100 text-emerald-800">
-                            PAID
-                          </span>
-                        ) : isAdmin ? (
-                          <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-rose-100 text-rose-800">
-                            DUE
-                          </span>
-                        ) : null}
-                        <span className="text-[10px] text-slate-400 tabular-nums">
-                          {new Date(p.date).toLocaleDateString()}
-                        </span>
+                        <h4 className="font-extrabold text-slate-900 text-xs flex items-center gap-1 truncate">
+                          <Building2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                          <span className="truncate">{acc.partyName}</span>
+                        </h4>
+                        {isAdmin && (
+                          isSettled ? (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-emerald-100 text-emerald-800">
+                              SETTLED
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-rose-100 text-rose-800">
+                              DUE
+                            </span>
+                          )
+                        )}
                       </div>
 
-                      <h4 className="font-extrabold text-slate-900 text-xs flex items-center gap-1 truncate">
-                        <Building2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                        <span className="truncate">{p.partyName}</span>
-                      </h4>
+                      {isAdmin && acc.partyPhone && (
+                        <p className="text-[10px] text-slate-500 font-semibold tabular-nums flex items-center gap-1">
+                          <Phone className="w-2.5 h-2.5 text-slate-400" />
+                          {acc.partyPhone}
+                        </p>
+                      )}
 
-                      <div className="text-[10px] text-slate-500 font-medium">
-                        {p.items?.length || 0} products • {totalUnits} units
+                      <div className="text-[10px] text-slate-500 font-medium tabular-nums">
+                        {acc.activeBillsCount} bill{acc.activeBillsCount === 1 ? '' : 's'} • {acc.totalUnits} units • {new Date(acc.latestDate).toLocaleDateString()}
                       </div>
                     </div>
 
                     {isAdmin ? (
                       <div className="text-right shrink-0">
                         <span className="tabular-nums font-black text-xs text-slate-900 block">
-                          {currency} {p.totalAmount.toLocaleString()}
+                          {currency} {acc.totalAmount.toLocaleString()}
                         </span>
-                        {p.balanceDue > 0 && !isReversed && (
-                          <span className="text-[10px] tabular-nums font-bold text-rose-600 block">
-                            Due: {currency} {p.balanceDue.toLocaleString()}
+                        {acc.totalDue > 0 && (
+                          <span className="text-[10px] tabular-nums font-extrabold text-rose-600 block">
+                            Due: {currency} {acc.totalDue.toLocaleString()}
                           </span>
                         )}
                       </div>
                     ) : (
                       <div className="text-right shrink-0">
                         <span className="inline-block px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-extrabold text-[11px] tabular-nums">
-                          {totalUnits} pcs
+                          {acc.totalUnits} pcs
                         </span>
                       </div>
                     )}
                   </div>
 
                   {/* Mobile Compact Action Bar */}
-                  <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1.5 border-t border-slate-100 text-[11px]">
-                    <div className="flex items-center gap-1">
-                      {p.invoiceImage && (
-                        <button
-                          type="button"
-                          onClick={() => setZoomImage(p.invoiceImage!)}
-                          className="h-7 px-2 bg-blue-50 text-blue-700 font-bold rounded-lg text-[10px] flex items-center gap-1 border border-blue-200 cursor-pointer"
-                        >
-                          <Camera className="w-3 h-3" />
-                          <span>Photo</span>
-                        </button>
-                      )}
-                      {isAdmin && !isReversed && p.balanceDue > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedPurchaseForSettlement(p);
-                            setSettlementAmount(p.balanceDue);
-                            setSettlementMethod('Cash');
-                            setSettlementNotes('');
-                          }}
-                          className="h-7 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[10px] flex items-center gap-1 cursor-pointer"
-                        >
-                          <CreditCard className="w-3 h-3" />
-                          <span>Pay Due</span>
-                        </button>
-                      )}
-                    </div>
+                  <div
+                    className="flex items-center justify-between gap-1.5 pt-1.5 border-t border-slate-100 text-[11px]"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => openAddModalForSupplier(acc.partyName, acc.partyPhone)}
+                      className="h-7 px-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-extrabold rounded-lg text-[11px] inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>+ Inward</span>
+                    </button>
 
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedPurchaseForView(p)}
-                        className="h-7 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-lg text-[11px] flex items-center gap-1 cursor-pointer"
-                        title="View Details"
-                      >
-                        <Eye className="w-3 h-3" />
-                        <span>View</span>
-                      </button>
-
-                      {!isReversed && onUpdatePurchase && (isAdmin || salesmanCanEdit) && (
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(p)}
-                          className="h-7 px-2 text-indigo-600 hover:bg-indigo-50 rounded-lg border border-indigo-200 flex items-center justify-center gap-1 cursor-pointer font-bold text-[11px]"
-                          title={isAdmin ? 'Edit Purchase Bill' : 'Edit Stock Inward (1 edit allowed)'}
-                        >
-                          <Edit2 className="w-3 h-3" />
-                          {!isAdmin && <span>Edit</span>}
-                        </button>
-                      )}
-
-                      {salesmanAlreadyEdited && (
-                        <span className="inline-flex items-center gap-1 text-[10px] text-slate-400 font-semibold bg-slate-100 px-2 h-7 rounded-lg">
-                          <Lock className="w-3 h-3" />
-                          Edited
-                        </span>
-                      )}
-
-                      {isAdmin && (
-                        <button
-                          type="button"
-                          onClick={() => handleDownloadSinglePdf(p)}
-                          className="h-7 w-7 text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200 flex items-center justify-center cursor-pointer"
-                          title="Download PDF"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-
-                      {isAdmin && (
-                        <button
-                          type="button"
-                          onClick={() => handleShareWhatsApp(p)}
-                          className="h-7 w-7 text-emerald-600 hover:bg-emerald-50 rounded-lg border border-emerald-200 flex items-center justify-center cursor-pointer"
-                          title="Send on WhatsApp"
-                        >
-                          <MessageCircle className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-
-                      {isAdmin && !isReversed && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setPurchaseToReverse(p);
-                            setReversalReason('Goods Returned to Supplier');
-                            setReversalNotes('');
-                          }}
-                          className="h-7 w-7 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition border border-slate-200 flex items-center justify-center cursor-pointer"
-                          title="Reverse Bill"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveSupplierKey(acc.key)}
+                      className="h-7 px-3 bg-slate-900 hover:bg-blue-600 text-white font-extrabold rounded-lg text-[11px] inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      <Eye className="w-3 h-3" />
+                      <span>Open Account</span>
+                    </button>
                   </div>
                 </div>
               );
@@ -1897,26 +1835,58 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
             >
               {/* Row 1: Supplier & Bill Meta */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 bg-slate-50/70 p-3.5 rounded-xl border border-slate-200">
-                <div>
+                <div className="relative">
                   <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    Vendor / Party Name *
+                    Supplier Account / Party Name *
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Al-Madina Mobile Wholesale"
+                    placeholder="Select existing supplier or enter new name..."
                     value={partyName}
-                    onChange={e => setPartyName(e.target.value)}
-                    list="supplier-names-list"
+                    onFocus={() => setIsPartyDropdownOpen(true)}
+                    onChange={e => {
+                      setPartyName(e.target.value);
+                      setIsPartyDropdownOpen(true);
+                    }}
                     className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500"
+                    autoComplete="off"
                   />
-                  <datalist id="supplier-names-list">
-                    {existingParties.map((p, idx) => (
-                      <option key={idx} value={p.name}>
-                        {isAdmin && p.phone ? `Phone: ${p.phone}` : ''}
-                      </option>
-                    ))}
-                  </datalist>
+                  {isPartyDropdownOpen && matchingFormSuppliers.length > 0 && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-20"
+                        onClick={() => setIsPartyDropdownOpen(false)}
+                      />
+                      <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-52 overflow-y-auto divide-y divide-slate-100">
+                        {matchingFormSuppliers.map(acc => (
+                          <button
+                            key={acc.key}
+                            type="button"
+                            onClick={() => {
+                              setPartyName(acc.partyName);
+                              if (acc.partyPhone) setPartyPhone(acc.partyPhone);
+                              setIsPartyDropdownOpen(false);
+                            }}
+                            className="w-full px-3 py-2 text-left hover:bg-blue-50 transition flex items-center justify-between gap-2 text-xs cursor-pointer"
+                          >
+                            <div className="min-w-0">
+                              <p className="font-bold text-slate-900 truncate">{acc.partyName}</p>
+                              <p className="text-[10px] text-slate-500 tabular-nums">
+                                {acc.activeBillsCount} bill{acc.activeBillsCount === 1 ? '' : 's'}
+                                {isAdmin && acc.partyPhone ? ` • ${acc.partyPhone}` : ''}
+                              </p>
+                            </div>
+                            {isAdmin && acc.totalDue > 0 && (
+                              <span className="text-[10px] font-extrabold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded shrink-0 tabular-nums">
+                                Due: {currency} {acc.totalDue.toLocaleString()}
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <div>
@@ -3279,6 +3249,36 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
           </div>
         </div>
       )}
+
+      {/* ========================================================= */}
+      {/* FULL-SCREEN UNIFIED SUPPLIER ACCOUNT MODAL */}
+      {/* ========================================================= */}
+      <SupplierAccountModal
+        account={activeSupplierAccount}
+        isOpen={!!activeSupplierAccount}
+        onClose={() => setActiveSupplierKey(null)}
+        currency={currency}
+        isAdmin={isAdmin}
+        canSalesmanEditPurchase={canSalesmanEditPurchase}
+        onAddInwardForSupplier={openAddModalForSupplier}
+        onViewBill={p => setSelectedPurchaseForView(p)}
+        onEditBill={p => openEditModal(p)}
+        onDownloadPdf={handleDownloadSinglePdf}
+        onShareWhatsApp={handleShareWhatsApp}
+        onPayBillDue={p => {
+          setSelectedPurchaseForSettlement(p);
+          setSettlementAmount(p.balanceDue);
+          setSettlementMethod('Cash');
+          setSettlementNotes('');
+        }}
+        onReverseBill={p => {
+          setPurchaseToReverse(p);
+          setReversalReason('Goods Returned to Supplier');
+          setReversalNotes('');
+        }}
+        onZoomImage={img => setZoomImage(img)}
+        onSettlePurchaseDue={onSettlePurchaseDue}
+      />
     </div>
   );
 };
