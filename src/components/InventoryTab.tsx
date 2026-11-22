@@ -608,81 +608,96 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
   };
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <div className="space-y-3 sm:space-y-5">
       {/* Metric Highlights */}
-      <div className={`grid grid-cols-2 gap-2.5 sm:gap-4 ${isAdmin ? 'sm:grid-cols-2 lg:grid-cols-4' : ''}`}>
+      <div className={`grid grid-cols-2 gap-2 sm:gap-3.5 ${isAdmin ? 'lg:grid-cols-4' : ''}`}>
         {isAdmin && (
-          <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4.5 shadow-xs flex flex-col justify-between">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">
+          <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs flex flex-col justify-between">
+            <span className="text-[9.5px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 truncate">
               Total Capital Invested
             </span>
-            <h3 className="text-sm sm:text-xl font-extrabold text-slate-900 tabular-nums mt-0.5 sm:mt-1 truncate">
+            <h3 className="text-xs sm:text-lg font-extrabold text-slate-900 tabular-nums mt-0.5 truncate">
               {currency} {totalCostValuation.toLocaleString()}
             </h3>
-            <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">
+            <p className="text-[9.5px] sm:text-xs text-slate-400 hidden sm:block mt-0.5 truncate">
               Stock cost valuation
             </p>
           </div>
         )}
 
         {isAdmin && (
-          <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4.5 shadow-xs flex flex-col justify-between">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">
-              Expected Retail Revenue
+          <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs flex flex-col justify-between">
+            <span className="text-[9.5px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 truncate">
+              Expected Retail Value
             </span>
-            <h3 className="text-sm sm:text-xl font-extrabold text-emerald-600 tabular-nums mt-0.5 sm:mt-1 truncate">
+            <h3 className="text-xs sm:text-lg font-extrabold text-emerald-600 tabular-nums mt-0.5 truncate">
               {currency} {totalRetailValuation.toLocaleString()}
             </h3>
-            <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">
+            <p className="text-[9.5px] sm:text-xs text-slate-400 hidden sm:block mt-0.5 truncate">
               Margin: +{currency} {(totalRetailValuation - totalCostValuation).toLocaleString()}
             </p>
           </div>
         )}
 
-        <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4.5 shadow-xs flex flex-col justify-between">
-          <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">
+        <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs flex flex-col justify-between">
+          <span className="text-[9.5px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 truncate">
             Total In-Stock Units
           </span>
-          <h3 className="text-sm sm:text-xl font-extrabold text-slate-900 tabular-nums mt-0.5 sm:mt-1 truncate">
-            {totalUnits.toLocaleString()} Units
+          <h3 className="text-xs sm:text-lg font-extrabold text-slate-900 tabular-nums mt-0.5 truncate">
+            {totalUnits.toLocaleString()} Units · <span className="text-slate-500 font-semibold">{inventory.length} items</span>
           </h3>
-          <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">Across {inventory.length} items</p>
+          <p className="text-[9.5px] sm:text-xs text-slate-400 hidden sm:block mt-0.5 truncate">Active catalog</p>
         </div>
 
-        <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4.5 shadow-xs flex flex-col justify-between">
-          <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">
+        <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs flex flex-col justify-between">
+          <span className="text-[9.5px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 truncate">
             Low Stock Alert
           </span>
-          <h3 className="text-sm sm:text-xl font-extrabold text-rose-600 tabular-nums mt-0.5 sm:mt-1 truncate">
-            {lowStockCount} Items
+          <h3 className="text-xs sm:text-lg font-extrabold text-rose-600 tabular-nums mt-0.5 truncate">
+            {lowStockCount} Items <span className="text-[10px] font-medium text-slate-400">(≤ 1 unit)</span>
           </h3>
-          <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">≤ 1 unit remaining</p>
+          <p className="text-[9.5px] sm:text-xs text-slate-400 hidden sm:block mt-0.5 truncate">Needs restock soon</p>
         </div>
       </div>
 
-      {/* Main Stock Table Container */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-5 space-y-3 sm:space-y-4 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 border-b border-slate-100 pb-3 sm:pb-4">
-          <div>
-            <h3 className="font-extrabold text-slate-900 text-sm sm:text-base">Inventory & IMEI Master Stock</h3>
-            <p className="text-[11px] sm:text-xs text-slate-500">
-              Manage mobile phones, serial numbers, chargers, displays, and screen protectors
-            </p>
+      {/* Main Stock Container */}
+      <div className="bg-white border border-slate-200/90 rounded-2xl p-2.5 sm:p-5 space-y-2.5 sm:space-y-4 shadow-xs">
+        {/* Header + Naturally Sized Action Buttons */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 border-b border-slate-100 pb-2.5 sm:pb-3.5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <h3 className="font-extrabold text-slate-900 text-sm sm:text-base truncate">
+                Inventory &amp; IMEI Master Stock
+              </h3>
+              <p className="text-[11px] text-slate-500 hidden sm:block truncate">
+                Manage mobile phones, serial numbers, chargers, displays, and screen protectors
+              </p>
+            </div>
+            {/* Mobile Primary CTA aligned right of title */}
+            <button
+              type="button"
+              onClick={onOpenAddModal}
+              className="lg:hidden h-8 px-3 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-[11px] rounded-lg shadow-sm shadow-blue-500/20 transition inline-flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <Plus className="w-3.5 h-3.5 shrink-0" />
+              <span>Add Product</span>
+            </button>
           </div>
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
+
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             <button
               type="button"
               onClick={() => {
                 setLogModalTab('activity');
                 setIsAdjustmentsModalOpen(true);
               }}
-              className="flex-1 sm:flex-initial px-2.5 sm:px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs rounded-xl border border-amber-200/80 transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs h-8.5 sm:h-9.5"
+              className="h-8 sm:h-9 px-2.5 sm:px-3 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-[11px] sm:text-xs rounded-lg sm:rounded-xl border border-amber-200/80 transition inline-flex items-center gap-1.5 cursor-pointer shadow-2xs whitespace-nowrap shrink-0"
               title="View Inventory Logs, Missing Field Alerts & Stock Adjustments"
             >
               <History className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-              <span className="truncate">Log</span>
+              <span>Log</span>
               {(inventoryActivities.length > 0 || stockAdjustments.length > 0) && (
-                <span className="bg-amber-200 text-amber-900 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                <span className="bg-amber-200 text-amber-900 text-[10px] px-1.5 rounded-full font-bold tabular-nums">
                   {inventoryActivities.length + stockAdjustments.length}
                 </span>
               )}
@@ -691,51 +706,57 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
               <button
                 type="button"
                 onClick={() => onOpenPdfReport(categoryFilter !== 'ALL' ? categoryFilter : 'all')}
-                className="flex-1 sm:flex-initial px-2.5 sm:px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200/80 transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs h-8.5 sm:h-9.5"
-                title="Export Stock Valuation & Low Stock PDF Report"
+                className="h-8 sm:h-9 px-2.5 sm:px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[11px] sm:text-xs rounded-lg sm:rounded-xl border border-rose-200/80 transition inline-flex items-center gap-1.5 cursor-pointer shadow-2xs whitespace-nowrap shrink-0"
+                title="Export Stock PDF Report"
               >
-                <FileText className="w-3.5 h-3.5 text-rose-600 shrink-0" /> <span className="truncate">PDF</span>
+                <FileText className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                <span>PDF</span>
               </button>
             )}
             <button
+              type="button"
               onClick={handleExportCSV}
-              className="flex-1 sm:flex-initial px-2.5 sm:px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer h-8.5 sm:h-9.5"
+              className="h-8 sm:h-9 px-2.5 sm:px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] sm:text-xs rounded-lg sm:rounded-xl border border-slate-200/80 transition inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
             >
-              <Download className="w-3.5 h-3.5 shrink-0" /> CSV
+              <Download className="w-3.5 h-3.5 shrink-0" />
+              <span>CSV</span>
             </button>
             <button
               type="button"
               onClick={() => setIsCategoryModalOpen(true)}
-              className="flex-1 sm:flex-initial px-2.5 sm:px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs rounded-xl border border-purple-200/60 transition flex items-center justify-center gap-1.5 cursor-pointer h-8.5 sm:h-9.5"
+              className="h-8 sm:h-9 px-2.5 sm:px-3 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-[11px] sm:text-xs rounded-lg sm:rounded-xl border border-purple-200/60 transition inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
             >
-              <Tag className="w-3.5 h-3.5 shrink-0" /> Categories
+              <Tag className="w-3.5 h-3.5 shrink-0" />
+              <span>Categories</span>
             </button>
             <button
+              type="button"
               onClick={onOpenAddModal}
-              className="w-full sm:w-auto px-3.5 sm:px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl shadow-md shadow-blue-500/20 transition flex items-center justify-center gap-1.5 cursor-pointer h-9 sm:h-9.5"
+              className="hidden lg:inline-flex h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl shadow-md shadow-blue-500/20 transition items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
             >
-              <Plus className="w-4 h-4 shrink-0" /> Add Product
+              <Plus className="w-4 h-4 shrink-0" />
+              <span>Add Product</span>
             </button>
           </div>
         </div>
 
         {/* Filter Controls */}
-        <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
           <div className="relative flex-1 flex items-center">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search by Brand, Category, Model, IMEI or Barcode..."
-              className="w-full pl-9 pr-24 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white transition h-9 sm:h-10"
+              placeholder="Search Model, Brand, IMEI, Barcode..."
+              className="compact-mobile-input w-full pl-9 pr-24 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white transition h-9 sm:h-10"
             />
             <div className="absolute right-1.5 flex items-center gap-1">
               {search && (
                 <button
                   type="button"
                   onClick={() => setSearch('')}
-                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                  className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
                   title="Clear search"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -744,37 +765,37 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
               <button
                 type="button"
                 onClick={() => setIsCameraScannerOpen(true)}
-                className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-xs flex items-center gap-1 text-[11px] font-extrabold cursor-pointer transition min-h-[34px]"
-                title="Live Camera Barcode Scanner"
+                className="h-7 px-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-xs flex items-center gap-1 text-[11px] font-extrabold cursor-pointer transition whitespace-nowrap"
+                title="Fast Camera Barcode & IMEI Scanner"
               >
                 <Camera className="w-3.5 h-3.5" />
                 <span>Scan</span>
               </button>
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-2 gap-2 sm:w-auto">
             <select
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value as any)}
-              className="w-full bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl px-3 py-2.5 outline-none focus:border-blue-600 cursor-pointer h-10"
+              className="compact-mobile-input w-full bg-slate-50 border border-slate-200 text-slate-700 text-[11px] sm:text-xs font-semibold rounded-xl px-2.5 py-1.5 outline-none focus:border-blue-600 cursor-pointer h-8.5 sm:h-10"
             >
-              <option value="ALL">All Statuses (Active & Archived)</option>
-              <option value="ACTIVE">Active Stock Only</option>
-              <option value="ARCHIVED">Archived / Discontinued</option>
+              <option value="ALL">All Statuses</option>
+              <option value="ACTIVE">Active Only</option>
+              <option value="ARCHIVED">Archived</option>
             </select>
             <select
               value={categoryFilter}
               onChange={e => setCategoryFilter(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl px-3 py-2.5 outline-none focus:border-blue-600 cursor-pointer h-10 truncate"
+              className="compact-mobile-input w-full bg-slate-50 border border-slate-200 text-slate-700 text-[11px] sm:text-xs font-semibold rounded-xl px-2.5 py-1.5 outline-none focus:border-blue-600 cursor-pointer h-8.5 sm:h-10 truncate"
             >
               <option value="ALL">
-                All Categories ({categoryStats.totalProducts} Prod • {categoryStats.totalPieces} Pcs)
+                All Categories ({categoryStats.totalProducts} • {categoryStats.totalPieces})
               </option>
               {categories.map(cat => {
                 const st = categoryStats.statsMap.get(cat) || { products: 0, pieces: 0 };
                 return (
                   <option key={cat} value={cat}>
-                    {cat} ({st.products} Prod • {st.pieces} Pcs)
+                    {cat} ({st.products} • {st.pieces})
                   </option>
                 );
               })}
@@ -783,25 +804,23 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
         </div>
 
         {/* Category Wise Products & Piece Count Breakdown Strip */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin touch-pan-x">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin touch-pan-x">
           <button
             type="button"
             onClick={() => setCategoryFilter('ALL')}
-            className={`shrink-0 px-3 py-1.5 rounded-xl border text-left transition cursor-pointer flex items-center gap-2 ${
+            className={`shrink-0 px-2.5 py-1 rounded-lg border text-left transition cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap ${
               categoryFilter === 'ALL'
                 ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                 : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
             }`}
           >
-            <span className="text-xs font-extrabold">All</span>
+            <span className="text-[11px] font-extrabold">All</span>
             <span
-              className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md tabular-nums ${
-                categoryFilter === 'ALL'
-                  ? 'bg-blue-500/40 text-white'
-                  : 'bg-white text-slate-600 border border-slate-200/80'
+              className={`text-[10px] font-bold tabular-nums ${
+                categoryFilter === 'ALL' ? 'text-blue-100' : 'text-slate-500'
               }`}
             >
-              {categoryStats.totalProducts} Prod • {categoryStats.totalPieces} Pcs
+              {categoryStats.totalProducts}·{categoryStats.totalPieces}
             </span>
           </button>
           {categories.map(cat => {
@@ -812,21 +831,19 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                 key={cat}
                 type="button"
                 onClick={() => setCategoryFilter(isActive ? 'ALL' : cat)}
-                className={`shrink-0 px-3 py-1.5 rounded-xl border text-left transition cursor-pointer flex items-center gap-2 ${
+                className={`shrink-0 px-2.5 py-1 rounded-lg border text-left transition cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap ${
                   isActive
                     ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                     : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
                 }`}
               >
-                <span className="text-xs font-extrabold">{cat}</span>
+                <span className="text-[11px] font-extrabold">{cat}</span>
                 <span
-                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md tabular-nums ${
-                    isActive
-                      ? 'bg-blue-500/40 text-white'
-                      : 'bg-white text-slate-600 border border-slate-200/80'
+                  className={`text-[10px] font-bold tabular-nums ${
+                    isActive ? 'text-blue-100' : 'text-slate-500'
                   }`}
                 >
-                  {st.products} Prod • {st.pieces} Pcs
+                  {st.products}·{st.pieces}
                 </span>
               </button>
             );
@@ -834,60 +851,80 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
         </div>
 
         {/* View Mode Toggle & Product Grid / Table */}
-        <div className="space-y-4 pt-1">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200/80">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-700">Display Layout:</span>
-              <div className="bg-white p-1 rounded-xl border border-slate-200 flex items-center gap-1 shadow-2xs">
+        <div className="space-y-2.5 sm:space-y-3.5 pt-0.5">
+          <div className="flex items-center justify-between gap-2 bg-slate-50 px-2.5 py-1.5 sm:p-2.5 rounded-xl border border-slate-200/80">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <span className="text-[11px] font-bold text-slate-600 hidden sm:inline">View:</span>
+              <div className="bg-white p-0.5 rounded-lg border border-slate-200 inline-flex items-center gap-0.5 shadow-2xs">
                 <button
                   type="button"
                   onClick={() => setViewMode('grid')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition flex items-center gap-1 cursor-pointer whitespace-nowrap ${
                     viewMode === 'grid' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <LayoutGrid className="w-3.5 h-3.5" /> Product Cards (Daraz Style)
+                  <LayoutGrid className="w-3 h-3" />
+                  <span className="sm:hidden">Cards</span>
+                  <span className="hidden sm:inline">Product Cards</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setViewMode('table')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition flex items-center gap-1 cursor-pointer whitespace-nowrap ${
                     viewMode === 'table' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <List className="w-3.5 h-3.5" /> Table View
+                  <List className="w-3 h-3" />
+                  <span>Table</span>
                 </button>
               </div>
             </div>
-            <span className="text-xs font-bold text-slate-600 tabular-nums">
-              Showing {filtered.length} products •{' '}
-              {filtered.reduce((sum, item) => sum + Math.max(0, Number(item.qty) || 0), 0).toLocaleString()} pieces
+            <span className="text-[10.5px] sm:text-xs font-bold text-slate-600 tabular-nums truncate">
+              {filtered.length} models ·{' '}
+              {filtered.reduce((sum, item) => sum + Math.max(0, Number(item.qty) || 0), 0).toLocaleString()} pcs
             </span>
           </div>
 
           {viewMode === 'grid' ? (
-            /* Daraz / Amazon Style Product Card Grid */
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5 sm:gap-4">
+            /* Compact 4-Column Horizontal Grid on Mobile -> 5/6 Columns on Tablet/Desktop */
+            <div className="grid grid-cols-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-1.5 sm:gap-3">
               {filtered.length === 0 ? (
-                <div className="col-span-full text-center py-16 bg-slate-50 rounded-2xl border border-dashed border-slate-300">
-                  <Package className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+                <div className="col-span-full text-center py-12 bg-slate-50 rounded-2xl border border-dashed border-slate-300">
+                  <Package className="w-9 h-9 mx-auto mb-2 text-slate-300" />
                   <p className="font-semibold text-slate-700 text-xs">No matching products found</p>
                   <p className="text-[11px] text-slate-400">Try adjusting your search query or category filter</p>
                 </div>
               ) : (
                 filtered.map(item => {
                   const isArchived = item.status === 'ARCHIVED';
+                  const specs = Array.from(
+                    new Set(
+                      [
+                        ...(item.variants || []).map(v => [v.ram, v.storage].filter(Boolean).join('/')),
+                        [item.ram, item.storage].filter(Boolean).join('/'),
+                      ].filter(Boolean)
+                    )
+                  );
+                  const prices = (item.variants || []).map(v => Number(v.salePrice)).filter(p => !isNaN(p) && p > 0);
+                  if (prices.length === 0) prices.push(item.salePrice);
+                  const minPrice = Math.min(...prices);
+                  const maxPrice = Math.max(...prices);
+                  const priceLabel =
+                    minPrice === maxPrice
+                      ? `${currency} ${minPrice.toLocaleString()}`
+                      : `${currency} ${minPrice.toLocaleString()}+`;
+
                   return (
                     <div
                       key={item.id}
                       onClick={() => setSelectedProductPopup(item)}
-                      className={`bg-white border border-slate-200/90 rounded-2xl p-2.5 sm:p-3.5 shadow-2xs hover:shadow-xl hover:border-blue-400 transition-all duration-200 cursor-pointer flex flex-col justify-between group ${
-                        isArchived ? 'opacity-75 bg-slate-50' : ''
+                      className={`bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-1.5 sm:p-2.5 shadow-2xs hover:shadow-lg hover:border-blue-400 transition-all duration-150 cursor-pointer flex flex-col justify-between group min-w-0 ${
+                        isArchived ? 'opacity-70 bg-slate-50' : ''
                       }`}
                     >
-                      <div>
-                        {/* Normal Sized Product Image (Daraz / Amazon Style) */}
-                        <div className="relative w-full h-28 sm:h-44 rounded-xl overflow-hidden bg-slate-50 border border-slate-100 flex items-center justify-center p-2">
+                      <div className="min-w-0">
+                        {/* Compact Product Image Frame */}
+                        <div className="relative w-full h-14 sm:h-28 md:h-32 rounded-lg sm:rounded-xl overflow-hidden bg-slate-50 border border-slate-100 flex items-center justify-center p-1 sm:p-1.5">
                           {item.image ? (
                             <img
                               src={item.image}
@@ -895,78 +932,45 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                               className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-200"
                             />
                           ) : (
-                            <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-black text-lg sm:text-xl shadow-inner">
+                            <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-black text-sm sm:text-lg shadow-inner">
                               {item.name.charAt(0).toUpperCase()}
                             </div>
                           )}
                           {isArchived && (
-                            <span className="absolute top-2 right-2 bg-slate-800 text-white text-[9px] font-bold px-2 py-0.5 rounded-full shadow-xs">
-                              Archived
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Category, RAM/Storage & Color Variants Badges */}
-                        <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
-                          <span className="inline-block text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md truncate max-w-full">
-                            {item.category}
-                          </span>
-                          {(() => {
-                            const specs = Array.from(
-                              new Set(
-                                [
-                                  ...(item.variants || []).map(v => [v.ram, v.storage].filter(Boolean).join('/')),
-                                  [item.ram, item.storage].filter(Boolean).join('/'),
-                                ].filter(Boolean)
-                              )
-                            );
-                            return specs.slice(0, 2).map((sp, sIdx) => (
-                              <span
-                                key={sIdx}
-                                className="inline-flex items-center gap-0.5 text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/70 px-1.5 py-0.5 rounded-md"
-                              >
-                                <Cpu className="w-2.5 h-2.5" />
-                                {sp}
-                              </span>
-                            ));
-                          })()}
-                          {item.variants && item.variants.length > 0 && (
-                            <span className="inline-block text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200/60 px-1.5 py-0.5 rounded-md">
-                              {item.variants.length} {item.variants.length === 1 ? 'Variant' : 'Variants'}
+                            <span className="absolute top-1 right-1 bg-slate-800 text-white text-[8px] font-bold px-1 py-0.2 rounded">
+                              Arch
                             </span>
                           )}
                         </div>
 
                         {/* Product Name */}
-                        <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm line-clamp-2 mt-1 leading-snug group-hover:text-blue-600 transition">
+                        <h4 className="font-extrabold text-slate-900 text-[10px] sm:text-xs line-clamp-2 mt-1 sm:mt-2 leading-tight group-hover:text-blue-600 transition">
                           {item.name}
                         </h4>
+
+                        {/* Quiet Inline Specs & Category Metadata (Zero pill bloat on small cards) */}
+                        <p className="text-[8.5px] sm:text-[10px] text-slate-500 font-semibold truncate mt-0.5 leading-tight">
+                          {specs.length > 0 ? specs[0] : item.category}
+                          {item.variants && item.variants.length > 1 ? ` · ${item.variants.length}v` : ''}
+                        </p>
                       </div>
 
-                      {/* Price & Stock */}
-                      <div className="mt-3.5 pt-2.5 border-t border-slate-100 flex items-center justify-between">
-                        <div>
-                          <span className="text-[10px] text-slate-400 block uppercase font-semibold">Price</span>
-                          <span className="tabular-nums font-extrabold text-blue-600 text-xs sm:text-sm">
-                            {(() => {
-                              const prices = (item.variants || []).map(v => Number(v.salePrice)).filter(p => !isNaN(p) && p > 0);
-                              if (prices.length === 0) prices.push(item.salePrice);
-                              const minPrice = Math.min(...prices);
-                              const maxPrice = Math.max(...prices);
-                              return minPrice === maxPrice
-                                ? `${currency} ${minPrice.toLocaleString()}`
-                                : `${currency} ${minPrice.toLocaleString()} - ${maxPrice.toLocaleString()}`;
-                            })()}
-                          </span>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-[10px] text-slate-400 block uppercase font-semibold">Stock</span>
-                          <span className={`tabular-nums font-bold text-xs px-2 py-0.5 rounded-full ${
-                            item.qty > 1 ? 'bg-emerald-50 text-emerald-700' : item.qty === 1 ? 'bg-amber-100 text-amber-800' : 'bg-rose-50 text-rose-700'
-                          }`}>
-                            {item.qty} left
-                          </span>
-                        </div>
+                      {/* Compact Price & Stock Footer */}
+                      <div className="mt-1 sm:mt-2 pt-1 sm:pt-1.5 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 min-w-0">
+                        <span className="tabular-nums font-extrabold text-blue-600 text-[9.5px] sm:text-xs truncate">
+                          {priceLabel}
+                        </span>
+                        <span
+                          className={`tabular-nums font-bold text-[8.5px] sm:text-[10px] truncate ${
+                            item.qty > 1
+                              ? 'text-emerald-700'
+                              : item.qty === 1
+                              ? 'text-amber-700'
+                              : 'text-rose-600'
+                          }`}
+                        >
+                          {item.qty} {item.qty === 1 ? 'left' : 'pcs'}
+                        </span>
                       </div>
                     </div>
                   );

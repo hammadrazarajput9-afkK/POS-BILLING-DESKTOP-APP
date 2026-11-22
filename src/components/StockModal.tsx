@@ -1413,15 +1413,15 @@ export const StockModal: React.FC<StockModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-3 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-4xl w-full overflow-x-hidden p-3 sm:p-4 shadow-2xl space-y-2.5 border border-slate-100 animate-in fade-in zoom-in-95 max-h-[96dvh] lg:max-h-[96vh] overflow-y-auto flex flex-col my-auto">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-1.5 sm:p-3 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+      <div className="bg-white rounded-2xl max-w-4xl w-full overflow-x-hidden p-2.5 sm:p-4 shadow-2xl space-y-2 sm:space-y-2.5 border border-slate-100 animate-in fade-in zoom-in-95 max-h-[95dvh] lg:max-h-[96vh] overflow-y-auto flex flex-col my-auto">
         {/* Compact Header */}
         <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2 shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold shadow-2xs shrink-0">
               {isMobile ? <Smartphone className="w-4 h-4 text-blue-600" /> : <Package className="w-4 h-4 text-blue-600" />}
             </div>
-            <div className="flex items-center gap-2 flex-wrap min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap min-w-0">
               <h3 className="font-extrabold text-slate-900 text-xs sm:text-sm leading-tight truncate">
                 {editItem
                   ? 'Edit Product'
@@ -1432,20 +1432,21 @@ export const StockModal: React.FC<StockModalProps> = ({
                   : 'Add New Product to Inventory'}
               </h3>
               {isAndroid && !editItem && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 flex items-center gap-1 shrink-0">
+                <span className="px-1.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold bg-blue-100 text-blue-700 flex items-center gap-1 shrink-0">
                   <Sparkles className="w-2.5 h-2.5" /> Multi-Variant
                 </span>
               )}
               {isKeypad && !editItem && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 shrink-0">
+                <span className="px-1.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold bg-purple-100 text-purple-700 shrink-0">
                   Keypad / Feature
                 </span>
               )}
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer shrink-0"
+            className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition cursor-pointer shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
@@ -1458,14 +1459,14 @@ export const StockModal: React.FC<StockModalProps> = ({
               e.preventDefault();
             }
           }}
-          className="space-y-2.5 text-xs"
+          className="space-y-2 sm:space-y-2.5 text-xs"
         >
-          {/* Compact Top Section: Photo + Model Name + Category all in 1 horizontal row */}
-          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 bg-slate-50/70 p-2.5 rounded-xl border border-slate-200/80 items-end">
+          {/* Compact Top Section: Photo + Model Name + Category */}
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:gap-2.5 bg-slate-50/70 p-2 sm:p-2.5 rounded-xl border border-slate-200/80 items-end">
             {/* Compact Photo Picker */}
             <div className="sm:col-span-3 flex items-center gap-2">
               {image ? (
-                <div className="relative w-11 h-11 rounded-lg border border-slate-200 overflow-hidden bg-white shrink-0 shadow-2xs">
+                <div className="relative w-10 h-10 sm:w-11 sm:h-11 rounded-lg border border-slate-200 overflow-hidden bg-white shrink-0 shadow-2xs">
                   <img src={image} alt="Preview" className="w-full h-full object-cover" />
                   <button
                     type="button"
@@ -1477,7 +1478,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                   </button>
                 </div>
               ) : (
-                <div className="w-11 h-11 rounded-lg border border-dashed border-slate-300 bg-white flex items-center justify-center text-slate-400 shrink-0">
+                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-lg border border-dashed border-slate-300 bg-white flex items-center justify-center text-slate-400 shrink-0">
                   <ImageIcon className="w-4 h-4 text-slate-300" />
                 </div>
               )}
@@ -1492,10 +1493,10 @@ export const StockModal: React.FC<StockModalProps> = ({
                   className="hidden"
                   id="stock-image-file"
                 />
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1.5">
                   <label
                     htmlFor="stock-image-file"
-                    className="inline-flex items-center gap-1 px-2 py-1 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-md text-[10px] cursor-pointer transition border border-slate-200"
+                    className="inline-flex items-center gap-1 h-7 px-2 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-md text-[11px] cursor-pointer transition border border-slate-200"
                   >
                     <Upload className="w-3 h-3 text-blue-600" />
                     <span>{image ? 'Edit' : 'Upload'}</span>
@@ -1503,7 +1504,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsCameraOpen(true)}
-                    className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold rounded-md text-[10px] cursor-pointer transition border border-emerald-200"
+                    className="inline-flex items-center gap-1 h-7 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold rounded-md text-[11px] cursor-pointer transition border border-emerald-200"
                   >
                     <Camera className="w-3 h-3 text-emerald-600" />
                     <span>Cam</span>
@@ -1512,136 +1513,139 @@ export const StockModal: React.FC<StockModalProps> = ({
               </div>
             </div>
 
-            {/* Model Name */}
-            <div className="sm:col-span-5">
-              <label className="block font-bold text-slate-700 mb-1 text-[11px]">
-                {isMobile ? 'Mobile Model Name *' : 'Product Title / Name *'}
-              </label>
-              <input
-                type="text"
-                required
-                value={name}
-                onChange={e => setName(e.target.value)}
-                placeholder={
-                  isMobile
-                    ? 'e.g. Samsung Galaxy A15, Infinix Note 40'
-                    : 'e.g. 20W Fast Charger Type-C'
-                }
-                className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:border-blue-600 shadow-2xs min-h-[36px] max-sm:min-h-[42px]"
-              />
-            </div>
+            {/* Model Name + Category side-by-side on mobile */}
+            <div className="sm:col-span-9 grid grid-cols-1 sm:grid-cols-9 gap-2 items-end">
+              {/* Model Name */}
+              <div className="sm:col-span-5">
+                <label className="block font-bold text-slate-700 mb-0.5 text-[10px] sm:text-[11px]">
+                  {isMobile ? 'Mobile Model Name *' : 'Product Title / Name *'}
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  placeholder={
+                    isMobile
+                      ? 'e.g. Samsung Galaxy A15, Infinix Note 40'
+                      : 'e.g. 20W Fast Charger Type-C'
+                  }
+                  className="compact-mobile-input w-full bg-white border border-slate-200 rounded-lg px-2.5 h-9 text-xs font-semibold focus:outline-none focus:border-blue-600 shadow-2xs"
+                />
+              </div>
 
-            {/* Category selector + Inline category creation & rename */}
-            <div className="sm:col-span-4">
-              <div className="flex items-center justify-between mb-1 gap-1">
-                <label className="font-bold text-slate-700 text-[11px]">Category</label>
-                {!isCreatingCategory && !isEditingCategory ? (
-                  <div className="flex items-center gap-2">
-                    {onRenameCategory && category && (
+              {/* Category selector + Inline category creation & rename */}
+              <div className="sm:col-span-4">
+                <div className="flex items-center justify-between mb-0.5 gap-1">
+                  <label className="font-bold text-slate-700 text-[10px] sm:text-[11px]">Category</label>
+                  {!isCreatingCategory && !isEditingCategory ? (
+                    <div className="flex items-center gap-2">
+                      {onRenameCategory && category && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditCategoryName(category);
+                            setIsEditingCategory(true);
+                          }}
+                          className="text-purple-600 hover:text-purple-700 font-bold text-[10px] flex items-center gap-0.5 cursor-pointer"
+                          title="Rename selected category"
+                        >
+                          <Edit2 className="w-2.5 h-2.5" /> Edit
+                        </button>
+                      )}
                       <button
                         type="button"
-                        onClick={() => {
-                          setEditCategoryName(category);
-                          setIsEditingCategory(true);
-                        }}
-                        className="text-purple-600 hover:text-purple-700 font-bold text-[10px] flex items-center gap-0.5 cursor-pointer"
-                        title="Rename selected category"
+                        onClick={() => setIsCreatingCategory(true)}
+                        className="text-blue-600 hover:text-blue-700 font-bold text-[10px] flex items-center gap-0.5 cursor-pointer"
                       >
-                        <Edit2 className="w-2.5 h-2.5" /> Edit
+                        <Plus className="w-2.5 h-2.5" /> New
                       </button>
-                    )}
+                    </div>
+                  ) : (
                     <button
                       type="button"
-                      onClick={() => setIsCreatingCategory(true)}
-                      className="text-blue-600 hover:text-blue-700 font-bold text-[10px] flex items-center gap-0.5 cursor-pointer"
+                      onClick={() => {
+                        setIsCreatingCategory(false);
+                        setIsEditingCategory(false);
+                      }}
+                      className="text-slate-400 hover:text-slate-600 text-[10px] cursor-pointer"
                     >
-                      <Plus className="w-2.5 h-2.5" /> New
+                      Cancel
+                    </button>
+                  )}
+                </div>
+
+                {isCreatingCategory ? (
+                  <div className="flex items-center gap-1 bg-blue-50/80 border border-blue-200 rounded-lg p-0.5 h-9">
+                    <input
+                      type="text"
+                      value={newCategoryName}
+                      onChange={e => setNewCategoryName(e.target.value)}
+                      placeholder="New category..."
+                      className="compact-mobile-input flex-1 min-w-0 bg-white border border-blue-300 rounded-md px-2 h-7.5 text-xs font-medium focus:outline-none"
+                      autoFocus
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleSaveNewCategory(e as any);
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveNewCategory}
+                      className="px-2.5 h-7.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-md text-[10px] transition cursor-pointer shrink-0"
+                    >
+                      Save
+                    </button>
+                  </div>
+                ) : isEditingCategory ? (
+                  <div className="flex items-center gap-1 bg-purple-50/80 border border-purple-200 rounded-lg p-0.5 h-9">
+                    <input
+                      type="text"
+                      value={editCategoryName}
+                      onChange={e => setEditCategoryName(e.target.value)}
+                      placeholder="Edit category..."
+                      className="compact-mobile-input flex-1 min-w-0 bg-white border border-purple-300 rounded-md px-2 h-7.5 text-xs font-medium focus:outline-none"
+                      autoFocus
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          handleSaveEditedCategory(e);
+                        } else if (e.key === 'Escape') {
+                          setIsEditingCategory(false);
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveEditedCategory}
+                      className="px-2.5 h-7.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-md text-[10px] transition cursor-pointer shrink-0"
+                    >
+                      Update
                     </button>
                   </div>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsCreatingCategory(false);
-                      setIsEditingCategory(false);
-                    }}
-                    className="text-slate-400 hover:text-slate-600 text-[10px] cursor-pointer"
-                  >
-                    Cancel
-                  </button>
+                  (() => {
+                    const modalCategories =
+                      category && !categories.includes(category)
+                        ? [category, ...categories]
+                        : categories;
+                    return (
+                      <select
+                        value={category}
+                        onChange={e => handleSelectCategory(e.target.value)}
+                        className="compact-mobile-input w-full bg-white border border-slate-200 rounded-lg px-2.5 h-9 text-xs font-semibold focus:outline-none focus:border-blue-600 shadow-2xs"
+                      >
+                        {modalCategories.map(c => (
+                          <option key={c} value={c}>
+                            {c} {isMobileCategory(c) ? '(Mobile)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    );
+                  })()
                 )}
               </div>
-
-              {isCreatingCategory ? (
-                <div className="flex items-center gap-1 bg-blue-50/80 border border-blue-200 rounded-lg p-0.5">
-                  <input
-                    type="text"
-                    value={newCategoryName}
-                    onChange={e => setNewCategoryName(e.target.value)}
-                    placeholder="New category..."
-                    className="flex-1 min-w-0 bg-white border border-blue-300 rounded-md px-2 py-1 text-xs font-medium focus:outline-none"
-                    autoFocus
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleSaveNewCategory(e as any);
-                      }
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSaveNewCategory}
-                    className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-md text-[10px] transition cursor-pointer shrink-0"
-                  >
-                    Save
-                  </button>
-                </div>
-              ) : isEditingCategory ? (
-                <div className="flex items-center gap-1 bg-purple-50/80 border border-purple-200 rounded-lg p-0.5">
-                  <input
-                    type="text"
-                    value={editCategoryName}
-                    onChange={e => setEditCategoryName(e.target.value)}
-                    placeholder="Edit category..."
-                    className="flex-1 min-w-0 bg-white border border-purple-300 rounded-md px-2 py-1 text-xs font-medium focus:outline-none"
-                    autoFocus
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') {
-                        handleSaveEditedCategory(e);
-                      } else if (e.key === 'Escape') {
-                        setIsEditingCategory(false);
-                      }
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSaveEditedCategory}
-                    className="px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-md text-[10px] transition cursor-pointer shrink-0"
-                  >
-                    Update
-                  </button>
-                </div>
-              ) : (
-                (() => {
-                  const modalCategories =
-                    category && !categories.includes(category)
-                      ? [category, ...categories]
-                      : categories;
-                  return (
-                    <select
-                      value={category}
-                      onChange={e => handleSelectCategory(e.target.value)}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:border-blue-600 shadow-2xs min-h-[36px] max-sm:min-h-[42px]"
-                    >
-                      {modalCategories.map(c => (
-                        <option key={c} value={c}>
-                          {c} {isMobileCategory(c) ? '(Mobile)' : ''}
-                        </option>
-                      ))}
-                    </select>
-                  );
-                })()
-              )}
             </div>
           </div>
 
@@ -1649,18 +1653,18 @@ export const StockModal: React.FC<StockModalProps> = ({
           {/* MOBILE, USED & KEYPAD MULTI-VARIANT / COLOR SYSTEM         */}
           {/* ========================================================= */}
           {showVariantMode ? (
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <Layers className="w-3.5 h-3.5 text-blue-600" />
-                  <span className="font-bold text-slate-900 text-xs">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Layers className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                  <span className="font-bold text-slate-900 text-xs truncate">
                     {isKeypad ? `Color Variants (${variants.length})` : `Mobile Variants (${variants.length})`}
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={handleAddVariant}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] rounded-lg shadow-2xs transition cursor-pointer"
+                  className="inline-flex items-center gap-1 h-7.5 px-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] rounded-lg shadow-2xs transition cursor-pointer shrink-0 whitespace-nowrap"
                 >
                   <Plus className="w-3 h-3" />
                   <span>{isKeypad ? 'Add Color Variant' : 'Add Variant'}</span>
@@ -1668,7 +1672,7 @@ export const StockModal: React.FC<StockModalProps> = ({
               </div>
 
               {/* Variant Cards */}
-              <div className={`space-y-2.5 ${variants.length > 1 ? 'max-h-[48vh] overflow-y-auto pr-0.5' : ''}`}>
+              <div className={`space-y-2 ${variants.length > 1 ? 'max-h-[44vh] overflow-y-auto pr-0.5' : ''}`}>
                 {variants.map((v, vIdx) => {
                   const currentQty = Math.max(1, Number(v.qty) || 1);
                   const suggCost = getVariantPriceSuggestion(vIdx, 'costPrice');
@@ -1695,24 +1699,24 @@ export const StockModal: React.FC<StockModalProps> = ({
                   return (
                     <div
                       key={v.id || vIdx}
-                      className="bg-white border border-slate-200/90 rounded-xl p-2.5 sm:p-3 space-y-2 shadow-2xs hover:border-blue-300 transition"
+                      className="bg-white border border-slate-200/90 rounded-xl p-2 sm:p-3 space-y-2 shadow-2xs hover:border-blue-300 transition"
                     >
                       {/* Compact Variant Header + Inline Margin Badge */}
-                      <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 gap-2">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 gap-1.5">
                         <div className="flex items-center gap-1.5 flex-wrap min-w-0">
                           <span className="w-5 h-5 rounded-md bg-blue-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
                             #{vIdx + 1}
                           </span>
-                          <span className="font-extrabold text-slate-800 text-xs truncate">
+                          <span className="font-extrabold text-slate-800 text-[11px] sm:text-xs truncate">
                             {isKeypad
                               ? `Color #${vIdx + 1}: ${v.color?.trim() || 'Specify Color'}`
                               : `${v.ram || 'RAM'} / ${v.storage || 'ROM'}${v.color ? ` • ${v.color}` : ''}`}
                           </span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-slate-100 text-slate-600 tabular-nums">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-slate-100 text-slate-600 tabular-nums shrink-0">
                             {currentQty} {currentQty === 1 ? 'Unit' : 'Units'}
                           </span>
                           {canSeeProfitSummary && marginVal > 0 && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1 tabular-nums">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-0.5 tabular-nums shrink-0">
                               <TrendingUp className="w-2.5 h-2.5 text-emerald-600" />
                               +{currency} {marginVal.toLocaleString()} ({marginPct}%)
                             </span>
@@ -1723,17 +1727,17 @@ export const StockModal: React.FC<StockModalProps> = ({
                           <button
                             type="button"
                             onClick={() => handleDuplicateVariant(vIdx)}
-                            className="text-slate-500 hover:text-blue-600 px-1.5 py-1 rounded-md hover:bg-slate-100 text-[10px] font-semibold flex items-center gap-1 transition cursor-pointer"
+                            className="text-slate-600 hover:text-blue-600 h-7 px-2 rounded-md bg-slate-50 hover:bg-slate-100 border border-slate-200/80 text-[10px] font-semibold flex items-center gap-1 transition cursor-pointer"
                             title="Duplicate this variant"
                           >
                             <Copy className="w-3 h-3" />
-                            <span className="hidden sm:inline">Duplicate</span>
+                            <span>Copy</span>
                           </button>
                           {variants.length > 1 && (
                             <button
                               type="button"
                               onClick={() => handleRemoveVariant(vIdx)}
-                              className="text-slate-400 hover:text-rose-600 p-1 rounded-md hover:bg-rose-50 transition cursor-pointer"
+                              className="text-rose-500 hover:text-rose-600 w-7 h-7 flex items-center justify-center rounded-md bg-rose-50/70 hover:bg-rose-100 border border-rose-200/70 transition cursor-pointer"
                               title="Delete variant"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -1744,8 +1748,8 @@ export const StockModal: React.FC<StockModalProps> = ({
 
                       {/* Specs Row: Compact RAM, Storage & Color */}
                       {isKeypad ? (
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 bg-purple-50/60 p-2 rounded-lg border border-purple-200/80">
-                          <label className="font-bold text-purple-900 flex items-center gap-1 text-[11px] shrink-0">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 bg-purple-50/60 p-2 rounded-lg border border-purple-200/80">
+                          <label className="font-bold text-purple-900 flex items-center gap-1 text-[10px] sm:text-[11px] shrink-0">
                             <Palette className="w-3.5 h-3.5 text-purple-600" /> Phone Color
                           </label>
                           <input
@@ -1753,7 +1757,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                             value={v.color || ''}
                             onChange={e => handleUpdateVariantField(vIdx, 'color', e.target.value)}
                             placeholder="e.g. Black, Blue, White, Gold, Red"
-                            className="flex-1 bg-white border border-purple-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[34px] max-sm:min-h-[40px]"
+                            className="compact-mobile-input flex-1 bg-white border border-purple-300 rounded-lg px-2.5 h-8.5 text-xs font-bold text-purple-950 focus:outline-none focus:border-purple-600"
                           />
                         </div>
                       ) : (
@@ -1769,7 +1773,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                                 value={v.ram}
                                 onChange={e => handleUpdateVariantField(vIdx, 'ram', e.target.value)}
                                 placeholder="Custom"
-                                className="w-20 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-[10px] font-semibold focus:outline-none focus:border-blue-600"
+                                className="compact-mobile-input w-20 bg-slate-50 border border-slate-200 rounded px-1.5 h-6.5 text-[11px] font-semibold focus:outline-none focus:border-blue-600"
                               />
                             </div>
                             <div className="flex flex-wrap gap-1">
@@ -1778,7 +1782,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                                   key={ramOption}
                                   type="button"
                                   onClick={() => handleUpdateVariantField(vIdx, 'ram', ramOption)}
-                                  className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                                  className={`px-2 py-1 rounded text-[10px] font-bold transition cursor-pointer ${
                                     v.ram === ramOption
                                       ? 'bg-blue-600 text-white shadow-2xs'
                                       : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
@@ -1801,7 +1805,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                                 value={v.storage}
                                 onChange={e => handleUpdateVariantField(vIdx, 'storage', e.target.value)}
                                 placeholder="Custom"
-                                className="w-20 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-[10px] font-semibold focus:outline-none focus:border-indigo-600"
+                                className="compact-mobile-input w-20 bg-slate-50 border border-slate-200 rounded px-1.5 h-6.5 text-[11px] font-semibold focus:outline-none focus:border-indigo-600"
                               />
                             </div>
                             <div className="flex flex-wrap gap-1">
@@ -1812,7 +1816,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                                   onClick={() =>
                                     handleUpdateVariantField(vIdx, 'storage', storageOption)
                                   }
-                                  className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                                  className={`px-2 py-1 rounded text-[10px] font-bold transition cursor-pointer ${
                                     v.storage === storageOption
                                       ? 'bg-indigo-600 text-white shadow-2xs'
                                       : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
@@ -1834,14 +1838,14 @@ export const StockModal: React.FC<StockModalProps> = ({
                               value={v.color || ''}
                               onChange={e => handleUpdateVariantField(vIdx, 'color', e.target.value)}
                               placeholder="e.g. Black, Blue"
-                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-semibold focus:outline-none focus:border-purple-600 min-h-[30px]"
+                              className="compact-mobile-input w-full bg-slate-50 border border-slate-200 rounded-lg px-2 h-8 text-xs font-semibold focus:outline-none focus:border-purple-600"
                             />
                           </div>
                         </div>
                       )}
 
                       {/* Compact Pricing & Quantity Row */}
-                      <div className={`grid gap-2 bg-slate-50/80 p-2 rounded-lg border border-slate-200/70 items-center ${canSeeCostAndWholesale ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2'}`}>
+                      <div className={`grid gap-1.5 sm:gap-2 bg-slate-50/80 p-2 rounded-lg border border-slate-200/70 items-center ${canSeeCostAndWholesale ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2'}`}>
                         {canSeeCostAndWholesale && (
                           <div>
                             <label className="flex items-center justify-between gap-1 font-bold text-slate-700 mb-0.5 text-[10px]" title="Cost Price">
@@ -1864,7 +1868,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                                 )
                               }
                               placeholder={isAutoCostHint ? String(suggCost) : 'Cost Price'}
-                              className={`w-full rounded-lg px-2 py-1 text-xs tabular-nums font-bold focus:outline-none min-h-[34px] max-sm:min-h-[40px] border transition ${
+                              className={`compact-mobile-input w-full rounded-lg px-2 h-8.5 text-xs tabular-nums font-bold focus:outline-none border transition ${
                                 isAutoCostHint
                                   ? 'bg-amber-50/60 border-amber-300 ring-1 ring-amber-200/60 placeholder:text-amber-700/50 placeholder:font-bold text-slate-900 focus:border-amber-500'
                                   : 'bg-white border-slate-200 focus:border-blue-600'
@@ -1895,7 +1899,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                                 )
                               }
                               placeholder={isAutoWholesaleHint ? String(suggWholesale) : 'Wholesale'}
-                              className={`w-full rounded-lg px-2 py-1 text-xs tabular-nums font-bold focus:outline-none min-h-[34px] max-sm:min-h-[40px] border transition ${
+                              className={`compact-mobile-input w-full rounded-lg px-2 h-8.5 text-xs tabular-nums font-bold focus:outline-none border transition ${
                                 isAutoWholesaleHint
                                   ? 'bg-amber-50/60 border-amber-300 ring-1 ring-amber-200/60 placeholder:text-amber-700/50 placeholder:font-bold text-purple-950 focus:border-amber-500'
                                   : 'bg-purple-50/70 border-purple-200 text-purple-950 focus:border-purple-600'
@@ -1925,7 +1929,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                               )
                             }
                             placeholder={isAutoSaleHint ? String(suggSale) : 'Sale Price'}
-                            className={`w-full rounded-lg px-2 py-1 text-xs tabular-nums font-bold focus:outline-none min-h-[34px] max-sm:min-h-[40px] border transition ${
+                            className={`compact-mobile-input w-full rounded-lg px-2 h-8.5 text-xs tabular-nums font-bold focus:outline-none border transition ${
                               isAutoSaleHint
                                 ? 'bg-amber-50/60 border-amber-300 ring-1 ring-amber-200/60 placeholder:text-amber-700/50 placeholder:font-bold text-slate-900 focus:border-amber-500'
                                 : 'bg-white border-slate-200 focus:border-blue-600'
@@ -1949,7 +1953,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                               )
                             }
                             placeholder="Qty"
-                            className="allow-spinner w-full bg-white border border-blue-400 rounded-lg px-2 py-1 text-xs tabular-nums font-extrabold text-blue-700 focus:outline-none focus:border-blue-600 min-h-[34px] max-sm:min-h-[40px]"
+                            className="compact-mobile-input allow-spinner w-full bg-white border border-blue-400 rounded-lg px-2 h-8.5 text-xs tabular-nums font-extrabold text-blue-700 focus:outline-none focus:border-blue-600"
                           />
                         </div>
                       </div>
@@ -1965,29 +1969,29 @@ export const StockModal: React.FC<StockModalProps> = ({
                           value={v.note || ''}
                           onChange={e => handleUpdateVariantField(vIdx, 'note', e.target.value)}
                           placeholder="e.g. Box Pack, PTA Approved, Official Warranty, Condition note..."
-                          className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-600 min-h-[32px]"
+                          className="compact-mobile-input w-full bg-white border border-slate-200 rounded-lg px-2.5 h-8 text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-600"
                         />
                       </div>
 
                       {/* STRICT 1-IMEI-PER-BOX DYNAMIC GRID */}
                       <div className="p-2 bg-blue-50/60 border border-blue-200/80 rounded-lg space-y-1.5">
-                        <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
                           <span className="font-bold text-slate-900 text-[10px] sm:text-[11px] flex items-center gap-1">
-                            <Smartphone className="w-3 h-3 text-blue-600" />
+                            <Smartphone className="w-3 h-3 text-blue-600 shrink-0" />
                             IMEI Boxes — Variant #{vIdx + 1} ({v.imeis.length} {v.imeis.length === 1 ? 'Box' : 'Boxes'} for {v.qty === '' ? 0 : v.qty} units)
                           </span>
-                          <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full shrink-0">
+                          <span className="text-[9px] sm:text-[10px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full shrink-0">
                             1 Box = 1 IMEI Only
                           </span>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1.5 max-h-28 overflow-y-auto pr-0.5">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1.5 max-h-36 sm:max-h-32 overflow-y-auto pr-0.5">
                           {v.imeis.map((imeiStr, imeiIdx) => {
                             const imeiErr = getVariantImeiError(imeiStr, vIdx);
                             return (
                               <div key={imeiIdx} className="flex flex-col">
                                 <div
-                                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded-lg border transition min-h-[34px] max-sm:min-h-[40px] ${
+                                  className={`flex items-center gap-1 px-1.5 rounded-lg border transition h-8.5 ${
                                     imeiErr
                                       ? 'bg-rose-50/90 border-rose-400 ring-1 ring-rose-300'
                                       : 'bg-white border-slate-200 focus-within:border-blue-500'
@@ -2017,7 +2021,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                                       onKeyDown={e => handleVariantImeiKeyDown(e, vIdx, imeiIdx)}
                                       onPaste={e => handleVariantImeiPaste(e, vIdx, imeiIdx)}
                                       placeholder="1 IMEI (15 digits)"
-                                      className="w-full pl-4.5 pr-7 py-1 bg-transparent text-[11px] tabular-nums font-medium focus:outline-none rounded"
+                                      className="compact-mobile-input w-full pl-4.5 pr-8 py-1 bg-transparent text-[11px] tabular-nums font-medium focus:outline-none rounded"
                                       autoComplete="off"
                                     />
                                     <button
@@ -2028,7 +2032,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                                           code => handleVariantImeiChange(vIdx, imeiIdx, code)
                                         )
                                       }
-                                      className="absolute right-0 p-1 text-blue-600 hover:bg-blue-50 rounded cursor-pointer flex items-center justify-center"
+                                      className="absolute right-0 w-7 h-7 text-blue-600 hover:bg-blue-50 rounded cursor-pointer flex items-center justify-center"
                                       title="Camera Scan 1 IMEI"
                                     >
                                       <Camera className="w-3.5 h-3.5" />
@@ -2052,8 +2056,8 @@ export const StockModal: React.FC<StockModalProps> = ({
               </div>
 
               {/* Combined Compact Batch Summary & Action Bar */}
-              <div className="bg-slate-900 text-white rounded-xl px-3 py-2.5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 shadow-sm">
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
+              <div className="bg-slate-900 text-white rounded-xl px-2.5 py-2 sm:px-3 sm:py-2.5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 shadow-sm">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]">
                   <span className="font-bold text-amber-400 flex items-center gap-1 tabular-nums">
                     <Sparkles className="w-3.5 h-3.5" />
                     {totalVariantsCount} {totalVariantsCount === 1 ? 'Var' : 'Vars'} • {totalVariantsQty} Units
@@ -2072,24 +2076,24 @@ export const StockModal: React.FC<StockModalProps> = ({
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-2 shrink-0 justify-end">
+                <div className="grid grid-cols-2 sm:flex items-center gap-2 shrink-0">
                   <button
                     type="button"
                     onClick={handleExplicitCancel}
-                    className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition cursor-pointer"
+                    className="h-9 px-3.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition cursor-pointer flex items-center justify-center"
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
                     onClick={() => handleSubmit()}
-                    className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition cursor-pointer flex items-center gap-1.5"
+                    className="h-9 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition cursor-pointer flex items-center justify-center gap-1.5"
                   >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>
+                    <Check className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">
                       {editItem
                         ? 'Save Changes'
-                        : `Add ${variants.length > 1 ? `${variants.length} Variants` : 'Mobile'} to Stock`}
+                        : `Add ${variants.length > 1 ? `${variants.length} Vars` : 'Mobile'}`}
                     </span>
                   </button>
                 </div>
@@ -2099,11 +2103,11 @@ export const StockModal: React.FC<StockModalProps> = ({
             /* ========================================================= */
             /* SINGLE PRODUCT MODE / KEYPAD PHONE / ACCESSORIES / EDIT   */
             /* ========================================================= */
-            <div className="space-y-2.5">
+            <div className="space-y-2 sm:space-y-2.5">
               {/* If Keypad Phone or editing mobile phone, show Color input */}
               {(isKeypad || (editItem && isMobile)) && (
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
-                  <label className="font-bold text-slate-700 text-[11px] flex items-center gap-1 shrink-0">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 bg-slate-50 p-2 rounded-xl border border-slate-200">
+                  <label className="font-bold text-slate-700 text-[10px] sm:text-[11px] flex items-center gap-1 shrink-0">
                     <Palette className="w-3.5 h-3.5 text-purple-600" /> Phone Color
                   </label>
                   <input
@@ -2111,13 +2115,13 @@ export const StockModal: React.FC<StockModalProps> = ({
                     value={color}
                     onChange={e => setColor(e.target.value)}
                     placeholder="e.g. Black, Blue, White, Gold, Red"
-                    className="flex-1 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:border-blue-600 min-h-[34px] max-sm:min-h-[40px]"
+                    className="compact-mobile-input flex-1 bg-white border border-slate-200 rounded-lg px-2.5 h-8.5 text-xs font-semibold focus:outline-none focus:border-blue-600"
                   />
                 </div>
               )}
 
               {/* Pricing & Quantity Row */}
-              <div className={`grid gap-2 ${canSeeCostAndWholesale ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2'}`}>
+              <div className={`grid gap-1.5 sm:gap-2 ${canSeeCostAndWholesale ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2'}`}>
                 {canSeeCostAndWholesale && (
                   <div>
                     <label className="block font-bold text-slate-700 mb-0.5 text-[10px] sm:text-[11px] truncate" title="Cost Price">
@@ -2129,7 +2133,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                       value={costPrice}
                       onChange={e => setCostPrice(e.target.value === '' ? '' : Number(e.target.value))}
                       placeholder="Cost Price"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs tabular-nums font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[36px] max-sm:min-h-[42px]"
+                      className="compact-mobile-input w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 h-9 text-xs tabular-nums font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition"
                     />
                   </div>
                 )}
@@ -2145,7 +2149,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                       value={wholesalePrice}
                       onChange={e => setWholesalePrice(e.target.value === '' ? '' : Number(e.target.value))}
                       placeholder="Wholesale Rate"
-                      className="w-full bg-purple-50/60 border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs tabular-nums font-semibold text-purple-950 focus:outline-none focus:border-purple-600 focus:bg-white transition min-h-[36px] max-sm:min-h-[42px]"
+                      className="compact-mobile-input w-full bg-purple-50/60 border border-purple-200 rounded-lg px-2.5 h-9 text-xs tabular-nums font-semibold text-purple-950 focus:outline-none focus:border-purple-600 focus:bg-white transition"
                     />
                   </div>
                 )}
@@ -2160,7 +2164,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                     value={salePrice}
                     onChange={e => setSalePrice(e.target.value === '' ? '' : Number(e.target.value))}
                     placeholder="Sale Price"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs tabular-nums font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[36px] max-sm:min-h-[42px]"
+                    className="compact-mobile-input w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 h-9 text-xs tabular-nums font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition"
                   />
                 </div>
 
@@ -2178,7 +2182,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                       handleSingleQtyChange(e.target.value === '' ? '' : Number(e.target.value))
                     }
                     placeholder="Qty"
-                    className="allow-spinner w-full bg-slate-50 border border-blue-400 rounded-lg px-2.5 py-1.5 text-xs tabular-nums font-bold text-blue-700 focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[36px] max-sm:min-h-[42px]"
+                    className="compact-mobile-input allow-spinner w-full bg-slate-50 border border-blue-400 rounded-lg px-2.5 h-9 text-xs tabular-nums font-bold text-blue-700 focus:outline-none focus:border-blue-600 focus:bg-white transition"
                   />
                 </div>
               </div>
@@ -2194,7 +2198,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                   value={itemNote}
                   onChange={e => setItemNote(e.target.value)}
                   placeholder="e.g. Warranty details, supplier info, box condition..."
-                  className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-600 min-h-[34px]"
+                  className="compact-mobile-input w-full bg-white border border-slate-200 rounded-lg px-2.5 h-8.5 text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-600"
                 />
               </div>
 
@@ -2216,7 +2220,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                     <select
                       value={adjustmentReason}
                       onChange={e => setAdjustmentReason(e.target.value as StockAdjustmentReason)}
-                      className="w-full bg-white border border-amber-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:outline-none focus:border-amber-600"
+                      className="compact-mobile-input w-full bg-white border border-amber-300 rounded-lg px-2.5 h-8.5 text-xs font-semibold text-slate-800 focus:outline-none focus:border-amber-600"
                     >
                       <option value="Stock Correction">Stock Correction</option>
                       <option value="Damaged">Damaged</option>
@@ -2230,7 +2234,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                       value={adjustmentNotes}
                       onChange={e => setAdjustmentNotes(e.target.value)}
                       placeholder="Adjustment note (optional)"
-                      className="w-full bg-white border border-amber-300 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:border-amber-600"
+                      className="compact-mobile-input w-full bg-white border border-amber-300 rounded-lg px-2.5 h-8.5 text-xs font-medium text-slate-800 focus:outline-none focus:border-amber-600"
                     />
                   </div>
                 </div>
@@ -2238,20 +2242,20 @@ export const StockModal: React.FC<StockModalProps> = ({
 
               {/* Mobile IMEI list (strict 1-IMEI-per-box) vs Non-Mobile Barcode */}
               {isMobile ? (
-                <div className="p-2.5 bg-blue-50/60 border border-blue-200 rounded-xl space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-900 text-[11px] flex items-center gap-1.5">
-                      <Smartphone className="w-3.5 h-3.5 text-blue-600" />
+                <div className="p-2 bg-blue-50/60 border border-blue-200 rounded-xl space-y-1.5">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="font-bold text-slate-900 text-[10px] sm:text-[11px] flex items-center gap-1.5">
+                      <Smartphone className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                       Mobile IMEI Boxes ({imeis.length} {imeis.length === 1 ? 'Unit' : 'Units'})
                     </span>
-                    <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
+                    <span className="text-[9px] sm:text-[10px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
                       1 Box = 1 IMEI Only
                     </span>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1.5 max-h-36 overflow-y-auto pr-0.5">
                     {imeis.map((imeiVal, idx) => (
-                      <div key={idx} className="flex items-center gap-1 px-1.5 py-0.5 bg-white border border-slate-200 focus-within:border-blue-500 rounded-lg min-h-[34px] max-sm:min-h-[40px]">
+                      <div key={idx} className="flex items-center gap-1 px-1.5 bg-white border border-slate-200 focus-within:border-blue-500 rounded-lg h-8.5">
                         <span className="tabular-nums text-[10px] font-bold text-slate-500 w-6 shrink-0">
                           #{idx + 1}
                         </span>
@@ -2266,7 +2270,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                             onKeyDown={e => handleSingleImeiKeyDown(e, idx)}
                             onPaste={e => handleSingleImeiPaste(e, idx)}
                             placeholder="1 IMEI (15 digits)"
-                            className="w-full pl-4.5 pr-7 py-1 bg-transparent text-[11px] tabular-nums font-medium focus:outline-none rounded"
+                            className="compact-mobile-input w-full pl-4.5 pr-8 py-1 bg-transparent text-[11px] tabular-nums font-medium focus:outline-none rounded"
                             autoComplete="off"
                           />
                           <button
@@ -2277,7 +2281,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                                 code => handleSingleImeiChange(idx, code)
                               )
                             }
-                            className="absolute right-0 p-1 text-blue-600 hover:bg-blue-50 rounded cursor-pointer flex items-center justify-center"
+                            className="absolute right-0 w-7 h-7 text-blue-600 hover:bg-blue-50 rounded cursor-pointer flex items-center justify-center"
                             title="Camera Scan 1 IMEI"
                           >
                             <Camera className="w-3.5 h-3.5" />
@@ -2288,9 +2292,9 @@ export const StockModal: React.FC<StockModalProps> = ({
                   </div>
                 </div>
               ) : (
-                <div className="p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl space-y-1">
-                  <div className="flex items-center justify-between">
-                    <label className="font-bold text-slate-700 text-[11px]">Barcode / Item Code</label>
+                <div className="p-2 bg-slate-50 border border-slate-200/80 rounded-xl space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="font-bold text-slate-700 text-[10px] sm:text-[11px]">Barcode / Item Code</label>
                     <span className="text-[10px] text-slate-400">Used for quick POS scanning</span>
                   </div>
                   <div className="relative flex items-center">
@@ -2300,14 +2304,14 @@ export const StockModal: React.FC<StockModalProps> = ({
                       value={barcode}
                       onChange={e => setBarcode(e.target.value)}
                       placeholder="Scan or type barcode..."
-                      className="w-full pl-8 pr-20 py-1.5 bg-white border border-slate-200 rounded-lg text-xs tabular-nums focus:outline-none focus:border-blue-600 min-h-[36px] max-sm:min-h-[42px]"
+                      className="compact-mobile-input w-full pl-8 pr-20 h-9 bg-white border border-slate-200 rounded-lg text-xs tabular-nums focus:outline-none focus:border-blue-600"
                     />
                     <button
                       type="button"
                       onClick={() =>
                         openBarcodeScanner('Scan Product Barcode', code => setBarcode(code))
                       }
-                      className="absolute right-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[10px] font-extrabold flex items-center gap-1 cursor-pointer transition"
+                      className="absolute right-1 h-7 px-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[10px] font-extrabold flex items-center gap-1 cursor-pointer transition"
                     >
                       <Camera className="w-3 h-3" />
                       <span>Scan</span>
@@ -2318,24 +2322,24 @@ export const StockModal: React.FC<StockModalProps> = ({
 
               {/* Compact Footer for Single / Non-Mobile / Edit Mode */}
               <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 border-t border-slate-100">
-                <div className="text-[11px] text-slate-400">
+                <div className="text-[10px] sm:text-[11px] text-slate-400 hidden sm:block">
                   All changes sync automatically with activity logging
                 </div>
-                <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2">
+                <div className="grid grid-cols-2 sm:flex items-center gap-2">
                   <button
                     type="button"
                     onClick={handleExplicitCancel}
-                    className="px-4 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-xs transition cursor-pointer text-center"
+                    className="h-9 px-4 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-xs transition cursor-pointer flex items-center justify-center"
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
                     onClick={() => handleSubmit()}
-                    className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm shadow-blue-500/20 transition cursor-pointer flex items-center justify-center gap-1.5"
+                    className="h-9 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm shadow-blue-500/20 transition cursor-pointer flex items-center justify-center gap-1.5"
                   >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>{editItem ? 'Save Changes' : 'Add to Inventory'}</span>
+                    <Check className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">{editItem ? 'Save Changes' : 'Add to Inventory'}</span>
                   </button>
                 </div>
               </div>

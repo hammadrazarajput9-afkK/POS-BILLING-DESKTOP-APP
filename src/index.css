@@ -1110,12 +1110,16 @@ button:active:not(:disabled),
 }
 
 @media (max-width: 1023px) {
-  input, select, textarea {
+  input:not(.compact-mobile-input),
+  select:not(.compact-mobile-input),
+  textarea:not(.compact-mobile-input) {
     font-size: 16px !important;
+  }
+  .compact-mobile-input {
+    font-size: 12px !important;
   }
   .overflow-y-auto, [role="dialog"], .mobile-bottom-sheet {
     overscroll-behavior: contain;
   }
 }
-
 

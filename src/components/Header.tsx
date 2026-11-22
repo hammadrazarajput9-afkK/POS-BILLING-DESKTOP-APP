@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Menu,
   Plus,
@@ -12,7 +12,9 @@ import {
   Shield,
   User,
   LogOut,
-  Download
+  Download,
+  Smartphone,
+  ChevronDown,
 } from 'lucide-react';
 import { AppData, ShopSettings, UserRole, UserAccount } from '../types';
 import { OnlineStatusBadge } from './OnlineStatusBadge';
@@ -51,118 +53,131 @@ export const Header: React.FC<HeaderProps> = ({
   onRefreshData,
   appData,
 }) => {
-  const titles: Record<string, { title: string; subtitle: string }> = {
-    dashboard: { title: 'Dashboard Overview', subtitle: 'Live business metrics & real-time cash drawer' },
-    pos: { title: 'POS & Billing Terminal', subtitle: 'Search products, build cart, print bills' },
-    inventory: { title: 'Inventory Master', subtitle: 'Manage phone devices, IMEI tracking, and retail stock' },
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [logoError, setLogoError] = useState(false);
+
+  const titles: Record<string, { title: string; shortTitle: string; subtitle: string }> = {
+    dashboard: { title: 'Dashboard Overview', shortTitle: 'Dashboard', subtitle: 'Live business metrics & real-time cash drawer' },
+    pos: { title: 'POS & Billing Terminal', shortTitle: 'POS Billing', subtitle: 'Search products, build cart, print bills' },
+    inventory: { title: 'Inventory Master', shortTitle: 'Inventory', subtitle: 'Manage phone devices, IMEI tracking, and retail stock' },
     purchases:
       currentRole === 'salesman'
-        ? { title: 'Stock Inward', subtitle: 'Record inward stock and party names' }
-        : { title: 'Supplier Purchases & Stock Inward', subtitle: 'Record stock received from parties and suppliers' },
-    barcode: { title: 'Barcode Label Generator', subtitle: 'Generate and print custom 1D Code128 barcodes' },
-    khata: { title: 'Customer Credit & Ledger', subtitle: 'Track customer balances, phone numbers, and payment records' },
-    expenses: { title: 'Daily Expense', subtitle: 'Record shop rent, refreshment, utilities and operational costs' },
-    dailyClosing: { title: 'Daily Closing', subtitle: 'Physical cash notes tally, digital accounts balance & WhatsApp export' },
-    reports: { title: 'Financial Reports', subtitle: 'Business performance, sales analytics, and profit summary' },
-    activity: { title: 'Activity Center', subtitle: 'Rolling 24-hour audit log (resets automatically)' },
+        ? { title: 'Stock Inward', shortTitle: 'Stock Inward', subtitle: 'Record inward stock and party names' }
+        : { title: 'Supplier Purchases & Stock Inward', shortTitle: 'Purchases', subtitle: 'Record stock received from parties and suppliers' },
+    barcode: { title: 'Barcode Label Generator', shortTitle: 'Barcodes', subtitle: 'Generate and print custom 1D Code128 barcodes' },
+    khata: { title: 'Customer Credit & Ledger', shortTitle: 'Khata Ledger', subtitle: 'Track customer balances, phone numbers, and payment records' },
+    expenses: { title: 'Daily Expense', shortTitle: 'Expenses', subtitle: 'Record shop rent, refreshment, utilities and operational costs' },
+    dailyClosing: { title: 'Daily Closing', shortTitle: 'Daily Closing', subtitle: 'Physical cash notes tally, digital accounts balance & WhatsApp export' },
+    reports: { title: 'Financial Reports', shortTitle: 'Reports', subtitle: 'Business performance, sales analytics, and profit summary' },
+    activity: { title: 'Activity Center', shortTitle: 'Activity', subtitle: 'Rolling 24-hour audit log (resets automatically)' },
   };
 
-  const current = titles[activeTab] || { title: 'Dashboard', subtitle: '' };
+  const current = titles[activeTab] || { title: 'Dashboard', shortTitle: 'Dashboard', subtitle: '' };
   const logoSrc = settings?.shopLogo || settings?.logo;
+  const shopDisplayName = settings?.shopName?.trim() || 'FMZ Mobile Zone';
   const { canInstall, isInstalled, installApp } = usePWAInstall();
 
+  const closeAndRun = (fn?: () => void) => {
+    setMobileMenuOpen(false);
+    if (fn) fn();
+  };
+
   return (
-    <header className="h-14 sm:h-16 bg-white border-b border-slate-200 px-2.5 sm:px-5 flex items-center justify-between z-10 shrink-0 max-w-full overflow-hidden">
+    <header className="h-14 sm:h-16 bg-white border-b border-slate-200 px-2.5 sm:px-5 flex items-center justify-between gap-2 sm:gap-4 z-20 shrink-0 max-w-full">
+      {/* Left Zone: Menu Toggle + Shop Logo + Shop Name & Active Page */}
       <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-        {/* Toggle Menu Button */}
         <button
           type="button"
           onClick={onToggleMenu}
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl transition text-xs font-bold cursor-pointer border shadow-2xs shrink-0 ${
+          className={`w-9 h-9 sm:w-auto sm:h-9 sm:px-3 rounded-xl transition text-xs font-bold cursor-pointer border shadow-2xs shrink-0 flex items-center justify-center gap-1.5 ${
             isMenuOpen
               ? 'bg-blue-50 text-blue-700 border-blue-200'
               : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200'
           }`}
           title={isMenuOpen ? 'Hide Menu' : 'Open Menu'}
         >
-          <Menu className="w-4 h-4 text-blue-600" />
+          <Menu className="w-4 h-4 text-blue-600 shrink-0" />
           <span className="font-extrabold tracking-wide hidden sm:inline">Menu</span>
         </button>
 
-        {logoSrc ? (
-          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full overflow-hidden bg-white shadow-xs shrink-0 flex items-center justify-center p-0.5">
+        {/* Shop Logo (with clean fallback so it always shows crisply) */}
+        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl overflow-hidden bg-slate-50 border border-slate-200/90 shadow-2xs shrink-0 flex items-center justify-center">
+          {logoSrc && !logoError ? (
             <img
               src={logoSrc}
-              alt="Logo"
-              className="w-full h-full object-contain rounded-full"
+              alt={shopDisplayName}
+              onError={() => setLogoError(true)}
+              className="w-full h-full object-contain p-0.5"
             />
-          </div>
-        ) : null}
+          ) : (
+            <div className="w-full h-full brand-badge bg-blue-600 text-white flex items-center justify-center">
+              <Smartphone className="w-4 h-4 sm:w-5 sm:h-5" />
+            </div>
+          )}
+        </div>
 
+        {/* Shop Name + Active Section Title */}
         <div className="min-w-0 flex-1">
-          <h2 className="text-xs sm:text-base md:text-lg font-extrabold text-slate-900 tracking-tight leading-tight truncate">
-            {current.title}
-          </h2>
-          <p className="text-[11px] text-slate-400 hidden sm:block leading-none truncate">
-            {current.subtitle}
-          </p>
+          {/* Mobile: Show Shop Name + Active Section clearly */}
+          <div className="sm:hidden min-w-0">
+            <h2 className="text-[13px] font-black text-slate-900 tracking-tight leading-tight truncate">
+              {shopDisplayName}
+            </h2>
+            <p className="text-[10px] font-bold text-blue-600 leading-tight truncate">
+              {current.shortTitle}
+            </p>
+          </div>
+          {/* Desktop / Tablet: Show Section Title + Shop Name / Subtitle */}
+          <div className="hidden sm:block min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <h2 className="text-base md:text-lg font-extrabold text-slate-900 tracking-tight leading-tight truncate">
+                {current.title}
+              </h2>
+              <span className="text-slate-300 hidden md:inline">•</span>
+              <span className="text-xs font-bold text-blue-600 truncate hidden md:inline">
+                {shopDisplayName}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-none truncate mt-0.5">
+              {current.subtitle}
+            </p>
+          </div>
         </div>
       </div>
 
-      {/* Quick Action Header Shortcuts */}
-      <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-        {/* Logged in User Badge & Logout Button */}
-        {currentUser && (
-          <div className="flex items-center gap-1 bg-slate-100 p-0.5 sm:p-1 rounded-xl border border-slate-200 shadow-2xs">
-            <div className="px-1.5 sm:px-2.5 py-0.5 sm:py-1 text-slate-800 text-[10px] sm:text-[11px] font-extrabold flex items-center gap-1">
-              {currentUser.role === 'admin' ? (
-                <Shield className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-blue-600" />
-              ) : (
-                <User className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-600" />
-              )}
-              <span className="hidden md:inline font-black">{currentUser.name}</span>
-              <span className={`px-1 rounded text-[8px] sm:text-[9px] font-black uppercase tracking-wider ${
-                currentUser.role === 'admin' ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'
-              }`}>
-                {currentUser.role}
-              </span>
-            </div>
-            
-            {onLogout && (
-              <button
-                type="button"
-                onClick={onLogout}
-                className="p-1 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-white/80 transition cursor-pointer"
-                title="Logout Securely"
-              >
-                <LogOut className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-              </button>
-            )}
-          </div>
-        )}
+      {/* Right Zone: Mobile Compact Controls (< md) + Full Desktop Toolbar (md+) */}
+      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        {/* Online/Offline Sync Status */}
+        <OnlineStatusBadge onRefreshData={onRefreshData} appData={appData} />
 
-        {/* Global Online/Offline Status Indicator Pill with Manual Refresh */}
-        <div className="block">
-          <OnlineStatusBadge onRefreshData={onRefreshData} appData={appData} />
-        </div>
-
-        {/* Desktop / Mobile PWA One-Click Install Button */}
+        {/* Install App (Desktop / Mobile when prompt ready) */}
         {canInstall && !isInstalled && (
           <button
             type="button"
             onClick={installApp}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold text-xs shadow-xs transition cursor-pointer active:scale-95"
-            title="Install Desktop Application on PC / Mac"
+            className="hidden sm:inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold text-xs shadow-xs transition cursor-pointer active:scale-95 shrink-0"
+            title="Install Desktop Application"
           >
-            <Download className="w-3.5 h-3.5 text-white animate-bounce" />
-            <span className="hidden sm:inline">Install App</span>
+            <Download className="w-3.5 h-3.5 text-white" />
+            <span>Install App</span>
           </button>
         )}
 
+        {/* Quick Sale (sm+) */}
+        <button
+          type="button"
+          onClick={() => onSwitchTab('pos')}
+          className="hidden sm:inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition cursor-pointer shrink-0"
+        >
+          <ShoppingCart className="w-3.5 h-3.5" />
+          <span>New Sale</span>
+        </button>
+
+        {/* Desktop-only Quick Shortcuts */}
         <button
           type="button"
           onClick={() => onSwitchTab('barcode')}
-          className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-bold text-xs shadow-2xs transition cursor-pointer"
+          className="hidden xl:inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-bold text-xs shadow-2xs transition cursor-pointer shrink-0"
         >
           <Barcode className="w-3.5 h-3.5 text-blue-600" />
           <span>Barcodes</span>
@@ -170,74 +185,233 @@ export const Header: React.FC<HeaderProps> = ({
 
         <button
           type="button"
-          onClick={() => onSwitchTab('pos')}
-          className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition cursor-pointer"
-        >
-          <ShoppingCart className="w-3.5 h-3.5" />
-          <span>New Sale</span>
-        </button>
-
-        <button
-          type="button"
           onClick={() => onOpenModal('expense')}
-          className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200/80 font-bold text-xs shadow-xs transition cursor-pointer"
+          className="hidden lg:inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200/80 font-bold text-xs shadow-xs transition cursor-pointer shrink-0"
         >
           <Plus className="w-3.5 h-3.5 text-rose-600" />
           <span>Add Expense</span>
         </button>
 
-        {onOpenTabSettings && currentRole === 'admin' && (
-          <button
-            type="button"
-            onClick={onOpenTabSettings}
-            className="p-2 text-slate-500 hover:text-blue-600 rounded-xl hover:bg-slate-100 transition cursor-pointer border border-slate-200/70"
-            title="Tab Customization Settings"
-          >
-            <Sliders className="w-4 h-4" />
-          </button>
-        )}
+        {/* Desktop Admin Icons */}
+        <div className="hidden md:flex items-center gap-1">
+          {onOpenTabSettings && currentRole === 'admin' && (
+            <button
+              type="button"
+              onClick={onOpenTabSettings}
+              className="w-9 h-9 flex items-center justify-center text-slate-500 hover:text-blue-600 rounded-xl hover:bg-slate-100 transition cursor-pointer border border-slate-200/70"
+              title="Tab Customization Settings"
+            >
+              <Sliders className="w-4 h-4" />
+            </button>
+          )}
 
-        {currentRole === 'admin' && (
+          {currentRole === 'admin' && (
+            <button
+              type="button"
+              onClick={() => onSwitchTab('activity')}
+              className={`w-9 h-9 flex items-center justify-center rounded-xl transition cursor-pointer ${
+                activeTab === 'activity'
+                  ? 'bg-blue-50 text-blue-600'
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
+              }`}
+              title="Activity Center"
+            >
+              <Activity className="w-4 h-4" />
+            </button>
+          )}
+
+          {onToggleTheme && (
+            <button
+              type="button"
+              onClick={onToggleTheme}
+              className="w-9 h-9 flex items-center justify-center text-slate-500 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+              title="Toggle Dark / Light Theme"
+            >
+              {settings?.theme === 'dark' ? (
+                <Sun className="w-4 h-4 text-amber-500" />
+              ) : (
+                <Moon className="w-4 h-4 text-slate-600" />
+              )}
+            </button>
+          )}
+
+          {currentRole === 'admin' && (
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className="w-9 h-9 flex items-center justify-center text-slate-500 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+              title="Shop Profile & Settings"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+          )}
+
+          {currentUser && (
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-2xs ml-1">
+              <div className="px-2 py-0.5 text-slate-800 text-[11px] font-extrabold flex items-center gap-1.5">
+                {currentUser.role === 'admin' ? (
+                  <Shield className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                ) : (
+                  <User className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                )}
+                <span className="font-black max-w-[90px] truncate">{currentUser.name}</span>
+                <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${
+                  currentUser.role === 'admin' ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'
+                }`}>
+                  {currentUser.role}
+                </span>
+              </div>
+              {onLogout && (
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-white/80 transition cursor-pointer"
+                  title="Logout Securely"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Mobile Quick Controls (< md): Keeps header clean so Logo, Shop Name & buttons never crush */}
+        <div className="flex md:hidden items-center gap-1 shrink-0">
+          {onToggleTheme && (
+            <button
+              type="button"
+              onClick={onToggleTheme}
+              className="w-8 h-8 flex items-center justify-center text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition cursor-pointer shrink-0"
+              title="Toggle Theme"
+            >
+              {settings?.theme === 'dark' ? (
+                <Sun className="w-4 h-4 text-amber-500" />
+              ) : (
+                <Moon className="w-4 h-4 text-slate-600" />
+              )}
+            </button>
+          )}
+
           <button
             type="button"
-            onClick={() => onSwitchTab('activity')}
-            className={`p-2 rounded-xl transition cursor-pointer ${
-              activeTab === 'activity'
-                ? 'bg-blue-50 text-blue-600'
-                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
+            onClick={() => setMobileMenuOpen(prev => !prev)}
+            className={`h-8 px-2 flex items-center gap-1 rounded-lg border text-[11px] font-extrabold transition cursor-pointer shrink-0 ${
+              mobileMenuOpen
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200'
             }`}
-            title="Activity Center"
+            title="Account & Quick Options"
           >
-            <Activity className="w-4 h-4" />
-          </button>
-        )}
-
-        {onToggleTheme && (
-          <button
-            type="button"
-            onClick={onToggleTheme}
-            className="p-2 text-slate-500 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition cursor-pointer"
-            title="Toggle Dark / Light Theme"
-          >
-            {settings?.theme === 'dark' ? (
-              <Sun className="w-4 h-4 text-amber-500" />
+            {currentRole === 'admin' ? (
+              <Shield className={`w-3.5 h-3.5 ${mobileMenuOpen ? 'text-white' : 'text-blue-600'}`} />
             ) : (
-              <Moon className="w-4 h-4 text-slate-600" />
+              <User className={`w-3.5 h-3.5 ${mobileMenuOpen ? 'text-white' : 'text-amber-600'}`} />
             )}
+            <ChevronDown className={`w-3 h-3 transition-transform ${mobileMenuOpen ? 'rotate-180' : ''}`} />
           </button>
-        )}
-
-        {currentRole === 'admin' && (
-          <button
-            type="button"
-            onClick={onOpenSettings}
-            className="p-2 text-slate-500 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition cursor-pointer"
-            title="Shop Profile & Settings"
-          >
-            <Settings className="w-4 h-4" />
-          </button>
-        )}
+        </div>
       </div>
+
+      {/* Mobile Account & Quick Tools Popover */}
+      {mobileMenuOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-slate-900/20 backdrop-blur-[1px] md:hidden"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+          <div className="fixed top-15 right-2.5 z-50 w-60 bg-white border border-slate-200 rounded-2xl shadow-2xl p-2 space-y-1 md:hidden animate-in fade-in zoom-in-95 duration-150">
+            {currentUser && (
+              <div className="px-3 py-2 bg-slate-50 rounded-xl border border-slate-200/70 flex items-center justify-between gap-2 mb-1">
+                <div className="min-w-0">
+                  <p className="text-xs font-black text-slate-900 truncate">{currentUser.name}</p>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase">{currentUser.role}</p>
+                </div>
+                {onLogout && (
+                  <button
+                    type="button"
+                    onClick={() => closeAndRun(onLogout)}
+                    className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[10px] font-extrabold flex items-center gap-1 cursor-pointer shrink-0"
+                  >
+                    <LogOut className="w-3 h-3" />
+                    <span>Logout</span>
+                  </button>
+                )}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => closeAndRun(() => onSwitchTab('pos'))}
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-blue-700 bg-blue-50/70 hover:bg-blue-100 transition cursor-pointer"
+            >
+              <ShoppingCart className="w-4 h-4 text-blue-600" />
+              <span>New Sale (POS)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => closeAndRun(() => onOpenModal('expense'))}
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-rose-700 hover:bg-rose-50 transition cursor-pointer"
+            >
+              <Plus className="w-4 h-4 text-rose-600" />
+              <span>Add Expense</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => closeAndRun(() => onSwitchTab('barcode'))}
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+            >
+              <Barcode className="w-4 h-4 text-blue-600" />
+              <span>Barcode Generator</span>
+            </button>
+
+            {canInstall && !isInstalled && (
+              <button
+                type="button"
+                onClick={() => closeAndRun(installApp)}
+                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100 transition cursor-pointer"
+              >
+                <Download className="w-4 h-4 text-indigo-600" />
+                <span>Install App</span>
+              </button>
+            )}
+
+            {currentRole === 'admin' && (
+              <>
+                <div className="border-t border-slate-100 my-1" />
+                {onOpenTabSettings && (
+                  <button
+                    type="button"
+                    onClick={() => closeAndRun(onOpenTabSettings)}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                  >
+                    <Sliders className="w-4 h-4 text-slate-500" />
+                    <span>Tab Settings</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => closeAndRun(() => onSwitchTab('activity'))}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  <Activity className="w-4 h-4 text-slate-500" />
+                  <span>Activity Center</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => closeAndRun(onOpenSettings)}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  <Settings className="w-4 h-4 text-slate-500" />
+                  <span>Shop Profile &amp; Settings</span>
+                </button>
+              </>
+            )}
+          </div>
+        </>
+      )}
     </header>
   );
 };
+
