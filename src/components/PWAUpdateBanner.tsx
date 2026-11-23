@@ -50,7 +50,7 @@ export const PWAUpdateBanner: React.FC = () => {
     <>
       {/* 1. NEW VERSION / AUTO-UPDATE ALERT BANNER */}
       {needRefresh && (
-        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 w-11/12 max-w-xl bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-800 text-white rounded-2xl p-3.5 shadow-2xl border border-blue-400/30 animate-in slide-in-from-top duration-300">
+        <div className="app-top-banner fixed top-3 left-1/2 -translate-x-1/2 z-50 w-11/12 max-w-xl bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-800 text-white rounded-2xl p-3.5 shadow-2xl border border-blue-400/30 animate-in slide-in-from-top duration-300">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <div className="w-10 h-10 rounded-xl bg-white/15 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/20">

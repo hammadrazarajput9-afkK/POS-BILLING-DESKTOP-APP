@@ -18,6 +18,15 @@
           writable: true,
         });
       }
+      try {
+        var ua = navigator.userAgent || '';
+        var isIOS =
+          /iPad|iPhone|iPod/.test(ua) ||
+          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        if (isIOS) {
+          document.documentElement.classList.add('ios-device');
+        }
+      } catch (e) {}
     </script>
     <title>FMZ Friends Mobile Zone - POS Pro</title>
     <meta name="description" content="Complete point of sale, IMEI inventory tracking, repair ticketing, khata ledger, expense tracking, and financial analytics for mobile shops." />

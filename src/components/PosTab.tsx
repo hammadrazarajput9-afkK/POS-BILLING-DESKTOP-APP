@@ -2286,7 +2286,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
           {/* Mobile Floating Cart Bottom Sheet Drawer (lg:hidden) */}
           {isMobileCartOpen && (
-            <div className="lg:hidden fixed inset-0 z-50 flex flex-col justify-end animate-in fade-in duration-200">
+            <div className="ios-bottom-sheet-backdrop lg:hidden fixed inset-0 z-50 flex flex-col justify-end animate-in fade-in duration-200">
               {/* Backdrop */}
               <div
                 onClick={() => setIsMobileCartOpen(false)}
@@ -2294,7 +2294,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
               />
 
               {/* Drawer Panel */}
-              <div className="relative z-10 bg-white rounded-t-3xl max-h-[85vh] flex flex-col shadow-2xl border-t border-slate-200 animate-in slide-in-from-bottom duration-300 overflow-hidden">
+              <div className="ios-bottom-sheet-panel relative z-10 bg-white rounded-t-3xl max-h-[85vh] flex flex-col shadow-2xl border-t border-slate-200 animate-in slide-in-from-bottom duration-300 overflow-hidden">
                 {/* Drawer Handle */}
                 <div className="w-12 h-1.5 bg-slate-300 rounded-full mx-auto mt-2.5 mb-1 shrink-0" />
 

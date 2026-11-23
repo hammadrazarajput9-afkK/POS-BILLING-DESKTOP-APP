@@ -257,6 +257,59 @@ function AppContent() {
     }
   }, [data.settings?.theme]);
 
+  // iOS-only: prevent initial-load viewport scroll drift & keep root anchored edge-to-edge without rotation
+  useEffect(() => {
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+    const isIOS =
+      /iPad|iPhone|iPod/.test(ua) ||
+      (typeof navigator !== 'undefined' && navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (!isIOS) return;
+
+    document.documentElement.classList.add('ios-device');
+
+    const syncIOSViewport = () => {
+      const active = document.activeElement as HTMLElement | null;
+      const isTyping =
+        active &&
+        (active.tagName === 'INPUT' ||
+          active.tagName === 'TEXTAREA' ||
+          active.tagName === 'SELECT' ||
+          active.isContentEditable);
+
+      document.documentElement.style.setProperty('--ios-app-height', `${Math.round(window.innerHeight)}px`);
+
+      if (!isTyping && (window.scrollY !== 0 || window.scrollX !== 0)) {
+        window.scrollTo(0, 0);
+      }
+    };
+
+    const handleFocusOut = () => {
+      window.setTimeout(syncIOSViewport, 60);
+    };
+
+    syncIOSViewport();
+    const t1 = window.setTimeout(syncIOSViewport, 50);
+    const t2 = window.setTimeout(syncIOSViewport, 250);
+    const t3 = window.setTimeout(syncIOSViewport, 600);
+
+    window.addEventListener('resize', syncIOSViewport);
+    window.addEventListener('orientationchange', syncIOSViewport);
+    window.addEventListener('pageshow', syncIOSViewport);
+    document.addEventListener('visibilitychange', syncIOSViewport);
+    window.addEventListener('focusout', handleFocusOut);
+
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
+      window.removeEventListener('resize', syncIOSViewport);
+      window.removeEventListener('orientationchange', syncIOSViewport);
+      window.removeEventListener('pageshow', syncIOSViewport);
+      document.removeEventListener('visibilitychange', syncIOSViewport);
+      window.removeEventListener('focusout', handleFocusOut);
+    };
+  }, []);
+
   // Sync to local storage mirror on state updates (offline-first IndexedDB + localStorage mirror)
   useEffect(() => {
     if (isInitialSyncDoneRef.current || (data.users && data.users.length > 0) || data.inventory.length > 0) {

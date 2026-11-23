@@ -891,7 +891,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     <div className="fixed inset-0 z-50 bg-slate-50 flex flex-col overflow-hidden animate-in fade-in pb-[env(safe-area-inset-bottom,0px)]">
       <div className="bg-white w-full h-full flex flex-col overflow-hidden">
         {/* Top Full-Screen Command Header with Prominent Top-Left Back Button */}
-        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-purple-950 px-3 sm:px-5 pt-[calc(env(safe-area-inset-top,0px)+0.85rem)] sm:pt-2.5 pb-3 text-white shrink-0">
+        <div className="app-fullscreen-modal-header bg-gradient-to-r from-slate-900 via-indigo-950 to-purple-950 px-3 sm:px-5 pt-[calc(env(safe-area-inset-top,0px)+0.85rem)] sm:pt-2.5 pb-3 text-white shrink-0">
           {/* Top Navigation Bar: Back on Left, Track / Pin Location on Right */}
           <div className="flex items-center justify-between gap-2 pb-2 border-b border-white/15 mb-2.5">
             <button

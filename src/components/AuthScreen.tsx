@@ -434,17 +434,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   };
 
   return (
-    <div className="h-screen h-[100dvh] max-h-[100dvh] w-full flex items-center justify-center bg-gradient-to-br from-[#7e22ce] via-[#6366f1] to-[#4c1d95] p-0 sm:p-4 md:p-8 relative overflow-hidden font-sans text-slate-800 select-none">
+    <div className="auth-root-container h-screen h-[100dvh] max-h-[100dvh] w-full flex items-center justify-center bg-gradient-to-br from-[#7e22ce] via-[#6366f1] to-[#4c1d95] p-0 sm:p-4 md:p-8 relative overflow-hidden font-sans text-slate-800 select-none">
       
       {/* Background Decorative Blur Blobs */}
       <div className="hidden sm:block absolute -top-24 -left-24 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl pointer-events-none" />
       <div className="hidden sm:block absolute -bottom-28 -right-28 w-96 h-96 bg-indigo-500/30 rounded-full blur-3xl pointer-events-none" />
 
       {/* Main Glassmorphic Card - Strictly 100% Height Non-Scrollable on Mobile */}
-      <div className="relative w-full h-full max-h-[100dvh] sm:h-auto sm:max-h-[92vh] max-w-md lg:max-w-5xl bg-white sm:rounded-[2.5rem] shadow-[0_25px_80px_rgba(0,0,0,0.3)] border-0 sm:border sm:border-white/30 overflow-hidden z-10 flex flex-col justify-between">
+      <div className="auth-card-container relative w-full h-full max-h-[100dvh] sm:h-auto sm:max-h-[92vh] max-w-md lg:max-w-5xl bg-white sm:rounded-[2.5rem] shadow-[0_25px_80px_rgba(0,0,0,0.3)] border-0 sm:border sm:border-white/30 overflow-hidden z-10 flex flex-col justify-between">
         
         {/* ================= MOBILE-ONLY PROMINENT HERO HEADER WITH LARGE LOGO & STORE NAME ================= */}
-        <div className="lg:hidden pt-4 px-4 pb-6 bg-gradient-to-br from-[#7e22ce] via-[#6366f1] to-[#4c1d95] text-white flex flex-col items-center justify-center text-center relative overflow-hidden shrink-0 shadow-lg z-10">
+        <div className="auth-mobile-hero lg:hidden pt-4 px-4 pb-6 bg-gradient-to-br from-[#7e22ce] via-[#6366f1] to-[#4c1d95] text-white flex flex-col items-center justify-center text-center relative overflow-hidden shrink-0 shadow-lg z-10">
           {/* Background Glow Blobs */}
           <div className="absolute top-[-30%] right-[-20%] w-56 h-56 bg-white/10 rounded-full blur-2xl pointer-events-none" />
           <div className="absolute -bottom-10 -left-10 w-48 h-48 bg-purple-400/20 rounded-full blur-xl pointer-events-none" />
