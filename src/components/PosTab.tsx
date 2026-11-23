@@ -40,7 +40,7 @@ import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { useFormDraft } from '../hooks/useFormDraft';
 import { generateNextInvoiceNumber, extractItemImeis } from '../utils/imeiManager';
 import { normalizePaymentChannel } from '../utils/accounting';
-import { shareInvoiceOnWhatsApp } from '../utils/whatsappInvoice';
+import { InvoiceShareModal } from './InvoiceShareModal';
 import { smartFilterAndSort, smartMatch, smartSearchScore } from '../utils/smartSearch';
 
 interface PosTabProps {
@@ -281,17 +281,14 @@ const PosTabComponent: React.FC<PosTabProps> = ({
     });
   }, [sales, historyRange, historyStartDate, historyEndDate, historySearch, inventory]);
 
+  const [shareModalSale, setShareModalSale] = useState<SaleRecord | null>(null);
+
   const handleShareWhatsapp = (sale: SaleRecord) => {
     if (!settings) {
       showToast('Shop settings not found', 'error');
       return;
     }
-    try {
-      shareInvoiceOnWhatsApp(sale, settings);
-      showToast(`Opening WhatsApp for Invoice #${sale.invNo}...`, 'success');
-    } catch (err: any) {
-      showToast(`Could not open WhatsApp: ${err?.message || 'Error'}`, 'error');
-    }
+    setShareModalSale(sale);
   };
 
   // Delete / Void Modal state
@@ -1117,17 +1114,6 @@ const PosTabComponent: React.FC<PosTabProps> = ({
     }, 0);
   }, [cart, saleMode]);
 
-  // Retail Price reference subtotal (what it would cost in Retail)
-  const retailSubtotal = useMemo(() => {
-    return cart.reduce((acc, item) => acc + item.salePrice * item.cartQty, 0);
-  }, [cart]);
-
-  // Total Wholesale Savings compared to Retail price
-  const wholesaleSavings = useMemo(() => {
-    if (saleMode !== 'wholesale') return 0;
-    return Math.max(0, retailSubtotal - subtotal);
-  }, [retailSubtotal, subtotal, saleMode]);
-
   const discountVal = Number(discount) || 0;
   const grandTotal = Math.max(0, subtotal - discountVal);
 
@@ -1435,17 +1421,6 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                 {currency} {subtotal.toLocaleString()}
               </span>
             </div>
-
-            {saleMode === 'wholesale' && wholesaleSavings > 0 && (
-              <div className="flex justify-between items-center bg-purple-50 border border-purple-200 text-purple-900 px-2 py-1 rounded-lg font-extrabold text-[11px]">
-                <span className="flex items-center gap-1">
-                  <Sparkles className="w-3 h-3 text-purple-600" /> Wholesale Savings:
-                </span>
-                <span className="tabular-nums">
-                  {currency} {wholesaleSavings.toLocaleString()}
-                </span>
-              </div>
-            )}
 
             <div className="flex justify-between items-center">
               <span>Discount ({currency}):</span>
@@ -1758,7 +1733,6 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       retailerShopName: saleMode === 'wholesale' ? retailerShopName.trim() || undefined : undefined,
       retailerCity: saleMode === 'wholesale' ? retailerCity.trim() || undefined : undefined,
       retailerNtn: saleMode === 'wholesale' ? retailerNtn.trim() || undefined : undefined,
-      wholesaleSavings: wholesaleSavings > 0 ? wholesaleSavings : undefined,
       khataCustomerId: invoiceType === 'credit' ? selectedKhataId || undefined : undefined,
       amountPaid: actualPaid,
       amountDue: actualDue,
@@ -3405,6 +3379,15 @@ const PosTabComponent: React.FC<PosTabProps> = ({
             : 'Scan Invoice Barcode / IMEI'
         }
       />
+
+      {settings && (
+        <InvoiceShareModal
+          sale={shareModalSale}
+          settings={settings}
+          isOpen={!!shareModalSale}
+          onClose={() => setShareModalSale(null)}
+        />
+      )}
     </div>
   );
 };

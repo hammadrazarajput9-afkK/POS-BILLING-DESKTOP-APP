@@ -238,7 +238,7 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-40 bg-slate-50 flex flex-col overflow-hidden animate-in fade-in">
+    <div className="fixed inset-0 z-[45] bg-slate-50 flex flex-col overflow-hidden animate-in fade-in">
       <div className="bg-white w-full h-full flex flex-col overflow-hidden">
         {/* Top Full-Screen Supplier Header */}
         <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 px-3 sm:px-5 pt-2.5 pb-3 text-white shrink-0">
@@ -808,7 +808,7 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
 
       {/* Account-Level Pay Supplier Due Modal (Distributes FIFO across oldest unpaid bills) */}
       {isSettleAccountOpen && isAdmin && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs">
+        <div className="fixed inset-0 z-[55] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs">
           <div className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-5 shadow-2xl space-y-4 border border-slate-100">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">

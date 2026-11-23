@@ -33,7 +33,8 @@ import {
   Download,
   MessageCircle,
   ScanLine,
-  Lock
+  Lock,
+  Copy
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { ConfirmModal } from './ConfirmModal';
@@ -573,6 +574,89 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
     setItems(prev => prev.filter((_, i) => i !== index));
   };
 
+  const handleDuplicateItemRow = (index: number) => {
+    const source = items[index];
+    if (!source) return;
+    const nextRow: InwardDraftItem = {
+      name: source.name,
+      category: source.category,
+      qty: '',
+      ram: source.ram || '',
+      storage: source.storage || '',
+      color: '',
+      costPrice: '',
+      wholesalePrice: '',
+      salePrice: '',
+      imei: '',
+      imeis: [],
+      barcode: source.barcode || '',
+      note: source.note || '',
+    };
+    setItems(prev => {
+      const copy = [...prev];
+      copy.splice(index + 1, 0, nextRow);
+      return copy;
+    });
+    showToast('Row duplicated — matching Name + RAM/Storage prices auto-highlighted!', 'info');
+  };
+
+  const isSameInwardSpecForAutoPrice = (a: InwardDraftItem, b: InwardDraftItem): boolean => {
+    const aName = (a.name || '').trim().toLowerCase();
+    const bName = (b.name || '').trim().toLowerCase();
+    if (!aName || !bName || aName !== bName) return false;
+
+    if (isKeypadCategory(a.category) && isKeypadCategory(b.category)) {
+      return true;
+    }
+
+    if (isAndroidCategory(a.category) || isAndroidCategory(b.category)) {
+      const aRam = (a.ram || '').trim().toLowerCase();
+      const bRam = (b.ram || '').trim().toLowerCase();
+      const aSto = (a.storage || '').trim().toLowerCase();
+      const bSto = (b.storage || '').trim().toLowerCase();
+      if (!aRam && !aSto) return false;
+      return aRam === bRam && aSto === bSto;
+    }
+
+    return true;
+  };
+
+  const getInwardPriceSuggestion = (
+    itemsList: InwardDraftItem[],
+    idx: number,
+    field: 'costPrice' | 'wholesalePrice' | 'salePrice'
+  ): number | '' => {
+    const target = itemsList[idx];
+    if (!target) return '';
+    if (target[field] !== '' && target[field] !== undefined) return '';
+
+    const sibling = itemsList.find(
+      (s, j) =>
+        j !== idx &&
+        isSameInwardSpecForAutoPrice(target, s) &&
+        s[field] !== '' &&
+        s[field] !== undefined
+    );
+    if (sibling && sibling[field] !== '' && sibling[field] !== undefined) {
+      return Number(sibling[field]);
+    }
+    return '';
+  };
+
+  const getResolvedInwardPrice = (
+    itemsList: InwardDraftItem[],
+    idx: number,
+    field: 'costPrice' | 'wholesalePrice' | 'salePrice'
+  ): number | undefined => {
+    const item = itemsList[idx];
+    if (!item) return undefined;
+    if (item[field] !== '' && item[field] !== undefined) {
+      return Number(item[field]);
+    }
+    const sugg = getInwardPriceSuggestion(itemsList, idx, field);
+    return sugg !== '' ? Number(sugg) : undefined;
+  };
+
   const handleItemQtyChange = (index: number, rawVal: string) => {
     const val = rawVal === '' ? '' : Math.max(0, parseInt(rawVal, 10) || 0);
     setItems(prev => {
@@ -849,9 +933,12 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
     });
   };
 
-  // Calculations
+  // Calculations (incorporating auto-highlighted matching Name+RAM+Storage prices)
   const totalBillAmount = useMemo(() => {
-    return items.reduce((acc, item) => acc + (Number(item.qty) || 0) * (Number(item.costPrice) || 0), 0);
+    return items.reduce((acc, item, idx) => {
+      const effCost = getResolvedInwardPrice(items, idx, 'costPrice') ?? 0;
+      return acc + (Number(item.qty) || 0) * effCost;
+    }, 0);
   }, [items]);
 
   const calculatedPaidAmount = paidAmount === '' ? totalBillAmount : Number(paidAmount);
@@ -866,18 +953,28 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
       return;
     }
 
-    const validItems = items.filter(
-      item => item.name.trim() !== '' && (Number(item.qty) || 0) > 0 && (Number(item.costPrice) || 0) >= 0
-    );
+    const indexedValidItems = items
+      .map((item, idx) => {
+        const effCost = getResolvedInwardPrice(items, idx, 'costPrice') ?? 0;
+        const effWholesale = getResolvedInwardPrice(items, idx, 'wholesalePrice');
+        const effSale = getResolvedInwardPrice(items, idx, 'salePrice');
+        return { item, idx, effCost, effWholesale, effSale };
+      })
+      .filter(
+        entry =>
+          entry.item.name.trim() !== '' &&
+          (Number(entry.item.qty) || 0) > 0 &&
+          entry.effCost >= 0
+      );
 
-    if (validItems.length === 0) {
+    if (indexedValidItems.length === 0) {
       showToast('Please add at least one valid item with name, quantity, and cost price', 'warning');
       return;
     }
 
     // Collect all entered IMEIs across all inward items to validate uniqueness
     const allInwardImeis: string[] = [];
-    for (const item of validItems) {
+    for (const { item } of indexedValidItems) {
       if (item.imeis && item.imeis.length > 0) {
         allInwardImeis.push(...item.imeis.map(s => s.trim()).filter(Boolean));
       } else if (item.imei) {
@@ -913,23 +1010,24 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
       }
     }
 
-    const purchaseItems: PurchaseItem[] = validItems.map((item, idx) => {
-      const cleanImeis = isMobileCategory(item.category)
-        ? (item.imeis && item.imeis.length > 0
-            ? item.imeis.map(s => s.trim()).filter(Boolean)
-            : (item.imei ? item.imei.split(',').map(s => s.trim()).filter(Boolean) : []))
-        : [];
+    const purchaseItems: PurchaseItem[] = indexedValidItems.map(
+      ({ item, effCost, effWholesale, effSale }, idx) => {
+        const cleanImeis = isMobileCategory(item.category)
+          ? (item.imeis && item.imeis.length > 0
+              ? item.imeis.map(s => s.trim()).filter(Boolean)
+              : (item.imei ? item.imei.split(',').map(s => s.trim()).filter(Boolean) : []))
+          : [];
 
-      return {
-        id: 'PITM-' + Date.now() + '-' + idx,
-        name: item.name.trim(),
-        category: item.category,
-        qty: Number(item.qty) || 1,
-        costPrice: Number(item.costPrice) || 0,
-        salePrice: Number(item.salePrice) || Number(item.costPrice) * 1.15,
-        wholesalePrice: item.wholesalePrice !== '' && item.wholesalePrice !== undefined ? Number(item.wholesalePrice) : undefined,
-        total: (Number(item.qty) || 1) * (Number(item.costPrice) || 0),
-        ram: isAndroidCategory(item.category) ? item.ram?.trim() || undefined : undefined,
+        return {
+          id: 'PITM-' + Date.now() + '-' + idx,
+          name: item.name.trim(),
+          category: item.category,
+          qty: Number(item.qty) || 1,
+          costPrice: effCost,
+          salePrice: effSale !== undefined ? effSale : effCost * 1.15,
+          wholesalePrice: effWholesale,
+          total: (Number(item.qty) || 1) * effCost,
+          ram: isAndroidCategory(item.category) ? item.ram?.trim() || undefined : undefined,
         storage: isAndroidCategory(item.category) ? item.storage?.trim() || undefined : undefined,
         color: isMobileCategory(item.category) ? item.color?.trim() || undefined : undefined,
         barcode: !isMobileCategory(item.category) ? item.barcode?.trim() || undefined : undefined,
@@ -2123,7 +2221,23 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                     </div>
                   ) : (
                     items.map((item, idx) => {
-                      const rowTotal = (Number(item.qty) || 0) * (Number(item.costPrice) || 0);
+                      const suggCost = getInwardPriceSuggestion(items, idx, 'costPrice');
+                      const suggWholesale = getInwardPriceSuggestion(items, idx, 'wholesalePrice');
+                      const suggSale = getInwardPriceSuggestion(items, idx, 'salePrice');
+
+                      const isAutoCostHint =
+                        (item.costPrice === '' || item.costPrice === undefined) && suggCost !== '';
+                      const isAutoWholesaleHint =
+                        (item.wholesalePrice === '' || item.wholesalePrice === undefined) &&
+                        suggWholesale !== '';
+                      const isAutoSaleHint =
+                        (item.salePrice === '' || item.salePrice === undefined) && suggSale !== '';
+
+                      const effCost =
+                        item.costPrice !== '' && item.costPrice !== undefined
+                          ? Number(item.costPrice)
+                          : Number(suggCost) || 0;
+                      const rowTotal = (Number(item.qty) || 0) * effCost;
                       const isAndroid = isAndroidCategory(item.category);
                       const isKeypad = isKeypadCategory(item.category);
                       const isMobile = isMobileCategory(item.category);
@@ -2134,7 +2248,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                           key={idx}
                           className="p-3.5 bg-slate-50/90 rounded-2xl border border-slate-200/90 space-y-3 shadow-2xs hover:border-blue-300 transition"
                         >
-                          {/* Row Header: Editable Product Name, Editable Category Switcher, Delete */}
+                          {/* Row Header: Editable Product Name, Editable Category Switcher, Copy, Delete */}
                           <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
                             <div className="sm:col-span-5">
                               <label className="block text-[10px] font-bold text-slate-600 mb-1">
@@ -2190,7 +2304,15 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                               />
                             </div>
 
-                            <div className="sm:col-span-1 flex items-center justify-end">
+                            <div className="sm:col-span-1 flex items-center justify-end gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleDuplicateItemRow(idx)}
+                                className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition cursor-pointer"
+                                title="Copy row to add another color/variant with same specs"
+                              >
+                                <Copy className="w-4 h-4" />
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => handleRemoveItemRow(idx)}
@@ -2293,47 +2415,89 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                             </div>
                           )}
 
-                          {/* Pricing Row (Cost, Wholesale, Retail) */}
+                          {/* Pricing Row (Cost, Wholesale, Retail) with Auto-Highlight on Matching Name + RAM + Storage */}
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                             <div>
-                              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
-                                Cost Price ({currency}) *
+                              <label className="flex items-center justify-between gap-1 text-[10px] font-bold text-slate-600 mb-0.5">
+                                <span>Cost Price ({currency}) *</span>
+                                {isAutoCostHint && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleItemChange(idx, 'costPrice', Number(suggCost))}
+                                    className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300 text-[9px] font-extrabold cursor-pointer"
+                                    title="Auto-matched from same Name + RAM/Storage"
+                                  >
+                                    Auto
+                                  </button>
+                                )}
                               </label>
                               <input
                                 type="number"
                                 min="0"
-                                placeholder="Enter cost price"
+                                placeholder={isAutoCostHint ? String(suggCost) : 'Enter cost price'}
                                 value={item.costPrice}
                                 onChange={e => handleItemChange(idx, 'costPrice', e.target.value === '' ? '' : Number(e.target.value))}
-                                className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold tabular-nums text-blue-700 focus:outline-none focus:border-blue-500 shadow-2xs"
+                                className={`w-full px-2.5 py-1.5 border rounded-xl text-xs font-bold tabular-nums focus:outline-none shadow-2xs transition ${
+                                  isAutoCostHint
+                                    ? 'bg-amber-50/70 border-amber-400 ring-1 ring-amber-300/70 placeholder:text-amber-700/70 placeholder:font-extrabold text-slate-900 focus:border-amber-500'
+                                    : 'bg-white border-slate-200 text-blue-700 focus:border-blue-500'
+                                }`}
                               />
                             </div>
 
                             <div>
-                              <label className="block text-[10px] font-bold text-purple-900 mb-0.5">
-                                Wholesale Price ({currency})
+                              <label className="flex items-center justify-between gap-1 text-[10px] font-bold text-purple-900 mb-0.5">
+                                <span>Wholesale Price ({currency})</span>
+                                {isAutoWholesaleHint && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleItemChange(idx, 'wholesalePrice', Number(suggWholesale))}
+                                    className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300 text-[9px] font-extrabold cursor-pointer"
+                                    title="Auto-matched from same Name + RAM/Storage"
+                                  >
+                                    Auto
+                                  </button>
+                                )}
                               </label>
                               <input
                                 type="number"
                                 min="0"
-                                placeholder="Optional"
+                                placeholder={isAutoWholesaleHint ? String(suggWholesale) : 'Optional'}
                                 value={item.wholesalePrice ?? ''}
                                 onChange={e => handleItemChange(idx, 'wholesalePrice', e.target.value === '' ? '' : Number(e.target.value))}
-                                className="w-full px-2.5 py-1.5 bg-purple-50/40 border border-purple-200 rounded-xl text-xs font-bold tabular-nums text-purple-800 focus:outline-none focus:border-purple-500 shadow-2xs"
+                                className={`w-full px-2.5 py-1.5 border rounded-xl text-xs font-bold tabular-nums focus:outline-none shadow-2xs transition ${
+                                  isAutoWholesaleHint
+                                    ? 'bg-amber-50/70 border-amber-400 ring-1 ring-amber-300/70 placeholder:text-amber-700/70 placeholder:font-extrabold text-purple-950 focus:border-amber-500'
+                                    : 'bg-purple-50/40 border-purple-200 text-purple-800 focus:border-purple-500'
+                                }`}
                               />
                             </div>
 
                             <div>
-                              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
-                                Retail Sale Price ({currency})
+                              <label className="flex items-center justify-between gap-1 text-[10px] font-bold text-slate-600 mb-0.5">
+                                <span>Retail Sale Price ({currency})</span>
+                                {isAutoSaleHint && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleItemChange(idx, 'salePrice', Number(suggSale))}
+                                    className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300 text-[9px] font-extrabold cursor-pointer"
+                                    title="Auto-matched from same Name + RAM/Storage"
+                                  >
+                                    Auto
+                                  </button>
+                                )}
                               </label>
                               <input
                                 type="number"
                                 min="0"
-                                placeholder="Enter retail price"
+                                placeholder={isAutoSaleHint ? String(suggSale) : 'Enter retail price'}
                                 value={item.salePrice}
                                 onChange={e => handleItemChange(idx, 'salePrice', e.target.value === '' ? '' : Number(e.target.value))}
-                                className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold tabular-nums text-emerald-700 focus:outline-none focus:border-blue-500 shadow-2xs"
+                                className={`w-full px-2.5 py-1.5 border rounded-xl text-xs font-semibold tabular-nums focus:outline-none shadow-2xs transition ${
+                                  isAutoSaleHint
+                                    ? 'bg-amber-50/70 border-amber-400 ring-1 ring-amber-300/70 placeholder:text-amber-700/70 placeholder:font-extrabold text-slate-900 focus:border-amber-500'
+                                    : 'bg-white border-slate-200 text-emerald-700 focus:border-blue-500'
+                                }`}
                               />
                             </div>
                           </div>

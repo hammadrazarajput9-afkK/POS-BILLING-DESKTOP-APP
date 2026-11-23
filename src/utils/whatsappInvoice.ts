@@ -72,7 +72,6 @@ export function generateWhatsAppInvoiceText(sale: SaleRecord, settings: ShopSett
     }),
     `━━━━━━━━━━━━━━━━━━━━`,
     `💰 *Subtotal:* ${cur} ${sale.subtotal.toLocaleString()}`,
-    sale.wholesaleSavings && sale.wholesaleSavings > 0 ? `🎉 *Wholesale B2B Savings:* *${cur} ${sale.wholesaleSavings.toLocaleString()}*` : '',
     sale.discount > 0 ? `🎁 *Discount / Tier:* -${cur} ${sale.discount.toLocaleString()}` : '',
     `⭐ *GRAND TOTAL:* *${cur} ${grandTotal.toLocaleString()}*`,
     `💵 *Paid Amount:* ${cur} ${amountPaid.toLocaleString()} (${sale.paymentMethod || 'Cash'})`,
@@ -93,20 +92,21 @@ export function generateWhatsAppInvoiceText(sale: SaleRecord, settings: ShopSett
 }
 
 /**
- * Opens WhatsApp directly with formatted invoice
+ * Opens WhatsApp directly with formatted invoice (optionally targeting a specific recipient number)
  */
-export function shareInvoiceOnWhatsApp(sale: SaleRecord, settings: ShopSettings): void {
+export function shareInvoiceOnWhatsApp(
+  sale: SaleRecord,
+  settings: ShopSettings,
+  targetPhoneOverride?: string
+): void {
   const text = generateWhatsAppInvoiceText(sale, settings);
-  const cleanPhone = formatPhoneNumberForWhatsApp(sale.custPhone);
+  const rawTarget = targetPhoneOverride !== undefined ? targetPhoneOverride : sale.custPhone;
+  const cleanPhone = formatPhoneNumberForWhatsApp(rawTarget);
   const encodedText = encodeURIComponent(text);
 
-  let url: string;
-  if (cleanPhone) {
-    url = `https://wa.me/${cleanPhone}?text=${encodedText}`;
-  } else {
-    // If no phone attached, allow cashier to pick contact in WhatsApp
-    url = `https://wa.me/?text=${encodedText}`;
-  }
+  const url = cleanPhone
+    ? `https://wa.me/${cleanPhone}?text=${encodedText}`
+    : `https://wa.me/?text=${encodedText}`;
 
   window.open(url, '_blank', 'noopener,noreferrer');
 }
