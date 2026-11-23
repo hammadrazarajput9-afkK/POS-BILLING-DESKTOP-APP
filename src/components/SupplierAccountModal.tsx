@@ -238,10 +238,10 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[45] bg-slate-50 flex flex-col overflow-hidden animate-in fade-in">
+    <div className="fixed inset-0 z-[45] bg-slate-50 flex flex-col overflow-hidden animate-in fade-in pb-[env(safe-area-inset-bottom,0px)]">
       <div className="bg-white w-full h-full flex flex-col overflow-hidden">
         {/* Top Full-Screen Supplier Header */}
-        <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 px-3 sm:px-5 pt-2.5 pb-3 text-white shrink-0">
+        <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 px-3 sm:px-5 pt-[calc(env(safe-area-inset-top,0px)+0.85rem)] sm:pt-2.5 pb-3 text-white shrink-0">
           {/* Top Navigation Bar */}
           <div className="flex items-center justify-between gap-2 pb-2 border-b border-white/15 mb-2.5">
             <button

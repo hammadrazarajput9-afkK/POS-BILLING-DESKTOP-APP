@@ -236,7 +236,7 @@ function AppContent() {
     }
   }, [data.currentRole, activeTab]);
 
-  // Apply visual theme to document root
+  // Apply visual theme to document root & keep system status bar theme-color synced
   useEffect(() => {
     const activeTheme = data.settings?.theme || 'blue-white';
     document.documentElement.setAttribute('data-theme', activeTheme);
@@ -244,6 +244,16 @@ function AppContent() {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
+    }
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if (metaTheme) {
+      const color =
+        activeTheme === 'dark'
+          ? '#000000'
+          : activeTheme === 'gold-black'
+          ? '#09090c'
+          : '#ffffff';
+      metaTheme.setAttribute('content', color);
     }
   }, [data.settings?.theme]);
 
@@ -1897,8 +1907,8 @@ function AppContent() {
         <main
           className={`flex-1 overflow-y-auto touch-pan-y ${
             activeTab === 'pos'
-              ? 'p-2 sm:p-3 lg:p-3 pb-24 lg:pb-4'
-              : 'p-2.5 sm:p-5 pb-24 lg:pb-6'
+              ? 'p-2 sm:p-3 lg:p-3 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] lg:pb-4'
+              : 'p-2.5 sm:p-5 pb-[calc(4rem+env(safe-area-inset-bottom,0px))] lg:pb-6'
           }`}
         >
           <div className={activeTab === 'pos' ? 'w-full flex flex-col lg:min-h-0' : 'max-w-7xl mx-auto'}>

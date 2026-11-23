@@ -90,7 +90,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       >
         <div className="w-64 min-w-[16rem]">
           {/* Brand Header */}
-          <div className="h-16 flex items-center justify-between px-5 border-b border-slate-100 dark:border-neutral-900">
+          <div className="min-h-[4rem] pt-[calc(env(safe-area-inset-top,0px)+0.85rem)] pb-3 lg:py-0 lg:h-16 flex items-center justify-between px-5 border-b border-slate-100 dark:border-neutral-900">
             <div className="flex items-center gap-2.5 min-w-0">
               {logoSrc ? (
                 <div className="w-12 h-12 rounded-full overflow-hidden bg-white shadow-sm flex items-center justify-center p-0.5 shrink-0">
@@ -127,7 +127,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
 
           {/* Navigation Links */}
-          <nav className="p-3 space-y-1">
+          <nav className="p-3 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] lg:pb-3 space-y-1">
             {visibleNavItems.map(item => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;

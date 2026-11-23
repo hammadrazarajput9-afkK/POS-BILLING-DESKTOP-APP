@@ -83,7 +83,7 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="h-14 sm:h-16 bg-white border-b border-slate-200 px-2.5 sm:px-5 flex items-center justify-between gap-2 sm:gap-4 z-20 shrink-0 max-w-full">
+    <header className="min-h-[3.75rem] sm:h-16 bg-white border-b border-slate-200 px-2.5 pt-[calc(env(safe-area-inset-top,0px)+0.85rem)] pb-2.5 sm:py-0 sm:px-5 flex items-center justify-between gap-2 sm:gap-4 z-20 shrink-0 max-w-full">
       {/* Left Zone: Menu Toggle + Shop Logo + Shop Name & Active Page */}
       <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
         <button
@@ -319,7 +319,7 @@ export const Header: React.FC<HeaderProps> = ({
             className="fixed inset-0 z-40 bg-slate-900/20 backdrop-blur-[1px] md:hidden"
             onClick={() => setMobileMenuOpen(false)}
           />
-          <div className="fixed top-15 right-2.5 z-50 w-60 bg-white border border-slate-200 rounded-2xl shadow-2xl p-2 space-y-1 md:hidden animate-in fade-in zoom-in-95 duration-150">
+          <div className="fixed top-[calc(env(safe-area-inset-top,0px)+4.5rem)] right-2.5 z-50 w-60 bg-white border border-slate-200 rounded-2xl shadow-2xl p-2 space-y-1 md:hidden animate-in fade-in zoom-in-95 duration-150">
             {currentUser && (
               <div className="px-3 py-2 bg-slate-50 rounded-xl border border-slate-200/70 flex items-center justify-between gap-2 mb-1">
                 <div className="min-w-0">
