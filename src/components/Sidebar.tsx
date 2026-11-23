@@ -90,7 +90,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       >
         <div className="w-64 min-w-[16rem]">
           {/* Brand Header */}
-          <div className="min-h-[4rem] pt-[calc(env(safe-area-inset-top,0px)+0.85rem)] pb-3 lg:py-0 lg:h-16 flex items-center justify-between px-5 border-b border-slate-100 dark:border-neutral-900">
+          <div className="app-sidebar-header min-h-[4rem] pt-[calc(env(safe-area-inset-top,0px)+0.85rem)] pb-3 lg:py-0 lg:h-16 flex items-center justify-between px-5 border-b border-slate-100 dark:border-neutral-900">
             <div className="flex items-center gap-2.5 min-w-0">
               {logoSrc ? (
                 <div className="w-11 h-11 rounded-full overflow-hidden flex items-center justify-center shrink-0">

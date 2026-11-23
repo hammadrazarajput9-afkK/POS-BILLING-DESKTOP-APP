@@ -81,6 +81,20 @@
     }
   }
 
+  /* iOS-only (iPhone/iPad): clear top iOS frosted blur completely while keeping Android untouched */
+  @supports (-webkit-touch-callout: none) {
+    @media (max-width: 1023px) {
+      .app-header,
+      .app-sidebar-header {
+        padding-top: calc(env(safe-area-inset-top, 0px) + 1.85rem) !important;
+      }
+
+      .app-mobile-popover {
+        top: calc(env(safe-area-inset-top, 0px) + 5.5rem) !important;
+      }
+    }
+  }
+
   .font-mono,
   .tabular-nums {
     font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
