@@ -64,26 +64,7 @@
     .app-root-container {
       height: 100dvh !important;
       min-height: 100dvh !important;
-      padding-top: 0;
-      padding-left: env(safe-area-inset-left, 0px);
-      padding-right: env(safe-area-inset-right, 0px);
-      padding-bottom: env(safe-area-inset-bottom, 0px);
-    }
-  }
-
-  /* iOS (iPhone/iPad Safari & WebClip) safe-area & floating bottom bar clearance */
-  @supports (-webkit-touch-callout: none) {
-    @media (max-width: 1023px) {
-      html, body, #root {
-        height: 100% !important;
-        min-height: -webkit-fill-available !important;
-      }
-
-      .app-root-container {
-        height: 100% !important;
-        min-height: -webkit-fill-available !important;
-        padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
-      }
+      padding: 0;
     }
   }
 

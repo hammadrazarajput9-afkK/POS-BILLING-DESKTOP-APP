@@ -207,7 +207,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
             <img
               src={logoSrc}
               alt="Logo"
-              className="w-14 h-14 object-contain mx-auto mb-1 filter grayscale"
+              className="w-14 h-14 rounded-full object-cover mx-auto mb-1 filter grayscale"
             />
           )}
           <h1 className="text-base font-black uppercase tracking-tight">{settings.shopName}</h1>
@@ -500,7 +500,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                   <div
                     className={`${
                       is58 ? 'w-8 h-8' : 'w-10 h-10'
-                    } rounded-full overflow-hidden bg-white border border-slate-200 p-0.5 shrink-0 flex items-center justify-center`}
+                    } rounded-full overflow-hidden shrink-0 flex items-center justify-center`}
                   >
                     <img
                       src={logoSrc}

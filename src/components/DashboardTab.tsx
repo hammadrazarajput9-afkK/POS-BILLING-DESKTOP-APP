@@ -372,17 +372,17 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           <div className="flex items-center gap-4 sm:gap-5">
             {logoSrc ? (
               <div className="relative shrink-0">
-                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden bg-white shadow-2xl flex items-center justify-center p-1.5">
+                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden flex items-center justify-center">
                   <img
                     src={logoSrc}
                     alt={data.settings.shopName || 'Shop Logo'}
-                    className="w-full h-full object-contain rounded-full"
+                    className="w-full h-full object-cover rounded-full"
                   />
                 </div>
               </div>
             ) : (
               <div className="relative shrink-0">
-                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex flex-col items-center justify-center text-white shadow-xl">
+                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-white/10 backdrop-blur-md flex flex-col items-center justify-center text-white">
                   <Store className="w-10 h-10 sm:w-12 sm:h-12 text-indigo-200" />
                 </div>
               </div>

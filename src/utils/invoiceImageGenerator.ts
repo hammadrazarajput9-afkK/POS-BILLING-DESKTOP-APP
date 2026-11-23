@@ -187,13 +187,9 @@ export async function generateInvoicePreviewImage(
     ctx.clip();
     ctx.drawImage(logoImg, pad, y, 64, 64);
     ctx.restore();
-    ctx.strokeStyle = '#e2e8f0';
-    ctx.lineWidth = 1.5;
-    drawRoundedRect(ctx, pad, y, 64, 64, 32);
-    ctx.stroke();
   } else {
     ctx.fillStyle = '#1d4ed8';
-    drawRoundedRect(ctx, pad, y, 60, 60, 16);
+    drawRoundedRect(ctx, pad, y, 60, 60, 30);
     ctx.fill();
     ctx.fillStyle = '#ffffff';
     ctx.font = '900 22px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';

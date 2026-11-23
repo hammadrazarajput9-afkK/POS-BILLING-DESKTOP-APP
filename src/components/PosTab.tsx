@@ -428,7 +428,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
           <style>
             body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 24px; color: #1e293b; font-variant-numeric: tabular-nums; }
             .header-banner { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px; }
-            .header-banner img { width: 55px; height: 55px; border-radius: 50%; object-fit: contain; margin-bottom: 6px; }
+            .header-banner img { width: 55px; height: 55px; border-radius: 50%; object-fit: cover; margin-bottom: 6px; }
             h1 { font-size: 20px; color: #1e3a8a; margin: 4px 0; }
             p { font-size: 11px; color: #666; margin: 2px 0; }
             table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 11px; }

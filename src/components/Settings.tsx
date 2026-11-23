@@ -737,11 +737,11 @@ export const Settings: React.FC<SettingsProps> = ({
 
                       <div className="flex items-center gap-3">
                         {formData.shopLogo ? (
-                          <div className="relative group w-16 h-16 sm:w-24 sm:h-24 rounded-full overflow-hidden bg-white shadow-sm flex items-center justify-center p-1 shrink-0 border border-slate-200">
+                          <div className="relative group w-16 h-16 sm:w-24 sm:h-24 rounded-full overflow-hidden flex items-center justify-center shrink-0">
                             <img
                               src={formData.shopLogo}
                               alt="Shop Logo"
-                              className="w-full h-full object-contain rounded-full"
+                              className="w-full h-full object-cover rounded-full"
                             />
                             <button
                               type="button"
@@ -822,11 +822,11 @@ export const Settings: React.FC<SettingsProps> = ({
 
                       <div className="flex items-center gap-3">
                         {formData.invoiceLogo ? (
-                          <div className="relative group w-16 h-16 sm:w-24 sm:h-24 rounded-full overflow-hidden bg-white shadow-sm flex items-center justify-center p-1 shrink-0 border border-indigo-200">
+                          <div className="relative group w-16 h-16 sm:w-24 sm:h-24 rounded-full overflow-hidden flex items-center justify-center shrink-0">
                             <img
                               src={formData.invoiceLogo}
                               alt="Dedicated Invoice Logo"
-                              className="w-full h-full object-contain rounded-full"
+                              className="w-full h-full object-cover rounded-full"
                             />
                             <button
                               type="button"
@@ -838,7 +838,7 @@ export const Settings: React.FC<SettingsProps> = ({
                             </button>
                           </div>
                         ) : formData.shopLogo ? (
-                          <div className="w-16 h-16 sm:w-24 sm:h-24 rounded-full border-2 border-dashed border-indigo-300 bg-white p-0.5 flex flex-col items-center justify-center text-slate-400 shrink-0" title="Using main shop logo">
+                          <div className="w-16 h-16 sm:w-24 sm:h-24 rounded-full overflow-hidden flex flex-col items-center justify-center text-slate-400 shrink-0" title="Using main shop logo">
                             <img
                               src={formData.shopLogo}
                               alt="Default Shop Logo"
@@ -1044,11 +1044,11 @@ export const Settings: React.FC<SettingsProps> = ({
 
                   <div className="flex items-center gap-2.5">
                     {formData.loginPageLogo ? (
-                      <div className="relative group w-12 h-12 rounded-xl border border-slate-300 bg-white p-1 flex items-center justify-center shadow-xs overflow-hidden shrink-0">
+                      <div className="relative group w-12 h-12 rounded-full flex items-center justify-center overflow-hidden shrink-0">
                         <img
                           src={formData.loginPageLogo}
                           alt="Login Page Logo"
-                          className="w-full h-full object-contain"
+                          className="w-full h-full object-cover rounded-full"
                         />
                         <button
                           type="button"
@@ -1159,7 +1159,7 @@ export const Settings: React.FC<SettingsProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2.5 sm:gap-4">
-                  <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-full overflow-hidden border border-indigo-200 bg-white p-0.5 flex items-center justify-center shrink-0 shadow-xs">
+                  <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-full overflow-hidden flex items-center justify-center shrink-0">
                     {formData.invoiceLogo ? (
                       <img
                         src={formData.invoiceLogo}

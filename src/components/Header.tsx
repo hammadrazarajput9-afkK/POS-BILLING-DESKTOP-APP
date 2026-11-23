@@ -100,17 +100,17 @@ export const Header: React.FC<HeaderProps> = ({
           <span className="font-extrabold tracking-wide hidden sm:inline">Menu</span>
         </button>
 
-        {/* Shop Logo (with clean fallback so it always shows crisply) */}
-        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl overflow-hidden bg-slate-50 border border-slate-200/90 shadow-2xs shrink-0 flex items-center justify-center">
+        {/* Shop Logo (Pure circle, no extra border) */}
+        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden shrink-0 flex items-center justify-center">
           {logoSrc && !logoError ? (
             <img
               src={logoSrc}
               alt={shopDisplayName}
               onError={() => setLogoError(true)}
-              className="w-full h-full object-contain p-0.5"
+              className="w-full h-full object-cover rounded-full"
             />
           ) : (
-            <div className="w-full h-full brand-badge bg-blue-600 text-white flex items-center justify-center">
+            <div className="w-full h-full brand-badge bg-blue-600 text-white rounded-full flex items-center justify-center">
               <Smartphone className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
           )}

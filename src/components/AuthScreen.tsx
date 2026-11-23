@@ -449,12 +449,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           <div className="absolute top-[-30%] right-[-20%] w-56 h-56 bg-white/10 rounded-full blur-2xl pointer-events-none" />
           <div className="absolute -bottom-10 -left-10 w-48 h-48 bg-purple-400/20 rounded-full blur-xl pointer-events-none" />
 
-          {/* Extra Large White Circle Badge Container on Mobile */}
-          <div className="w-40 h-40 sm:w-48 sm:h-48 bg-gradient-to-br from-white via-slate-50 to-purple-50 rounded-full p-2.5 sm:p-3.5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] border-4 border-white/70 flex items-center justify-center shrink-0 mb-3 relative z-10 animate-in zoom-in-95 duration-300">
+          {/* Extra Large Circle Logo on Mobile (Pure circle, no extra border) */}
+          <div className="w-40 h-40 sm:w-48 sm:h-48 rounded-full overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.4)] flex items-center justify-center shrink-0 mb-3 relative z-10 animate-in zoom-in-95 duration-300">
             <img
               src={loginPageLogo}
               alt={loginPageName}
-              className="w-full h-full object-contain rounded-full select-none filter drop-shadow-md transition hover:scale-105"
+              className="w-full h-full object-cover rounded-full select-none transition hover:scale-105"
             />
           </div>
 
@@ -1020,12 +1020,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             {/* EXTRA LARGE ELEGANT WHITE CIRCLE WITH BOLD SHOP LOGO */}
             <div className="relative z-20 flex flex-col items-center justify-center text-center space-y-6 animate-in zoom-in-95 duration-300">
               
-              {/* Extra Large Circle Badge Container (Large 280px Diameter Circle) */}
-              <div className="w-64 h-64 xl:w-72 xl:h-72 bg-white rounded-full p-4 sm:p-5 shadow-[0_25px_70px_rgba(0,0,0,0.4)] border-4 border-white/50 flex items-center justify-center relative group transition hover:scale-105 duration-300">
+              {/* Extra Large Circle Logo (Pure circle, no extra border) */}
+              <div className="w-64 h-64 xl:w-72 xl:h-72 rounded-full overflow-hidden shadow-[0_25px_70px_rgba(0,0,0,0.4)] flex items-center justify-center relative group transition hover:scale-105 duration-300">
                 <img
                   src={loginPageLogo}
                   alt={loginPageName}
-                  className="w-full h-full object-contain filter drop-shadow-md rounded-full select-none"
+                  className="w-full h-full object-cover rounded-full select-none"
                 />
               </div>
 
