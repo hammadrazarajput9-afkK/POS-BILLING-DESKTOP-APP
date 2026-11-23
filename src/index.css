@@ -81,16 +81,16 @@
     }
   }
 
-  /* iOS-only (iPhone/iPad): clear top iOS frosted blur completely while keeping Android untouched */
+  /* iOS-only (iPhone/iPad): balanced top clearance just below iOS top blur while keeping Android untouched */
   @supports (-webkit-touch-callout: none) {
     @media (max-width: 1023px) {
       .app-header,
       .app-sidebar-header {
-        padding-top: calc(env(safe-area-inset-top, 0px) + 1.85rem) !important;
+        padding-top: calc(env(safe-area-inset-top, 0px) + 1.25rem) !important;
       }
 
       .app-mobile-popover {
-        top: calc(env(safe-area-inset-top, 0px) + 5.5rem) !important;
+        top: calc(env(safe-area-inset-top, 0px) + 4.9rem) !important;
       }
     }
   }
