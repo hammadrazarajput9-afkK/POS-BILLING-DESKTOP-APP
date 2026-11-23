@@ -17,12 +17,19 @@
     overflow: hidden;
   }
 
+  html {
+    background-color: var(--theme-card-bg, #ffffff);
+  }
+
   html, body {
     font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  body {
     background-color: var(--theme-app-bg, #f8fafc);
   }
 
@@ -49,7 +56,13 @@
 
   /* Fullscreen Edge-to-Edge Mobile Display (Mobile viewport only) */
   @media (max-width: 767px) {
-    html, body, #root {
+    html {
+      height: 100dvh !important;
+      min-height: 100dvh !important;
+      background-color: var(--theme-card-bg, #ffffff);
+    }
+
+    body, #root {
       height: 100dvh !important;
       min-height: 100dvh !important;
       background-color: var(--theme-app-bg, #f8fafc);
