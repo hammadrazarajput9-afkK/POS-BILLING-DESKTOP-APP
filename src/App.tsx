@@ -945,7 +945,11 @@ function AppContent() {
     const pBarcode = (purchaseItem.barcode || '').trim().toLowerCase();
 
     if (pBarcode) {
-      const bcIdx = list.findIndex(inv => (inv.barcode || '').trim().toLowerCase() === pBarcode);
+      const bcIdx = list.findIndex(
+        inv =>
+          (inv.barcode || '').trim().toLowerCase() === pBarcode &&
+          (!pCat || !(inv.category || '').trim() || (inv.category || '').trim().toLowerCase() === pCat)
+      );
       if (bcIdx >= 0) return bcIdx;
     }
 

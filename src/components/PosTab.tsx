@@ -1415,6 +1415,13 @@ const PosTabComponent: React.FC<PosTabProps> = ({
         {/* Pricing Totals & Payment Method */}
         <div className="space-y-1.5 pt-1.5 border-t border-slate-100 text-xs">
           <div className="space-y-1 text-slate-600">
+            <div className="flex justify-between items-center text-[11px] font-bold text-slate-700 pb-0.5">
+              <span>Total Quantity ({cart.length} {cart.length === 1 ? 'item' : 'items'}):</span>
+              <span className="tabular-nums font-extrabold text-slate-900">
+                {cart.reduce((sum, it) => sum + (Number(it.qty) || 0), 0)} pcs
+              </span>
+            </div>
+
             <div className="flex justify-between items-center">
               <span>Subtotal ({saleMode === 'wholesale' ? 'B2B Wholesale' : 'Retail'}):</span>
               <span className="tabular-nums font-bold text-slate-800">

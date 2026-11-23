@@ -90,6 +90,8 @@ export async function generateInvoicePreviewImage(
   const amountPaid = sale.amountPaid !== undefined ? sale.amountPaid : grandTotal;
   const amountDue =
     sale.amountDue !== undefined ? sale.amountDue : Math.max(0, grandTotal - amountPaid);
+  const totalQty = (sale.items || []).reduce((sum, it) => sum + (Number(it.qty) || 0), 0);
+  const totalItemsCount = (sale.items || []).length;
   const isFullyPaid = amountDue <= 0;
   const isPartial = !isFullyPaid && amountPaid > 0;
   const statusLabel = isFullyPaid ? 'PAID' : isPartial ? 'PARTIAL' : 'UNPAID KHATA';
@@ -145,7 +147,7 @@ export async function generateInvoicePreviewImage(
   calcH += 16;
 
   // Totals box height directly under items
-  let totalRows = 2; // Subtotal + Grand Total
+  let totalRows = 3; // Total Quantity + Subtotal + Grand Total
   if (sale.discount > 0) totalRows += 1;
   totalRows += 1; // Paid row
   if (amountDue > 0) totalRows += 1;
@@ -378,6 +380,15 @@ export async function generateInvoicePreviewImage(
   ctx.stroke();
 
   let sy = y + 24;
+  ctx.fillStyle = '#334155';
+  ctx.font = '800 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  ctx.fillText(`Total Quantity (${totalItemsCount} ${totalItemsCount === 1 ? 'item' : 'items'}):`, pad + 16, sy);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#0f172a';
+  ctx.fillText(`${totalQty} ${totalQty === 1 ? 'pc' : 'pcs'}`, W - pad - 16, sy);
+  ctx.textAlign = 'left';
+  sy += 26;
+
   ctx.fillStyle = '#475569';
   ctx.font = '700 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
   ctx.fillText('Subtotal:', pad + 16, sy);

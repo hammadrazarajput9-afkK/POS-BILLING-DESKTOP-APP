@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { AppData, SaleRecord, InventoryItem, KhataCustomer, ExpenseItem, ActivityLog, SupplierPurchase } from '../types';
+import { getEffectiveSaleFigures } from './profitCalculator';
 
 export type DateFilterType = 'today' | 'weekly' | 'monthly' | 'sixMonths' | 'yearly' | 'custom';
 
@@ -261,15 +262,16 @@ export async function generatePdfReport({
   if (tab === 'sales') {
     // 1. Filter Sales within range
     const filteredSales = data.sales.filter(s => {
+      if (s.status === 'CANCELLED') return false;
       const sDate = new Date(s.date).getTime();
       return sDate >= start.getTime() && sDate <= end.getTime();
     });
 
     const totalRevenue = filteredSales.reduce((acc, s) => acc + s.grandTotal, 0);
-    const totalRefundedSum = filteredSales.reduce((acc, s) => acc + (s.totalRefunded || 0), 0);
-    const netRevenue = Math.max(0, totalRevenue - totalRefundedSum);
-    const totalCost = filteredSales.reduce((acc, s) => acc + s.totalCost, 0);
-    const totalProfit = Math.max(0, netRevenue - totalCost);
+    const totalRefundedSum = filteredSales.reduce((acc, s) => acc + getEffectiveSaleFigures(s).returnedAmount, 0);
+    const netRevenue = filteredSales.reduce((acc, s) => acc + getEffectiveSaleFigures(s).revenue, 0);
+    const netCost = filteredSales.reduce((acc, s) => acc + getEffectiveSaleFigures(s).cost, 0);
+    const totalProfit = Math.max(0, netRevenue - netCost);
     const profitMargin = netRevenue > 0 ? Math.round((totalProfit / netRevenue) * 100) : 0;
 
     const cashSales = filteredSales
@@ -318,15 +320,12 @@ export async function generatePdfReport({
 
     // Table of Sales
     const tableRows = filteredSales.map((s, idx) => {
-      const isFullRet = s.returnStatus === 'FULL';
-      const isPartRet = s.returnStatus === 'PARTIAL';
+      const eff = getEffectiveSaleFigures(s);
+      const isFullRet = eff.isFullReturn;
+      const isPartRet = eff.isPartialReturn;
       const itemSummaries = s.items
         .map(i => `${i.name} (x${i.qty})${i.imei ? ' [IMEI: ' + i.imei + ']' : ''}${i.returnedQty ? ' (Returned: ' + i.returnedQty + ')' : ''}`)
         .join(', ');
-
-      const cost = s.totalCost || 0;
-      const netSaleVal = Math.max(0, s.grandTotal - (s.totalRefunded || 0));
-      const profit = isFullRet ? 0 : Math.max(0, netSaleVal - cost);
 
       return [
         (idx + 1).toString(),
@@ -335,8 +334,8 @@ export async function generatePdfReport({
         s.custName || 'Walk-in Customer',
         itemSummaries || 'N/A',
         s.paymentMethod || 'Cash',
-        isFullRet ? `${currency} 0 (Refunded)` : `${currency} ${netSaleVal.toLocaleString()}`,
-        `${currency} ${profit.toLocaleString()}`,
+        isFullRet ? `${currency} 0 (Refunded)` : `${currency} ${eff.revenue.toLocaleString()}`,
+        `${currency} ${Math.max(0, eff.profit).toLocaleString()}`,
       ];
     });
 
@@ -1194,16 +1193,25 @@ export async function generatePdfReport({
   } else if (tab === 'pnl') {
     // 8. Comprehensive Profit & Loss Statement
     const filteredSales = data.sales.filter(s => {
+      if (s.status === 'CANCELLED') return false;
       const sDate = new Date(s.date).getTime();
       return sDate >= start.getTime() && sDate <= end.getTime();
+    });
+    const filteredReturns = (data.salesReturns || []).filter(r => {
+      const rDate = new Date(r.returnDate).getTime();
+      return rDate >= start.getTime() && rDate <= end.getTime();
     });
     const filteredExpenses = data.expenses.filter(e => {
       const eDate = new Date(e.date).getTime();
       return eDate >= start.getTime() && eDate <= end.getTime();
     });
 
-    const totalRev = filteredSales.reduce((sum, s) => sum + s.grandTotal, 0);
-    const totalCogs = filteredSales.reduce((sum, s) => sum + s.totalCost, 0);
+    const grossSalesRev = filteredSales.reduce((sum, s) => sum + s.grandTotal, 0);
+    const grossSalesCogs = filteredSales.reduce((sum, s) => sum + s.totalCost, 0);
+    const returnsRefund = filteredReturns.reduce((sum, r) => sum + (Number(r.totalRefundAmount) || 0), 0);
+    const returnsCostRev = filteredReturns.reduce((sum, r) => sum + (Number(r.totalCostReversed) || 0), 0);
+    const totalRev = Math.max(0, grossSalesRev - returnsRefund);
+    const totalCogs = Math.max(0, grossSalesCogs - returnsCostRev);
     const grossP = Math.max(0, totalRev - totalCogs);
     const totalExp = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
     const netP = grossP - totalExp;
@@ -1216,8 +1224,8 @@ export async function generatePdfReport({
     yCursor += 6;
 
     const pnlRows = [
-      ['1. REVENUE', 'Total Gross Sales Invoiced', `${filteredSales.length} Invoices`, `${currency} ${totalRev.toLocaleString()}`],
-      ['2. COST OF GOODS', 'Total Inventory Cost of Sold Items (COGS)', 'Wholesale Cost', `-${currency} ${totalCogs.toLocaleString()}`],
+      ['1. REVENUE', 'Net Sales Invoiced (Post-Returns)', `${filteredSales.length} Invoices`, `${currency} ${totalRev.toLocaleString()}`],
+      ['2. COST OF GOODS', 'Net Inventory Cost of Sold Items (COGS)', 'Wholesale Cost', `-${currency} ${totalCogs.toLocaleString()}`],
       ['3. GROSS PROFIT', 'Gross Trading Margin (Revenue - COGS)', `${totalRev > 0 ? Math.round((grossP / totalRev) * 100) : 0}% Margin`, `${currency} ${grossP.toLocaleString()}`],
       ['4. OPERATING EXPENSES', 'Shop Rents, Salaries, Utilities & Miscellaneous', `${filteredExpenses.length} Expense Logs`, `-${currency} ${totalExp.toLocaleString()}`],
       ['5. NET PROFIT', 'Final Net Business Profit / Earnings', `${margin}% Net Return`, `${currency} ${netP.toLocaleString()}`],
@@ -1251,7 +1259,10 @@ export async function generatePdfReport({
     // 9. Top Selling Products Report
     const map: Record<string, { id: string; name: string; category: string; unitsSold: number; totalRevenue: number }> = {};
     data.sales.forEach(sale => {
+      if (sale.status === 'CANCELLED' || sale.returnStatus === 'FULL') return;
       sale.items.forEach(item => {
+        const netQty = Math.max(0, (Number(item.qty) || 0) - (Number(item.returnedQty) || 0));
+        if (netQty <= 0) return;
         if (!map[item.id]) {
           map[item.id] = {
             id: item.id,
@@ -1261,8 +1272,8 @@ export async function generatePdfReport({
             totalRevenue: 0,
           };
         }
-        map[item.id].unitsSold += item.qty;
-        map[item.id].totalRevenue += item.salePrice * item.qty;
+        map[item.id].unitsSold += netQty;
+        map[item.id].totalRevenue += item.salePrice * netQty;
       });
     });
 

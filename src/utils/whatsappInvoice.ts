@@ -37,6 +37,8 @@ export function generateWhatsAppInvoiceText(sale: SaleRecord, settings: ShopSett
   const grandTotal = sale.grandTotal || 0;
   const amountPaid = sale.amountPaid !== undefined ? sale.amountPaid : grandTotal;
   const amountDue = sale.amountDue !== undefined ? sale.amountDue : Math.max(0, grandTotal - amountPaid);
+  const totalQty = (sale.items || []).reduce((sum, it) => sum + (Number(it.qty) || 0), 0);
+  const totalItemsCount = (sale.items || []).length;
   const isPaid = amountDue <= 0;
   const isWholesale = sale.saleMode === 'wholesale';
 
@@ -71,6 +73,7 @@ export function generateWhatsAppInvoiceText(sale: SaleRecord, settings: ShopSett
       return itemLine;
     }),
     `━━━━━━━━━━━━━━━━━━━━`,
+    `📊 *Total Quantity:* ${totalQty} ${totalQty === 1 ? 'pc' : 'pcs'} (${totalItemsCount} ${totalItemsCount === 1 ? 'item' : 'items'})`,
     `💰 *Subtotal:* ${cur} ${sale.subtotal.toLocaleString()}`,
     sale.discount > 0 ? `🎁 *Discount / Tier:* -${cur} ${sale.discount.toLocaleString()}` : '',
     `⭐ *GRAND TOTAL:* *${cur} ${grandTotal.toLocaleString()}*`,

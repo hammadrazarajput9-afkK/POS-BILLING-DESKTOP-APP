@@ -175,20 +175,26 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
 
       initReasons[key] = 'Defective / Faulty Product';
 
+      const discountRatio =
+        sale.discount > 0 && sale.subtotal > 0
+          ? Math.max(0, Math.min(1, sale.grandTotal / sale.subtotal))
+          : 1;
+      const effectiveUnitRefund = Math.round(item.salePrice * discountRatio);
+
       if (shouldSelect) {
         initSelected[key] = true;
         if (exactImeiMatch) {
           initQtys[key] = 1;
           initImeis[key] = [exactImeiMatch];
-          initRefunds[key] = item.salePrice;
+          initRefunds[key] = effectiveUnitRefund;
         } else if (exactBarcodeMatch) {
           initQtys[key] = 1;
           initImeis[key] = imeiPool.slice(0, 1);
-          initRefunds[key] = item.salePrice;
+          initRefunds[key] = effectiveUnitRefund;
         } else {
           initQtys[key] = remainingQty;
           initImeis[key] = imeiPool.slice(0, remainingQty);
-          initRefunds[key] = remainingQty * item.salePrice;
+          initRefunds[key] = remainingQty * effectiveUnitRefund;
         }
       } else {
         initSelected[key] = false;

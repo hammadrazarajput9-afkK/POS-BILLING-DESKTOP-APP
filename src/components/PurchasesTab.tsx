@@ -290,7 +290,12 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
     }
 
     if (isAndroidCategory(clean)) {
-      const androidCat = categories.find(c => isAndroidCategory(c));
+      if (clean.toLowerCase().includes('used')) {
+        const usedCat = categories.find(c => c.toLowerCase().includes('used'));
+        if (usedCat) return usedCat;
+      }
+      const androidCat = categories.find(c => isAndroidCategory(c) && !c.toLowerCase().includes('used')) ||
+        categories.find(c => isAndroidCategory(c));
       if (androidCat) return androidCat;
     }
 
@@ -604,6 +609,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
     const aName = (a.name || '').trim().toLowerCase();
     const bName = (b.name || '').trim().toLowerCase();
     if (!aName || !bName || aName !== bName) return false;
+    if ((a.category || '').trim().toLowerCase() !== (b.category || '').trim().toLowerCase()) return false;
 
     if (isKeypadCategory(a.category) && isKeypadCategory(b.category)) {
       return true;

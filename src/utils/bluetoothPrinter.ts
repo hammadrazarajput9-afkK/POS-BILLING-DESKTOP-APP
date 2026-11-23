@@ -128,6 +128,7 @@ export function generateEscPosInvoiceData(
   const grandTotal = sale.grandTotal || 0;
   const amountPaid = sale.amountPaid !== undefined ? sale.amountPaid : grandTotal;
   const amountDue = sale.amountDue !== undefined ? sale.amountDue : Math.max(0, grandTotal - amountPaid);
+  const totalQty = (sale.items || []).reduce((sum, it) => sum + (Number(it.qty) || 0), 0);
   const isPaid = amountDue <= 0;
 
   // Header: Center aligned, bold, double height title
@@ -182,6 +183,7 @@ export function generateEscPosInvoiceData(
   b.separator('-');
 
   // Totals
+  b.bold(true).row('Total Quantity:', `${totalQty} pcs (${sale.items.length} itms)`).bold(false);
   b.row('Subtotal:', `${cur} ${sale.subtotal.toLocaleString()}`);
   if (sale.discount > 0) {
     b.row('Discount:', `-${cur} ${sale.discount.toLocaleString()}`);

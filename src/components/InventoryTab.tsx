@@ -124,7 +124,19 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
     }
 
     const baseProductName = selectedProductPopup.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
+    const selectedCategory = (selectedProductPopup.category || '').trim().toLowerCase();
     const productBarcode = (selectedProductPopup.barcode || '').trim().toLowerCase();
+
+    const productCategoryById = new Map<string, string>();
+    const selectedProductIds = new Set<string>([selectedProductPopup.id]);
+    for (const inv of inventory) {
+      const invCat = (inv.category || '').trim().toLowerCase();
+      productCategoryById.set(inv.id, invCat);
+      const invBase = inv.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
+      if (invBase === baseProductName && invCat === selectedCategory) {
+        selectedProductIds.add(inv.id);
+      }
+    }
 
     const productImeiSet = new Set<string>();
     const collectImeis = (raw?: string | string[]) => {
@@ -164,6 +176,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
       for (let idx = 0; idx < (pur.items || []).length; idx++) {
         const pi = pur.items[idx];
         const piBase = (pi.name || '').replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
+        const piCat = (pi.category || '').trim().toLowerCase();
         const piBarcode = (pi.barcode || '').trim().toLowerCase();
         const piImeis = Array.from(
           new Set([
@@ -172,9 +185,16 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
           ].map(s => s.trim()).filter(Boolean))
         );
 
-        const matchesBarcode = Boolean(productBarcode && piBarcode && piBarcode === productBarcode);
-        const matchesName = Boolean(baseProductName && piBase && piBase === baseProductName);
-        const matchesImei = piImeis.some(im => productImeiSet.has(im.toLowerCase()));
+        const hasCategoryMismatch = Boolean(selectedCategory && piCat && piCat !== selectedCategory);
+        const matchesBarcode =
+          !hasCategoryMismatch &&
+          Boolean(productBarcode && piBarcode && piBarcode === productBarcode);
+        const matchesName =
+          Boolean(baseProductName && piBase && piBase === baseProductName) &&
+          (selectedCategory ? piCat === selectedCategory : true);
+        const matchesImei =
+          !hasCategoryMismatch &&
+          piImeis.some(im => productImeiSet.has(im.toLowerCase()));
 
         if (matchesBarcode || matchesName || matchesImei) {
           piImeis.forEach(im => {
@@ -202,16 +222,20 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
       }
     }
 
-    // Supplement with ImeiRecord supplier attribution (if any IMEI came from a bill not already listed)
+    // Supplement with ImeiRecord supplier attribution (strictly scoped to the selected product & category)
     const fallbackGroups = new Map<string, { partyName: string; billNo: string; date: string; imeis: string[] }>();
     for (const rec of imeiRecords) {
       if (!rec) continue;
       const recBase = (rec.productName || '').replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
+      const recCat = (rec.category || productCategoryById.get(rec.productId) || '').trim().toLowerCase();
       const recImeiClean = (rec.imei || '').trim().toLowerCase();
+      const hasRecCategoryMismatch = Boolean(selectedCategory && recCat && recCat !== selectedCategory);
       const belongs =
-        rec.productId === selectedProductPopup.id ||
-        (baseProductName && recBase === baseProductName) ||
-        (recImeiClean && productImeiSet.has(recImeiClean));
+        !hasRecCategoryMismatch &&
+        (selectedProductIds.has(rec.productId) ||
+          (recImeiClean !== '' && productImeiSet.has(recImeiClean)) ||
+          (Boolean(baseProductName && recBase === baseProductName) &&
+            (selectedCategory ? recCat === selectedCategory : true)));
 
       if (belongs && rec.purchaseParty) {
         if (recImeiClean && !imeiSourceMap.has(recImeiClean)) {
@@ -280,7 +304,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
       .sort((a, b) => b.totalQty - a.totalQty);
 
     return { entries, bySupplier, imeiSourceMap };
-  }, [selectedProductPopup, supplierPurchases, imeiRecords]);
+  }, [selectedProductPopup, supplierPurchases, imeiRecords, inventory]);
 
   const handleWhatsAppShareProduct = (item: InventoryItem) => {
     const shopName = 'FMZ Friends Mobile Zone';
@@ -386,7 +410,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
     for (const item of inventory) {
       // Remove any trailing parentheses from older legacy items (e.g. "Model (Black)" -> "Model")
       const baseName = item.name.replace(/\s*\([^)]*\)\s*$/, '').trim();
-      const groupKey = `${(item.category || '').toLowerCase()}:::${(baseName || item.name).toLowerCase()}`;
+      const groupKey = `${(item.category || '').trim().toLowerCase()}:::${(baseName || item.name).toLowerCase()}`;
 
       if (!map.has(groupKey)) {
         const initialVariants: MobileVariant[] = item.variants && item.variants.length > 0

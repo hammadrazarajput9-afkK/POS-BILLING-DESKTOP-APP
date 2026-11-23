@@ -339,9 +339,10 @@ export function useCashDrawer(
       }
     });
 
-    // 5b. Compute Sales Returns & Refunds (Cash / Bank Outflows)
+    // 5b. Compute Sales Returns & Refunds (Cash / Bank Outflows + All Revenue Reversals for Profit)
     let cashSalesRefunds = 0;
     let bankSalesRefunds = 0;
+    let allSalesRefundsInPeriod = 0;
     let totalCostReversedInPeriod = 0;
     let totalProfitLostFromReturns = 0;
     const returnLedgerEntries: CashLedgerItem[] = [];
@@ -352,6 +353,7 @@ export function useCashDrawer(
       }
 
       const refundAmt = Number(ret.totalRefundAmount) || 0;
+      allSalesRefundsInPeriod += refundAmt;
       totalCostReversedInPeriod += Number(ret.totalCostReversed) || 0;
       totalProfitLostFromReturns += Number(ret.netProfitDeducted) || 0;
 
@@ -403,9 +405,9 @@ export function useCashDrawer(
     const expectedGrossMargin = totalStockRetailValue - totalStockCostValue;
 
     // 8. Real-time Net Profit
-    // Net Profit = (Total Sales Revenue - Total Cost of Goods Sold) - Total Expenses - Profit Lost to Returns
+    // Net Profit = (Net Sales after ALL returns - Net COGS after returned cost) - Total Expenses
     const totalExpenses = cashExpenses + bankExpenses;
-    const grossProfit = Math.max(0, (totalSales - totalSalesRefunds) - (totalCOGS - totalCostReversedInPeriod));
+    const grossProfit = Math.max(0, (totalSales - allSalesRefundsInPeriod) - (totalCOGS - totalCostReversedInPeriod));
     const realTimeNetProfit = grossProfit - totalExpenses;
 
     // 9. Chronological Running Balance Ledger Construction

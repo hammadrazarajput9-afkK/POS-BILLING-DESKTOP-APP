@@ -31,6 +31,71 @@ export interface ProfitCalculationResult {
  * - Purchases are NOT operating expenses (they are asset/stock inward).
  * - Expenses are strictly operational costs and not double counted.
  */
+export interface EffectiveSaleFigures {
+  revenue: number;
+  cost: number;
+  profit: number;
+  returnedAmount: number;
+  returnedCost: number;
+  isFullReturn: boolean;
+  isPartialReturn: boolean;
+}
+
+/**
+ * Computes effective post-return Revenue, COGS, and Net Profit for a single invoice.
+ * Ensures fully returned sales contribute 0 profit and partial returns deduct returned qty cost & refund.
+ */
+export function getEffectiveSaleFigures(sale: SaleRecord): EffectiveSaleFigures {
+  if (sale.status === 'CANCELLED') {
+    return {
+      revenue: 0,
+      cost: 0,
+      profit: 0,
+      returnedAmount: Number(sale.totalRefunded) || 0,
+      returnedCost: Number(sale.totalCost) || 0,
+      isFullReturn: false,
+      isPartialReturn: false,
+    };
+  }
+
+  const grossRevenue = Number(sale.grandTotal) || 0;
+  const grossCost = Number(sale.totalCost) || 0;
+  const items = sale.items || [];
+
+  const returnedCostFromItems = items.reduce(
+    (sum, it) =>
+      sum + Math.min(Number(it.qty) || 0, Number(it.returnedQty) || 0) * (Number(it.costPrice) || 0),
+    0
+  );
+
+  const isFullReturn =
+    sale.returnStatus === 'FULL' ||
+    (items.length > 0 && items.every(it => (Number(it.returnedQty) || 0) >= (Number(it.qty) || 0)));
+
+  const returnedAmount = isFullReturn
+    ? grossRevenue
+    : Math.min(grossRevenue, Number(sale.totalRefunded) || 0);
+  const returnedCost = isFullReturn
+    ? grossCost
+    : Math.min(grossCost, returnedCostFromItems);
+  const isPartialReturn =
+    !isFullReturn && (sale.returnStatus === 'PARTIAL' || returnedAmount > 0 || returnedCost > 0);
+
+  const revenue = isFullReturn ? 0 : Math.max(0, grossRevenue - returnedAmount);
+  const cost = isFullReturn ? 0 : Math.max(0, grossCost - returnedCost);
+  const profit = isFullReturn ? 0 : revenue - cost;
+
+  return {
+    revenue,
+    cost,
+    profit,
+    returnedAmount,
+    returnedCost,
+    isFullReturn,
+    isPartialReturn,
+  };
+}
+
 export function calculateAuditedProfit({
   sales = [],
   returns = [],
@@ -46,6 +111,7 @@ export function calculateAuditedProfit({
   let grossCOGS = 0;
 
   sales.forEach(sale => {
+    if (sale.status === 'CANCELLED') return;
     const sub = Number(sale.subtotal) || Number(sale.grandTotal) || 0;
     const disc = Number(sale.discount) || 0;
     const grand = Number(sale.grandTotal) || (sub - disc);

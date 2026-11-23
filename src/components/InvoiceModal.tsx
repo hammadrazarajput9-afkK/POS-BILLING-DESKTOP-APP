@@ -80,6 +80,8 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   const amountPaid = sale.amountPaid !== undefined ? sale.amountPaid : grandTotal;
   const amountDue =
     sale.amountDue !== undefined ? sale.amountDue : Math.max(0, grandTotal - amountPaid);
+  const totalQty = (sale.items || []).reduce((sum, it) => sum + (Number(it.qty) || 0), 0);
+  const totalItemsCount = (sale.items || []).length;
   const isFullyPaid = amountDue <= 0;
   const isPartial = !isFullyPaid && amountPaid > 0;
 
@@ -155,6 +157,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
           `  Total: ${settings.currency} ${(i.salePrice * i.qty).toLocaleString()}`
       ),
       `------------------------------`,
+      `Total Quantity: ${totalQty} pcs (${totalItemsCount} ${totalItemsCount === 1 ? 'item' : 'items'})`,
       `Subtotal: ${settings.currency} ${sale.subtotal.toLocaleString()}`,
       sale.discount > 0 ? `Discount: -${settings.currency} ${sale.discount.toLocaleString()}` : '',
       `GRAND TOTAL: ${settings.currency} ${grandTotal.toLocaleString()}`,
@@ -280,6 +283,13 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                   </tr>
                 ))}
               </tbody>
+              <tfoot>
+                <tr className="border-t border-black font-bold text-[10.5px]">
+                  <td colSpan={2} className="pt-1.5">Total Items: {totalItemsCount}</td>
+                  <td className="pt-1.5 text-center">{totalQty} pcs</td>
+                  <td colSpan={2} className="pt-1.5 text-right">Subtotal: {settings.currency} {sale.subtotal.toLocaleString()}</td>
+                </tr>
+              </tfoot>
             </table>
           ) : (
             <div className="space-y-1.5">
@@ -306,6 +316,10 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
 
         {/* Print Total Calculations Directly Underneath Products */}
         <div className="py-2 border-b border-black text-[11px] space-y-1">
+          <div className="flex justify-between font-bold">
+            <span>Total Quantity ({totalItemsCount} {totalItemsCount === 1 ? 'item' : 'items'}):</span>
+            <span>{totalQty} {totalQty === 1 ? 'pc' : 'pcs'}</span>
+          </div>
           <div className="flex justify-between">
             <span>Subtotal:</span>
             <span>
@@ -603,6 +617,17 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot>
+                    <tr className="border-t border-slate-300 bg-slate-50/80 text-[11px] font-extrabold text-slate-800">
+                      <td colSpan={2} className="py-1.5 px-1">
+                        Total Products: {totalItemsCount}
+                      </td>
+                      <td className="py-1.5 text-center text-blue-700">{totalQty}</td>
+                      <td colSpan={2} className="py-1.5 text-right">
+                        Total Qty: {totalQty} {totalQty === 1 ? 'pc' : 'pcs'}
+                      </td>
+                    </tr>
+                  </tfoot>
                 </table>
               ) : (
                 <div className="divide-y divide-slate-200/70">
@@ -645,6 +670,15 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
 
             {/* Price & Payment Totals Directly Below Products Inside the Same Invoice */}
             <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 sm:p-2.5 space-y-1">
+              <div className="flex justify-between text-slate-700 font-bold pb-1 border-b border-slate-200/70">
+                <span>
+                  {is58 ? 'Total Qty:' : `Total Quantity (${totalItemsCount} ${totalItemsCount === 1 ? 'item' : 'items'}):`}
+                </span>
+                <span className="text-slate-900 font-extrabold">
+                  {totalQty} {totalQty === 1 ? 'pc' : 'pcs'}
+                </span>
+              </div>
+
               <div className="flex justify-between text-slate-600">
                 <span>Subtotal:</span>
                 <span className="font-bold text-slate-800">

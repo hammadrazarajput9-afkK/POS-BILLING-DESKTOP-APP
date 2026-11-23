@@ -8,6 +8,7 @@ import {
   DashboardPeriodMode,
   isDateInDashboardPeriod,
 } from '../utils/useCashDrawer';
+import { getEffectiveSaleFigures } from '../utils/profitCalculator';
 import {
   TrendingUp,
   Receipt,
@@ -1003,9 +1004,16 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
         const completedSales = (data.sales || []).filter(
           s => s.status !== 'CANCELLED' && isDateInDashboardPeriod(s.date, periodFilter, latestClosing, isoToday)
         );
-        const totalSalesRev = completedSales.reduce((sum, s) => sum + (s.grandTotal || 0), 0);
-        const totalSalesCogs = completedSales.reduce((sum, s) => sum + (s.totalCost || 0), 0);
-        const grossProfitSum = totalSalesRev - totalSalesCogs;
+        const periodReturns = (data.salesReturns || []).filter(
+          r => isDateInDashboardPeriod(r.returnDate, periodFilter, latestClosing, isoToday)
+        );
+        const rawSalesRev = completedSales.reduce((sum, s) => sum + (s.grandTotal || 0), 0);
+        const rawSalesCogs = completedSales.reduce((sum, s) => sum + (s.totalCost || 0), 0);
+        const totalRefundsInPeriod = periodReturns.reduce((sum, r) => sum + (Number(r.totalRefundAmount) || 0), 0);
+        const totalCostReversedInPeriod = periodReturns.reduce((sum, r) => sum + (Number(r.totalCostReversed) || 0), 0);
+        const totalSalesRev = Math.max(0, rawSalesRev - totalRefundsInPeriod);
+        const totalSalesCogs = Math.max(0, rawSalesCogs - totalCostReversedInPeriod);
+        const grossProfitSum = Math.max(0, totalSalesRev - totalSalesCogs);
         const totalStockSaleValue = (data.inventory || []).reduce((sum, i) => sum + (i.salePrice || 0) * (i.qty || 0), 0);
 
         const activePurchases = (data.supplierPurchases || []).filter(
@@ -1157,25 +1165,44 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
                             s.custName.toLowerCase().includes(q) ||
                             s.items.some(it => it.name.toLowerCase().includes(q))
                           )
-                          .map(s => (
-                            <tr key={s.invNo} className="hover:bg-slate-50">
-                              <td className="py-2 px-3">
-                                <span className="font-bold text-slate-900 block">{s.invNo}</span>
-                                <span className="text-[10px] text-slate-400">{new Date(s.date).toLocaleDateString()}</span>
-                              </td>
-                              <td className="py-2 px-3">
-                                <span className="font-semibold text-slate-800">{s.custName}</span>
-                                <span className="block text-[10px] text-slate-400">
-                                  {s.items.map(it => `${it.name} x${it.qty}`).join(', ')}
-                                </span>
-                              </td>
-                              <td className="py-2 px-3 text-right tabular-nums font-bold">{cur} {s.grandTotal.toLocaleString()}</td>
-                              <td className="py-2 px-3 text-right tabular-nums text-slate-500">{cur} {(s.totalCost || 0).toLocaleString()}</td>
-                              <td className={`py-2 px-3 text-right tabular-nums font-black ${(s.grandTotal - (s.totalCost || 0)) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                {cur} {(s.grandTotal - (s.totalCost || 0)).toLocaleString()}
-                              </td>
-                            </tr>
-                          ))}
+                          .map(s => {
+                            const eff = getEffectiveSaleFigures(s);
+                            return (
+                              <tr key={s.invNo} className={`hover:bg-slate-50 ${eff.isFullReturn ? 'bg-rose-50/40 opacity-80' : ''}`}>
+                                <td className="py-2 px-3">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-bold text-slate-900">{s.invNo}</span>
+                                    {eff.isFullReturn && (
+                                      <span className="text-[9px] font-bold px-1.5 py-0.2 bg-rose-100 text-rose-700 rounded">
+                                        RETURNED
+                                      </span>
+                                    )}
+                                    {eff.isPartialReturn && (
+                                      <span className="text-[9px] font-bold px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded">
+                                        PARTIAL RET
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="text-[10px] text-slate-400">{new Date(s.date).toLocaleDateString()}</span>
+                                </td>
+                                <td className="py-2 px-3">
+                                  <span className="font-semibold text-slate-800">{s.custName}</span>
+                                  <span className="block text-[10px] text-slate-400">
+                                    {s.items.map(it => `${it.name} x${it.qty}${it.returnedQty ? ` (Ret:${it.returnedQty})` : ''}`).join(', ')}
+                                  </span>
+                                </td>
+                                <td className="py-2 px-3 text-right tabular-nums font-bold">
+                                  {cur} {eff.revenue.toLocaleString()}
+                                </td>
+                                <td className="py-2 px-3 text-right tabular-nums text-slate-500">
+                                  {cur} {eff.cost.toLocaleString()}
+                                </td>
+                                <td className={`py-2 px-3 text-right tabular-nums font-black ${eff.isFullReturn ? 'text-slate-400' : eff.profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                  {cur} {eff.profit.toLocaleString()}
+                                </td>
+                              </tr>
+                            );
+                          })}
                       </tbody>
                     </table>
                   </div>

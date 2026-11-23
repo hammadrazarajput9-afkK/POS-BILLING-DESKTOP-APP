@@ -679,12 +679,21 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
       });
 
       const allItemsFullyReturned = updatedItems.every(it => (it.returnedQty || 0) >= it.qty);
+      const isFullReturn = isFull || allItemsFullyReturned;
+      const remainingCost = updatedItems.reduce(
+        (sum, it) => sum + Math.max(0, (Number(it.qty) || 0) - (Number(it.returnedQty) || 0)) * (Number(it.costPrice) || 0),
+        0
+      );
+      const remainingRevenue = isFullReturn ? 0 : Math.max(0, (Number(sale.grandTotal) || 0) - newRefundTotal);
+      const updatedNetProfit = isFullReturn ? 0 : Math.max(0, remainingRevenue - remainingCost);
+
       return {
         ...sale,
         updatedAt: now,
         items: updatedItems,
-        returnStatus: isFull || allItemsFullyReturned ? ('FULL' as const) : ('PARTIAL' as const),
+        returnStatus: isFullReturn ? ('FULL' as const) : ('PARTIAL' as const),
         totalRefunded: newRefundTotal,
+        netProfit: updatedNetProfit,
       };
     };
 

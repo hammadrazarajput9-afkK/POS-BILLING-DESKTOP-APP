@@ -32,6 +32,7 @@ import {
   Check
 } from 'lucide-react';
 import { useToast } from './Toast';
+import { getEffectiveSaleFigures } from '../utils/profitCalculator';
 
 interface ReportsTabProps {
   data: AppData;
@@ -123,7 +124,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
 
   // Filtered Core Collections
   const filteredSales = useMemo(() => {
-    return data.sales.filter(s => isDateInRange(s.date));
+    return data.sales.filter(s => s.status !== 'CANCELLED' && isDateInRange(s.date));
   }, [data.sales, dateFilterMode, customStartDate, customEndDate]);
 
   const filteredExpenses = useMemo(() => {
@@ -201,11 +202,14 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
   const closingsHistory = filteredClosings;
   const latestClosing = closingsHistory.length > 0 ? closingsHistory[0] : null;
 
-  // 7. Top Selling Products
+  // 7. Top Selling Products (net of returned quantities)
   const topSellingList = useMemo(() => {
     const map: Record<string, { id: string; name: string; category: string; unitsSold: number; totalRevenue: number }> = {};
     filteredSales.forEach(sale => {
+      if (sale.returnStatus === 'FULL') return;
       sale.items.forEach(item => {
+        const netItemQty = Math.max(0, (Number(item.qty) || 0) - (Number(item.returnedQty) || 0));
+        if (netItemQty <= 0) return;
         if (!map[item.id]) {
           map[item.id] = {
             id: item.id,
@@ -215,15 +219,15 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
             totalRevenue: 0,
           };
         }
-        map[item.id].unitsSold += item.qty;
-        map[item.id].totalRevenue += item.salePrice * item.qty;
+        map[item.id].unitsSold += netItemQty;
+        map[item.id].totalRevenue += item.salePrice * netItemQty;
       });
     });
 
     return Object.values(map).sort((a, b) => b.unitsSold - a.unitsSold);
   }, [filteredSales]);
 
-  // 8. Wholesale Specific Calculations
+  // 8. Wholesale Specific Calculations (post-returns)
   const wholesaleSales = useMemo(() => {
     return filteredSales.filter(
       s => s.saleMode === 'wholesale' || s.items.some(i => i.isWholesale || (i.wholesalePrice && i.wholesalePrice > 0))
@@ -231,24 +235,34 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
   }, [filteredSales]);
 
   const totalWholesaleRevenue = useMemo(() => {
-    return wholesaleSales.reduce((acc, s) => acc + s.grandTotal, 0);
+    return wholesaleSales.reduce((acc, s) => acc + getEffectiveSaleFigures(s).revenue, 0);
   }, [wholesaleSales]);
 
   const totalWholesaleCost = useMemo(() => {
-    return wholesaleSales.reduce((acc, s) => acc + s.totalCost, 0);
+    return wholesaleSales.reduce((acc, s) => acc + getEffectiveSaleFigures(s).cost, 0);
   }, [wholesaleSales]);
 
-  const totalWholesaleProfit = totalWholesaleRevenue - totalWholesaleCost;
+  const totalWholesaleProfit = Math.max(0, totalWholesaleRevenue - totalWholesaleCost);
 
   const totalWholesaleDiscountsGiven = useMemo(() => {
-    return wholesaleSales.reduce((acc, s) => acc + (s.wholesaleSavings || 0) + (s.discount || 0), 0);
+    return wholesaleSales.reduce((acc, s) => {
+      const eff = getEffectiveSaleFigures(s);
+      return eff.isFullReturn ? acc : acc + (s.wholesaleSavings || 0) + (s.discount || 0);
+    }, 0);
   }, [wholesaleSales]);
 
   const totalWholesaleUnits = useMemo(() => {
-    return wholesaleSales.reduce((acc, s) => acc + s.items.reduce((sum, item) => sum + item.qty, 0), 0);
+    return wholesaleSales.reduce(
+      (acc, s) =>
+        acc +
+        (s.returnStatus === 'FULL'
+          ? 0
+          : s.items.reduce((sum, item) => sum + Math.max(0, (item.qty || 0) - (item.returnedQty || 0)), 0)),
+      0
+    );
   }, [wholesaleSales]);
 
-  // Breakdown per Retailer
+  // Breakdown per Retailer (post-returns)
   const retailerStats = useMemo(() => {
     const map: Record<
       string,
@@ -266,6 +280,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
     > = {};
 
     wholesaleSales.forEach(sale => {
+      const eff = getEffectiveSaleFigures(sale);
       const key = (sale.custName || sale.retailerShopName || 'Walk-in Retailer').toLowerCase().trim();
       if (!map[key]) {
         map[key] = {
@@ -281,10 +296,12 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
         };
       }
       map[key].invoicesCount += 1;
-      map[key].totalPurchased += sale.grandTotal;
-      map[key].totalCost += sale.totalCost;
-      map[key].totalProfit += sale.netProfit;
-      map[key].totalDiscounts += (sale.wholesaleSavings || 0) + (sale.discount || 0);
+      map[key].totalPurchased += eff.revenue;
+      map[key].totalCost += eff.cost;
+      map[key].totalProfit += eff.profit;
+      if (!eff.isFullReturn) {
+        map[key].totalDiscounts += (sale.wholesaleSavings || 0) + (sale.discount || 0);
+      }
     });
 
     return Object.values(map).sort((a, b) => b.totalPurchased - a.totalPurchased);
@@ -930,10 +947,18 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                         </span>
                       </td>
                       <td className="p-3 text-right tabular-nums font-bold text-slate-900">
-                        {currency} {sale.grandTotal.toLocaleString()}
+                        {sale.returnStatus === 'FULL' ? (
+                          <span className="text-rose-600">{currency} 0</span>
+                        ) : (
+                          `${currency} ${getEffectiveSaleFigures(sale).revenue.toLocaleString()}`
+                        )}
                       </td>
-                      <td className="p-3 text-right tabular-nums font-bold text-emerald-600">
-                        {data.currentRole === 'salesman' ? '••••' : `+${currency} ${sale.netProfit.toLocaleString()}`}
+                      <td className={`p-3 text-right tabular-nums font-bold ${sale.returnStatus === 'FULL' ? 'text-slate-400' : 'text-emerald-600'}`}>
+                        {data.currentRole === 'salesman'
+                          ? '••••'
+                          : sale.returnStatus === 'FULL'
+                          ? `${currency} 0 (Ret)`
+                          : `+${currency} ${getEffectiveSaleFigures(sale).profit.toLocaleString()}`}
                       </td>
                       <td className="p-3 text-center">
                         <div className="flex items-center justify-center gap-1">
@@ -1275,10 +1300,12 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                                   {currency} {((s.wholesaleSavings || 0) + (s.discount || 0)).toLocaleString()}
                                 </td>
                                 <td className="p-2.5 text-right tabular-nums font-bold text-slate-900 dark:text-white">
-                                  {currency} {s.grandTotal.toLocaleString()}
+                                  {currency} {getEffectiveSaleFigures(s).revenue.toLocaleString()}
                                 </td>
-                                <td className="p-2.5 text-right tabular-nums font-bold text-emerald-600">
-                                  +{currency} {s.netProfit.toLocaleString()}
+                                <td className={`p-2.5 text-right tabular-nums font-bold ${s.returnStatus === 'FULL' ? 'text-slate-400' : 'text-emerald-600'}`}>
+                                  {s.returnStatus === 'FULL'
+                                    ? `${currency} 0 (Ret)`
+                                    : `+${currency} ${getEffectiveSaleFigures(s).profit.toLocaleString()}`}
                                 </td>
                                 <td className="p-2.5 text-center">
                                   <button
@@ -1305,12 +1332,16 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
                     <div className="p-2.5 sm:p-3 bg-blue-50 dark:bg-neutral-900 rounded-xl border border-blue-200 dark:border-blue-900/60">
-                      <span className="text-[10px] font-bold text-blue-700 dark:text-blue-400 uppercase">Gross Revenue</span>
-                      <p className="text-base sm:text-lg font-bold tabular-nums text-blue-900 dark:text-blue-300 mt-0.5 truncate">{currency} {totalSalesRevenue.toLocaleString()}</p>
+                      <span className="text-[10px] font-bold text-blue-700 dark:text-blue-400 uppercase">
+                        {totalRefundsAmount > 0 ? 'Net Revenue (Post-Returns)' : 'Gross Revenue'}
+                      </span>
+                      <p className="text-base sm:text-lg font-bold tabular-nums text-blue-900 dark:text-blue-300 mt-0.5 truncate">{currency} {netSalesRevenue.toLocaleString()}</p>
                     </div>
                     <div className="p-2.5 sm:p-3 bg-slate-100 dark:bg-neutral-900 rounded-xl border border-slate-200 dark:border-neutral-800">
-                      <span className="text-[10px] font-bold text-slate-600 dark:text-neutral-400 uppercase">Total COGS</span>
-                      <p className="text-base sm:text-lg font-bold tabular-nums text-slate-900 dark:text-neutral-200 mt-0.5 truncate">{currency} {totalCOGS.toLocaleString()}</p>
+                      <span className="text-[10px] font-bold text-slate-600 dark:text-neutral-400 uppercase">
+                        {totalCostReversed > 0 ? 'Net COGS (Post-Returns)' : 'Total COGS'}
+                      </span>
+                      <p className="text-base sm:text-lg font-bold tabular-nums text-slate-900 dark:text-neutral-200 mt-0.5 truncate">{currency} {netCOGS.toLocaleString()}</p>
                     </div>
                     <div className="col-span-2 sm:col-span-1 p-2.5 sm:p-3 bg-emerald-50 dark:bg-neutral-900 rounded-xl border border-emerald-200 dark:border-emerald-900/60">
                       <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase">Total Profit</span>
@@ -1332,17 +1363,30 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-neutral-800 text-xs">
-                        {filteredSales.map(s => (
-                          <tr key={s.invNo} className="hover:bg-slate-50 dark:hover:bg-neutral-850">
-                            <td className="p-2.5 tabular-nums font-bold text-blue-600">#{s.invNo}</td>
-                            <td className="p-2.5 font-semibold capitalize">{s.invoiceType || 'Cash'}</td>
-                            <td className="p-2.5 text-slate-500 tabular-nums text-[11px]">{new Date(s.date).toLocaleDateString()}</td>
-                            <td className="p-2.5 font-bold text-slate-800 dark:text-white">{s.custName}</td>
-                            <td className="p-2.5">{s.paymentMethod}</td>
-                            <td className="p-2.5 text-right tabular-nums font-bold">{currency} {s.grandTotal.toLocaleString()}</td>
-                            <td className="p-2.5 text-right tabular-nums font-bold text-emerald-600">+{currency} {s.netProfit.toLocaleString()}</td>
-                          </tr>
-                        ))}
+                        {filteredSales.map(s => {
+                          const eff = getEffectiveSaleFigures(s);
+                          return (
+                            <tr key={s.invNo} className="hover:bg-slate-50 dark:hover:bg-neutral-850">
+                              <td className="p-2.5 tabular-nums font-bold text-blue-600">
+                                #{s.invNo}
+                                {eff.isFullReturn && (
+                                  <span className="ml-1 text-[9px] px-1 py-0.2 rounded bg-rose-100 text-rose-700">RET</span>
+                                )}
+                                {eff.isPartialReturn && (
+                                  <span className="ml-1 text-[9px] px-1 py-0.2 rounded bg-amber-100 text-amber-800">PART</span>
+                                )}
+                              </td>
+                              <td className="p-2.5 font-semibold capitalize">{s.invoiceType || 'Cash'}</td>
+                              <td className="p-2.5 text-slate-500 tabular-nums text-[11px]">{new Date(s.date).toLocaleDateString()}</td>
+                              <td className="p-2.5 font-bold text-slate-800 dark:text-white">{s.custName}</td>
+                              <td className="p-2.5">{s.paymentMethod}</td>
+                              <td className="p-2.5 text-right tabular-nums font-bold">{currency} {eff.revenue.toLocaleString()}</td>
+                              <td className={`p-2.5 text-right tabular-nums font-bold ${eff.isFullReturn ? 'text-slate-400' : 'text-emerald-600'}`}>
+                                {eff.isFullReturn ? `${currency} 0` : `+${currency} ${eff.profit.toLocaleString()}`}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -1744,8 +1788,8 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
               <tbody>
                 {activeReportModal === 'pnl' ? (
                   <>
-                    <tr><td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>Gross Sales Revenue</td><td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>{currency} {totalSalesRevenue.toLocaleString()}</td></tr>
-                    <tr><td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>Cost of Goods Sold (COGS)</td><td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>-{currency} {totalCOGS.toLocaleString()}</td></tr>
+                    <tr><td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>Net Sales Revenue (Post-Returns)</td><td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>{currency} {netSalesRevenue.toLocaleString()}</td></tr>
+                    <tr><td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>Net Cost of Goods Sold (COGS)</td><td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>-{currency} {netCOGS.toLocaleString()}</td></tr>
                     <tr><td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>Gross Profit</td><td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>{currency} {grossProfit.toLocaleString()}</td></tr>
                     <tr><td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>Total Operational Expenses</td><td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>-{currency} {totalExpenses.toLocaleString()}</td></tr>
                     <tr style={{ fontWeight: 'bold', fontSize: '12px' }}><td style={{ padding: '8px', borderTop: '2px solid #000' }}>Net Profit</td><td style={{ padding: '8px', borderTop: '2px solid #000', textAlign: 'right' }}>{currency} {netProfit.toLocaleString()}</td></tr>
@@ -1774,7 +1818,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                           Invoice #{s.invNo} - {s.custName} {s.retailerShopName ? `(${s.retailerShopName})` : ''} ({new Date(s.date).toLocaleDateString()})
                         </td>
                         <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>
-                          {currency} {s.grandTotal.toLocaleString()}
+                          {currency} {getEffectiveSaleFigures(s).revenue.toLocaleString()}
                         </td>
                       </tr>
                     ))}
@@ -1783,7 +1827,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                   filteredSales.map(s => (
                     <tr key={s.invNo}>
                       <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>Invoice #{s.invNo} - {s.custName} ({new Date(s.date).toLocaleDateString()})</td>
-                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>{currency} {s.grandTotal.toLocaleString()}</td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>{currency} {getEffectiveSaleFigures(s).revenue.toLocaleString()}</td>
                     </tr>
                   ))
                 ) : activeReportModal === 'expenses' ? (
