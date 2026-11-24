@@ -249,7 +249,7 @@ export const Settings: React.FC<SettingsProps> = ({
   const handleSelectTheme = (themeId: AppTheme) => {
     setFormData(prev => ({ ...prev, theme: themeId }));
     document.documentElement.setAttribute('data-theme', themeId);
-    if (themeId === 'dark') {
+    if (themeId === 'dark' || themeId === 'gold-black') {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
@@ -267,7 +267,7 @@ export const Settings: React.FC<SettingsProps> = ({
     onSaveSettings(cleanedSettings);
     const selectedTheme = formData.theme || 'blue-white';
     document.documentElement.setAttribute('data-theme', selectedTheme);
-    if (selectedTheme === 'dark') {
+    if (selectedTheme === 'dark' || selectedTheme === 'gold-black') {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');

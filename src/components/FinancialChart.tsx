@@ -307,17 +307,23 @@ export const FinancialChart: React.FC<FinancialChartProps> = ({ data }) => {
   const isDark = data.settings?.theme === 'dark' || data.settings?.theme === 'gold-black';
 
   return (
-    <div className="bg-white dark:bg-black border border-slate-200 dark:border-neutral-900 rounded-2xl p-6 space-y-5 shadow-none dark:shadow-none">
+    <div className="bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-2xl p-4 sm:p-6 space-y-5 shadow-sm dark:shadow-none animate-card-in animate-stagger-4">
       {/* Top Header & Selector Bar */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 dark:border-neutral-900 pb-4">
         <div>
-          <div className="flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-            <h3 className="font-bold text-slate-900 dark:text-white text-lg">Financial Performance & Analytics</h3>
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-blue-50 border border-blue-200/70 text-blue-600 dark:text-blue-400 shrink-0">
+              <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-slate-900 dark:text-white text-base sm:text-lg leading-tight">
+                Financial Performance & Analytics
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-neutral-400 mt-0.5">
+                Visualize live sales, net profits, inventory purchases, and shop expenses
+              </p>
+            </div>
           </div>
-          <p className="text-xs text-slate-500 dark:text-neutral-400 mt-0.5">
-            Visualize live sales, net profits, inventory purchases, and shop expenses
-          </p>
         </div>
 
         {/* Metric Selector & Timeframe Controls */}
@@ -345,9 +351,9 @@ export const FinancialChart: React.FC<FinancialChartProps> = ({ data }) => {
                   setStartDate('');
                   setEndDate('');
                 }}
-                className={`px-3 py-1.5 rounded-lg capitalize transition-colors cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg capitalize transition-all duration-200 cursor-pointer ${
                   timeframe === tf && !startDate
-                    ? 'bg-white dark:bg-black text-blue-600 dark:text-blue-400 shadow-none dark:shadow-none font-bold'
+                    ? 'theme-active-pill font-bold'
                     : 'hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
@@ -463,20 +469,24 @@ export const FinancialChart: React.FC<FinancialChartProps> = ({ data }) => {
             strokeWidth="1"
           />
 
-          {/* Filled Area Gradient */}
-          {areaPath && <path d={areaPath} fill={metricColor.fill} />}
+          {/* Animated Series Group (replays draw on metric/timeframe switch) */}
+          <g key={`${metric}-${timeframe}-${startDate}-${endDate}`}>
+            {/* Filled Area Gradient */}
+            {areaPath && <path d={areaPath} fill={metricColor.fill} className="chart-area-fade" />}
 
-          {/* Polyline */}
-          {pointsString && (
-            <polyline
-              fill="none"
-              stroke={metricColor.stroke}
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              points={pointsString}
-            />
-          )}
+            {/* Polyline */}
+            {pointsString && (
+              <polyline
+                fill="none"
+                stroke={metricColor.stroke}
+                strokeWidth="2.75"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                points={pointsString}
+                className="chart-line-draw"
+              />
+            )}
+          </g>
 
           {/* Interactive Points and Labels */}
           {chartData.map((item, index) => {
@@ -501,16 +511,26 @@ export const FinancialChart: React.FC<FinancialChartProps> = ({ data }) => {
                   />
                 )}
 
+                {/* Invisible larger touch target for mobile/desktop */}
+                <circle
+                  cx={x}
+                  cy={y}
+                  r={14}
+                  fill="transparent"
+                  className="cursor-pointer"
+                  onMouseEnter={() => setHoveredPoint({ label: item.label, value: item.value, x, y })}
+                  onClick={() => setHoveredPoint({ label: item.label, value: item.value, x, y })}
+                />
+
                 {/* Point circle */}
                 <circle
                   cx={x}
                   cy={y}
-                  r={isHovered ? 6 : 4}
+                  r={isHovered ? 6.5 : 4.2}
                   fill={isHovered ? metricColor.hex : (isDark ? '#000000' : '#ffffff')}
                   stroke={metricColor.stroke}
                   strokeWidth="2.5"
-                  className="cursor-pointer transition-all duration-150"
-                  onMouseEnter={() => setHoveredPoint({ label: item.label, value: item.value, x, y })}
+                  className="pointer-events-none transition-all duration-150"
                 />
 
                 {/* X-axis label */}
@@ -530,7 +550,7 @@ export const FinancialChart: React.FC<FinancialChartProps> = ({ data }) => {
         {/* Hover Tooltip Overlay */}
         {hoveredPoint && (
           <div
-            className="absolute pointer-events-none transform -translate-x-1/2 -translate-y-full mb-3 bg-slate-900 text-white px-3 py-1.5 rounded-lg shadow-lg text-xs z-10 font-sans"
+            className="absolute pointer-events-none transform -translate-x-1/2 -translate-y-full mb-3 bg-slate-900 text-white px-3 py-1.5 rounded-xl shadow-xl border border-white/10 text-xs z-10 font-sans animate-scale-in"
             style={{
               left: `${(hoveredPoint.x / width) * 100}%`,
               top: `${(hoveredPoint.y / height) * 100}%`,

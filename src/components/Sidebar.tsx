@@ -136,15 +136,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   key={item.id}
                   type="button"
                   onClick={() => handleNavClick(item.id)}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer ${
+                  className={`group relative w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer ${
                     isActive
-                      ? 'text-blue-600 bg-blue-50/80 shadow-2xs font-bold'
-                      : 'text-slate-600 hover:text-blue-600 hover:bg-slate-50'
+                      ? 'text-blue-600 bg-blue-50/90 border border-blue-200/70 shadow-2xs font-bold'
+                      : 'text-slate-600 hover:text-blue-600 hover:bg-slate-50 border border-transparent'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <Icon className={`w-4 h-4 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} />
-                    <span>{item.label}</span>
+                  {isActive && (
+                    <span className="absolute left-1 top-1/2 -translate-y-1/2 w-1 h-5 rounded-full bg-blue-600" />
+                  )}
+                  <div className="flex items-center gap-3 pl-1">
+                    <Icon
+                      className={`w-4 h-4 transition-transform duration-200 group-hover:scale-110 ${
+                        isActive ? 'text-blue-600' : 'text-slate-400 group-hover:text-blue-600'
+                      }`}
+                    />
+                    <span className="transition-transform duration-200 group-hover:translate-x-0.5">{item.label}</span>
                   </div>
 
                   {item.badge !== undefined && item.badge > 0 && (
