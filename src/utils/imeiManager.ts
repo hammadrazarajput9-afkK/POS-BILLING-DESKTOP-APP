@@ -346,11 +346,54 @@ export function validateImeis({
   return { valid: true };
 }
 
+const DEVICE_TAG_STORAGE_KEY = 'MOBILE_POS_DEVICE_TAG';
+
+function isLikelyMobileDevice(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)) {
+    return true;
+  }
+  if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) {
+    return true;
+  }
+  if (typeof window !== 'undefined' && window.innerWidth > 0 && window.innerWidth < 1024 && 'ontouchstart' in window) {
+    return true;
+  }
+  return false;
+}
+
+export function getDeviceShortTag(): string {
+  const isMobile = isLikelyMobileDevice();
+  const prefixChar = isMobile ? 'M' : 'D';
+  try {
+    const existing = localStorage.getItem(DEVICE_TAG_STORAGE_KEY);
+    if (existing && /^[A-Z0-9]{3,5}$/.test(existing)) {
+      return existing;
+    }
+  } catch {
+    // ignore storage read errors
+  }
+
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let rand = '';
+  for (let i = 0; i < 2; i++) {
+    rand += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  const tag = `${prefixChar}${rand}`;
+  try {
+    localStorage.setItem(DEVICE_TAG_STORAGE_KEY, tag);
+  } catch {
+    // ignore storage write errors
+  }
+  return tag;
+}
+
 /**
  * Persistent Unique Sequence Invoice Number Generator
- * 
- * Format: INV-YYYYMMDD-0001, INV-YYYYMMDD-0002, INV-YYYYMMDD-0003...
- * Survives application restart and persists sequentially without Math.random() collisions.
+ *
+ * Format: INV-YYYYMMDD-0001 (or INV-YYYYMMDD-0001-M4K on mobile/offline devices)
+ * Prevents cross-device invoice ID collisions when offline or on flaky mobile networks.
  */
 export function generateNextInvoiceNumber(
   existingSales: SaleRecord[] = [],
@@ -363,15 +406,19 @@ export function generateNextInvoiceNumber(
   const prefix = `INV-${dateStr}-`;
 
   let maxSeq = 0;
+  const existingInvSet = new Set<string>();
 
   for (const sale of existingSales) {
-    if (sale.invNo && sale.invNo.startsWith(prefix)) {
+    if (!sale.invNo) continue;
+    existingInvSet.add(sale.invNo);
+
+    if (sale.invNo.startsWith(prefix)) {
       const seqPart = sale.invNo.substring(prefix.length);
-      const parsed = parseInt(seqPart, 10);
+      const parsed = parseInt(seqPart.split('-')[0], 10);
       if (!isNaN(parsed) && parsed > maxSeq) {
         maxSeq = parsed;
       }
-    } else if (sale.invNo && sale.invNo.startsWith('INV-')) {
+    } else if (sale.invNo.startsWith('INV-')) {
       // Check if same date in ISO string
       const saleDate = new Date(sale.date);
       if (
@@ -380,8 +427,9 @@ export function generateNextInvoiceNumber(
         saleDate.getDate() === date.getDate()
       ) {
         const parts = sale.invNo.split('-');
-        if (parts.length >= 3) {
-          const num = parseInt(parts[parts.length - 1], 10);
+        const numericPart = parts.slice(2).find(p => /^\d+$/.test(p));
+        if (numericPart) {
+          const num = parseInt(numericPart, 10);
           if (!isNaN(num) && num > maxSeq) {
             maxSeq = num;
           }
@@ -390,9 +438,26 @@ export function generateNextInvoiceNumber(
     }
   }
 
-  const nextSeq = maxSeq + 1;
-  const paddedSeq = String(nextSeq).padStart(4, '0');
-  return `${prefix}${paddedSeq}`;
+  const isOfflineNow = typeof navigator !== 'undefined' && !navigator.onLine;
+  let hasQuotaOrPending = false;
+  try {
+    hasQuotaOrPending =
+      Boolean(localStorage.getItem('MOBILE_POS_QUOTA_EXCEEDED_AT')) ||
+      localStorage.getItem('MOBILE_POS_HAS_PENDING_SALES') === '1';
+  } catch {
+    hasQuotaOrPending = false;
+  }
+
+  const useDeviceTag = isOfflineNow || isLikelyMobileDevice() || hasQuotaOrPending;
+  const suffix = useDeviceTag ? `-${getDeviceShortTag()}` : '';
+
+  let nextSeq = maxSeq + 1;
+  let candidate = `${prefix}${String(nextSeq).padStart(4, '0')}${suffix}`;
+  while (existingInvSet.has(candidate)) {
+    nextSeq++;
+    candidate = `${prefix}${String(nextSeq).padStart(4, '0')}${suffix}`;
+  }
+  return candidate;
 }
 
 /**

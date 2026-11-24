@@ -46,6 +46,9 @@ import {
   addTombstonesToMap,
   isItemTombstoned,
   processPendingWritesQueue,
+  hasPendingWriteForCollectionDoc,
+  clearOfflineSaleJournal,
+  enqueuePreservedLocalSalesIfMissingFromCloud,
   toValidFirestoreDocId,
   CollectionDeltaEvent,
   DEFAULT_STORE_ID,
@@ -431,6 +434,9 @@ function AppContent() {
               if (!rawId) return true;
               const safeId = toValidFirestoreDocId(rawId, meta.prefix);
               if (removalSet.has(rawId) || removalSet.has(safeId)) {
+                if (hasPendingWriteForCollectionDoc(colKey, rawId)) {
+                  return true;
+                }
                 changed = true;
                 return false;
               }
@@ -1869,6 +1875,11 @@ function AppContent() {
                 const pendingOps = await getPendingWrites();
                 const { data: remoteData, fromServer } = await loadAppDataFromFirestoreWithMeta(activeStoreId);
                 if (remoteData) {
+                  const preMerged =
+                    pendingOps.length === 0 && fromServer
+                      ? reconcileWithAuthoritativeCloud(dataRef.current, remoteData)
+                      : mergeAppData(dataRef.current, remoteData);
+
                   setData(prev => {
                     const merged =
                       pendingOps.length === 0 && fromServer
@@ -1889,6 +1900,13 @@ function AppContent() {
                     saveStoredData(finalData, activeStoreId);
                     return finalData;
                   });
+                  if (fromServer) {
+                    enqueuePreservedLocalSalesIfMissingFromCloud(
+                      preMerged,
+                      remoteData,
+                      activeStoreId
+                    ).catch(() => {});
+                  }
                 }
               } catch (err) {
                 console.warn('Background remote load on auth notice:', err);
@@ -2251,6 +2269,7 @@ function AppContent() {
             currentUser: data.currentUser,
             currentRole: data.currentRole || data.currentUser?.role || 'admin',
           };
+          clearOfflineSaleJournal(DEFAULT_STORE_ID);
           setData(stamped);
           saveStoredData(stamped, DEFAULT_STORE_ID);
           saveAppDataToFirestore(stamped, DEFAULT_STORE_ID).catch(() => {});

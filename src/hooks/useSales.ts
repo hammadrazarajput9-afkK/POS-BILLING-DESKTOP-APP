@@ -18,6 +18,8 @@ import {
   saveRootConfigToFirestore,
   addTombstonesToMap,
   removeTombstoneFromMap,
+  recordLocalSaleInJournal,
+  removeSaleFromJournal,
 } from '../utils/storage';
 import { generateEntityId } from '../utils/id';
 
@@ -244,6 +246,9 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
       userRole: data.currentRole,
       relatedRecordId: saleWithTs.invNo,
     };
+
+    // Synchronously persist sale + inventory deductions in tiny quota-proof journal BEFORE async React/IDB/network steps
+    recordLocalSaleInJournal(saleWithTs, inventoryUpdates);
 
     // 4. Update React State immediately for responsive UI
     setData(prev => {
@@ -521,6 +526,7 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
     );
 
     if (permanent) {
+      removeSaleFromJournal(invNo);
       deleteSaleFromFirestore(invNo).catch(err => console.warn('Failed to delete sale from Firestore:', err));
       if (tombstoneRes) {
         saveRootConfigToFirestore({
@@ -529,12 +535,14 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
         }).catch(() => {});
       }
     } else if (targetSale) {
-      updateSaleInFirestore({
+      const cancelledSale: SaleRecord = {
         ...targetSale,
         status: 'CANCELLED',
         updatedAt: now,
         notes: `Cancelled: ${reason} | ${targetSale.notes || ''}`.trim(),
-      }).catch(err => console.warn('Failed to cancel sale in Firestore:', err));
+      };
+      recordLocalSaleInJournal(cancelledSale, []);
+      updateSaleInFirestore(cancelledSale).catch(err => console.warn('Failed to cancel sale in Firestore:', err));
     }
 
     restoredInventoryToSync.forEach(item => saveInventoryItemToFirestore(item).catch(() => {}));
@@ -569,6 +577,7 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
     const now = new Date().toISOString();
     const saleWithTs: SaleRecord = { ...updatedSale, updatedAt: now };
 
+    recordLocalSaleInJournal(saleWithTs, []);
     setData(prev => ({
       ...prev,
       lastModified: now,

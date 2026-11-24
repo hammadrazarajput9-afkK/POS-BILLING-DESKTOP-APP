@@ -777,15 +777,212 @@ export function subscribeSyncStatus(listener: (snap: SyncStatusSnapshot) => void
   };
 }
 
+const PENDING_SALES_FLAG_KEY = 'MOBILE_POS_HAS_PENDING_SALES';
+
+function syncPendingSalesFlag(ops: PendingWriteOp[]): void {
+  try {
+    const hasSalePending = ops.some(op => op.path.includes(`/${SUB_COLLECTIONS.SALES}/`));
+    if (hasSalePending) {
+      localStorage.setItem(PENDING_SALES_FLAG_KEY, '1');
+    } else {
+      localStorage.removeItem(PENDING_SALES_FLAG_KEY);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+export function hasPendingWriteForCollectionDoc(
+  collectionKey: SyncCollectionKey,
+  rawId?: string
+): boolean {
+  if (!rawId) return false;
+  const subColMap: Record<SyncCollectionKey, string> = {
+    inventory: SUB_COLLECTIONS.INVENTORY,
+    sales: SUB_COLLECTIONS.SALES,
+    khata: SUB_COLLECTIONS.KHATA,
+    expenses: SUB_COLLECTIONS.EXPENSES,
+    supplierPurchases: SUB_COLLECTIONS.PURCHASES,
+    dailyClosings: SUB_COLLECTIONS.DAILY_CLOSINGS,
+    salesReturns: SUB_COLLECTIONS.SALES_RETURNS,
+    stockAdjustments: SUB_COLLECTIONS.STOCK_ADJUSTMENTS,
+    purchasesLedger: SUB_COLLECTIONS.PURCHASES_LEDGER,
+    imeiRecords: SUB_COLLECTIONS.IMEI_RECORDS,
+    activities: SUB_COLLECTIONS.ACTIVITIES,
+  };
+  const prefixMap: Record<SyncCollectionKey, string> = {
+    inventory: 'STK',
+    sales: 'INV',
+    khata: 'KHT',
+    expenses: 'EXP',
+    supplierPurchases: 'PUR',
+    dailyClosings: 'DCL',
+    salesReturns: 'RET',
+    stockAdjustments: 'ADJ',
+    purchasesLedger: 'PL',
+    imeiRecords: 'IMEI',
+    activities: 'ACT',
+  };
+  const subCol = subColMap[collectionKey];
+  const safeId = toValidFirestoreDocId(rawId, prefixMap[collectionKey]);
+  const suffix1 = `/${subCol}/${rawId}`;
+  const suffix2 = `/${subCol}/${safeId}`;
+  if (currentPendingOps.some(op => op.path.endsWith(suffix1) || op.path.endsWith(suffix2))) {
+    return true;
+  }
+  if (collectionKey === 'sales') {
+    const journal = readOfflineSaleJournal();
+    return journal.sales.some(s => s.invNo === rawId || toValidFirestoreDocId(s.invNo, 'INV') === safeId);
+  }
+  return false;
+}
+
 export async function getPendingWrites(): Promise<PendingWriteOp[]> {
   try {
     const idb = await getIDB();
     const all = (await idb.getAll(IDB_PENDING_WRITES_STORE)) as PendingWriteOp[];
     all.sort((a, b) => parseTimeMs(a.createdAt) - parseTimeMs(b.createdAt));
     currentPendingOps = all;
+    syncPendingSalesFlag(all);
     return all;
   } catch {
     return currentPendingOps;
+  }
+}
+
+async function enqueuePendingWritesBatch(
+  entries: Array<{
+    op: 'set' | 'delete';
+    path: string;
+    data?: Record<string, unknown>;
+    merge?: boolean;
+    lastError?: string;
+  }>,
+  notify = true
+): Promise<Array<{ id: string; path: string; createdAt: string }>> {
+  if (entries.length === 0) return [];
+  try {
+    const idb = await getIDB();
+    const tx = idb.transaction(IDB_PENDING_WRITES_STORE, 'readwrite');
+    const store = tx.objectStore(IDB_PENDING_WRITES_STORE);
+    const existingAll = (await store.getAll()) as PendingWriteOp[];
+    const byPath = new Map<string, PendingWriteOp>();
+    existingAll.forEach(p => byPath.set(p.path, p));
+
+    const now = new Date().toISOString();
+    const writtenRefs: Array<{ id: string; path: string; createdAt: string }> = [];
+
+    for (const params of entries) {
+      const existingForPath = byPath.get(params.path);
+      if (existingForPath) {
+        let updatedOp: PendingWriteOp;
+        if (params.op === 'delete') {
+          updatedOp = {
+            ...existingForPath,
+            op: 'delete',
+            data: undefined,
+            merge: undefined,
+            createdAt: now,
+            lastError: params.lastError || existingForPath.lastError,
+          };
+        } else if (
+          existingForPath.op === 'set' &&
+          params.merge !== false &&
+          existingForPath.data &&
+          params.data
+        ) {
+          updatedOp = {
+            ...existingForPath,
+            op: 'set',
+            data: { ...existingForPath.data, ...params.data },
+            merge: true,
+            createdAt: now,
+            lastError: params.lastError || existingForPath.lastError,
+          };
+        } else {
+          updatedOp = {
+            ...existingForPath,
+            op: 'set',
+            data: params.data,
+            merge: params.merge,
+            createdAt: now,
+            lastError: params.lastError || existingForPath.lastError,
+          };
+        }
+        byPath.set(params.path, updatedOp);
+        await store.put(updatedOp);
+        writtenRefs.push({ id: updatedOp.id, path: updatedOp.path, createdAt: updatedOp.createdAt });
+      } else {
+        const newOp: PendingWriteOp = {
+          id: generateEntityId('PW'),
+          op: params.op,
+          path: params.path,
+          data: params.data,
+          merge: params.merge,
+          createdAt: now,
+          retryCount: 0,
+          lastError: params.lastError,
+        };
+        byPath.set(params.path, newOp);
+        await store.put(newOp);
+        writtenRefs.push({ id: newOp.id, path: newOp.path, createdAt: newOp.createdAt });
+      }
+    }
+
+    await tx.done;
+    await getPendingWrites();
+    if (notify) {
+      notifySyncStatusListeners();
+    }
+    return writtenRefs;
+  } catch (err) {
+    console.warn('Failed to enqueue pending writes batch in IndexedDB:', err);
+    return [];
+  }
+}
+
+async function removePendingWritesByRefs(
+  refs: Array<{ id: string; path: string; createdAt: string }>
+): Promise<void> {
+  if (refs.length === 0) return;
+  try {
+    const idb = await getIDB();
+    const tx = idb.transaction(IDB_PENDING_WRITES_STORE, 'readwrite');
+    const store = tx.objectStore(IDB_PENDING_WRITES_STORE);
+    for (const ref of refs) {
+      const current = (await store.get(ref.id)) as PendingWriteOp | undefined;
+      if (current && current.createdAt === ref.createdAt) {
+        await store.delete(ref.id);
+      }
+    }
+    await tx.done;
+    await getPendingWrites();
+    notifySyncStatusListeners();
+  } catch {
+    // ignore cleanup error; queue retries are idempotent
+  }
+}
+
+async function updatePendingWritesErrorByRefs(
+  refs: Array<{ id: string; path: string; createdAt: string }>,
+  lastError: string
+): Promise<void> {
+  if (refs.length === 0) return;
+  try {
+    const idb = await getIDB();
+    const tx = idb.transaction(IDB_PENDING_WRITES_STORE, 'readwrite');
+    const store = tx.objectStore(IDB_PENDING_WRITES_STORE);
+    for (const ref of refs) {
+      const current = (await store.get(ref.id)) as PendingWriteOp | undefined;
+      if (current) {
+        await store.put({ ...current, lastError });
+      }
+    }
+    await tx.done;
+    await getPendingWrites();
+    notifySyncStatusListeners();
+  } catch {
+    // ignore
   }
 }
 
@@ -796,60 +993,7 @@ export async function enqueuePendingWrite(params: {
   merge?: boolean;
   lastError?: string;
 }): Promise<void> {
-  try {
-    const idb = await getIDB();
-    const all = (await idb.getAll(IDB_PENDING_WRITES_STORE)) as PendingWriteOp[];
-    const existingForPath = all.find(p => p.path === params.path);
-    const now = new Date().toISOString();
-
-    if (existingForPath) {
-      if (params.op === 'delete') {
-        await idb.put(IDB_PENDING_WRITES_STORE, {
-          ...existingForPath,
-          op: 'delete',
-          data: undefined,
-          merge: undefined,
-          createdAt: now,
-          lastError: params.lastError || existingForPath.lastError,
-        });
-      } else if (existingForPath.op === 'set' && params.merge !== false && existingForPath.data && params.data) {
-        // Merge root or partial updates cleanly
-        await idb.put(IDB_PENDING_WRITES_STORE, {
-          ...existingForPath,
-          op: 'set',
-          data: { ...existingForPath.data, ...params.data },
-          merge: true,
-          lastError: params.lastError || existingForPath.lastError,
-        });
-      } else {
-        await idb.put(IDB_PENDING_WRITES_STORE, {
-          ...existingForPath,
-          op: 'set',
-          data: params.data,
-          merge: params.merge,
-          createdAt: now,
-          lastError: params.lastError || existingForPath.lastError,
-        });
-      }
-    } else {
-      const newOp: PendingWriteOp = {
-        id: generateEntityId('PW'),
-        op: params.op,
-        path: params.path,
-        data: params.data,
-        merge: params.merge,
-        createdAt: now,
-        retryCount: 0,
-        lastError: params.lastError,
-      };
-      await idb.put(IDB_PENDING_WRITES_STORE, newOp);
-    }
-
-    await getPendingWrites();
-    notifySyncStatusListeners();
-  } catch (err) {
-    console.warn('Failed to enqueue pending write in IndexedDB:', err);
-  }
+  await enqueuePendingWritesBatch([params], true);
 }
 
 async function awaitWriteWithQuotaAndTimeout(
@@ -1192,18 +1336,26 @@ export async function saveSaleAtomic(
     return updateData;
   };
 
-  const enqueueIndividualOps = async (reason?: string) => {
-    await enqueuePendingWrite({
-      op: 'set',
-      path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.SALES}/${saleDocId}`,
-      data: sanitizeForFirestore(saleWithTs) as Record<string, unknown>,
-      merge: true,
-      lastError: reason,
-    });
+  const buildQueuedEntries = (reason?: string) => {
+    const entries: Array<{
+      op: 'set' | 'delete';
+      path: string;
+      data?: Record<string, unknown>;
+      merge?: boolean;
+      lastError?: string;
+    }> = [
+      {
+        op: 'set',
+        path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.SALES}/${saleDocId}`,
+        data: sanitizeForFirestore(saleWithTs) as Record<string, unknown>,
+        merge: true,
+        lastError: reason,
+      },
+    ];
     for (const invUpdate of inventoryUpdates) {
       const invId = toValidFirestoreDocId(invUpdate.id, 'STK');
       const updateData = buildInvUpdatePayload(invUpdate);
-      await enqueuePendingWrite({
+      entries.push({
         op: 'set',
         path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.INVENTORY}/${invId}`,
         data: sanitizeForFirestore(updateData) as Record<string, unknown>,
@@ -1213,7 +1365,7 @@ export async function saveSaleAtomic(
     }
     if (khataUpdate) {
       const kId = toValidFirestoreDocId(khataUpdate.customerId, 'KHT');
-      await enqueuePendingWrite({
+      entries.push({
         op: 'set',
         path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.KHATA}/${kId}`,
         data: sanitizeForFirestore({
@@ -1227,7 +1379,7 @@ export async function saveSaleAtomic(
     }
     if (activity) {
       const actId = toValidFirestoreDocId(activity.id, 'ACT');
-      await enqueuePendingWrite({
+      entries.push({
         op: 'set',
         path: `${STORES_COLLECTION}/${storeId}/${SUB_COLLECTIONS.ACTIVITIES}/${actId}`,
         data: sanitizeForFirestore(activity) as Record<string, unknown>,
@@ -1235,17 +1387,32 @@ export async function saveSaleAtomic(
         lastError: reason,
       });
     }
+    return entries;
   };
 
-  if ((typeof navigator !== 'undefined' && !navigator.onLine) || getQuotaExceededFlag()) {
-    await enqueueIndividualOps('Offline or quota cooldown');
+  const isOfflineOrQuota =
+    (typeof navigator !== 'undefined' && !navigator.onLine) || getQuotaExceededFlag();
+
+  // ALWAYS persist all sale + inventory + khata + activity ops in ONE atomic IndexedDB transaction
+  // BEFORE attempting any network write so mobile backgrounding/timeouts can never lose a sale.
+  const preQueuedRefs = await enqueuePendingWritesBatch(
+    buildQueuedEntries(
+      isOfflineOrQuota ? 'Offline or quota cooldown' : 'Syncing sale to cloud...'
+    ),
+    isOfflineOrQuota
+  );
+
+  if (isOfflineOrQuota) {
     return;
   }
 
   try {
     const user = await ensureAnonymousAuth();
     if (!user) {
-      await enqueueIndividualOps(getLastCloudError() || 'Firebase Auth unavailable');
+      await updatePendingWritesErrorByRefs(
+        preQueuedRefs,
+        getLastCloudError() || 'Firebase Auth unavailable'
+      );
       return;
     }
 
@@ -1295,6 +1462,7 @@ export async function saveSaleAtomic(
     );
 
     await awaitWriteWithQuotaAndTimeout(batch.commit());
+    await removePendingWritesByRefs(preQueuedRefs);
     recordCloudWrite(2 + inventoryUpdates.length + (khataUpdate ? 1 : 0) + (activity ? 1 : 0));
     setLastCloudError(null);
     notifySyncStatusListeners();
@@ -1305,7 +1473,7 @@ export async function saveSaleAtomic(
     } else {
       setLastCloudError(`Atomic sale sync failed: ${errMsg}`);
     }
-    await enqueueIndividualOps(errMsg);
+    await updatePendingWritesErrorByRefs(preQueuedRefs, errMsg);
   }
 }
 
@@ -1821,62 +1989,87 @@ export function subscribeToStoreFullData(
     { subCol: SUB_COLLECTIONS.ACTIVITIES, key: 'activities' },
   ];
 
-  ensureAnonymousAuth().then((user) => {
-    if (!active || !user) return;
+  let subListenersAttached = false;
+  let attachInFlight = false;
 
-    for (const { subCol, key } of subCollectionSpecs) {
-      try {
-        const colRef = collection(db, STORES_COLLECTION, storeId, subCol);
-        const qRef =
-          key === 'activities'
-            ? query(colRef, orderBy('timestamp', 'desc'), limit(200))
-            : colRef;
+  const attachSubListeners = () => {
+    if (!active || subListenersAttached || attachInFlight) return;
+    attachInFlight = true;
+    ensureAnonymousAuth()
+      .then((user) => {
+        attachInFlight = false;
+        if (!active || !user || subListenersAttached) return;
+        subListenersAttached = true;
 
-        const unsub = onSnapshot(
-          qRef,
-          (snapshot) => {
-            if (snapshot.metadata.hasPendingWrites) return;
+        for (const { subCol, key } of subCollectionSpecs) {
+          try {
+            const colRef = collection(db, STORES_COLLECTION, storeId, subCol);
+            const qRef =
+              key === 'activities'
+                ? query(colRef, orderBy('timestamp', 'desc'), limit(200))
+                : colRef;
 
-            const upserts: Array<{ docId: string; item: Record<string, unknown> }> = [];
-            const removals: string[] = [];
+            const unsub = onSnapshot(
+              qRef,
+              (snapshot) => {
+                if (snapshot.metadata.hasPendingWrites) return;
 
-            snapshot.docChanges().forEach((change) => {
-              if (change.doc.metadata.hasPendingWrites) return;
-              if (change.type === 'added' || change.type === 'modified') {
-                upserts.push({
-                  docId: change.doc.id,
-                  item: change.doc.data() as Record<string, unknown>,
+                const upserts: Array<{ docId: string; item: Record<string, unknown> }> = [];
+                const removals: string[] = [];
+
+                snapshot.docChanges().forEach((change) => {
+                  if (change.doc.metadata.hasPendingWrites) return;
+                  if (change.type === 'added' || change.type === 'modified') {
+                    upserts.push({
+                      docId: change.doc.id,
+                      item: change.doc.data() as Record<string, unknown>,
+                    });
+                  } else if (change.type === 'removed') {
+                    removals.push(change.doc.id);
+                  }
                 });
-              } else if (change.type === 'removed') {
-                removals.push(change.doc.id);
+
+                if (upserts.length > 0 || removals.length > 0) {
+                  recordCloudRead(upserts.length);
+                  callbacks.onCollectionDelta({
+                    collection: key,
+                    upserts,
+                    removals,
+                  });
+                }
+              },
+              (err) => {
+                if (isQuotaError(err)) setQuotaExceededFlag(true);
+                else setLastCloudError(`Listener error (${subCol}): ${err.message}`);
+                console.warn(`${subCol} real-time sync notice [${storeId}]:`, err);
               }
-            });
+            );
 
-            if (upserts.length > 0 || removals.length > 0) {
-              recordCloudRead(upserts.length);
-              callbacks.onCollectionDelta({
-                collection: key,
-                upserts,
-                removals,
-              });
-            }
-          },
-          (err) => {
-            if (isQuotaError(err)) setQuotaExceededFlag(true);
-            else setLastCloudError(`Listener error (${subCol}): ${err.message}`);
-            console.warn(`${subCol} real-time sync notice [${storeId}]:`, err);
+            unsubs.push(unsub);
+          } catch (err) {
+            console.warn(`${subCol} listener initialization error [${storeId}]:`, err);
           }
-        );
+        }
+      })
+      .catch(() => {
+        attachInFlight = false;
+      });
+  };
 
-        unsubs.push(unsub);
-      } catch (err) {
-        console.warn(`${subCol} listener initialization error [${storeId}]:`, err);
-      }
-    }
-  });
+  attachSubListeners();
+
+  const handleOnlineReconnect = () => {
+    attachSubListeners();
+  };
+  if (typeof window !== 'undefined') {
+    window.addEventListener('online', handleOnlineReconnect);
+  }
 
   return () => {
     active = false;
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('online', handleOnlineReconnect);
+    }
     unsubs.forEach(unsub => {
       try {
         unsub();
@@ -2661,9 +2854,202 @@ export async function runOneTimeSubcollectionMigration(
   }
 }
 
+// ==================== TINY SYNCHRONOUS OFFLINE SALE JOURNAL (MOBILE QUOTA-PROOF) ====================
+
+interface OfflineJournalInvPatch {
+  id: string;
+  newQty: number;
+  remainingImeis?: string[];
+  variants?: MobileVariant[];
+  updatedAt: string;
+}
+
+interface OfflineSaleJournal {
+  sales: SaleRecord[];
+  inventoryPatches: Record<string, OfflineJournalInvPatch>;
+}
+
+const MAX_JOURNAL_SALES = 25;
+
+function getOfflineJournalKey(storeId?: string): string {
+  const sid = storeId || currentActiveStoreId || DEFAULT_STORE_ID;
+  return `MOBILE_POS_OFFLINE_JOURNAL_${sid}`;
+}
+
+export function readOfflineSaleJournal(storeId?: string): OfflineSaleJournal {
+  try {
+    const raw = localStorage.getItem(getOfflineJournalKey(storeId));
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<OfflineSaleJournal>;
+      return {
+        sales: Array.isArray(parsed.sales) ? parsed.sales : [],
+        inventoryPatches:
+          parsed.inventoryPatches && typeof parsed.inventoryPatches === 'object'
+            ? parsed.inventoryPatches
+            : {},
+      };
+    }
+  } catch {
+    // ignore
+  }
+  return { sales: [], inventoryPatches: {} };
+}
+
+function writeOfflineSaleJournal(journal: OfflineSaleJournal, storeId?: string): void {
+  try {
+    localStorage.setItem(getOfflineJournalKey(storeId), JSON.stringify(journal));
+  } catch {
+    try {
+      // Fallback: shrink to last 10 sales if storage is extraordinarily tight
+      localStorage.setItem(
+        getOfflineJournalKey(storeId),
+        JSON.stringify({
+          sales: journal.sales.slice(0, 10),
+          inventoryPatches: journal.inventoryPatches,
+        })
+      );
+    } catch {
+      // ignore
+    }
+  }
+}
+
+export function recordLocalSaleInJournal(
+  sale: SaleRecord,
+  inventoryUpdates: Array<{
+    id: string;
+    newQty: number;
+    remainingImeis?: string[];
+    variants?: MobileVariant[];
+    updatedAt?: string;
+  }> = [],
+  storeId?: string
+): void {
+  const journal = readOfflineSaleJournal(storeId);
+  const filteredSales = journal.sales.filter(s => s.invNo !== sale.invNo);
+  const nextSales = [sale, ...filteredSales].slice(0, MAX_JOURNAL_SALES);
+
+  const nextPatches: Record<string, OfflineJournalInvPatch> = { ...journal.inventoryPatches };
+  const now = sale.updatedAt || new Date().toISOString();
+  for (const upd of inventoryUpdates) {
+    const updTs = upd.updatedAt || now;
+    const prev = nextPatches[upd.id];
+    if (!prev || parseTimeMs(updTs) >= parseTimeMs(prev.updatedAt)) {
+      nextPatches[upd.id] = {
+        id: upd.id,
+        newQty: upd.newQty,
+        remainingImeis: upd.remainingImeis,
+        variants: upd.variants,
+        updatedAt: updTs,
+      };
+    }
+  }
+
+  // Prune inventory patches older than 14 days so journal stays tiny
+  const cutoffMs = Date.now() - 14 * 24 * 60 * 60 * 1000;
+  for (const key of Object.keys(nextPatches)) {
+    if (parseTimeMs(nextPatches[key].updatedAt) < cutoffMs) {
+      delete nextPatches[key];
+    }
+  }
+
+  writeOfflineSaleJournal({ sales: nextSales, inventoryPatches: nextPatches }, storeId);
+  try {
+    localStorage.setItem(PENDING_SALES_FLAG_KEY, '1');
+  } catch {
+    // ignore
+  }
+}
+
+export function removeSaleFromJournal(invNo: string, storeId?: string): void {
+  const journal = readOfflineSaleJournal(storeId);
+  const nextSales = journal.sales.filter(s => s.invNo !== invNo);
+  if (nextSales.length !== journal.sales.length) {
+    writeOfflineSaleJournal({ ...journal, sales: nextSales }, storeId);
+  }
+}
+
+export function clearOfflineSaleJournal(storeId?: string): void {
+  try {
+    localStorage.removeItem(getOfflineJournalKey(storeId));
+    localStorage.removeItem(PENDING_SALES_FLAG_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+function applyOfflineJournalToData(data: AppData, storeId?: string): AppData {
+  const journal = readOfflineSaleJournal(storeId);
+  if (journal.sales.length === 0 && Object.keys(journal.inventoryPatches).length === 0) {
+    return data;
+  }
+
+  const salesTombstones = data.deletedIds?.sales || [];
+  const salesMap = new Map<string, SaleRecord>();
+  (data.sales || []).forEach(s => {
+    if (s.invNo) salesMap.set(s.invNo, s);
+  });
+
+  let salesChanged = false;
+  for (const jSale of journal.sales) {
+    if (!jSale.invNo) continue;
+    if (isItemTombstoned(jSale.invNo, jSale.updatedAt || jSale.date, salesTombstones)) {
+      continue;
+    }
+    const existing = salesMap.get(jSale.invNo);
+    if (!existing || parseTimeMs(jSale.updatedAt || jSale.date) > parseTimeMs(existing.updatedAt || existing.date)) {
+      salesMap.set(jSale.invNo, jSale);
+      salesChanged = true;
+    }
+  }
+
+  let invChanged = false;
+  const nextInventory = (data.inventory || []).map(item => {
+    const patch = journal.inventoryPatches[item.id];
+    if (!patch) return item;
+    const itemMs = parseTimeMs(item.updatedAt || item.createdAt);
+    const patchMs = parseTimeMs(patch.updatedAt);
+    if (patchMs > itemMs) {
+      invChanged = true;
+      return {
+        ...item,
+        qty: patch.newQty,
+        updatedAt: patch.updatedAt,
+        imeis:
+          patch.remainingImeis !== undefined
+            ? patch.remainingImeis.length > 0
+              ? patch.remainingImeis
+              : undefined
+            : item.imeis,
+        imei:
+          patch.remainingImeis !== undefined
+            ? patch.remainingImeis.length > 0
+              ? patch.remainingImeis.join(', ')
+              : undefined
+            : item.imei,
+        variants: patch.variants !== undefined ? patch.variants : item.variants,
+      };
+    }
+    return item;
+  });
+
+  if (!salesChanged && !invChanged) return data;
+
+  const nextSales = salesChanged
+    ? Array.from(salesMap.values()).sort((a, b) => parseTimeMs(b.date) - parseTimeMs(a.date))
+    : data.sales;
+
+  return {
+    ...data,
+    sales: nextSales,
+    inventory: nextInventory,
+  };
+}
+
 // ==================== LOCAL STORAGE & INDEXEDDB ====================
 
 export function loadStoredData(targetStoreId?: string): AppData {
+  const sid = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
   try {
     const key = getLocalStorageKey(targetStoreId);
     const raw = localStorage.getItem(key);
@@ -2672,7 +3058,7 @@ export function loadStoredData(targetStoreId?: string): AppData {
       const parsed = JSON.parse(raw);
       const validation = validateBackupData(parsed);
       if (validation.valid && validation.data) {
-        return validation.data;
+        return applyOfflineJournalToData(validation.data, sid);
       }
     }
 
@@ -2682,7 +3068,7 @@ export function loadStoredData(targetStoreId?: string): AppData {
       const parsedMain = JSON.parse(mainRaw);
       const validation = validateBackupData(parsedMain);
       if (validation.valid && validation.data) {
-        return validation.data;
+        return applyOfflineJournalToData(validation.data, sid);
       }
     }
 
@@ -2691,14 +3077,14 @@ export function loadStoredData(targetStoreId?: string): AppData {
       const parsedLegacy = JSON.parse(legacyRaw);
       const validation = validateBackupData(parsedLegacy);
       if (validation.valid && validation.data) {
-        return validation.data;
+        return applyOfflineJournalToData(validation.data, sid);
       }
     }
 
-    return initialCleanData;
+    return applyOfflineJournalToData(initialCleanData, sid);
   } catch (error) {
     console.error('Failed to parse local stored data:', error);
-    return initialCleanData;
+    return applyOfflineJournalToData(initialCleanData, sid);
   }
 }
 
@@ -3246,33 +3632,91 @@ export async function recoverAllMissingStoreData(
  */
 export function reconcileWithAuthoritativeCloud(localFallback: AppData, cloudData: AppData): AppData {
   const { deletedIds, deletedInventoryIds } = mergeDeletedIds(localFallback, cloudData);
+  const storeId = currentActiveStoreId || DEFAULT_STORE_ID;
+  const withJournalLocal = applyOfflineJournalToData(localFallback, storeId);
+  const journal = readOfflineSaleJournal(storeId);
+  const journalSaleInvSet = new Set(journal.sales.map(s => s.invNo).filter(Boolean));
 
-  const localInvImgById = new Map((localFallback.inventory || []).map(i => [i.id, i.image]));
-  const localExpImgById = new Map((localFallback.expenses || []).map(e => [e.id, e.image]));
-  const localKhataImgById = new Map((localFallback.khata || []).map(k => [k.id, k.image]));
+  const localInvImgById = new Map((withJournalLocal.inventory || []).map(i => [i.id, i.image]));
+  const localExpImgById = new Map((withJournalLocal.expenses || []).map(e => [e.id, e.image]));
+  const localKhataImgById = new Map((withJournalLocal.khata || []).map(k => [k.id, k.image]));
   const localPurImgById = new Map(
-    (localFallback.supplierPurchases || []).map(p => [p.id || p.billNo, p.invoiceImage])
+    (withJournalLocal.supplierPurchases || []).map(p => [p.id || p.billNo, p.invoiceImage])
   );
+
+  // Protect recently created local/offline sales that are NOT tombstoned and missing from cloud
+  const cloudSaleMap = new Map((cloudData.sales || []).map(s => [s.invNo, s]));
+  const salesTombstones = deletedIds.sales || [];
+  const recentCutoffMs = Date.now() - 14 * 24 * 60 * 60 * 1000;
+  const preservedLocalSales: SaleRecord[] = [];
+  const preservedProductIds = new Set<string>();
+
+  for (const localSale of withJournalLocal.sales || []) {
+    if (!localSale.invNo) continue;
+    if (isItemTombstoned(localSale.invNo, localSale.updatedAt || localSale.date, salesTombstones)) {
+      continue;
+    }
+    const cloudSale = cloudSaleMap.get(localSale.invNo);
+    const localMs = parseTimeMs(localSale.updatedAt || localSale.date);
+    if (!cloudSale) {
+      if (journalSaleInvSet.has(localSale.invNo) || localMs >= recentCutoffMs) {
+        preservedLocalSales.push(localSale);
+        (localSale.items || []).forEach(it => {
+          if (it.id) preservedProductIds.add(it.id);
+        });
+      }
+    } else if (localMs > parseTimeMs(cloudSale.updatedAt || cloudSale.date)) {
+      cloudSaleMap.set(localSale.invNo, localSale);
+    }
+  }
+
+  const finalSales =
+    preservedLocalSales.length > 0
+      ? [...preservedLocalSales, ...Array.from(cloudSaleMap.values())].sort(
+          (a, b) => parseTimeMs(b.date) - parseTimeMs(a.date)
+        )
+      : Array.from(cloudSaleMap.values()).sort((a, b) => parseTimeMs(b.date) - parseTimeMs(a.date));
+
+  const localInvById = new Map((withJournalLocal.inventory || []).map(i => [i.id, i]));
 
   return {
     ...cloudData,
     backupVersion: CURRENT_BACKUP_VERSION,
-    migrationDone: cloudData.migrationDone || localFallback.migrationDone,
-    currentUser: localFallback.currentUser || cloudData.currentUser,
-    currentRole: localFallback.currentRole || cloudData.currentRole || 'admin',
+    migrationDone: cloudData.migrationDone || withJournalLocal.migrationDone,
+    currentUser: withJournalLocal.currentUser || cloudData.currentUser,
+    currentRole: withJournalLocal.currentRole || cloudData.currentRole || 'admin',
     settings: {
       ...cloudData.settings,
-      logo: cloudData.settings?.logo || localFallback.settings?.logo,
-      shopLogo: cloudData.settings?.shopLogo || localFallback.settings?.shopLogo,
-      invoiceLogo: cloudData.settings?.invoiceLogo || localFallback.settings?.invoiceLogo,
-      loginPageLogo: cloudData.settings?.loginPageLogo || localFallback.settings?.loginPageLogo,
+      logo: cloudData.settings?.logo || withJournalLocal.settings?.logo,
+      shopLogo: cloudData.settings?.shopLogo || withJournalLocal.settings?.shopLogo,
+      invoiceLogo: cloudData.settings?.invoiceLogo || withJournalLocal.settings?.invoiceLogo,
+      loginPageLogo: cloudData.settings?.loginPageLogo || withJournalLocal.settings?.loginPageLogo,
     },
     deletedIds,
     deletedInventoryIds,
-    inventory: (cloudData.inventory || []).map(item => ({
-      ...item,
-      image: item.image || localInvImgById.get(item.id),
-    })),
+    sales: finalSales,
+    inventory: (cloudData.inventory || []).map(item => {
+      const localItem = localInvById.get(item.id);
+      const localPatch = journal.inventoryPatches[item.id];
+      const cloudMs = parseTimeMs(item.updatedAt || item.createdAt);
+      const localMs = localItem ? parseTimeMs(localItem.updatedAt || localItem.createdAt) : 0;
+      const shouldKeepLocalStock =
+        localItem &&
+        localMs > cloudMs &&
+        (preservedProductIds.has(item.id) || (localPatch && parseTimeMs(localPatch.updatedAt) > cloudMs));
+
+      if (shouldKeepLocalStock) {
+        return {
+          ...item,
+          ...localItem,
+          image: item.image || localInvImgById.get(item.id),
+        };
+      }
+      return {
+        ...item,
+        image: item.image || localInvImgById.get(item.id),
+      };
+    }),
     expenses: (cloudData.expenses || []).map(exp => ({
       ...exp,
       image: exp.image || localExpImgById.get(exp.id),
@@ -3286,6 +3730,60 @@ export function reconcileWithAuthoritativeCloud(localFallback: AppData, cloudDat
       invoiceImage: pur.invoiceImage || localPurImgById.get(pur.id || pur.billNo),
     })),
   };
+}
+
+export async function enqueuePreservedLocalSalesIfMissingFromCloud(
+  mergedData: AppData,
+  remoteData: AppData,
+  storeId?: string
+): Promise<void> {
+  const sid = toValidFirestoreDocId(storeId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
+  const remoteSaleSet = new Set((remoteData.sales || []).map(s => s.invNo));
+  const missingSales = (mergedData.sales || []).filter(s => s.invNo && !remoteSaleSet.has(s.invNo));
+  if (missingSales.length === 0) return;
+
+  const entries: Array<{
+    op: 'set';
+    path: string;
+    data: Record<string, unknown>;
+    merge: boolean;
+    lastError: string;
+  }> = [];
+
+  for (const sale of missingSales) {
+    const saleDocId = toValidFirestoreDocId(sale.invNo, 'INV');
+    entries.push({
+      op: 'set',
+      path: `${STORES_COLLECTION}/${sid}/${SUB_COLLECTIONS.SALES}/${saleDocId}`,
+      data: sanitizeForFirestore(sale) as Record<string, unknown>,
+      merge: true,
+      lastError: 'Recovered offline sale queued for cloud sync',
+    });
+  }
+
+  const remoteInvMap = new Map((remoteData.inventory || []).map(i => [i.id, i]));
+  for (const inv of mergedData.inventory || []) {
+    const rInv = remoteInvMap.get(inv.id);
+    if (rInv && parseTimeMs(inv.updatedAt || inv.createdAt) > parseTimeMs(rInv.updatedAt || rInv.createdAt)) {
+      const invId = toValidFirestoreDocId(inv.id, 'STK');
+      entries.push({
+        op: 'set',
+        path: `${STORES_COLLECTION}/${sid}/${SUB_COLLECTIONS.INVENTORY}/${invId}`,
+        data: sanitizeForFirestore({
+          qty: inv.qty,
+          imeis: inv.imeis || [],
+          imei: inv.imei || null,
+          variants: inv.variants,
+          updatedAt: inv.updatedAt,
+        }) as Record<string, unknown>,
+        merge: true,
+        lastError: 'Recovered offline stock deduction queued for cloud sync',
+      });
+    }
+  }
+
+  await enqueuePendingWritesBatch(entries, true);
+  processPendingWritesQueue().catch(() => {});
 }
 
 // ==================== STARTUP INITIALIZATION ====================
@@ -3310,18 +3808,18 @@ export async function migrateAndInitializeData(
     let currentBestData: AppData;
 
     if (options?.currentState) {
-      currentBestData = options.currentState;
+      currentBestData = applyOfflineJournalToData(options.currentState, storeId);
       try {
         const idbData = await loadFromIndexedDB(storeId);
         if (idbData) {
-          currentBestData = mergeAppData(idbData, currentBestData);
+          currentBestData = applyOfflineJournalToData(mergeAppData(idbData, currentBestData), storeId);
           onDataLoaded(currentBestData);
         }
       } catch (idbErr) {
         console.warn('Manual sync IndexedDB rehydration warning:', idbErr);
       }
     } else {
-      // 1. Immediate render from localStorage mirror
+      // 1. Immediate render from localStorage mirror + offline journal
       const localData = loadStoredData(storeId);
       currentBestData = localData;
       onDataLoaded(localData);
@@ -3330,7 +3828,7 @@ export async function migrateAndInitializeData(
       try {
         const idbData = await loadFromIndexedDB(storeId);
         if (idbData) {
-          currentBestData = mergeAppData(localData, idbData);
+          currentBestData = applyOfflineJournalToData(mergeAppData(localData, idbData), storeId);
           onDataLoaded(currentBestData);
         }
       } catch (idbErr) {
@@ -3353,6 +3851,10 @@ export async function migrateAndInitializeData(
         remainingPendingOps.length === 0 && fromServer
           ? reconcileWithAuthoritativeCloud(currentBestData, remoteData)
           : mergeAppData(currentBestData, remoteData);
+
+      if (fromServer) {
+        enqueuePreservedLocalSalesIfMissingFromCloud(mergedData, remoteData, storeId).catch(() => {});
+      }
 
       // 4. One-time subcollection migration if needed (skip while quota cooldown is active)
       if (!remoteData.migrationDone && !getQuotaExceededFlag()) {
@@ -3397,6 +3899,7 @@ export async function clearAllStoredData(targetStoreId?: string, currentData?: A
   }
 
   try {
+    clearOfflineSaleJournal(storeId);
     localStorage.removeItem(getLocalStorageKey(storeId));
     if (storeId === DEFAULT_STORE_ID) {
       localStorage.removeItem(STORAGE_KEY);
