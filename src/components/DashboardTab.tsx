@@ -177,27 +177,25 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
 
   // Selected period credit (Udhar) calculated in real time
   const periodCreditIssued = useMemo(() => {
-    const isoToday = new Date().toISOString().split('T')[0];
     let total = 0;
     (data.khata || []).forEach(cust => {
       (cust.history || []).forEach(tx => {
         if (
           tx.type === 'credit' &&
-          isDateInDashboardPeriod(tx.date, periodFilter, latestClosing, isoToday)
+          isDateInDashboardPeriod(tx.date, periodFilter, latestClosing, localTodayStr)
         ) {
           total += tx.amount;
         }
       });
     });
     return total;
-  }, [data.khata, periodFilter, latestClosing]);
+  }, [data.khata, periodFilter, latestClosing, localTodayStr]);
 
   const periodExpensesList = useMemo(() => {
-    const isoToday = new Date().toISOString().split('T')[0];
     return (data.expenses || []).filter(exp =>
-      isDateInDashboardPeriod(exp.date, periodFilter, latestClosing, isoToday)
+      isDateInDashboardPeriod(exp.date, periodFilter, latestClosing, localTodayStr)
     );
-  }, [data.expenses, periodFilter, latestClosing]);
+  }, [data.expenses, periodFilter, latestClosing, localTodayStr]);
 
   // Direct, instant, high-performance real-time values (no animated lag or frame drops when switching tabs)
   const cashVal = cashDrawer.cashInHand;

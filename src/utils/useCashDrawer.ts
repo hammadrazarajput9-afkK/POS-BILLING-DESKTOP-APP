@@ -93,11 +93,14 @@ export function isDateInDashboardPeriod(
   }
 
   const parsed = new Date(dateStr);
-  const txDay = dateStr.length >= 10 && /^\d{4}-\d{2}-\d{2}/.test(dateStr)
-    ? dateStr.substring(0, 10)
-    : !isNaN(parsed.getTime())
-    ? `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`
-    : '';
+  const txDay =
+    dateStr.includes('T') && !isNaN(parsed.getTime())
+      ? `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`
+      : dateStr.length >= 10 && /^\d{4}-\d{2}-\d{2}/.test(dateStr)
+      ? dateStr.substring(0, 10)
+      : !isNaN(parsed.getTime())
+      ? `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`
+      : '';
 
   const now = new Date();
   const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -161,7 +164,8 @@ export function useCashDrawer(
       }
     }
 
-    const todayStr = new Date().toISOString().substring(0, 10);
+    const nowLocal = new Date();
+    const todayStr = `${nowLocal.getFullYear()}-${String(nowLocal.getMonth() + 1).padStart(2, '0')}-${String(nowLocal.getDate()).padStart(2, '0')}`;
 
     // 2. Compute Sales Breakdown for active period
     let cashSales = 0;

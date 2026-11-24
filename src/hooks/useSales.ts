@@ -145,7 +145,7 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
     if (saleWithTs.invoiceType === 'credit' && saleWithTs.amountDue && saleWithTs.amountDue > 0) {
       let matched = false;
       const txId = generateEntityId('TX');
-      const txDate = now;
+      const txDate = saleWithTs.date || now;
       const saleNormPhone = (saleWithTs.custPhone || '').replace(/[^0-9]/g, '');
       const saleNormName = (saleWithTs.custName || '').trim().toLowerCase();
 

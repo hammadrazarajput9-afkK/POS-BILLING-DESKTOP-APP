@@ -81,6 +81,8 @@ interface PosDraftState {
   accountId: string;
   amountPaid: number | '';
   billNote: string;
+  editingOriginalDate?: string;
+  editingOriginalInvNo?: string;
 }
 
 const initialPosDraft: PosDraftState = {
@@ -98,6 +100,8 @@ const initialPosDraft: PosDraftState = {
   accountId: '',
   amountPaid: '',
   billNote: '',
+  editingOriginalDate: undefined,
+  editingOriginalInvNo: undefined,
 };
 
 const PosTabComponent: React.FC<PosTabProps> = ({
@@ -390,11 +394,13 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       accountId: sale.accountId || '',
       amountPaid: sale.amountPaid || '',
       billNote: sale.notes || '',
+      editingOriginalDate: sale.date,
+      editingOriginalInvNo: sale.invNo,
     });
 
     setEditModalSale(null);
     setPosSubTab('billing');
-    showToast(`Invoice #${sale.invNo} loaded into cart! You can now edit items, quantities & details.`, 'success');
+    showToast(`Invoice #${sale.invNo} loaded into cart! Original date (${new Date(sale.date).toLocaleDateString()}) preserved.`, 'success');
   };
 
   const handleSaveQuickEdit = () => {
@@ -1187,6 +1193,31 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
       {/* Non-Scrollable Compact Cart Body */}
       <div className="space-y-2">
+        {draft.editingOriginalDate && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-2 text-[11px] text-amber-900">
+            <div className="flex items-center gap-1.5 min-w-0 font-bold">
+              <Calendar className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+              <span className="truncate">
+                Editing #{draft.editingOriginalInvNo || 'Invoice'} • Original Date:{' '}
+                {new Date(draft.editingOriginalDate).toLocaleDateString()}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setDraft(prev => ({
+                  ...prev,
+                  editingOriginalDate: undefined,
+                  editingOriginalInvNo: undefined,
+                }))
+              }
+              className="text-[10px] font-extrabold text-amber-800 hover:text-amber-950 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-lg transition cursor-pointer shrink-0"
+              title="Use Today's Date Instead"
+            >
+              Use Today
+            </button>
+          </div>
+        )}
         {/* Invoice Type + Customer Info Compact Block */}
         <div className="bg-slate-50 p-2 rounded-xl border border-slate-200/80 space-y-1.5">
           <div className="grid grid-cols-2 gap-1.5">
@@ -1725,8 +1756,14 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       ? paymentMethod
       : 'Cash';
 
+    // Preserve original invoice date & date-prefix sequence when re-editing a past-date invoice
+    const parsedOriginalDate = draft.editingOriginalDate ? new Date(draft.editingOriginalDate) : null;
+    const hasValidOriginalDate = Boolean(parsedOriginalDate && !isNaN(parsedOriginalDate.getTime()));
+    const effectiveSaleDate = hasValidOriginalDate ? draft.editingOriginalDate! : new Date().toISOString();
+    const effectiveDateForInvNo = hasValidOriginalDate ? parsedOriginalDate! : new Date();
+
     // Generate persistent sequential invoice number: INV-YYYYMMDD-0001, INV-YYYYMMDD-0002...
-    const invNo = generateNextInvoiceNumber(sales);
+    const invNo = generateNextInvoiceNumber(sales, effectiveDateForInvNo);
 
     const totalCost = cart.reduce((acc, item) => acc + item.costPrice * item.cartQty, 0);
     const netProfit = Math.max(0, grandTotal - totalCost);
@@ -1775,7 +1812,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       paymentMethod: effectivePaymentMethod,
       accountId: selectedOnlineAccount?.id || undefined,
       notes: billNote.trim() || undefined,
-      date: new Date().toISOString(),
+      date: effectiveSaleDate,
     };
 
     onCompleteSale(saleRecord);
