@@ -616,6 +616,7 @@ export const Settings: React.FC<SettingsProps> = ({
   };
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-1.5 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
       <div className="bg-white rounded-xl sm:rounded-2xl max-w-2xl w-full p-3 sm:p-6 shadow-2xl space-y-3 sm:space-y-4 border border-slate-100 my-auto animate-in fade-in zoom-in-95 max-h-[95dvh] sm:max-h-[92vh] flex flex-col">
         {/* Modal Header */}
@@ -1841,6 +1842,7 @@ export const Settings: React.FC<SettingsProps> = ({
           )}
         </div>
       </div>
+    </div>
 
       {/* Live Camera Capture Modal for Shop or Invoice Logo */}
       <CameraCaptureModal
@@ -2174,7 +2176,7 @@ export const Settings: React.FC<SettingsProps> = ({
         title="Refresh / Reset Authenticator 2FA Key"
         description="Scanning the new QR Code will invalidate your previous key. Enter the 6-digit passcode from Google Authenticator to confirm."
       />
-    </div>
+    </>
   );
 };
 

@@ -252,7 +252,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
   const logoSrc = data.settings.shopLogo || data.settings.logo;
 
   return (
-    <div className="space-y-5 sm:space-y-6 animate-tab-enter">
+    <div className="space-y-5 sm:space-y-6">
       {/* ======================================================== */}
       {/* PROMINENT 2FA SECURITY SETUP BANNER FOR UNVERIFIED ADMINS*/}
       {/* ======================================================== */}

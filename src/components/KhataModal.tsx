@@ -204,6 +204,7 @@ export const AddKhataModal: React.FC<AddKhataModalProps> = ({
   };
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/65 backdrop-blur-xs animate-in fade-in overflow-y-auto">
       <div className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl border border-slate-200 animate-in zoom-in-95 my-auto max-h-[94vh] flex flex-col overflow-hidden">
         {/* Header */}
@@ -594,6 +595,7 @@ export const AddKhataModal: React.FC<AddKhataModalProps> = ({
           </div>
         </form>
       </div>
+    </div>
 
       {/* Live Camera Snapshot Modal for Customer */}
       <CameraCaptureModal
@@ -605,7 +607,7 @@ export const AddKhataModal: React.FC<AddKhataModalProps> = ({
           showToast('Customer photo captured with camera!', 'success');
         }}
       />
-    </div>
+    </>
   );
 };
 

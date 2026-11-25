@@ -161,6 +161,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
   };
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
       <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-100 animate-in zoom-in-95">
         {/* Header */}
@@ -445,6 +446,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
           </div>
         </form>
       </div>
+    </div>
 
       {/* Live Camera Snapshot Modal for Expense Receipt */}
       <CameraCaptureModal
@@ -456,7 +458,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
           showToast('Expense receipt captured with camera!', 'success');
         }}
       />
-    </div>
+    </>
   );
 };
 

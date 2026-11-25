@@ -83,7 +83,7 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="app-header min-h-[3.75rem] sm:h-16 bg-white/95 backdrop-blur-md border-b border-slate-200/90 px-2.5 pt-[calc(env(safe-area-inset-top,0px)+0.85rem)] pb-2.5 sm:py-0 sm:px-5 flex items-center justify-between gap-2 sm:gap-4 z-20 shrink-0 max-w-full transition-colors duration-200">
+    <header className="app-header min-h-[3.75rem] sm:h-16 bg-white border-b border-slate-200/90 px-2.5 pt-[calc(env(safe-area-inset-top,0px)+0.85rem)] pb-2.5 sm:py-0 sm:px-5 flex items-center justify-between gap-2 sm:gap-4 z-20 shrink-0 max-w-full transition-colors duration-200">
       {/* Left Zone: Menu Toggle + Shop Logo + Shop Name & Active Page */}
       <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
         <button

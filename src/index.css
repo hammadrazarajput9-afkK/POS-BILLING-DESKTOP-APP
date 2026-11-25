@@ -840,7 +840,9 @@
   color: #fdfaf3 !important;
 }
 [data-theme="gold-black"] .bg-white,
-[data-theme="gold-black"] [class*="bg-white/"] {
+[data-theme="gold-black"] .bg-white\/80,
+[data-theme="gold-black"] .bg-white\/90,
+[data-theme="gold-black"] .bg-white\/95 {
   background-color: #121217 !important;
   color: #fdfaf3 !important;
   border-color: #2e2615 !important;
@@ -1042,11 +1044,9 @@ body,
 @keyframes tabEnter {
   from {
     opacity: 0;
-    transform: translateY(8px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
@@ -1091,7 +1091,7 @@ body,
 }
 
 .animate-tab-enter {
-  animation: tabEnter 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: tabEnter 0.2s ease-out;
 }
 
 .animate-card-in {

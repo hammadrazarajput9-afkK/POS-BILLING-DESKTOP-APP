@@ -522,6 +522,7 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
   if (!isOpen) return null;
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
       <div className="bg-white rounded-2xl max-w-3xl w-full p-5 sm:p-6 shadow-2xl space-y-5 border border-slate-100 my-auto animate-in fade-in zoom-in-95 max-h-[92vh] flex flex-col">
         {/* Header */}
@@ -1033,6 +1034,7 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
           )}
         </div>
       </div>
+    </div>
 
       {/* Live Barcode / IMEI Camera Scanner for Sales Return */}
       <BarcodeScannerModal
@@ -1042,7 +1044,7 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
         title="Scan Returned Phone IMEI or Barcode"
         placeholder="Scan IMEI or product barcode to find sale..."
       />
-    </div>
+    </>
   );
 };
 

@@ -1413,6 +1413,7 @@ export const StockModal: React.FC<StockModalProps> = ({
   if (!isOpen) return null;
 
   return (
+    <>
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-1.5 sm:p-3 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
       <div className="bg-white rounded-2xl max-w-4xl w-full overflow-x-hidden p-2.5 sm:p-4 shadow-2xl space-y-2 sm:space-y-2.5 border border-slate-100 animate-in fade-in zoom-in-95 max-h-[95dvh] lg:max-h-[96vh] overflow-y-auto flex flex-col my-auto">
         {/* Compact Header */}
@@ -2347,6 +2348,7 @@ export const StockModal: React.FC<StockModalProps> = ({
           )}
         </form>
       </div>
+    </div>
 
       {/* Live Camera Snapshot Modal */}
       <CameraCaptureModal
@@ -2374,6 +2376,6 @@ export const StockModal: React.FC<StockModalProps> = ({
           }
         }}
       />
-    </div>
+    </>
   );
 };

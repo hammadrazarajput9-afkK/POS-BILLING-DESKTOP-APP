@@ -1982,12 +1982,7 @@ function AppContent() {
               : 'p-2.5 sm:p-5 pb-[calc(4rem+env(safe-area-inset-bottom,0px))] lg:pb-6'
           }`}
         >
-          <div
-            key={activeTab}
-            className={`${
-              activeTab === 'pos' ? 'w-full flex flex-col lg:min-h-0' : 'max-w-7xl mx-auto'
-            } animate-tab-enter`}
-          >
+          <div className={activeTab === 'pos' ? 'w-full flex flex-col lg:min-h-0' : 'max-w-7xl mx-auto'}>
             {activeTab === 'dashboard' && (data.currentRole || 'admin') === 'admin' && (
               <DashboardTab
                 data={data}
