@@ -30,7 +30,6 @@ import {
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { generateNextReturnNumber, extractItemImeis } from '../utils/imeiManager';
-import { normalizePaymentChannel } from '../utils/accounting';
 import { smartFilterAndSort } from '../utils/smartSearch';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
 
@@ -67,7 +66,6 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
   currency,
   salesReturns = [],
   initialSale = null,
-  onlineAccounts = [],
   khata = [],
   imeiRecords = [],
   onProcessReturn,
@@ -88,16 +86,9 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
   const [overallReason, setOverallReason] = useState<string>('Defective / Faulty Product');
   const [refundPaymentMethod, setRefundPaymentMethod] = useState<PaymentMethod>('Cash');
   const [deductFromKhata, setDeductFromKhata] = useState<boolean>(false);
-  const [accountId, setAccountId] = useState<string>('');
   const [returnDate, setReturnDate] = useState<string>(() => new Date().toISOString().substring(0, 10));
   const [returnedBy, setReturnedBy] = useState<string>('Admin');
   const [notes, setNotes] = useState<string>('');
-
-  // Matching online accounts for refund payment method
-  const matchingAccounts = useMemo(() => {
-    if (refundPaymentMethod === 'Credit Adjustment') return [];
-    return onlineAccounts.filter(a => normalizePaymentChannel(a.bankType || a.name) === refundPaymentMethod);
-  }, [onlineAccounts, refundPaymentMethod]);
 
   const linkedKhataCustomer = useMemo(() => {
     if (!selectedSale) return undefined;
@@ -116,18 +107,6 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
     }
     return undefined;
   }, [selectedSale, khata]);
-
-  useEffect(() => {
-    if (matchingAccounts.length === 1) {
-      if (accountId !== matchingAccounts[0].id) {
-        setAccountId(matchingAccounts[0].id);
-      }
-    } else {
-      if (accountId !== '') {
-        setAccountId('');
-      }
-    }
-  }, [refundPaymentMethod, matchingAccounts, accountId]);
 
   const initializeFormForSale = (sale: SaleRecord, scannedCode?: string) => {
     const cleanCode = (scannedCode || '').trim().toLowerCase();
@@ -215,7 +194,7 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
       setRefundPaymentMethod('Credit Adjustment');
       setDeductFromKhata(true);
     } else {
-      setRefundPaymentMethod(sale.paymentMethod || 'Cash');
+      setRefundPaymentMethod('Cash');
       setDeductFromKhata(false);
     }
   };
@@ -478,11 +457,6 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
       return;
     }
 
-    if (matchingAccounts.length > 1 && !accountId) {
-      showToast(`Please select the specific ${refundPaymentMethod} account for refund.`, 'warning');
-      return;
-    }
-
     if (returnItems.length === 0) {
       showToast('Please select at least one item to return', 'warning');
       return;
@@ -506,7 +480,7 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
       items: returnItems,
       totalRefundAmount: totalRefund,
       refundPaymentMethod,
-      accountId: matchingAccounts.length > 0 ? accountId || undefined : undefined,
+      accountId: undefined,
       totalCostReversed,
       netProfitDeducted,
       reason: overallReason,
@@ -633,7 +607,7 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                               #{sale.invNo}
                             </span>
                             <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-slate-100 text-slate-700">
-                              {sale.paymentMethod}
+                              {sale.invoiceType === 'credit' ? 'Credit' : 'Cash'}
                             </span>
                             {sale.returnStatus === 'PARTIAL' && (
                               <span className="text-[10px] px-1.5 py-0.5 rounded-md font-bold bg-amber-100 text-amber-800">
@@ -865,47 +839,26 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 bg-slate-50 rounded-xl border border-slate-200">
                 <div>
                   <label className="block text-xs font-bold text-slate-800 mb-1">
-                    Refund Payment Method
+                    Refund Settlement
                   </label>
-                  <select
-                    value={refundPaymentMethod}
-                    onChange={e => {
-                      const nextMethod = e.target.value as PaymentMethod;
-                      setRefundPaymentMethod(nextMethod);
-                      if (nextMethod === 'Credit Adjustment') {
-                        setDeductFromKhata(true);
-                      }
-                    }}
-                    className="compact-mobile-input w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-amber-500"
-                  >
-                    {(selectedSale.invoiceType === 'credit' || linkedKhataCustomer) && (
+                  {(selectedSale.invoiceType === 'credit' || linkedKhataCustomer) ? (
+                    <select
+                      value={refundPaymentMethod === 'Credit Adjustment' ? 'Credit Adjustment' : 'Cash'}
+                      onChange={e => {
+                        const nextMethod = e.target.value as PaymentMethod;
+                        setRefundPaymentMethod(nextMethod);
+                        setDeductFromKhata(nextMethod === 'Credit Adjustment');
+                      }}
+                      className="compact-mobile-input w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-amber-500"
+                    >
                       <option value="Credit Adjustment">
                         Credit / Khata Account Adjustment (Deduct Udhar)
                       </option>
-                    )}
-                    <option value="Cash">Cash Return (Physical Counter Cash)</option>
-                    <option value="Bank">Bank Account Transfer</option>
-                    <option value="JazzCash">JazzCash Wallet</option>
-                    <option value="Easypaisa">Easypaisa Wallet</option>
-                    <option value="Card">Card Reversal</option>
-                  </select>
-                  {matchingAccounts.length > 1 && (
-                    <div className="mt-2">
-                      <label className="block text-[11px] font-bold text-amber-900 mb-1">
-                        Select Specific {refundPaymentMethod} Account *
-                      </label>
-                      <select
-                        value={accountId}
-                        onChange={e => setAccountId(e.target.value)}
-                        className="w-full px-3 py-2 bg-white border border-amber-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-amber-600"
-                      >
-                        <option value="">-- Choose Account --</option>
-                        {matchingAccounts.map(acc => (
-                          <option key={acc.id} value={acc.id}>
-                            {acc.name} {acc.accountNumber ? `(${acc.accountNumber})` : ''}
-                          </option>
-                        ))}
-                      </select>
+                      <option value="Cash">Cash Return (Cash In Hand)</option>
+                    </select>
+                  ) : (
+                    <div className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-emerald-700">
+                      Cash Return (Cash In Hand)
                     </div>
                   )}
                 </div>

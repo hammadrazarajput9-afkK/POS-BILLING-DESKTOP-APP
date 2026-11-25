@@ -169,7 +169,7 @@ export const OnlineStatusBadge: React.FC<OnlineStatusBadgeProps> = ({
       <button
         type="button"
         onClick={() => setDetailsOpen(true)}
-        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition cursor-pointer active:scale-95 shadow-2xs ${badgeClasses}`}
+        className={`inline-flex items-center justify-center gap-1.5 w-7 h-7 sm:w-auto sm:h-auto sm:px-2.5 sm:py-1 rounded-full text-[11px] font-bold border transition cursor-pointer active:scale-95 shadow-2xs shrink-0 ${badgeClasses}`}
         title="Tap for cloud sync status, quota usage, local vs online backup status, and pending writes queue"
       >
         <span className="relative flex h-2 w-2 shrink-0">
@@ -182,18 +182,18 @@ export const OnlineStatusBadge: React.FC<OnlineStatusBadgeProps> = ({
         </span>
 
         {isOffline ? (
-          <CloudOff className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+          <CloudOff className="hidden sm:block w-3.5 h-3.5 text-slate-600 shrink-0" />
         ) : hasCloudError ? (
-          <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+          <AlertCircle className="hidden sm:block w-3.5 h-3.5 text-rose-600 shrink-0" />
         ) : isSyncingOrPending ? (
-          <RefreshCw className="w-3.5 h-3.5 text-amber-600 animate-spin shrink-0" />
+          <RefreshCw className="hidden sm:block w-3.5 h-3.5 text-amber-600 animate-spin shrink-0" />
         ) : (
-          <Cloud className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+          <Cloud className="hidden sm:block w-3.5 h-3.5 text-emerald-600 shrink-0" />
         )}
 
         <span className="hidden sm:inline whitespace-nowrap">{labelText}</span>
         {isSyncingOrPending && status.pendingCount > 0 && (
-          <span className="sm:hidden text-[10px] font-black tabular-nums">
+          <span className="sm:hidden text-[9px] font-black tabular-nums leading-none">
             {status.pendingCount}
           </span>
         )}

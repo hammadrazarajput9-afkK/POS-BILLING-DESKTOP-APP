@@ -12,7 +12,6 @@ import {
   Barcode,
   RotateCcw,
   UserCheck,
-  CreditCard,
   Banknote,
   BookOpen,
   FileText,
@@ -39,7 +38,6 @@ import { useToast } from './Toast';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { useFormDraft } from '../hooks/useFormDraft';
 import { generateNextInvoiceNumber, extractItemImeis } from '../utils/imeiManager';
-import { normalizePaymentChannel } from '../utils/accounting';
 import { InvoiceShareModal } from './InvoiceShareModal';
 import { smartFilterAndSort, smartMatch, smartSearchScore } from '../utils/smartSearch';
 
@@ -110,9 +108,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   currency,
   categories,
   khataCustomers = [],
-  onlineAccounts = [],
   settings,
-  posPreferences,
   onOpenPosSettings,
   onCompleteSale,
   onOpenAddStock,
@@ -122,7 +118,6 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   onCancelSale,
   onDeleteSale,
   onUpdateSale,
-  onUpdateOnlineAccount,
   saleToEdit,
   onClearSaleToEdit,
 }) => {
@@ -139,13 +134,11 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   const [copiedImei, setCopiedImei] = useState<string | null>(null);
   const [duplicateScanAlert, setDuplicateScanAlert] = useState<{ title: string; detail: string } | null>(null);
   const duplicateAlertTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [showChannelCustomizer, setShowChannelCustomizer] = useState(false);
   const [lastScannedItem, setLastScannedItem] = useState<{
     itemId: string;
     imei?: string;
     variantLabel?: string;
   } | null>(null);
-  const showPaymentAccountsSection = posPreferences?.showPaymentAccounts !== false;
 
   const triggerDuplicateAlert = (title: string, detail: string) => {
     setDuplicateScanAlert({ title, detail });
@@ -280,7 +273,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       return smartMatch(
         q,
         [sale.invNo, sale.custName, sale.custPhone, sale.retailerShopName],
-        [itemNamesAndSpecs, sale.notes, sale.paymentMethod]
+        [itemNamesAndSpecs, sale.notes]
       );
     });
   }, [sales, historyRange, historyStartDate, historyEndDate, historySearch, inventory]);
@@ -305,7 +298,6 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   const [editMode, setEditMode] = useState<'cart' | 'quick'>('cart');
   const [quickCustName, setQuickCustName] = useState('');
   const [quickCustPhone, setQuickCustPhone] = useState('');
-  const [quickPaymentMethod, setQuickPaymentMethod] = useState<PaymentMethod>('Cash');
   const [quickNotes, setQuickNotes] = useState('');
 
   // Handle external saleToEdit (e.g. from Reports tab or Receipt modal)
@@ -314,7 +306,6 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       setEditModalSale(saleToEdit);
       setQuickCustName(saleToEdit.custName || '');
       setQuickCustPhone(saleToEdit.custPhone || '');
-      setQuickPaymentMethod(saleToEdit.paymentMethod || 'Cash');
       setQuickNotes(saleToEdit.notes || '');
       setEditMode('cart');
       if (onClearSaleToEdit) {
@@ -347,7 +338,6 @@ const PosTabComponent: React.FC<PosTabProps> = ({
     setEditModalSale(sale);
     setQuickCustName(sale.custName || '');
     setQuickCustPhone(sale.custPhone || '');
-    setQuickPaymentMethod(sale.paymentMethod || 'Cash');
     setQuickNotes(sale.notes || '');
     setEditMode('cart');
   };
@@ -390,8 +380,8 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       retailerCity: sale.retailerCity || '',
       retailerNtn: sale.retailerNtn || '',
       discount: sale.discount,
-      paymentMethod: sale.paymentMethod || 'Cash',
-      accountId: sale.accountId || '',
+      paymentMethod: 'Cash',
+      accountId: '',
       amountPaid: sale.amountPaid || '',
       billNote: sale.notes || '',
       editingOriginalDate: sale.date,
@@ -409,7 +399,8 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       ...editModalSale,
       custName: quickCustName.trim() || 'Walk-in Customer',
       custPhone: quickCustPhone.trim() || undefined,
-      paymentMethod: quickPaymentMethod,
+      paymentMethod: 'Cash',
+      accountId: undefined,
       notes: quickNotes.trim() || undefined,
     };
     if (onUpdateSale) {
@@ -471,7 +462,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                   <td>${s.invNo}</td>
                   <td>${new Date(s.date).toLocaleString()}</td>
                   <td>${s.custName}</td>
-                  <td>${s.paymentMethod}</td>
+                  <td>${s.invoiceType === 'credit' ? 'Credit' : 'Cash'}</td>
                   <td>${s.status || 'COMPLETED'}</td>
                   <td>${currency} ${s.grandTotal.toLocaleString()}</td>
                 </tr>
@@ -550,8 +541,6 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   const retailerCity = draft.retailerCity || '';
   const retailerNtn = draft.retailerNtn || '';
   const discount = draft.discount !== undefined ? draft.discount : '';
-  const paymentMethod = draft.paymentMethod || 'Cash';
-  const accountId = draft.accountId || '';
   const amountPaid = draft.amountPaid !== undefined ? draft.amountPaid : '';
   const billNote = draft.billNote || '';
 
@@ -563,19 +552,6 @@ const PosTabComponent: React.FC<PosTabProps> = ({
         : item.salePrice;
     }
     return item.salePrice;
-  };
-
-  // Visible online accounts configured in Daily Closing for POS Billing Cart
-  const visiblePosAccounts = useMemo(() => {
-    return onlineAccounts.filter(a => a.showInPos !== false);
-  }, [onlineAccounts]);
-
-  const selectCashChannel = () => {
-    setDraft(prev => ({ ...prev, paymentMethod: 'Cash', accountId: '' }));
-  };
-
-  const selectOnlineAccount = (acc: OnlineAccount) => {
-    setDraft(prev => ({ ...prev, paymentMethod: acc.name, accountId: acc.id }));
   };
 
   const setCart = (updater: CartItem[] | ((prev: CartItem[]) => CartItem[])) => {
@@ -629,10 +605,6 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
   const setDiscount = (disc: number | '') => {
     setDraft(prev => ({ ...prev, discount: disc }));
-  };
-
-  const setPaymentMethod = (pm: PaymentMethod) => {
-    setDraft(prev => ({ ...prev, paymentMethod: pm }));
   };
 
   const setAmountPaid = (amt: number | '') => {
@@ -1504,183 +1476,6 @@ const PosTabComponent: React.FC<PosTabProps> = ({
             )}
           </div>
 
-          {/* Payment Modes (Toggleable from POS & Billing Settings) */}
-          {showPaymentAccountsSection && (
-            <div>
-              <div className="flex items-center justify-between gap-2 mb-1">
-                <label className="text-[10px] font-bold uppercase text-slate-500">
-                  Payment Channel
-                </label>
-                {onlineAccounts.length > 0 && onUpdateOnlineAccount && (
-                  <button
-                    type="button"
-                    onClick={() => setShowChannelCustomizer(prev => !prev)}
-                    className={`px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 border transition cursor-pointer ${
-                      showChannelCustomizer
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
-                    }`}
-                  >
-                    <Sliders className="w-2.5 h-2.5" />
-                    <span>Customize ({visiblePosAccounts.length}/{onlineAccounts.length})</span>
-                  </button>
-                )}
-              </div>
-
-              {showChannelCustomizer && onlineAccounts.length > 0 && onUpdateOnlineAccount && (
-                <div className="mb-1.5 p-2 bg-slate-50 border border-blue-200 rounded-xl space-y-1">
-                  <div className="flex items-center justify-between text-[10px] font-bold text-slate-600 uppercase">
-                    <span>Select accounts to show in Cart</span>
-                    <button
-                      type="button"
-                      onClick={() => setShowChannelCustomizer(false)}
-                      className="text-blue-600 hover:underline cursor-pointer normal-case"
-                    >
-                      Done
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
-                    {onlineAccounts.map(acc => {
-                      const isShown = acc.showInPos !== false;
-                      return (
-                        <label
-                          key={acc.id}
-                          className={`flex items-center justify-between gap-2 p-1.5 rounded-lg border text-[11px] cursor-pointer transition ${
-                            isShown
-                              ? 'bg-white border-blue-200 text-slate-900'
-                              : 'bg-slate-100/80 border-slate-200 text-slate-400'
-                          }`}
-                        >
-                          <div className="min-w-0">
-                            <span className="font-bold block truncate">{acc.name}</span>
-                            <span className="text-[9px] text-slate-500 block truncate">
-                              {acc.bankType || 'Digital Wallet'}
-                              {acc.accountNumber ? ` • ${acc.accountNumber}` : ''}
-                            </span>
-                          </div>
-                          <input
-                            type="checkbox"
-                            checked={isShown}
-                            onChange={() =>
-                              onUpdateOnlineAccount(
-                                { ...acc, showInPos: !isShown },
-                                true
-                              )
-                            }
-                            className="w-3.5 h-3.5 accent-blue-600 shrink-0 cursor-pointer"
-                          />
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                {/* Cash Button */}
-                <button
-                  type="button"
-                  onClick={selectCashChannel}
-                  className={`p-1.5 rounded-xl text-left transition cursor-pointer border min-h-[38px] flex flex-col justify-center ${
-                    paymentMethod === 'Cash' && !accountId
-                      ? invoiceType === 'credit'
-                        ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
-                        : 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                      : 'bg-slate-50 text-slate-800 border-slate-200 hover:bg-slate-100'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="text-[11px] font-extrabold truncate">Cash</span>
-                    <span
-                      className={`text-[9px] px-1 py-0.2 rounded font-bold shrink-0 ${
-                        paymentMethod === 'Cash' && !accountId
-                          ? 'bg-white/20 text-white'
-                          : 'bg-emerald-100 text-emerald-800'
-                      }`}
-                    >
-                      Drawer
-                    </span>
-                  </div>
-                  <span
-                    className={`text-[9px] truncate ${
-                      paymentMethod === 'Cash' && !accountId ? 'text-white/80' : 'text-slate-400'
-                    }`}
-                  >
-                    Physical Cash
-                  </span>
-                </button>
-
-                {/* Configured Daily Closing Digital / Bank / Load Accounts */}
-                {visiblePosAccounts.map(acc => {
-                  const isSelected =
-                    accountId === acc.id ||
-                    (!accountId &&
-                      paymentMethod !== 'Cash' &&
-                      String(paymentMethod).trim().toLowerCase() === acc.name.trim().toLowerCase());
-                  return (
-                    <button
-                      key={acc.id}
-                      type="button"
-                      onClick={() => selectOnlineAccount(acc)}
-                      className={`p-1.5 rounded-xl text-left transition cursor-pointer border min-h-[38px] flex flex-col justify-center ${
-                        isSelected
-                          ? invoiceType === 'credit'
-                            ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
-                            : 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                          : 'bg-slate-50 text-slate-800 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="text-[11px] font-extrabold truncate">{acc.name}</span>
-                        <span
-                          className={`text-[9px] px-1 py-0.2 rounded font-bold shrink-0 max-w-[72px] truncate ${
-                            isSelected
-                              ? 'bg-white/20 text-white'
-                              : 'bg-blue-100/80 text-blue-800'
-                          }`}
-                        >
-                          {acc.bankType || 'Digital'}
-                        </span>
-                      </div>
-                      <span
-                        className={`text-[9px] tabular-nums truncate ${
-                          isSelected ? 'text-white/85' : 'text-slate-500'
-                        }`}
-                      >
-                        {acc.accountNumber || acc.accountTitle || acc.bankType || 'Account'}
-                      </span>
-                    </button>
-                  );
-                })}
-
-                {/* Fallback quick methods only when no digital accounts exist */}
-                {onlineAccounts.length === 0 &&
-                  (['JazzCash', 'Easypaisa', 'Bank', 'Card'] as PaymentMethod[]).map(pm => (
-                    <button
-                      key={pm}
-                      type="button"
-                      onClick={() => setDraft(prev => ({ ...prev, paymentMethod: pm, accountId: '' }))}
-                      className={`p-1.5 rounded-xl text-xs font-bold text-center transition cursor-pointer border min-h-[38px] ${
-                        paymentMethod === pm
-                          ? invoiceType === 'credit'
-                            ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
-                            : 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      {pm}
-                    </button>
-                  ))}
-              </div>
-
-              {onlineAccounts.length > 0 && visiblePosAccounts.length === 0 && (
-                <p className="text-[11px] text-amber-700 font-semibold mt-1">
-                  Sab digital accounts hidden hain — Customize par click karke show karein.
-                </p>
-              )}
-            </div>
-          )}
-
           {/* Compact Single-Line Per-Bill Note Field */}
           <div className="pt-1.5 border-t border-slate-100">
             <div className="flex items-center justify-between text-[10px] font-bold uppercase text-slate-500 mb-1">
@@ -1743,18 +1538,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       return;
     }
 
-    const selectedOnlineAccount = showPaymentAccountsSection
-      ? onlineAccounts.find(a => a.id === accountId) ||
-        (paymentMethod !== 'Cash'
-          ? onlineAccounts.find(
-              a => a.name.trim().toLowerCase() === String(paymentMethod).trim().toLowerCase()
-            )
-          : undefined)
-      : undefined;
-
-    const effectivePaymentMethod: PaymentMethod = showPaymentAccountsSection
-      ? paymentMethod
-      : 'Cash';
+    const effectivePaymentMethod: PaymentMethod = 'Cash';
 
     // Preserve original invoice date & date-prefix sequence when re-editing a past-date invoice
     const parsedOriginalDate = draft.editingOriginalDate ? new Date(draft.editingOriginalDate) : null;
@@ -1810,7 +1594,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       totalCost,
       netProfit,
       paymentMethod: effectivePaymentMethod,
-      accountId: selectedOnlineAccount?.id || undefined,
+      accountId: undefined,
       notes: billNote.trim() || undefined,
       date: effectiveSaleDate,
     };
@@ -1888,7 +1672,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
               type="button"
               onClick={onOpenPosSettings}
               className="inline-flex items-center gap-1 px-2.5 py-1 sm:py-1.5 rounded-lg sm:rounded-xl bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200/80 text-[11px] sm:text-xs font-bold transition cursor-pointer h-8 sm:h-9 shrink-0 whitespace-nowrap"
-              title="POS & Billing Settings (Enable / Disable Payment Accounts)"
+              title="POS & Billing Settings"
             >
               <Sliders className="w-3.5 h-3.5 text-blue-600" />
               <span className="hidden sm:inline">POS Settings</span>
@@ -2558,7 +2342,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                           <p className="text-slate-500 tabular-nums">{sale.custPhone}</p>
                         )}
                         <span className="text-slate-300">•</span>
-                        <p className="text-slate-500 font-semibold">{sale.paymentMethod}</p>
+                        <p className="text-slate-500 font-semibold">{sale.invoiceType === 'credit' ? 'Credit / Khata' : 'Cash'}</p>
                       </div>
 
                       {/* Sold items view with Barcodes and IMEIs */}
@@ -2935,22 +2719,6 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                       placeholder="0300-1234567"
                       className="w-full p-2.5 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                     />
-                  </div>
-
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">Payment Method:</label>
-                    <select
-                      value={quickPaymentMethod}
-                      onChange={e => setQuickPaymentMethod(e.target.value as PaymentMethod)}
-                      className="w-full p-2.5 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-blue-500 bg-white"
-                    >
-                      <option value="Cash">Cash</option>
-                      <option value="Easypaisa">Easypaisa</option>
-                      <option value="JazzCash">JazzCash</option>
-                      <option value="Bank Transfer">Bank Transfer</option>
-                      <option value="Credit Card">Credit Card</option>
-                      <option value="Khata">Customer Ledger (Credit)</option>
-                    </select>
                   </div>
 
                   <div>

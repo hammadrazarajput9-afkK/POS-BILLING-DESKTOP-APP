@@ -14,7 +14,6 @@ import {
   LogOut,
   Download,
   Smartphone,
-  ChevronDown,
   Home,
 } from 'lucide-react';
 import { AppData, ShopSettings, UserRole, UserAccount } from '../types';
@@ -69,7 +68,7 @@ export const Header: React.FC<HeaderProps> = ({
     barcode: { title: 'Barcode Label Generator', shortTitle: 'Barcodes', subtitle: 'Generate and print custom 1D Code128 barcodes' },
     khata: { title: 'Customer Credit & Ledger', shortTitle: 'Khata Ledger', subtitle: 'Track customer balances, phone numbers, and payment records' },
     expenses: { title: 'Daily Expense', shortTitle: 'Expenses', subtitle: 'Record shop rent, refreshment, utilities and operational costs' },
-    dailyClosing: { title: 'Daily Closing', shortTitle: 'Daily Closing', subtitle: 'Physical cash notes tally, digital accounts balance & WhatsApp export' },
+    dailyClosing: { title: 'Daily Closing', shortTitle: 'Daily Closing', subtitle: 'Physical cash notes tally, expected cash & WhatsApp export' },
     reports: { title: 'Financial Reports', shortTitle: 'Reports', subtitle: 'Business performance, sales analytics, and profit summary' },
     activity: { title: 'Activity Center', shortTitle: 'Activity', subtitle: 'Rolling 24-hour audit log (resets automatically)' },
   };
@@ -85,16 +84,16 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="app-header min-h-[3.75rem] sm:h-16 bg-white border-b border-slate-200/90 px-2.5 pt-[calc(env(safe-area-inset-top,0px)+0.85rem)] pb-2.5 sm:py-0 sm:px-5 flex items-center justify-between gap-2 sm:gap-4 z-20 shrink-0 max-w-full transition-colors duration-200">
-      {/* Left Zone: Menu Toggle + Shop Logo + Shop Name & Active Page */}
-      <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+    <header className="app-header min-h-[3.65rem] sm:h-16 bg-white border-b border-slate-200/80 px-2.5 pt-[calc(env(safe-area-inset-top,0px)+0.8rem)] pb-2 sm:py-0 sm:px-5 flex items-center justify-between gap-2 sm:gap-4 z-20 shrink-0 max-w-full shadow-[0_1px_12px_-4px_rgba(15,23,42,0.07)] transition-colors duration-200">
+      {/* Left Zone: Menu Toggle + Home + Pure Circle Logo + Full Shop Name & Active Page */}
+      <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 flex-1">
         <button
           type="button"
           onClick={onToggleMenu}
-          className={`w-9 h-9 sm:w-auto sm:h-9 sm:px-3 rounded-xl transition text-xs font-bold cursor-pointer border shadow-2xs shrink-0 flex items-center justify-center gap-1.5 ${
+          className={`w-8 h-8 sm:w-auto sm:h-9 sm:px-3 rounded-xl transition text-xs font-bold cursor-pointer border shadow-2xs shrink-0 flex items-center justify-center gap-1.5 ${
             isMenuOpen
               ? 'bg-blue-50 text-blue-700 border-blue-200'
-              : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200'
+              : 'bg-slate-100/90 hover:bg-slate-200 text-slate-800 border-slate-200/80'
           }`}
           title={isMenuOpen ? 'Hide Menu' : 'Open Menu'}
         >
@@ -106,10 +105,10 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={() => onSwitchTab('home')}
-            className="lg:hidden w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 flex items-center justify-center shrink-0 cursor-pointer transition"
+            className="lg:hidden w-8 h-8 rounded-xl bg-blue-50/90 hover:bg-blue-100 text-blue-600 border border-blue-200/80 flex items-center justify-center shrink-0 cursor-pointer transition"
             title="Back to Home Menu"
           >
-            <Home className="w-4 h-4 text-blue-600" />
+            <Home className="w-3.5 h-3.5 text-blue-600" />
           </button>
         )}
 
@@ -121,7 +120,7 @@ export const Header: React.FC<HeaderProps> = ({
               onSwitchTab('home');
             }
           }}
-          className="w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden shrink-0 flex items-center justify-center lg:cursor-default cursor-pointer"
+          className="w-8 h-8 sm:w-10 sm:h-10 rounded-full overflow-hidden shrink-0 flex items-center justify-center lg:cursor-default cursor-pointer"
           title="Home Menu"
         >
           {logoSrc && !logoError ? (
@@ -140,13 +139,14 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Shop Name + Active Section Title */}
         <div className="min-w-0 flex-1">
-          {/* Mobile: Show Shop Name + Active Section clearly */}
+          {/* Mobile: Show FULL Shop Name cleanly without truncation + active section pill */}
           <div className="sm:hidden min-w-0">
-            <h2 className="text-[13px] font-black text-slate-900 tracking-tight leading-tight truncate">
+            <h2 className="text-[12.5px] font-black text-slate-900 tracking-tight leading-[1.15] break-words">
               {shopDisplayName}
             </h2>
-            <p className="text-[10px] font-bold text-blue-600 leading-tight truncate">
-              {current.shortTitle}
+            <p className="text-[10px] font-bold text-blue-600 leading-tight flex items-center gap-1 mt-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-600 shrink-0" />
+              <span className="truncate">{current.shortTitle}</span>
             </p>
           </div>
           {/* Desktop / Tablet: Show Section Title + Shop Name / Subtitle */}
@@ -297,39 +297,23 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
 
-        {/* Mobile Quick Controls (< md): Keeps header clean so Logo, Shop Name & buttons never crush */}
+        {/* Mobile Quick Controls (< md): Single sleek account button so full Shop Name shines */}
         <div className="flex md:hidden items-center gap-1 shrink-0">
-          {onToggleTheme && (
-            <button
-              type="button"
-              onClick={onToggleTheme}
-              className="w-8 h-8 flex items-center justify-center text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition cursor-pointer shrink-0"
-              title="Toggle Theme"
-            >
-              {settings?.theme === 'dark' ? (
-                <Sun className="w-4 h-4 text-amber-500" />
-              ) : (
-                <Moon className="w-4 h-4 text-slate-600" />
-              )}
-            </button>
-          )}
-
           <button
             type="button"
             onClick={() => setMobileMenuOpen(prev => !prev)}
-            className={`h-8 px-2 flex items-center gap-1 rounded-lg border text-[11px] font-extrabold transition cursor-pointer shrink-0 ${
+            className={`w-8 h-8 flex items-center justify-center rounded-xl border text-[11px] font-extrabold transition cursor-pointer shrink-0 ${
               mobileMenuOpen
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200'
+                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                : 'bg-slate-100/90 hover:bg-slate-200 text-slate-800 border-slate-200/80'
             }`}
-            title="Account & Quick Options"
+            title="Account, Theme & Quick Options"
           >
             {currentRole === 'admin' ? (
               <Shield className={`w-3.5 h-3.5 ${mobileMenuOpen ? 'text-white' : 'text-blue-600'}`} />
             ) : (
               <User className={`w-3.5 h-3.5 ${mobileMenuOpen ? 'text-white' : 'text-amber-600'}`} />
             )}
-            <ChevronDown className={`w-3 h-3 transition-transform ${mobileMenuOpen ? 'rotate-180' : ''}`} />
           </button>
         </div>
       </div>
@@ -396,6 +380,23 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <Download className="w-4 h-4 text-indigo-600" />
                 <span>Install App</span>
+              </button>
+            )}
+
+            {onToggleTheme && (
+              <button
+                type="button"
+                onClick={() => closeAndRun(onToggleTheme)}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+              >
+                <span className="flex items-center gap-2.5">
+                  {settings?.theme === 'dark' ? (
+                    <Sun className="w-4 h-4 text-amber-500" />
+                  ) : (
+                    <Moon className="w-4 h-4 text-slate-600" />
+                  )}
+                  <span>{settings?.theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}</span>
+                </span>
               </button>
             )}
 

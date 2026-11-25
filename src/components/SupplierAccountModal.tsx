@@ -89,7 +89,6 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
   // Account-level FIFO Settlement Modal State
   const [isSettleAccountOpen, setIsSettleAccountOpen] = useState(false);
   const [accountSettleAmount, setAccountSettleAmount] = useState<number | ''>('');
-  const [accountSettleMethod, setAccountSettleMethod] = useState('Cash');
   const [accountSettleNotes, setAccountSettleNotes] = useState('');
 
   const bills = account?.bills || [];
@@ -211,7 +210,6 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
 
   const handleOpenAccountSettle = () => {
     setAccountSettleAmount(account.totalDue);
-    setAccountSettleMethod('Cash');
     setAccountSettleNotes('');
     setIsSettleAccountOpen(true);
   };
@@ -229,7 +227,7 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
       onSettlePurchaseDue({
         purchaseId: bill.id,
         paymentAmount: payNow,
-        paymentMethod: accountSettleMethod,
+        paymentMethod: 'Cash',
         notes: accountSettleNotes.trim() || undefined,
       });
       remaining -= payNow;
@@ -543,7 +541,6 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
 
                         <p className="text-[11px] text-slate-500 font-medium">
                           {p.items?.length || 0} product line(s) • <strong className="text-slate-700">{totalUnits} units</strong>
-                          {isAdmin && p.paymentMethod ? ` • via ${p.paymentMethod}` : ''}
                         </p>
                       </div>
 
@@ -861,22 +858,6 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
                   }
                   className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm tabular-nums font-bold text-slate-900 focus:outline-none focus:border-emerald-600"
                 />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Payment Account / Method:
-                </label>
-                <select
-                  value={accountSettleMethod}
-                  onChange={e => setAccountSettleMethod(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-emerald-600"
-                >
-                  <option value="Cash">Cash in Hand</option>
-                  <option value="Bank">Bank Transfer</option>
-                  <option value="JazzCash">JazzCash</option>
-                  <option value="Easypaisa">Easypaisa</option>
-                </select>
               </div>
 
               <div>

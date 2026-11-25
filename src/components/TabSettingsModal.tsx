@@ -196,20 +196,6 @@ export const TabSettingsModal: React.FC<TabSettingsModalProps> = ({
 
           {activeTab === 'pos' && (
             <div className="space-y-3.5">
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
-                <label className="font-bold text-slate-800 block">Default Checkout Payment Method</label>
-                <select
-                  value={localPrefs.defaultPaymentMethod || 'Cash'}
-                  onChange={e => updateSetting('defaultPaymentMethod', e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-semibold focus:outline-none focus:border-blue-600"
-                >
-                  <option value="Cash">Cash In Hand</option>
-                  <option value="JazzCash">JazzCash</option>
-                  <option value="Easypaisa">Easypaisa</option>
-                  <option value="Bank">Bank Transfer</option>
-                </select>
-              </div>
-
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
                 <div>
                   <p className="font-bold text-slate-800">Auto Open Print Receipt</p>
@@ -219,21 +205,6 @@ export const TabSettingsModal: React.FC<TabSettingsModalProps> = ({
                   type="checkbox"
                   checked={localPrefs.autoPrint !== false}
                   onChange={e => updateSetting('autoPrint', e.target.checked)}
-                  className="w-4 h-4 accent-blue-600 cursor-pointer"
-                />
-              </div>
-
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
-                <div>
-                  <p className="font-bold text-slate-800">Payment Accounts in Billing Cart</p>
-                  <p className="text-[11px] text-slate-500">
-                    Enable or disable Cash / Digital Wallet / Bank accounts selector inside POS Cart
-                  </p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={localPrefs.showPaymentAccounts !== false}
-                  onChange={e => updateSetting('showPaymentAccounts', e.target.checked)}
                   className="w-4 h-4 accent-blue-600 cursor-pointer"
                 />
               </div>

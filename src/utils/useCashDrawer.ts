@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { AppData, DailyClosingRecord } from '../types';
-import { normalizePaymentChannel, isTxInClosingPeriod } from './accounting';
+import { isTxInClosingPeriod } from './accounting';
 
 export interface CashLedgerItem {
   id: string;
@@ -160,7 +160,7 @@ export function useCashDrawer(
       latestClosing = sortedClosings[0] || null;
       if (isLiveMode && latestClosing) {
         openingCash = Number(latestClosing.totalCash) || 0;
-        openingBank = Number(latestClosing.totalOnline) || 0;
+        openingBank = 0;
       }
     }
 
@@ -169,7 +169,7 @@ export function useCashDrawer(
 
     // 2. Compute Sales Breakdown for active period
     let cashSales = 0;
-    let bankSales = 0;
+    const bankSales = 0;
     let creditSales = 0;
     let totalSales = 0;
     let totalCOGS = 0;
@@ -198,26 +198,19 @@ export function useCashDrawer(
         creditSales += Number(sale.amountDue) || 0;
       }
 
-      const channel = normalizePaymentChannel(sale.paymentMethod);
-      const isCash = channel === 'Cash';
-
       if (paid > 0) {
-        if (isCash) {
-          cashSales += paid;
-        } else {
-          bankSales += paid;
-        }
+        cashSales += paid;
 
         salesLedgerEntries.push({
           id: `SALE-${sale.invNo}`,
           date: sale.date,
           type: 'SALE',
           title: `Invoice #${sale.invNo} (${sale.custName || 'Walk-in'})`,
-          details: `${sale.items?.length || 0} item(s) • Paid via ${sale.paymentMethod || 'Cash'}`,
-          paymentMethod: sale.paymentMethod || 'Cash',
-          cashIn: isCash ? paid : 0,
+          details: `${sale.items?.length || 0} item(s) • Cash In Hand`,
+          paymentMethod: 'Cash',
+          cashIn: paid,
           cashOut: 0,
-          bankIn: !isCash ? paid : 0,
+          bankIn: 0,
           bankOut: 0,
           runningCashBalance: 0,
           runningBankBalance: 0,
@@ -225,9 +218,9 @@ export function useCashDrawer(
       }
     });
 
-    // 3. Compute Khata Recoveries (Only transactions after previous closing, using structured paymentMethod)
+    // 3. Compute Khata Recoveries (All recoveries route to Cash In Hand)
     let khataRecoveriesCash = 0;
-    let khataRecoveriesBank = 0;
+    const khataRecoveriesBank = 0;
     const khataLedgerEntries: CashLedgerItem[] = [];
 
     (data.khata || []).forEach(customer => {
@@ -237,14 +230,7 @@ export function useCashDrawer(
           tx.amount > 0 &&
           isDateInDashboardPeriod(tx.date, periodFilter, latestClosing, todayStr)
         ) {
-          const channel = normalizePaymentChannel(tx.paymentMethod);
-          const isCash = channel === 'Cash';
-
-          if (isCash) {
-            khataRecoveriesCash += tx.amount;
-          } else {
-            khataRecoveriesBank += tx.amount;
-          }
+          khataRecoveriesCash += tx.amount;
 
           khataLedgerEntries.push({
             id: `KHATA-${tx.id}`,
@@ -252,10 +238,10 @@ export function useCashDrawer(
             type: 'KHATA_RECOVERY',
             title: `Khata Recovery: ${customer.name}`,
             details: tx.note || `Customer phone: ${customer.phone}`,
-            paymentMethod: tx.paymentMethod || 'Cash',
-            cashIn: isCash ? tx.amount : 0,
+            paymentMethod: 'Cash',
+            cashIn: tx.amount,
             cashOut: 0,
-            bankIn: !isCash ? tx.amount : 0,
+            bankIn: 0,
             bankOut: 0,
             runningCashBalance: 0,
             runningBankBalance: 0,
@@ -264,9 +250,9 @@ export function useCashDrawer(
       });
     });
 
-    // 4. Compute Expenses (Only transactions after previous closing)
+    // 4. Compute Expenses (All expenses paid from Cash In Hand)
     let cashExpenses = 0;
-    let bankExpenses = 0;
+    const bankExpenses = 0;
     const expenseLedgerEntries: CashLedgerItem[] = [];
 
     (data.expenses || []).forEach(exp => {
@@ -275,34 +261,27 @@ export function useCashDrawer(
       }
 
       const amount = Number(exp.amount) || 0;
-      const channel = normalizePaymentChannel(exp.paymentMethod);
-      const isCash = channel === 'Cash';
-
-      if (isCash) {
-        cashExpenses += amount;
-      } else {
-        bankExpenses += amount;
-      }
+      cashExpenses += amount;
 
       expenseLedgerEntries.push({
         id: `EXP-${exp.id}`,
         date: exp.date,
         type: 'EXPENSE',
         title: `Expense: ${exp.description}`,
-        details: `Category: ${exp.category} • Paid via ${exp.paymentMethod || 'Cash'}`,
-        paymentMethod: exp.paymentMethod || 'Cash',
+        details: `Category: ${exp.category} • Cash In Hand`,
+        paymentMethod: 'Cash',
         cashIn: 0,
-        cashOut: isCash ? amount : 0,
+        cashOut: amount,
         bankIn: 0,
-        bankOut: !isCash ? amount : 0,
+        bankOut: 0,
         runningCashBalance: 0,
         runningBankBalance: 0,
       });
     });
 
-    // 5. Compute Supplier Purchases Paid (Only transactions after previous closing, ignoring reversed purchases)
+    // 5. Compute Supplier Purchases Paid (All payouts from Cash In Hand, ignoring reversed purchases)
     let supplierPaidCash = 0;
-    let supplierPaidBank = 0;
+    const supplierPaidBank = 0;
     const supplierLedgerEntries: CashLedgerItem[] = [];
 
     (data.supplierPurchases || []).forEach(purchase => {
@@ -317,35 +296,28 @@ export function useCashDrawer(
 
       const paid = Number(purchase.paidAmount) || 0;
       if (paid > 0) {
-        const channel = normalizePaymentChannel(purchase.paymentMethod);
-        const isCash = channel === 'Cash';
-
-        if (isCash) {
-          supplierPaidCash += paid;
-        } else {
-          supplierPaidBank += paid;
-        }
+        supplierPaidCash += paid;
 
         supplierLedgerEntries.push({
           id: `PUR-${purchase.id}`,
           date: purchase.date,
           type: 'SUPPLIER_PAYMENT',
           title: `Supplier Bill: ${purchase.partyName} (#${purchase.billNo})`,
-          details: `${purchase.items?.length || 0} item(s) • Paid via ${purchase.paymentMethod || 'Cash'}`,
-          paymentMethod: purchase.paymentMethod || 'Cash',
+          details: `${purchase.items?.length || 0} item(s) • Cash In Hand`,
+          paymentMethod: 'Cash',
           cashIn: 0,
-          cashOut: isCash ? paid : 0,
+          cashOut: paid,
           bankIn: 0,
-          bankOut: !isCash ? paid : 0,
+          bankOut: 0,
           runningCashBalance: 0,
           runningBankBalance: 0,
         });
       }
     });
 
-    // 5b. Compute Sales Returns & Refunds (Cash / Bank Outflows + All Revenue Reversals for Profit)
+    // 5b. Compute Sales Returns & Refunds (Cash In Hand Outflows + All Revenue Reversals for Profit)
     let cashSalesRefunds = 0;
-    let bankSalesRefunds = 0;
+    const bankSalesRefunds = 0;
     let allSalesRefundsInPeriod = 0;
     let totalCostReversedInPeriod = 0;
     let totalProfitLostFromReturns = 0;
@@ -362,39 +334,32 @@ export function useCashDrawer(
       totalProfitLostFromReturns += Number(ret.netProfitDeducted) || 0;
 
       if (refundAmt > 0 && ret.refundPaymentMethod !== 'Credit Adjustment') {
-        const channel = normalizePaymentChannel(ret.refundPaymentMethod);
-        const isCash = channel === 'Cash';
-
-        if (isCash) {
-          cashSalesRefunds += refundAmt;
-        } else {
-          bankSalesRefunds += refundAmt;
-        }
+        cashSalesRefunds += refundAmt;
 
         returnLedgerEntries.push({
           id: `RET-${ret.id}`,
           date: ret.returnDate,
           type: 'SALES_REFUND',
           title: `Sales Return #${ret.returnNo} (Inv #${ret.originalInvNo})`,
-          details: `${ret.items?.length || 0} item(s) • Refunded via ${ret.refundPaymentMethod || 'Cash'} • ${ret.customerName || 'Customer'}`,
-          paymentMethod: ret.refundPaymentMethod || 'Cash',
+          details: `${ret.items?.length || 0} item(s) • Cash Refund • ${ret.customerName || 'Customer'}`,
+          paymentMethod: 'Cash',
           cashIn: 0,
-          cashOut: isCash ? refundAmt : 0,
+          cashOut: refundAmt,
           bankIn: 0,
-          bankOut: !isCash ? refundAmt : 0,
+          bankOut: 0,
           runningCashBalance: 0,
           runningBankBalance: 0,
         });
       }
     });
 
-    const totalSalesRefunds = cashSalesRefunds + bankSalesRefunds;
+    const totalSalesRefunds = cashSalesRefunds;
 
     // 6. Net Balances
     // Cash In Hand = (Opening Cash + Cash Sales + Cash Khata Recoveries) - (Cash Expenses + Supplier Cash Paid + Cash Sales Refunds)
     const cashInHand = (openingCash + cashSales + khataRecoveriesCash) - (cashExpenses + supplierPaidCash + cashSalesRefunds);
-    const bankBalance = (openingBank + bankSales + khataRecoveriesBank) - (bankExpenses + supplierPaidBank + bankSalesRefunds);
-    const totalLiquidFunds = cashInHand + bankBalance;
+    const bankBalance = 0;
+    const totalLiquidFunds = cashInHand;
 
     // 7. Stock Asset Valuation
     let totalStockCostValue = 0;
@@ -410,7 +375,7 @@ export function useCashDrawer(
 
     // 8. Real-time Net Profit
     // Net Profit = (Net Sales after ALL returns - Net COGS after returned cost) - Total Expenses
-    const totalExpenses = cashExpenses + bankExpenses;
+    const totalExpenses = cashExpenses;
     const grossProfit = Math.max(0, (totalSales - allSalesRefundsInPeriod) - (totalCOGS - totalCostReversedInPeriod));
     const realTimeNetProfit = grossProfit - totalExpenses;
 
@@ -427,25 +392,25 @@ export function useCashDrawer(
     allRawEntries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     let runningCash = openingCash;
-    let runningBank = openingBank;
+    let runningBank = 0;
 
     const chronologicalLedger: CashLedgerItem[] = [];
 
     // Add opening balance entry if non-zero
-    if (openingCash > 0 || openingBank > 0) {
+    if (openingCash > 0) {
       chronologicalLedger.push({
         id: 'OPENING-BALANCE',
         date: latestClosing?.date || todayStr,
         type: 'OPENING',
-        title: 'Opening Balance (Cash Drawer & Digital Accounts)',
-        details: latestClosing ? `Brought forward from closing on ${latestClosing.date}` : 'Baseline funds',
-        paymentMethod: 'Drawer Float',
+        title: 'Opening Cash In Hand',
+        details: latestClosing ? `Brought forward from closing on ${latestClosing.date}` : 'Baseline cash drawer',
+        paymentMethod: 'Cash',
         cashIn: openingCash,
         cashOut: 0,
-        bankIn: openingBank,
+        bankIn: 0,
         bankOut: 0,
         runningCashBalance: runningCash,
-        runningBankBalance: runningBank,
+        runningBankBalance: 0,
       });
     }
 

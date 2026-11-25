@@ -28,9 +28,7 @@ import {
   ArrowUpRight,
   Calculator,
   CalendarCheck,
-  Building2,
   X,
-  CreditCard,
   Banknote,
   Search,
   Truck,
@@ -114,7 +112,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
   // Cash Ledger Drill-down Modal state
   const [isDrilldownOpen, setIsDrilldownOpen] = useState(false);
   const [ledgerFilter, setLedgerFilter] = useState<'ALL' | 'IN' | 'OUT'>('ALL');
-  const [ledgerTypeFilter, setLedgerTypeFilter] = useState<'ALL' | 'SALE' | 'KHATA_RECOVERY' | 'EXPENSE' | 'SUPPLIER_PAYMENT' | 'BANK'>('ALL');
+  const [ledgerTypeFilter, setLedgerTypeFilter] = useState<'ALL' | 'SALE' | 'KHATA_RECOVERY' | 'EXPENSE' | 'SUPPLIER_PAYMENT'>('ALL');
   const [ledgerSearch, setLedgerSearch] = useState('');
 
   // Clickable Metric Box "All Details" Modal
@@ -199,7 +197,6 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
 
   // Direct, instant, high-performance real-time values (no animated lag or frame drops when switching tabs)
   const cashVal = cashDrawer.cashInHand;
-  const bankVal = cashDrawer.bankBalance;
   const profitVal = cashDrawer.realTimeNetProfit;
   const expensesVal = cashDrawer.totalExpenses;
   const purchasesVal = cashDrawer.totalSupplierPaid;
@@ -213,8 +210,8 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
         (item.details && item.details.toLowerCase().includes(ledgerSearch.toLowerCase())) ||
         item.paymentMethod.toLowerCase().includes(ledgerSearch.toLowerCase());
 
-      const isIn = item.cashIn > 0 || item.bankIn > 0;
-      const isOut = item.cashOut > 0 || item.bankOut > 0;
+      const isIn = item.cashIn > 0;
+      const isOut = item.cashOut > 0;
 
       const matchesType =
         ledgerFilter === 'ALL' ? true : ledgerFilter === 'IN' ? isIn : isOut;
@@ -222,8 +219,6 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
       const matchesCategory =
         ledgerTypeFilter === 'ALL'
           ? true
-          : ledgerTypeFilter === 'BANK'
-          ? item.bankIn > 0 || item.bankOut > 0
           : item.type === ledgerTypeFilter;
 
       return matchesSearch && matchesType && matchesCategory;
@@ -231,7 +226,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
   }, [cashDrawer.ledger, ledgerSearch, ledgerFilter, ledgerTypeFilter]);
 
   const openCashDrilldown = (
-    typeFilter: 'ALL' | 'SALE' | 'KHATA_RECOVERY' | 'EXPENSE' | 'SUPPLIER_PAYMENT' | 'BANK' = 'ALL',
+    typeFilter: 'ALL' | 'SALE' | 'KHATA_RECOVERY' | 'EXPENSE' | 'SUPPLIER_PAYMENT' = 'ALL',
     inOutFilter: 'ALL' | 'IN' | 'OUT' = 'ALL'
   ) => {
     setLedgerTypeFilter(typeFilter);
@@ -253,24 +248,24 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
   const isGraphEnabled = data.settings.showDashboardGraph !== false;
 
   return (
-    <div className="space-y-5 sm:space-y-6">
+    <div className="space-y-3.5 sm:space-y-5">
       {/* ======================================================== */}
       {/* PROMINENT 2FA SECURITY SETUP BANNER FOR UNVERIFIED ADMINS*/}
       {/* ======================================================== */}
       {is2faMissing && (
-        <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-purple-900 rounded-3xl p-5 text-white shadow-xl border border-indigo-700/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-card-in">
-          <div className="flex items-center gap-3.5">
-            <div className="p-3 bg-indigo-500/20 backdrop-blur-md rounded-2xl border border-indigo-400/30 text-indigo-200 shrink-0">
-              <ShieldCheck className="w-7 h-7 text-emerald-400" />
+        <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-purple-900 rounded-2xl p-4 sm:p-5 text-white shadow-xl border border-indigo-700/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3.5 animate-card-in">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-indigo-500/20 backdrop-blur-md rounded-xl border border-indigo-400/30 text-indigo-200 shrink-0">
+              <ShieldCheck className="w-6 h-6 text-emerald-400" />
             </div>
             <div className="space-y-0.5">
-              <h4 className="font-extrabold text-sm sm:text-base text-white flex flex-wrap items-center gap-2">
+              <h4 className="font-extrabold text-xs sm:text-base text-white flex flex-wrap items-center gap-2">
                 <span>Setup your Authenticator app for enhanced security</span>
-                <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[10px] font-black uppercase tracking-wider">
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[9px] sm:text-[10px] font-black uppercase tracking-wider">
                   Recommended
                 </span>
               </h4>
-              <p className="text-xs text-indigo-200/90 font-medium leading-relaxed">
+              <p className="text-[11px] sm:text-xs text-indigo-200/90 font-medium leading-relaxed">
                 Protect your store ledger and multi-device account using Google Authenticator, Authy, or Microsoft Authenticator.
               </p>
             </div>
@@ -279,7 +274,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           <button
             type="button"
             onClick={() => setIs2faModalOpen(true)}
-            className="w-full sm:w-auto px-5 py-3 bg-emerald-400 hover:bg-emerald-300 active:scale-95 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 cursor-pointer shrink-0"
+            className="w-full sm:w-auto px-4 py-2.5 bg-emerald-400 hover:bg-emerald-300 active:scale-95 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 cursor-pointer shrink-0"
           >
             <ShieldCheck className="w-4 h-4" />
             <span>Setup Now</span>
@@ -289,20 +284,22 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
       {/* ======================================================== */}
       {/* DASHBOARD PERIOD FILTER BAR (APPLIES TO ALL BOXES)       */}
       {/* ======================================================== */}
-      <div className="bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-2xl p-2.5 sm:p-3.5 shadow-sm dark:shadow-none flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 animate-card-in">
-        <div className="flex items-center gap-2 shrink-0 px-1">
-          <div className="p-1.5 rounded-lg bg-blue-50 border border-blue-200/70 text-blue-600 shrink-0">
-            <CalendarCheck className="w-4 h-4" />
+      <div className="bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-2xl p-2.5 sm:p-3 shadow-xs dark:shadow-none flex flex-col lg:flex-row lg:items-center justify-between gap-2 animate-card-in">
+        <div className="flex items-center justify-between lg:justify-start gap-2 shrink-0 px-0.5">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-blue-50 border border-blue-200/70 text-blue-600 shrink-0">
+              <CalendarCheck className="w-3.5 h-3.5" />
+            </div>
+            <span className="text-[11px] sm:text-xs font-extrabold text-slate-800 dark:text-white">
+              Period:
+            </span>
           </div>
-          <span className="text-xs font-extrabold text-slate-800 dark:text-white">
-            Dashboard Period:
-          </span>
-          <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-200/70">
+          <span className="text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-200/70">
             {periodLabel}
           </span>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="no-scrollbar flex items-center gap-1.5 overflow-x-auto pb-0.5 sm:pb-0 sm:flex-wrap">
           {(
             [
               { id: 'live', label: 'Live Drawer' },
@@ -318,7 +315,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
               key={opt.id}
               type="button"
               onClick={() => setPeriodMode(opt.id)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer ${
+              className={`px-2.5 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold transition-all duration-200 cursor-pointer shrink-0 whitespace-nowrap ${
                 periodMode === opt.id
                   ? 'theme-active-pill scale-[1.02]'
                   : 'bg-slate-100 hover:bg-slate-200 text-slate-700 dark:text-neutral-300'
@@ -424,155 +421,130 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-3.5">
           {/* BOX 1: CASH IN HAND (LIVE DRAWER) */}
           <div
             onClick={() => openCashDrilldown('ALL', 'ALL')}
-            className="dashboard-hero-card animate-card-in animate-stagger-1 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 text-white border flex flex-col justify-between cursor-pointer group relative overflow-hidden"
+            className="col-span-2 lg:col-span-1 dashboard-hero-card animate-card-in animate-stagger-1 rounded-xl sm:rounded-2xl p-3 sm:p-4 text-white border flex flex-col justify-between cursor-pointer group relative overflow-hidden"
             title="Click to view full Cash Ledger Drill-Down"
           >
-            <div className="flex items-center justify-between mb-1.5 sm:mb-3 relative z-10">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-emerald-300 truncate">
+            <div className="flex items-center justify-between mb-1.5 sm:mb-2 relative z-10">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-300 truncate">
                 {periodMode === 'live' ? 'Cash In Hand (Live)' : `Drawer Cash (${periodLabel})`}
               </span>
-              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-white/12 text-emerald-300 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300">
-                <Wallet className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+              <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-white/12 text-emerald-300 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300">
+                <Wallet className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
             </div>
             <div className="relative z-10">
               <h2
-                className={`kpi-num text-base sm:text-2xl font-black tabular-nums tracking-tight truncate ${
+                className={`kpi-num text-lg sm:text-xl font-black tabular-nums tracking-tight truncate ${
                   cashVal < 0 ? 'text-rose-400' : 'text-white'
                 }`}
               >
                 {data.settings.currency} {showBalance ? cashVal.toLocaleString() : '••••••'}
               </h2>
-              <p className="text-[10px] text-emerald-300/90 font-bold mt-1 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+              <p className="text-[10px] text-emerald-300/90 font-bold mt-0.5 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
                 <span>View Cash Ledger</span>
                 <ArrowRight className="w-3 h-3" />
               </p>
             </div>
           </div>
 
-          {/* BOX 2: DIGITAL / BANK BALANCE */}
-          <div
-            onClick={() => openCashDrilldown('BANK', 'ALL')}
-            className="dashboard-metric-card metric-stock animate-card-in animate-stagger-2 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 shadow-sm dark:shadow-none hover:border-sky-400 hover:shadow-lg flex flex-col justify-between cursor-pointer group"
-            title="Click to view Digital / Bank transactions"
-          >
-            <div className="flex items-center justify-between mb-1.5 sm:mb-3">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 truncate">
-                Digital / Bank
-              </span>
-              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300">
-                <Building2 className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
-              </div>
-            </div>
-            <div>
-              <h3 className="kpi-num text-sm sm:text-2xl font-black text-sky-600 dark:text-sky-400 tabular-nums tracking-tight truncate">
-                {data.settings.currency} {showBalance ? bankVal.toLocaleString() : '••••••'}
-              </h3>
-              <p className="text-[10px] text-sky-600/80 font-bold mt-1 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                <span>Bank &amp; Wallet Ledger</span>
-                <ArrowRight className="w-3 h-3" />
-              </p>
-            </div>
-          </div>
-
-          {/* BOX 3: (+) CASH SALES */}
+          {/* BOX 2: (+) CASH SALES */}
           <div
             onClick={() => openCashDrilldown('SALE', 'IN')}
-            className="dashboard-metric-card metric-profit animate-card-in animate-stagger-3 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 shadow-sm dark:shadow-none hover:border-emerald-400 hover:shadow-lg flex flex-col justify-between cursor-pointer group"
+            className="dashboard-metric-card metric-profit animate-card-in animate-stagger-2 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs dark:shadow-none hover:border-emerald-400 hover:shadow-md flex flex-col justify-between cursor-pointer group"
             title="Click to view all Cash Sales"
           >
-            <div className="flex items-center justify-between mb-1.5 sm:mb-3">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 truncate">
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 truncate">
                 (+) Cash Sales
               </span>
-              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300">
-                <ArrowUpRight className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+              <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300">
+                <ArrowUpRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
             </div>
             <div>
-              <h3 className="kpi-num text-sm sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums tracking-tight truncate">
+              <h3 className="kpi-num text-sm sm:text-xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums tracking-tight truncate">
                 +{data.settings.currency} {showBalance ? cashDrawer.cashSales.toLocaleString() : '••••••'}
               </h3>
-              <p className="text-[10px] text-emerald-600/80 font-bold mt-1 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                <span>Cash Inflow Details</span>
+              <p className="text-[10px] text-emerald-600/80 font-bold mt-0.5 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                <span>Cash Inflow</span>
                 <ArrowRight className="w-3 h-3" />
               </p>
             </div>
           </div>
 
-          {/* BOX 4: (+) KHATA RECOVERIES */}
+          {/* BOX 3: (+) KHATA RECOVERIES */}
           <div
             onClick={() => openCashDrilldown('KHATA_RECOVERY', 'IN')}
-            className="dashboard-metric-card metric-stock animate-card-in animate-stagger-4 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 shadow-sm dark:shadow-none hover:border-blue-400 hover:shadow-lg flex flex-col justify-between cursor-pointer group"
+            className="dashboard-metric-card metric-stock animate-card-in animate-stagger-3 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs dark:shadow-none hover:border-blue-400 hover:shadow-md flex flex-col justify-between cursor-pointer group"
             title="Click to view all Khata Recoveries"
           >
-            <div className="flex items-center justify-between mb-1.5 sm:mb-3">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 truncate">
-                (+) Khata Recoveries
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 truncate">
+                (+) Recoveries
               </span>
-              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300">
-                <UserPlus className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+              <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300">
+                <UserPlus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
             </div>
             <div>
-              <h3 className="kpi-num text-sm sm:text-2xl font-black text-blue-600 dark:text-blue-400 tabular-nums tracking-tight truncate">
+              <h3 className="kpi-num text-sm sm:text-xl font-black text-blue-600 dark:text-blue-400 tabular-nums tracking-tight truncate">
                 +{data.settings.currency} {showBalance ? cashDrawer.khataRecoveriesCash.toLocaleString() : '••••••'}
               </h3>
-              <p className="text-[10px] text-blue-600/80 font-bold mt-1 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                <span>Recovery Receipts</span>
+              <p className="text-[10px] text-blue-600/80 font-bold mt-0.5 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                <span>Khata Receipts</span>
                 <ArrowRight className="w-3 h-3" />
               </p>
             </div>
           </div>
 
-          {/* BOX 5: (-) CASH EXPENSES */}
+          {/* BOX 4: (-) CASH EXPENSES */}
           <div
             onClick={() => openCashDrilldown('EXPENSE', 'OUT')}
-            className="dashboard-metric-card metric-expense animate-card-in animate-stagger-5 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 shadow-sm dark:shadow-none hover:border-rose-400 hover:shadow-lg flex flex-col justify-between cursor-pointer group"
+            className="dashboard-metric-card metric-expense animate-card-in animate-stagger-4 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs dark:shadow-none hover:border-rose-400 hover:shadow-md flex flex-col justify-between cursor-pointer group"
             title="Click to view all Cash Expenses"
           >
-            <div className="flex items-center justify-between mb-1.5 sm:mb-3">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 truncate">
-                (-) Cash Expenses
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 truncate">
+                (-) Expenses
               </span>
-              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300">
-                <ArrowDownRight className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+              <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300">
+                <ArrowDownRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
             </div>
             <div>
-              <h3 className="kpi-num text-sm sm:text-2xl font-black text-rose-600 dark:text-rose-400 tabular-nums tracking-tight truncate">
+              <h3 className="kpi-num text-sm sm:text-xl font-black text-rose-600 dark:text-rose-400 tabular-nums tracking-tight truncate">
                 -{data.settings.currency} {showBalance ? cashDrawer.cashExpenses.toLocaleString() : '••••••'}
               </h3>
-              <p className="text-[10px] text-rose-600/80 font-bold mt-1 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+              <p className="text-[10px] text-rose-600/80 font-bold mt-0.5 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
                 <span>Cash Paid Out</span>
                 <ArrowRight className="w-3 h-3" />
               </p>
             </div>
           </div>
 
-          {/* BOX 6: (-) SUPPLIER PAID */}
+          {/* BOX 5: (-) SUPPLIER PAID */}
           <div
             onClick={() => openCashDrilldown('SUPPLIER_PAYMENT', 'OUT')}
-            className="dashboard-metric-card metric-purchase animate-card-in animate-stagger-6 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 shadow-sm dark:shadow-none hover:border-amber-400 hover:shadow-lg flex flex-col justify-between cursor-pointer group"
+            className="dashboard-metric-card metric-purchase animate-card-in animate-stagger-5 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs dark:shadow-none hover:border-amber-400 hover:shadow-md flex flex-col justify-between cursor-pointer group"
             title="Click to view all Supplier Cash Payments"
           >
-            <div className="flex items-center justify-between mb-1.5 sm:mb-3">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 truncate">
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 truncate">
                 (-) Supplier Paid
               </span>
-              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300">
-                <Truck className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+              <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300">
+                <Truck className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
             </div>
             <div>
-              <h3 className="kpi-num text-sm sm:text-2xl font-black text-amber-600 dark:text-amber-400 tabular-nums tracking-tight truncate">
+              <h3 className="kpi-num text-sm sm:text-xl font-black text-amber-600 dark:text-amber-400 tabular-nums tracking-tight truncate">
                 -{data.settings.currency} {showBalance ? cashDrawer.supplierPaidCash.toLocaleString() : '••••••'}
               </h3>
-              <p className="text-[10px] text-amber-600/90 font-bold mt-1 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+              <p className="text-[10px] text-amber-600/90 font-bold mt-0.5 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
                 <span>Party Payouts</span>
                 <ArrowRight className="w-3 h-3" />
               </p>
@@ -582,70 +554,70 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
       </div>
 
       {/* ======================================================== */}
-      {/* 4 PRIMARY METRICS: Profit, Expense, Purchases, Stock Val */}
+      {/* 5 PRIMARY METRICS: Profit, Expense, Outflow, Stock, Credit */}
       {/* (With its OWN INDEPENDENT Eye Hide / Unhide Toggle)      */}
       {/* ======================================================== */}
-      <div className="space-y-3">
+      <div className="space-y-2.5">
         <div className="flex items-center justify-between px-1">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
-            <h3 className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-neutral-200">
-              Store Performance & Financial Metrics
+            <h3 className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-slate-700 dark:text-neutral-200">
+              Store Performance & Metrics
             </h3>
           </div>
 
-          {/* Independent Eye toggle specifically for the bottom 4 boxes */}
+          {/* Independent Eye toggle specifically for the bottom boxes */}
           <button
             type="button"
             onClick={toggleShowBottomMetrics}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold transition cursor-pointer shadow-2xs"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-[11px] sm:text-xs font-bold transition cursor-pointer shadow-2xs"
             title={showBottomMetrics ? 'Hide performance figures' : 'Unhide performance figures'}
           >
             {showBottomMetrics ? (
               <>
                 <Eye className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Hide Metrics</span>
+                <span>Hide</span>
               </>
             ) : (
               <>
                 <EyeOff className="w-3.5 h-3.5 text-amber-600" />
-                <span>Show Metrics</span>
+                <span>Show</span>
               </>
             )}
           </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-2 lg:grid-cols-5 sm:gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-3.5">
           {/* 1. REAL-TIME NET PROFIT */}
           <div
             onClick={() => openMetricDetail('profit')}
-            className="dashboard-metric-card metric-profit animate-card-in animate-stagger-2 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-3 sm:p-5 shadow-sm dark:shadow-none hover:border-emerald-400 hover:shadow-lg flex flex-col justify-between cursor-pointer group"
+            className="dashboard-metric-card metric-profit animate-card-in animate-stagger-2 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs dark:shadow-none hover:border-emerald-400 hover:shadow-md flex flex-col justify-between cursor-pointer group"
             title="Click to view complete Profit & Sales Margin breakdown"
           >
-            <div className="flex items-center justify-between mb-1.5 sm:mb-3">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 flex items-center gap-1 line-clamp-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
-                <span className="truncate">Net Profit ({periodLabel})</span>
+                <span className="truncate">Net Profit</span>
               </span>
-              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold shrink-0 group-hover:scale-110 transition-transform duration-300">
-                <TrendingUp className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+              <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold shrink-0 group-hover:scale-110 transition-transform duration-300">
+                <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
             </div>
             <div>
               {data.currentRole === 'salesman' ? (
-                <span className="text-xs sm:text-sm font-bold text-slate-400 dark:text-neutral-500 flex items-center gap-1 sm:gap-1.5 py-1">
-                  <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" /> Restricted
+                <span className="text-xs font-bold text-slate-400 dark:text-neutral-500 flex items-center gap-1 py-0.5">
+                  <Lock className="w-3.5 h-3.5 text-slate-400" /> Restricted
                 </span>
               ) : (
                 <>
                   <h3
-                    className={`kpi-num text-sm sm:text-2xl font-black tabular-nums tracking-tight truncate ${
+                    className={`kpi-num text-sm sm:text-xl font-black tabular-nums tracking-tight truncate ${
                       profitVal >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
                     }`}
                   >
                     {data.settings.currency} {showBottomMetrics ? profitVal.toLocaleString() : '••••••'}
                   </h3>
-                  <p className="text-[10px] text-emerald-600/80 font-bold mt-1 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                  <p className="text-[10px] text-emerald-600/80 font-bold mt-0.5 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
                     <span>All Details</span>
                     <ArrowRight className="w-3 h-3" />
                   </p>
@@ -657,30 +629,30 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           {/* 2. PERIOD EXPENSES */}
           <div
             onClick={() => openMetricDetail('expenses')}
-            className="dashboard-metric-card metric-expense animate-card-in animate-stagger-3 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-3 sm:p-5 shadow-sm dark:shadow-none hover:border-rose-400 hover:shadow-lg flex flex-col justify-between cursor-pointer group"
+            className="dashboard-metric-card metric-expense animate-card-in animate-stagger-3 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs dark:shadow-none hover:border-rose-400 hover:shadow-md flex flex-col justify-between cursor-pointer group"
             title="Click to view all recorded expenses & breakdown"
           >
-            <div className="flex items-center justify-between mb-1.5 sm:mb-3">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 flex items-center gap-1 line-clamp-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0"></span>
-                <span className="truncate">Expenses ({periodLabel})</span>
+                <span className="truncate">Expenses</span>
               </span>
-              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center font-bold shrink-0 group-hover:scale-110 transition-transform duration-300">
-                <Receipt className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+              <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center font-bold shrink-0 group-hover:scale-110 transition-transform duration-300">
+                <Receipt className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
             </div>
             <div>
               {data.currentRole === 'salesman' ? (
-                <span className="text-xs sm:text-sm font-bold text-slate-400 dark:text-neutral-500 flex items-center gap-1 sm:gap-1.5 py-1">
-                  <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" /> Restricted
+                <span className="text-xs font-bold text-slate-400 dark:text-neutral-500 flex items-center gap-1 py-0.5">
+                  <Lock className="w-3.5 h-3.5 text-slate-400" /> Restricted
                 </span>
               ) : (
                 <>
-                  <h3 className="kpi-num text-sm sm:text-2xl font-black text-slate-900 dark:text-white tabular-nums tracking-tight truncate">
+                  <h3 className="kpi-num text-sm sm:text-xl font-black text-slate-900 dark:text-white tabular-nums tracking-tight truncate">
                     {data.settings.currency} {showBottomMetrics ? expensesVal.toLocaleString() : '••••••'}
                   </h3>
-                  <p className="text-[10px] text-rose-600/80 font-bold mt-1 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                    <span>All Details ({periodExpensesList.length})</span>
+                  <p className="text-[10px] text-rose-600/80 font-bold mt-0.5 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                    <span>Details ({periodExpensesList.length})</span>
                     <ArrowRight className="w-3 h-3" />
                   </p>
                 </>
@@ -691,29 +663,29 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           {/* 3. SUPPLIER PURCHASES */}
           <div
             onClick={() => openMetricDetail('outflow')}
-            className="dashboard-metric-card metric-purchase animate-card-in animate-stagger-4 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-3 sm:p-5 shadow-sm dark:shadow-none hover:border-amber-400 hover:shadow-lg flex flex-col justify-between cursor-pointer group"
+            className="dashboard-metric-card metric-purchase animate-card-in animate-stagger-4 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs dark:shadow-none hover:border-amber-400 hover:shadow-md flex flex-col justify-between cursor-pointer group"
             title="Click to view all Supplier Outflow & Purchase Bills"
           >
-            <div className="flex items-center justify-between mb-1.5 sm:mb-3">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 flex items-center gap-1 line-clamp-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
-                <span className="truncate">Outflow ({periodLabel})</span>
+                <span className="truncate">Outflow</span>
               </span>
-              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold shrink-0 group-hover:scale-110 transition-transform duration-300">
-                <ShoppingBag className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+              <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold shrink-0 group-hover:scale-110 transition-transform duration-300">
+                <ShoppingBag className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
             </div>
             <div>
               {data.currentRole === 'salesman' ? (
-                <span className="text-xs sm:text-sm font-bold text-slate-400 dark:text-neutral-500 flex items-center gap-1 sm:gap-1.5 py-1">
-                  <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" /> Restricted
+                <span className="text-xs font-bold text-slate-400 dark:text-neutral-500 flex items-center gap-1 py-0.5">
+                  <Lock className="w-3.5 h-3.5 text-slate-400" /> Restricted
                 </span>
               ) : (
                 <>
-                  <h3 className="kpi-num text-sm sm:text-2xl font-black text-slate-900 dark:text-white tabular-nums tracking-tight truncate">
+                  <h3 className="kpi-num text-sm sm:text-xl font-black text-slate-900 dark:text-white tabular-nums tracking-tight truncate">
                     {data.settings.currency} {showBottomMetrics ? purchasesVal.toLocaleString() : '••••••'}
                   </h3>
-                  <p className="text-[10px] text-amber-600/90 font-bold mt-1 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                  <p className="text-[10px] text-amber-600/90 font-bold mt-0.5 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
                     <span>All Details</span>
                     <ArrowRight className="w-3 h-3" />
                   </p>
@@ -725,30 +697,30 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           {/* 4. TOTAL STOCK VALUE */}
           <div
             onClick={() => openMetricDetail('stock')}
-            className="dashboard-metric-card metric-stock animate-card-in animate-stagger-5 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-3 sm:p-5 shadow-sm dark:shadow-none hover:border-blue-400 hover:shadow-lg flex flex-col justify-between cursor-pointer group"
+            className="dashboard-metric-card metric-stock animate-card-in animate-stagger-5 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs dark:shadow-none hover:border-blue-400 hover:shadow-md flex flex-col justify-between cursor-pointer group"
             title="Click to view complete Inventory Stock Asset valuation"
           >
-            <div className="flex items-center justify-between mb-1.5 sm:mb-3">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 flex items-center gap-1 line-clamp-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0"></span>
-                <span className="truncate">Stock Asset (Live)</span>
+                <span className="truncate">Stock Asset</span>
               </span>
-              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold shrink-0 group-hover:scale-110 transition-transform duration-300">
-                <Layers className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+              <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold shrink-0 group-hover:scale-110 transition-transform duration-300">
+                <Layers className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
             </div>
             <div>
               {data.currentRole === 'salesman' ? (
-                <span className="text-xs sm:text-sm font-bold text-slate-400 dark:text-neutral-500 flex items-center gap-1 sm:gap-1.5 py-1">
-                  <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" /> Restricted
+                <span className="text-xs font-bold text-slate-400 dark:text-neutral-500 flex items-center gap-1 py-0.5">
+                  <Lock className="w-3.5 h-3.5 text-slate-400" /> Restricted
                 </span>
               ) : (
-                <h3 className="kpi-num text-sm sm:text-2xl font-black text-slate-900 dark:text-white tabular-nums tracking-tight truncate">
+                <h3 className="kpi-num text-sm sm:text-xl font-black text-slate-900 dark:text-white tabular-nums tracking-tight truncate">
                   {data.settings.currency} {showBottomMetrics ? stockCostVal.toLocaleString() : '••••••'}
                 </h3>
               )}
-              <p className="text-[10px] sm:text-[11px] text-blue-600/80 dark:text-neutral-400 mt-0.5 sm:mt-1 font-bold flex items-center justify-between truncate group-hover:translate-x-0.5 transition-transform">
-                <span>{totalInStockUnits} units in stock</span>
+              <p className="text-[10px] text-blue-600/80 dark:text-neutral-400 mt-0.5 font-bold flex items-center justify-between truncate group-hover:translate-x-0.5 transition-transform">
+                <span>{totalInStockUnits} units</span>
                 {data.currentRole !== 'salesman' && <ArrowRight className="w-3 h-3 shrink-0" />}
               </p>
             </div>
@@ -757,23 +729,23 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           {/* 5. PERIOD CREDIT (UDHAR) GIVEN */}
           <div
             onClick={() => openMetricDetail('credit')}
-            className="dashboard-metric-card metric-credit animate-card-in animate-stagger-6 col-span-2 sm:col-span-1 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-3 sm:p-5 shadow-sm dark:shadow-none hover:border-orange-500 hover:shadow-lg flex flex-col justify-between cursor-pointer group"
+            className="dashboard-metric-card metric-credit animate-card-in animate-stagger-6 col-span-2 lg:col-span-1 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs dark:shadow-none hover:border-orange-500 hover:shadow-md flex flex-col justify-between cursor-pointer group"
             title="Click to view all Credit & Khata details"
           >
-            <div className="flex items-center justify-between mb-1.5 sm:mb-3">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 flex items-center gap-1 line-clamp-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse shrink-0"></span>
-                <span className="truncate">Credit Issued ({periodLabel})</span>
+                <span className="truncate">Credit Issued</span>
               </span>
-              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-orange-50 dark:bg-orange-950/60 text-orange-600 dark:text-orange-400 flex items-center justify-center font-bold shrink-0 group-hover:scale-110 transition-transform duration-300">
-                <Banknote className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+              <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-orange-50 dark:bg-orange-950/60 text-orange-600 dark:text-orange-400 flex items-center justify-center font-bold shrink-0 group-hover:scale-110 transition-transform duration-300">
+                <Banknote className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
             </div>
             <div>
-              <h3 className="kpi-num text-sm sm:text-2xl font-black text-slate-900 dark:text-white tabular-nums tracking-tight truncate">
+              <h3 className="kpi-num text-sm sm:text-xl font-black text-slate-900 dark:text-white tabular-nums tracking-tight truncate">
                 {data.settings.currency} {showBottomMetrics ? periodCreditIssued.toLocaleString() : '••••••'}
               </h3>
-              <p className="text-[10px] text-orange-600/90 dark:text-neutral-400 mt-0.5 sm:mt-1 font-bold flex items-center justify-between truncate group-hover:translate-x-0.5 transition-transform">
+              <p className="text-[10px] text-orange-600/90 dark:text-neutral-400 mt-0.5 font-bold flex items-center justify-between truncate group-hover:translate-x-0.5 transition-transform">
                 <span>All Details ({periodLabel})</span>
                 <ArrowRight className="w-3 h-3 shrink-0" />
               </p>
@@ -792,7 +764,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
       {/* ======================================================== */}
       <div className="w-full animate-card-in animate-stagger-5">
         {/* Low Stock Alerts */}
-        <div className="bg-white dark:bg-black rounded-2xl border border-slate-200/80 dark:border-neutral-900 p-5 shadow-sm dark:shadow-none space-y-4">
+        <div className="bg-white dark:bg-black rounded-2xl border border-slate-200/80 dark:border-neutral-900 p-3.5 sm:p-4.5 shadow-xs dark:shadow-none space-y-3">
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-neutral-900 pb-3">
             <div className="flex items-center gap-2.5">
               <div className="p-2 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 rounded-xl">
@@ -886,23 +858,11 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
             </div>
 
             {/* Balances Summary Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs shrink-0">
+            <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs shrink-0">
               <div>
                 <span className="text-[10px] text-slate-400 block font-bold">Cash In Hand</span>
                 <span className="text-lg font-black tabular-nums text-emerald-700">
                   {data.settings.currency} {cashDrawer.cashInHand.toLocaleString()}
-                </span>
-              </div>
-              <div>
-                <span className="text-[10px] text-slate-400 block font-bold">Bank / Online</span>
-                <span className="text-lg font-black tabular-nums text-sky-700">
-                  {data.settings.currency} {cashDrawer.bankBalance.toLocaleString()}
-                </span>
-              </div>
-              <div>
-                <span className="text-[10px] text-slate-400 block font-bold">Total Liquid Funds</span>
-                <span className="text-lg font-black tabular-nums text-slate-900">
-                  {data.settings.currency} {cashDrawer.totalLiquidFunds.toLocaleString()}
                 </span>
               </div>
               <div>
@@ -991,9 +951,6 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
                     </tr>
                   ) : (
                     filteredLedger.map(item => {
-                      const isIn = item.cashIn > 0 || item.bankIn > 0;
-                      const isCash = item.cashIn > 0 || item.cashOut > 0;
-
                       return (
                         <tr key={item.id} className="hover:bg-slate-50/70">
                           <td className="py-2 px-3 text-[11px] text-slate-500 whitespace-nowrap">
@@ -1025,15 +982,11 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
                           <td className="py-2 px-3 text-right font-bold text-emerald-600">
                             {item.cashIn > 0
                               ? `+${data.settings.currency} ${item.cashIn.toLocaleString()}`
-                              : item.bankIn > 0
-                              ? `+${data.settings.currency} ${item.bankIn.toLocaleString()} (Bank)`
                               : '-'}
                           </td>
                           <td className="py-2 px-3 text-right font-bold text-rose-600">
                             {item.cashOut > 0
                               ? `-${data.settings.currency} ${item.cashOut.toLocaleString()}`
-                              : item.bankOut > 0
-                              ? `-${data.settings.currency} ${item.bankOut.toLocaleString()} (Bank)`
                               : '-'}
                           </td>
                           <td className="py-2 px-3 text-right font-black tabular-nums text-slate-900">
@@ -1282,7 +1235,6 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
                         <th className="py-2.5 px-3">Date</th>
                         <th className="py-2.5 px-3">Description</th>
                         <th className="py-2.5 px-3">Category</th>
-                        <th className="py-2.5 px-3">Method</th>
                         <th className="py-2.5 px-3 text-right">Amount</th>
                       </tr>
                     </thead>
@@ -1291,8 +1243,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
                         .filter(e =>
                           !q ||
                           e.description.toLowerCase().includes(q) ||
-                          e.category.toLowerCase().includes(q) ||
-                          (e.paymentMethod || '').toLowerCase().includes(q)
+                          e.category.toLowerCase().includes(q)
                         )
                         .map(exp => (
                           <tr key={exp.id} className="hover:bg-slate-50">
@@ -1301,14 +1252,13 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
                             <td className="py-2 px-3">
                               <span className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 font-bold text-[10px]">{exp.category}</span>
                             </td>
-                            <td className="py-2 px-3 text-slate-600">{exp.paymentMethod || 'Cash'}</td>
                             <td className="py-2 px-3 text-right tabular-nums font-black text-rose-600">
                               {cur} {exp.amount.toLocaleString()}
                             </td>
                           </tr>
                         ))}
                       {periodExpensesList.length === 0 && (
-                        <tr><td colSpan={5} className="py-8 text-center text-slate-400">No expenses recorded for {periodLabel}</td></tr>
+                        <tr><td colSpan={4} className="py-8 text-center text-slate-400">No expenses recorded for {periodLabel}</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -1356,7 +1306,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
                               </td>
                               <td className="py-2 px-3">
                                 <span className="font-semibold text-slate-800">{p.partyName}</span>
-                                <span className="block text-[10px] text-slate-400">{p.items.length} item(s) • {p.paymentMethod}</span>
+                                <span className="block text-[10px] text-slate-400">{p.items.length} item(s)</span>
                               </td>
                               <td className="py-2 px-3 text-right tabular-nums font-bold">{cur} {p.totalAmount.toLocaleString()}</td>
                               <td className="py-2 px-3 text-right tabular-nums font-bold text-amber-700">{cur} {p.paidAmount.toLocaleString()}</td>

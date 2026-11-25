@@ -636,7 +636,6 @@ export const SettleKhataModal: React.FC<SettleKhataModalProps> = ({
   const { showToast } = useToast();
   const [type, setType] = useState<'payment' | 'credit'>('payment');
   const [amount, setAmount] = useState<number | ''>('');
-  const [paymentMethod, setPaymentMethod] = useState<string>('Cash');
   const [note, setNote] = useState('');
 
   if (!isOpen || !customer) return null;
@@ -653,16 +652,15 @@ export const SettleKhataModal: React.FC<SettleKhataModalProps> = ({
       customer.id,
       type,
       amt,
-      type === 'payment' ? paymentMethod : undefined,
+      type === 'payment' ? 'Cash' : undefined,
       undefined,
       note.trim() || undefined
     );
     setAmount('');
     setNote('');
-    setPaymentMethod('Cash');
     showToast(
       type === 'payment'
-        ? `Payment of ${currency} ${amt.toLocaleString()} received via ${paymentMethod}`
+        ? `Payment of ${currency} ${amt.toLocaleString()} received in Cash`
         : `Credit of ${currency} ${amt.toLocaleString()} added`,
       'success'
     );
@@ -747,35 +745,7 @@ export const SettleKhataModal: React.FC<SettleKhataModalProps> = ({
             />
           </div>
 
-          {/* Structured Payment Channel (Only for Received Payment) */}
-          {type === 'payment' && (
-            <div>
-              <label className="block font-semibold text-slate-700 mb-1">
-                Payment Channel (Destination Account) *
-              </label>
-              <div className="grid grid-cols-4 gap-1.5">
-                {[
-                  { id: 'Cash', label: 'Cash Drawer' },
-                  { id: 'JazzCash', label: 'JazzCash' },
-                  { id: 'Easypaisa', label: 'Easypaisa' },
-                  { id: 'Bank', label: 'Bank' },
-                ].map(channel => (
-                  <button
-                    key={channel.id}
-                    type="button"
-                    onClick={() => setPaymentMethod(channel.id)}
-                    className={`py-2 px-1 rounded-xl text-[11px] font-bold text-center border transition cursor-pointer ${
-                      paymentMethod === channel.id
-                        ? 'border-purple-600 bg-purple-50 text-purple-700 shadow-2xs'
-                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    {channel.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Received into Cash In Hand automatically */}
 
           <div>
             <label className="block font-semibold text-slate-700 mb-1">Note / Remarks (Optional)</label>

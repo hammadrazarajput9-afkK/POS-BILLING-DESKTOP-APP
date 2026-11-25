@@ -1,28 +1,12 @@
-import { AppData, DailyClosingRecord, OnlineAccount, SaleRecord, KhataTransaction, ExpenseItem, SupplierPurchase } from '../types';
+import { AppData, DailyClosingRecord, SaleRecord, KhataTransaction, ExpenseItem, SupplierPurchase } from '../types';
 
 export type AccountChannel = 'Cash' | 'Bank' | 'JazzCash' | 'Easypaisa' | 'Card' | 'Other';
 
 /**
- * Normalizes payment method string to standard AccountChannel without text guessing
+ * Unified Cash In Hand mode: all liquid payments route strictly through Cash In Hand
  */
-export function normalizePaymentChannel(pm?: string): AccountChannel {
-  if (!pm) return 'Cash';
-  const clean = pm.trim().toLowerCase();
-  if (clean.includes('jazzcash') || clean.includes('jazz cash')) return 'JazzCash';
-  if (clean.includes('easypaisa') || clean.includes('easy paisa')) return 'Easypaisa';
-  if (clean === 'cash' || clean === 'cash drawer') return 'Cash';
-  if (
-    clean === 'bank' ||
-    clean === 'bank transfer' ||
-    clean === 'bank account' ||
-    clean === 'meezan bank' ||
-    clean === 'cheque' ||
-    clean.includes('bank')
-  ) {
-    return 'Bank';
-  }
-  if (clean === 'card' || clean === 'credit card' || clean === 'debit card') return 'Card';
-  return 'Other';
+export function normalizePaymentChannel(_pm?: string): AccountChannel {
+  return 'Cash';
 }
 
 /**
@@ -153,15 +137,7 @@ export function calculateAccountingSummary(
   // 1. Opening Cash
   const openingCash = previousClosing ? Number(previousClosing.totalCash) || 0 : 0;
 
-  // 2. Opening Online Balances
-  const openingOnlineMap = new Map<string, number>();
-  if (previousClosing && Array.isArray(previousClosing.onlineBalances)) {
-    previousClosing.onlineBalances.forEach(b => {
-      openingOnlineMap.set(b.accountId, Number(b.balance) || 0);
-    });
-  }
-
-  // 3. Filter period transactions (exclude CANCELLED sales)
+  // 2. Filter period transactions (exclude CANCELLED sales)
   const periodSales = (data.sales || []).filter(s =>
     s.status !== 'CANCELLED' &&
     isTxInClosingPeriod(s.date, previousClosing, targetDate, targetTime)
@@ -198,44 +174,10 @@ export function calculateAccountingSummary(
     isTxInClosingPeriod(r.returnDate, previousClosing, targetDate, targetTime)
   );
 
-  // Helper to check account matching for general channel breakdown
-  const matchesChannel = (pm?: string, targetChannel: AccountChannel = 'Cash'): boolean => {
-    return normalizePaymentChannel(pm) === targetChannel;
-  };
-
-  // Helper to check online account matching (exact accountId first, then legacy fallback)
-  const matchesAccount = (
-    tx: { paymentMethod?: string; accountId?: string },
-    accId: string,
-    accChannel: AccountChannel,
-    onlineAccountsList: OnlineAccount[]
-  ): boolean => {
-    if (tx.accountId) {
-      return tx.accountId === accId;
-    }
-    if (normalizePaymentChannel(tx.paymentMethod) !== accChannel) return false;
-    // Legacy fallback: if tx has no accountId, attribute to this account if it's the only one of this channel
-    const sameChannelAccounts = onlineAccountsList.filter(a => {
-      const aChan = normalizePaymentChannel(a.name);
-      return (aChan !== 'Other' ? aChan : normalizePaymentChannel(a.bankType || a.name)) === accChannel;
-    });
-    return sameChannelAccounts.length === 1 && sameChannelAccounts[0].id === accId;
-  };
-
-  const allOnlineAccounts = data.onlineAccounts || [];
-
-  // Channel Accumulator Helper
+  // Channel Accumulator Helper (Cash In Hand absorbs all liquid transactions)
   const createChannelBreakdown = (channel: AccountChannel, openingVal: number = 0): AccountBreakdown => {
-    const isChannelAccount = (tx: { paymentMethod?: string; accountId?: string }) => {
-      if (tx.accountId && allOnlineAccounts.some(a => a.id === tx.accountId)) {
-        const assignedAcc = allOnlineAccounts.find(a => a.id === tx.accountId);
-        const byName = normalizePaymentChannel(assignedAcc?.name);
-        const byType = normalizePaymentChannel(assignedAcc?.bankType || assignedAcc?.name);
-        const resolved = byName !== 'Other' ? byName : byType;
-        return resolved === channel;
-      }
-      if (!matchesChannel(tx.paymentMethod, channel)) return false;
-      return true;
+    const isChannelAccount = (_tx: { paymentMethod?: string; accountId?: string }) => {
+      return channel === 'Cash';
     };
 
     // Sales inflow
@@ -294,91 +236,20 @@ export function calculateAccountingSummary(
     };
   };
 
-  // Find opening for major digital channels from previous closing
-  const getOpeningForChannel = (channel: AccountChannel): number => {
-    if (!previousClosing || !previousClosing.onlineBalances) return 0;
-    return previousClosing.onlineBalances
-      .filter(b => {
-        const acc = allOnlineAccounts.find(a => a.id === b.accountId);
-        const channelOfAcc = acc ? normalizePaymentChannel(acc.bankType || acc.name) : normalizePaymentChannel(b.accountName);
-        return channelOfAcc === channel;
-      })
-      .reduce((sum, b) => sum + (Number(b.balance) || 0), 0);
-  };
-
   const cash = createChannelBreakdown('Cash', openingCash);
-  const bank = createChannelBreakdown('Bank', getOpeningForChannel('Bank'));
-  const jazzCash = createChannelBreakdown('JazzCash', getOpeningForChannel('JazzCash'));
-  const easypaisa = createChannelBreakdown('Easypaisa', getOpeningForChannel('Easypaisa'));
-  const card = createChannelBreakdown('Card', getOpeningForChannel('Card'));
-  const other = createChannelBreakdown('Other', getOpeningForChannel('Other'));
+  const bank = createChannelBreakdown('Bank', 0);
+  const jazzCash = createChannelBreakdown('JazzCash', 0);
+  const easypaisa = createChannelBreakdown('Easypaisa', 0);
+  const card = createChannelBreakdown('Card', 0);
+  const other = createChannelBreakdown('Other', 0);
 
-  // Online Accounts Detailed Breakdown
-  const onlineAccounts = allOnlineAccounts.map(acc => {
-    const opening = openingOnlineMap.get(acc.id) ?? 0;
-    const channel = normalizePaymentChannel(acc.bankType || acc.name);
-
-    const sales = periodSales
-      .filter(s => matchesAccount(s, acc.id, channel, allOnlineAccounts))
-      .reduce((sum, s) => {
-        const isCredit = s.invoiceType === 'credit';
-        const paid = !isCredit
-          ? (s.amountPaid !== undefined && s.amountPaid !== null ? Number(s.amountPaid) : Number(s.grandTotal) || 0)
-          : (Number(s.amountPaid) || 0);
-        return sum + paid;
-      }, 0);
-
-    const khataRecoveries = periodKhataPayments
-      .filter(item => matchesAccount(item.tx, acc.id, channel, allOnlineAccounts))
-      .reduce((sum, item) => sum + (Number(item.tx.amount) || 0), 0);
-
-    const purchaseReversals = periodPurchaseReversals
-      .filter(p => matchesAccount(p, acc.id, channel, allOnlineAccounts))
-      .reduce((sum, p) => sum + (Number(p.paidAmount) || 0), 0);
-
-    const expenses = periodExpenses
-      .filter(e => matchesAccount(e, acc.id, channel, allOnlineAccounts))
-      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-
-    const supplierPayments = periodPurchases
-      .filter(p => matchesAccount(p, acc.id, channel, allOnlineAccounts))
-      .reduce((sum, p) => sum + (Number(p.paidAmount) || 0), 0);
-
-    const salesRefunds = periodSalesReturns
-      .filter(
-        r =>
-          r.refundPaymentMethod !== 'Credit Adjustment' &&
-          matchesAccount({ paymentMethod: r.refundPaymentMethod, accountId: r.accountId }, acc.id, channel, allOnlineAccounts)
-      )
-      .reduce((sum, r) => sum + (Number(r.totalRefundAmount) || 0), 0);
-
-    const netMovement = sales + khataRecoveries + purchaseReversals - expenses - supplierPayments - salesRefunds;
-    const expectedClosing = opening + netMovement;
-
-    return {
-      accountId: acc.id,
-      accountName: acc.name,
-      bankType: acc.bankType,
-      opening,
-      sales,
-      khataRecoveries,
-      purchaseReversals,
-      expenses,
-      supplierPayments,
-      salesRefunds,
-      expectedClosing,
-    };
-  });
-
-  const openingOnlineTotal = allOnlineAccounts.reduce(
-    (sum, acc) => sum + (openingOnlineMap.get(acc.id) ?? 0),
-    0
-  );
-  const openingGrandTotal = openingCash + openingOnlineTotal;
+  const onlineAccounts: AccountingSummary['onlineAccounts'] = [];
+  const openingOnlineTotal = 0;
+  const openingGrandTotal = openingCash;
 
   const totalExpectedCash = cash.expectedClosing;
-  const totalExpectedOnline = onlineAccounts.reduce((sum, a) => sum + a.expectedClosing, 0);
-  const totalExpectedGrand = totalExpectedCash + totalExpectedOnline;
+  const totalExpectedOnline = 0;
+  const totalExpectedGrand = totalExpectedCash;
 
   return {
     previousClosing,

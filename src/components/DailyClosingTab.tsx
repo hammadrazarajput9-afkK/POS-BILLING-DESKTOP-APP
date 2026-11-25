@@ -2,45 +2,26 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { DailyClosingRecord, OnlineAccount, AppData } from '../types';
 import {
   Calculator,
-  Plus,
   Trash2,
   Share2,
   Printer,
   Calendar,
   Wallet,
-  Building2,
-  DollarSign,
   CheckCircle2,
-  AlertTriangle,
   RotateCcw,
   Sliders,
-  ChevronRight,
   TrendingUp,
   FileText,
-  Smartphone,
-  ExternalLink,
-  Search,
-  Filter,
   Download,
-  Eye,
-  ShoppingBag,
-  Receipt,
-  Truck,
-  BookOpen,
-  Clock,
   X,
   Lock,
   Unlock,
-  ArrowDownRight,
-  ArrowUpRight,
   ShieldCheck,
-  CreditCard,
-  Edit2
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { ConfirmModal } from './ConfirmModal';
 import { generatePdfReport } from '../utils/pdfGenerator';
-import { calculateAccountingSummary, normalizePaymentChannel, AccountingSummary } from '../utils/accounting';
+import { calculateAccountingSummary, AccountingSummary } from '../utils/accounting';
 
 interface DailyClosingTabProps {
   data: AppData;
@@ -61,9 +42,6 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
   isAdmin = true,
   onSaveClosing,
   onDeleteClosing,
-  onAddOnlineAccount,
-  onUpdateOnlineAccount,
-  onDeleteOnlineAccount,
   onOpenSettings,
   onOpenPdfReport,
 }) => {
@@ -84,22 +62,10 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
     '10': 0,
   });
   const [coins, setCoins] = useState<number | ''>('');
-  const [onlineBalances, setOnlineBalances] = useState<Record<string, number | ''>>({});
   const [closedBy, setClosedBy] = useState('Counter Cashier');
   const [closingNotes, setClosingNotes] = useState('');
 
   // Modals state
-  const [isAddAccountModalOpen, setIsAddAccountModalOpen] = useState(false);
-  const [editingAccount, setEditingAccount] = useState<OnlineAccount | null>(null);
-  const [newAccountCategory, setNewAccountCategory] = useState<'Digital Wallet' | 'Bank Account' | 'Load' | 'Custom'>('Digital Wallet');
-  const [customAccountCategory, setCustomAccountCategory] = useState('');
-  const [newAccountName, setNewAccountName] = useState('');
-  const [newAccountNumber, setNewAccountNumber] = useState('');
-  const [newAccountTitle, setNewAccountTitle] = useState('');
-  const [newAccountShowInPos, setNewAccountShowInPos] = useState(true);
-
-
-  const [accountToDelete, setAccountToDelete] = useState<OnlineAccount | null>(null);
   const [closingToDelete, setClosingToDelete] = useState<DailyClosingRecord | null>(null);
   const [selectedClosingForPrint, setSelectedClosingForPrint] = useState<DailyClosingRecord | null>(null);
   const [selectedHistoryRecord, setSelectedHistoryRecord] = useState<DailyClosingRecord | null>(null);
@@ -136,23 +102,11 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
     return sum;
   }, [denominations, coins]);
 
-  // 4. Counted Digital Balances Total
-  const totalOnlineBalance = useMemo(() => {
-    let sum = 0;
-    (data.onlineAccounts || []).forEach(acc => {
-      const val = Number(onlineBalances[acc.id]) || 0;
-      sum += val;
-    });
-    return sum;
-  }, [data.onlineAccounts, onlineBalances]);
+  // 4. Grand Actual Counted Cash Total
+  const grandTotal = totalPhysicalCash;
 
-  // 5. Grand Actual Counted Total
-  const grandTotal = totalPhysicalCash + totalOnlineBalance;
-
-  // 6. Reconciliation Differences
+  // 5. Reconciliation Difference
   const cashDifference = totalPhysicalCash - accounting.totalExpectedCash;
-  const onlineDifference = totalOnlineBalance - accounting.totalExpectedOnline;
-  const totalDifference = grandTotal - accounting.totalExpectedGrand;
 
   // Sync state whenever activeDate changes or closing is loaded
   useEffect(() => {
@@ -169,15 +123,9 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
         ...(existingClosingForActiveDate.denominations || {}),
       });
       setCoins(existingClosingForActiveDate.coins ? existingClosingForActiveDate.coins : '');
-      const map: Record<string, number | ''> = {};
-      (existingClosingForActiveDate.onlineBalances || []).forEach(b => {
-        map[b.accountId] = b.balance ? b.balance : '';
-      });
-      setOnlineBalances(map);
       setClosedBy(existingClosingForActiveDate.closedBy || 'Counter Cashier');
       setClosingNotes(existingClosingForActiveDate.notes || '');
     } else {
-      // New / Unclosed day: reset physical counts and only prepopulate digital accounts with non-zero expected balances
       setDenominations({
         '5000': 0,
         '1000': 0,
@@ -188,12 +136,6 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
         '10': 0,
       });
       setCoins('');
-
-      const prepopulatedOnline: Record<string, number | ''> = {};
-      accounting.onlineAccounts.forEach(acc => {
-        prepopulatedOnline[acc.accountId] = acc.expectedClosing > 0 ? acc.expectedClosing : '';
-      });
-      setOnlineBalances(prepopulatedOnline);
       setClosingNotes('');
     }
   }, [activeDate, existingClosingForActiveDate]);
@@ -216,114 +158,14 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
     showToast('Cash count reset', 'info');
   };
 
-  const openAddAccountModal = () => {
-    setEditingAccount(null);
-    setNewAccountCategory('Digital Wallet');
-    setCustomAccountCategory('');
-    setNewAccountName('');
-    setNewAccountNumber('');
-    setNewAccountTitle('');
-    setNewAccountShowInPos(true);
-    setIsAddAccountModalOpen(true);
-  };
-
-  const openEditAccountModal = (acc: OnlineAccount) => {
-    setEditingAccount(acc);
-    const type = (acc.bankType || 'Digital Wallet').trim();
-    if (type === 'Digital Wallet' || type === 'Bank Account' || type === 'Load') {
-      setNewAccountCategory(type);
-      setCustomAccountCategory('');
-    } else if (type.toLowerCase().includes('bank')) {
-      setNewAccountCategory('Bank Account');
-      setCustomAccountCategory('');
-    } else if (type.toLowerCase().includes('load')) {
-      setNewAccountCategory('Load');
-      setCustomAccountCategory('');
-    } else if (type.toLowerCase().includes('wallet') || type.toLowerCase() === 'jazzcash' || type.toLowerCase() === 'easypaisa') {
-      setNewAccountCategory('Digital Wallet');
-      setCustomAccountCategory('');
-    } else {
-      setNewAccountCategory('Custom');
-      setCustomAccountCategory(type);
-    }
-    setNewAccountName(acc.name || '');
-    setNewAccountNumber(acc.accountNumber || '');
-    setNewAccountTitle(acc.accountTitle || '');
-    setNewAccountShowInPos(acc.showInPos !== false);
-    setIsAddAccountModalOpen(true);
-  };
-
-  // Add or Edit Online Account
-  const handleSaveOnlineAccount = (e: React.FormEvent) => {
-    e.preventDefault();
-    const name = newAccountName.trim();
-    if (!name) {
-      showToast('Account name is required', 'warning');
-      return;
-    }
-
-    const resolvedBankType =
-      newAccountCategory === 'Custom'
-        ? customAccountCategory.trim() || 'Other'
-        : newAccountCategory;
-
-    if (editingAccount && onUpdateOnlineAccount) {
-      onUpdateOnlineAccount({
-        ...editingAccount,
-        name,
-        accountNumber: newAccountNumber.trim() || undefined,
-        accountTitle: newAccountTitle.trim() || undefined,
-        bankType: resolvedBankType,
-        showInPos: newAccountShowInPos,
-      });
-    } else {
-      onAddOnlineAccount({
-        name,
-        accountNumber: newAccountNumber.trim() || undefined,
-        accountTitle: newAccountTitle.trim() || undefined,
-        bankType: resolvedBankType,
-        showInPos: newAccountShowInPos,
-      });
-    }
-
-    setEditingAccount(null);
-    setNewAccountName('');
-    setNewAccountNumber('');
-    setNewAccountTitle('');
-    setCustomAccountCategory('');
-    setNewAccountShowInPos(true);
-    setIsAddAccountModalOpen(false);
-  };
-
   // Commit & Finalize Closing
   const handleFinalizeClosing = () => {
-    if (totalPhysicalCash === 0 && totalOnlineBalance === 0) {
+    if (totalPhysicalCash === 0) {
       const confirmZero = window.confirm(
-        'Both physical cash notes and digital balances are 0. Are you sure you want to save this closing?'
+        'Physical cash notes count is 0. Are you sure you want to save this closing?'
       );
       if (!confirmZero) return;
     }
-
-    const onlineList = (data.onlineAccounts || []).map(acc => ({
-      accountId: acc.id,
-      accountName: acc.name,
-      balance: Number(onlineBalances[acc.id]) || 0,
-    }));
-
-    const expectedOnlineList = accounting.onlineAccounts.map(a => ({
-      accountId: a.accountId,
-      accountName: a.accountName,
-      balance: a.expectedClosing,
-    }));
-
-    const openingOnlineList = (data.onlineAccounts || []).map(acc => {
-      const found = accounting.previousClosing?.onlineBalances?.find(b => b.accountId === acc.id);
-      return {
-        accountId: acc.id,
-        accountName: acc.name,
-        balance: found ? Number(found.balance) || 0 : 0,
-      };
-    });
 
     const now = new Date();
     const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -333,22 +175,22 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
       time: timeStr,
       createdAt: now.toISOString(),
       openingCash: accounting.openingCash,
-      openingOnlineBalances: openingOnlineList,
-      openingTotalOnline: accounting.openingOnlineTotal,
-      openingGrandTotal: accounting.openingGrandTotal,
+      openingOnlineBalances: [],
+      openingTotalOnline: 0,
+      openingGrandTotal: accounting.openingCash,
       denominations: { ...denominations },
       coins: Number(coins) || 0,
       totalCash: totalPhysicalCash,
-      onlineBalances: onlineList,
-      totalOnline: totalOnlineBalance,
-      grandTotal,
+      onlineBalances: [],
+      totalOnline: 0,
+      grandTotal: totalPhysicalCash,
       expectedCash: accounting.totalExpectedCash,
-      expectedOnlineBalances: expectedOnlineList,
-      expectedOnlineTotal: accounting.totalExpectedOnline,
-      expectedGrandTotal: accounting.totalExpectedGrand,
+      expectedOnlineBalances: [],
+      expectedOnlineTotal: 0,
+      expectedGrandTotal: accounting.totalExpectedCash,
       difference: cashDifference,
-      onlineDifference: onlineDifference,
-      totalDifference: totalDifference,
+      onlineDifference: 0,
+      totalDifference: cashDifference,
       closedBy: closedBy.trim() || 'Counter Cashier',
       notes: closingNotes.trim() || undefined,
       status: 'closed',
@@ -365,9 +207,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
     lines.push(`📅 *Date:* ${record.date}  |  🕒 *Time:* ${record.time}`);
     lines.push(`👤 *Closed By:* ${record.closedBy || 'Cashier'}`);
     lines.push(`----------------------------------------`);
-    lines.push(`🏁 *OPENING BALANCE:*`);
-    lines.push(`• Opening Cash: ${currency} ${(record.openingCash || 0).toLocaleString()}`);
-    lines.push(`• Opening Digital: ${currency} ${(record.openingTotalOnline || 0).toLocaleString()}`);
+    lines.push(`🏁 *OPENING CASH IN HAND:* ${currency} ${(record.openingCash || 0).toLocaleString()}`);
     lines.push(`----------------------------------------`);
     lines.push(`💵 *PHYSICAL CASH NOTES COUNT:*`);
 
@@ -388,17 +228,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
       lines.push(`⚖️ *Cash Difference:* ${diff >= 0 ? '+' : ''}${currency} ${diff.toLocaleString()}`);
     }
     lines.push(`----------------------------------------`);
-
-    if (record.onlineBalances && record.onlineBalances.length > 0) {
-      lines.push(`💳 *DIGITAL & BANK ACCOUNTS:*`);
-      record.onlineBalances.forEach(acc => {
-        lines.push(`• ${acc.accountName}: ${currency} ${acc.balance.toLocaleString()}`);
-      });
-      lines.push(`📱 *Total Digital:* ${currency} ${record.totalOnline.toLocaleString()}`);
-      lines.push(`----------------------------------------`);
-    }
-
-    lines.push(`🏆 *GRAND TOTAL RECONCILED:* ${currency} ${record.grandTotal.toLocaleString()}`);
+    lines.push(`🏆 *CLOSING CASH IN HAND:* ${currency} ${record.totalCash.toLocaleString()}`);
     if (record.notes) {
       lines.push(`📝 *Notes:* ${record.notes}`);
     }
@@ -553,17 +383,16 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
         </div>
       )}
 
-      {/* ACCOUNTING LEDGER BREAKDOWN STRIP (OPENING -> INFLOWS -> OUTFLOWS -> EXPECTED) */}
+      {/* ACCOUNTING LEDGER BREAKDOWN STRIP (CASH IN HAND ONLY) */}
       <div className="bg-white rounded-xl sm:rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
-        {/* Clean Ledger Header Bar */}
         <div className="bg-slate-50/90 border-b border-slate-200/80 px-3 sm:px-5 py-2 sm:py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
           <div className="flex items-center gap-2 min-w-0">
-            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-blue-50 border border-blue-200/70 text-blue-600 flex items-center justify-center shrink-0">
-              <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-emerald-50 border border-emerald-200/70 text-emerald-600 flex items-center justify-center shrink-0">
+              <Wallet className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
             <div className="min-w-0">
               <h3 className="text-xs sm:text-sm font-extrabold text-slate-900 tracking-tight truncate">
-                Period Accounting Ledger
+                Cash In Hand Period Ledger
               </h3>
               <p className="text-[10px] sm:text-[11px] font-medium text-slate-500 truncate">
                 Since {accounting.previousClosing ? `${accounting.previousClosing.date}${accounting.previousClosing.time ? ` · ${accounting.previousClosing.time}` : ''}` : 'Initial Inception'}
@@ -572,539 +401,105 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
           </div>
 
           <div className="flex items-center justify-between sm:justify-end gap-2 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-200/60 shrink-0">
-            <span className="text-[10.5px] sm:text-[11px] font-semibold text-slate-500">Expected Total</span>
-            <span className="text-xs sm:text-base font-extrabold text-slate-900 tabular-nums">
-              {currency} {accounting.totalExpectedGrand.toLocaleString()}
+            <span className="text-[10.5px] sm:text-[11px] font-semibold text-slate-500">Expected Cash</span>
+            <span className="text-xs sm:text-base font-extrabold text-emerald-700 tabular-nums">
+              {currency} {accounting.totalExpectedCash.toLocaleString()}
             </span>
           </div>
         </div>
 
-        {/* Hairline-Divided 4-Column Channel Ledger Grid (2x2 compact on mobile) */}
-        <div className="grid grid-cols-2 xl:grid-cols-4 divide-x divide-y xl:divide-y-0 divide-slate-200/80 text-[10.5px] sm:text-xs">
-          {/* Cash Drawer Channel */}
-          <div className="p-2.5 sm:p-4 flex flex-col justify-between gap-2 hover:bg-slate-50/50 transition-colors">
-            <div className="space-y-1.5 sm:space-y-2.5">
-              <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-100">
-                <span className="font-bold text-slate-900 flex items-center gap-1 min-w-0">
-                  <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-md sm:rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                    <Wallet className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                  </span>
-                  <span className="truncate">Cash</span>
-                </span>
-                <span className="text-[9.5px] sm:text-[11px] font-semibold text-slate-500 tabular-nums shrink-0">
-                  Op: {accounting.cash.opening.toLocaleString()}
-                </span>
-              </div>
-
-              <div className="space-y-1 text-[10px] sm:text-xs">
-                <div className="flex items-center justify-between gap-1">
-                  <span className="text-slate-600 font-medium truncate">
-                    + Sales ({accounting.periodSales.filter(s => normalizePaymentChannel(s.paymentMethod) === 'Cash').length})
-                  </span>
-                  <span className="font-bold text-emerald-600 tabular-nums shrink-0">
-                    +{accounting.cash.sales.toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-1">
-                  <span className="text-slate-600 font-medium truncate">+ Khata</span>
-                  <span className="font-bold text-emerald-600 tabular-nums shrink-0">
-                    +{accounting.cash.khataRecoveries.toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-1">
-                  <span className="text-slate-600 font-medium truncate">- Expenses</span>
-                  <span className="font-bold text-rose-600 tabular-nums shrink-0">
-                    -{accounting.cash.expenses.toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-1">
-                  <span className="text-slate-600 font-medium truncate">- Suppliers</span>
-                  <span className="font-bold text-rose-600 tabular-nums shrink-0">
-                    -{accounting.cash.supplierPayments.toLocaleString()}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between gap-1">
-              <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 truncate">Expected</span>
-              <span className="text-xs sm:text-base font-extrabold text-emerald-700 tabular-nums shrink-0">
-                {currency} {accounting.cash.expectedClosing.toLocaleString()}
-              </span>
-            </div>
+        <div className="p-2.5 sm:p-4 grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3 text-[10.5px] sm:text-xs">
+          <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
+            <span className="text-[10px] font-bold text-slate-500 block">Opening Cash</span>
+            <span className="text-xs sm:text-sm font-extrabold text-slate-900 tabular-nums">
+              {currency} {accounting.cash.opening.toLocaleString()}
+            </span>
           </div>
-
-          {/* Bank Accounts Channel */}
-          <div className="p-2.5 sm:p-4 flex flex-col justify-between gap-2 hover:bg-slate-50/50 transition-colors">
-            <div className="space-y-1.5 sm:space-y-2.5">
-              <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-100">
-                <span className="font-bold text-slate-900 flex items-center gap-1 min-w-0">
-                  <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-md sm:rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                    <Building2 className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                  </span>
-                  <span className="truncate">Bank</span>
-                </span>
-                <span className="text-[9.5px] sm:text-[11px] font-semibold text-slate-500 tabular-nums shrink-0">
-                  Op: {accounting.bank.opening.toLocaleString()}
-                </span>
-              </div>
-
-              <div className="space-y-1 text-[10px] sm:text-xs">
-                <div className="flex items-center justify-between gap-1">
-                  <span className="text-slate-600 font-medium truncate">+ Sales</span>
-                  <span className="font-bold text-blue-600 tabular-nums shrink-0">
-                    +{accounting.bank.sales.toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-1">
-                  <span className="text-slate-600 font-medium truncate">+ Khata</span>
-                  <span className="font-bold text-blue-600 tabular-nums shrink-0">
-                    +{accounting.bank.khataRecoveries.toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-1">
-                  <span className="text-slate-600 font-medium truncate">- Outflows</span>
-                  <span className="font-bold text-rose-600 tabular-nums shrink-0">
-                    -{(accounting.bank.expenses + accounting.bank.supplierPayments).toLocaleString()}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between gap-1">
-              <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 truncate">Expected</span>
-              <span className="text-xs sm:text-base font-extrabold text-blue-700 tabular-nums shrink-0">
-                {currency} {accounting.bank.expectedClosing.toLocaleString()}
-              </span>
-            </div>
+          <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200/70">
+            <span className="text-[10px] font-bold text-emerald-700 block">
+              + Sales ({accounting.periodSales.length})
+            </span>
+            <span className="text-xs sm:text-sm font-extrabold text-emerald-700 tabular-nums">
+              +{currency} {accounting.cash.sales.toLocaleString()}
+            </span>
           </div>
-
-          {/* JazzCash Channel */}
-          <div className="p-2.5 sm:p-4 flex flex-col justify-between gap-2 hover:bg-slate-50/50 transition-colors">
-            <div className="space-y-1.5 sm:space-y-2.5">
-              <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-100">
-                <span className="font-bold text-slate-900 flex items-center gap-1 min-w-0">
-                  <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-md sm:rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-                    <Smartphone className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                  </span>
-                  <span className="truncate">JazzCash</span>
-                </span>
-                <span className="text-[9.5px] sm:text-[11px] font-semibold text-slate-500 tabular-nums shrink-0">
-                  Op: {accounting.jazzCash.opening.toLocaleString()}
-                </span>
-              </div>
-
-              <div className="space-y-1 text-[10px] sm:text-xs">
-                <div className="flex items-center justify-between gap-1">
-                  <span className="text-slate-600 font-medium truncate">+ Sales</span>
-                  <span className="font-bold text-amber-600 tabular-nums shrink-0">
-                    +{accounting.jazzCash.sales.toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-1">
-                  <span className="text-slate-600 font-medium truncate">+ Khata</span>
-                  <span className="font-bold text-amber-600 tabular-nums shrink-0">
-                    +{accounting.jazzCash.khataRecoveries.toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-1">
-                  <span className="text-slate-600 font-medium truncate">- Outflows</span>
-                  <span className="font-bold text-rose-600 tabular-nums shrink-0">
-                    -{(accounting.jazzCash.expenses + accounting.jazzCash.supplierPayments).toLocaleString()}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between gap-1">
-              <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 truncate">Expected</span>
-              <span className="text-xs sm:text-base font-extrabold text-amber-700 tabular-nums shrink-0">
-                {currency} {accounting.jazzCash.expectedClosing.toLocaleString()}
-              </span>
-            </div>
+          <div className="p-2.5 rounded-xl bg-blue-50/70 border border-blue-200/70">
+            <span className="text-[10px] font-bold text-blue-700 block">+ Khata Recoveries</span>
+            <span className="text-xs sm:text-sm font-extrabold text-blue-700 tabular-nums">
+              +{currency} {accounting.cash.khataRecoveries.toLocaleString()}
+            </span>
           </div>
-
-          {/* Easypaisa Channel */}
-          <div className="p-2.5 sm:p-4 flex flex-col justify-between gap-2 hover:bg-slate-50/50 transition-colors">
-            <div className="space-y-1.5 sm:space-y-2.5">
-              <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-100">
-                <span className="font-bold text-slate-900 flex items-center gap-1 min-w-0">
-                  <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-md sm:rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center shrink-0">
-                    <CreditCard className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                  </span>
-                  <span className="truncate">Easypaisa</span>
-                </span>
-                <span className="text-[9.5px] sm:text-[11px] font-semibold text-slate-500 tabular-nums shrink-0">
-                  Op: {accounting.easypaisa.opening.toLocaleString()}
-                </span>
-              </div>
-
-              <div className="space-y-1 text-[10px] sm:text-xs">
-                <div className="flex items-center justify-between gap-1">
-                  <span className="text-slate-600 font-medium truncate">+ Sales</span>
-                  <span className="font-bold text-teal-600 tabular-nums shrink-0">
-                    +{accounting.easypaisa.sales.toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-1">
-                  <span className="text-slate-600 font-medium truncate">+ Khata</span>
-                  <span className="font-bold text-teal-600 tabular-nums shrink-0">
-                    +{accounting.easypaisa.khataRecoveries.toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-1">
-                  <span className="text-slate-600 font-medium truncate">- Outflows</span>
-                  <span className="font-bold text-rose-600 tabular-nums shrink-0">
-                    -{(accounting.easypaisa.expenses + accounting.easypaisa.supplierPayments).toLocaleString()}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between gap-1">
-              <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 truncate">Expected</span>
-              <span className="text-xs sm:text-base font-extrabold text-teal-700 tabular-nums shrink-0">
-                {currency} {accounting.easypaisa.expectedClosing.toLocaleString()}
-              </span>
-            </div>
+          <div className="p-2.5 rounded-xl bg-rose-50/70 border border-rose-200/70">
+            <span className="text-[10px] font-bold text-rose-700 block">- Cash Expenses</span>
+            <span className="text-xs sm:text-sm font-extrabold text-rose-700 tabular-nums">
+              -{currency} {accounting.cash.expenses.toLocaleString()}
+            </span>
+          </div>
+          <div className="col-span-2 sm:col-span-1 p-2.5 rounded-xl bg-amber-50/70 border border-amber-200/70">
+            <span className="text-[10px] font-bold text-amber-800 block">- Supplier Paid</span>
+            <span className="text-xs sm:text-sm font-extrabold text-amber-800 tabular-nums">
+              -{currency} {accounting.cash.supplierPayments.toLocaleString()}
+            </span>
           </div>
         </div>
-
-        {(accounting.other.sales > 0 ||
-          accounting.other.khataRecoveries > 0 ||
-          accounting.other.expenses > 0 ||
-          accounting.other.supplierPayments > 0 ||
-          accounting.other.expectedClosing !== 0) && (
-          <div className="px-4 py-2.5 bg-purple-50/60 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-2 text-xs">
-            <span className="font-bold text-purple-900 flex items-center gap-1.5">
-              <CreditCard className="w-3.5 h-3.5 text-purple-600" />
-              Load / Other Digital Channels
-            </span>
-            <div className="flex flex-wrap items-center gap-4 tabular-nums">
-              <span className="text-slate-600">
-                +Sales: <strong className="text-emerald-700">{currency} {accounting.other.sales.toLocaleString()}</strong>
-              </span>
-              <span className="text-slate-600">
-                +Khata: <strong className="text-emerald-700">{currency} {accounting.other.khataRecoveries.toLocaleString()}</strong>
-              </span>
-              <span className="text-slate-600">
-                -Outflow: <strong className="text-rose-600">{currency} {(accounting.other.expenses + accounting.other.supplierPayments).toLocaleString()}</strong>
-              </span>
-              <span className="font-extrabold text-purple-900">
-                Net: {currency} {accounting.other.expectedClosing.toLocaleString()}
-              </span>
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Grand Summary Strip: 3 Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-4">
-        {/* Physical Cash Card */}
-        <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4.5 shadow-xs transition hover:border-emerald-400 flex flex-col justify-between">
+      {/* Summary Strip: 2 Clean Cash In Hand Cards */}
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-4">
+        <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs transition hover:border-emerald-400 flex flex-col justify-between">
           <div className="flex items-center justify-between mb-1 sm:mb-2">
             <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
               <Wallet className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-              <span className="truncate">Physical Cash</span>
+              <span className="truncate">Physical Cash Counted</span>
             </span>
             <span className="text-[9px] sm:text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 sm:px-2 sm:py-0.5 rounded-full shrink-0">
-              Counted
+              In Hand
             </span>
           </div>
           <h3 className="text-sm sm:text-2xl font-black text-emerald-600 tabular-nums truncate">
             {currency} {totalPhysicalCash.toLocaleString()}
           </h3>
-          <div className="flex justify-between text-[10px] sm:text-xs text-slate-500 mt-1 truncate">
-            <span className="truncate tabular-nums">Exp: {currency} {accounting.totalExpectedCash.toLocaleString()}</span>
-            <span className={`font-bold tabular-nums shrink-0 ml-1 ${cashDifference === 0 ? 'text-emerald-600' : cashDifference > 0 ? 'text-blue-600' : 'text-rose-600'}`}>
-              {cashDifference === 0 ? '0' : `${cashDifference > 0 ? '+' : ''}${currency} ${cashDifference.toLocaleString()}`}
-            </span>
-          </div>
+          <p className="text-[10px] sm:text-xs text-slate-500 mt-1 truncate tabular-nums">
+            Notes + Loose Coins
+          </p>
         </div>
 
-        {/* Online Accounts Card */}
-        <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4.5 shadow-xs transition hover:border-blue-400 flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-1 sm:mb-2">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
-              <Building2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-              <span className="truncate">Digital Balances</span>
-            </span>
-            <span className="text-[9px] sm:text-[10px] font-extrabold text-blue-700 bg-blue-50 px-1.5 py-0.2 sm:px-2 sm:py-0.5 rounded-full shrink-0">
-              {(data.onlineAccounts || []).length} A/C
-            </span>
-          </div>
-          <h3 className="text-sm sm:text-2xl font-black text-blue-600 tabular-nums truncate">
-            {currency} {totalOnlineBalance.toLocaleString()}
-          </h3>
-          <div className="flex justify-between text-[10px] sm:text-xs text-slate-500 mt-1 truncate">
-            <span className="truncate tabular-nums">Exp: {currency} {accounting.totalExpectedOnline.toLocaleString()}</span>
-            <span className={`font-bold tabular-nums shrink-0 ml-1 ${onlineDifference === 0 ? 'text-emerald-600' : onlineDifference > 0 ? 'text-blue-600' : 'text-rose-600'}`}>
-              {onlineDifference === 0 ? '0' : `${onlineDifference > 0 ? '+' : ''}${currency} ${onlineDifference.toLocaleString()}`}
-            </span>
-          </div>
-        </div>
-
-        {/* Grand Total Card */}
-        <div className="col-span-2 sm:col-span-1 bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-xl sm:rounded-2xl p-2.5 sm:p-4.5 shadow-lg border border-indigo-900/50 flex flex-col justify-between">
+        <div className="bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-lg border border-indigo-900/50 flex flex-col justify-between">
           <div className="flex items-center justify-between mb-1 sm:mb-2">
             <span className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider text-emerald-400 flex items-center gap-1 sm:gap-1.5 line-clamp-1">
               <TrendingUp className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span className="truncate">Grand Total Reconciled</span>
+              <span className="truncate">Expected Cash & Diff</span>
             </span>
             <span className="text-[9px] sm:text-[10px] font-bold text-slate-300 bg-white/10 px-1.5 py-0.2 sm:px-2 sm:py-0.5 rounded-full shrink-0">
-              Cash + Digital
+              Cash Drawer
             </span>
           </div>
           <h3 className="text-sm sm:text-2xl font-black text-white tabular-nums truncate">
-            {currency} {grandTotal.toLocaleString()}
+            {currency} {accounting.totalExpectedCash.toLocaleString()}
           </h3>
           <div className="mt-1 flex items-center justify-between text-[10px] sm:text-[11px] text-slate-300 truncate">
-            <span className="truncate tabular-nums">Exp: {currency} {accounting.totalExpectedGrand.toLocaleString()}</span>
-            {totalDifference === 0 ? (
+            <span className="truncate">Difference:</span>
+            {cashDifference === 0 ? (
               <span className="text-emerald-400 font-bold flex items-center gap-1 shrink-0 ml-1">
                 <CheckCircle2 className="w-3 h-3" /> Matched
               </span>
-            ) : totalDifference > 0 ? (
+            ) : cashDifference > 0 ? (
               <span className="text-blue-300 font-bold tabular-nums shrink-0 ml-1">
-                +{currency} {totalDifference.toLocaleString()}
+                +{currency} {cashDifference.toLocaleString()}
               </span>
             ) : (
               <span className="text-rose-400 font-bold tabular-nums shrink-0 ml-1">
-                {currency} {totalDifference.toLocaleString()}
+                {currency} {cashDifference.toLocaleString()}
               </span>
             )}
           </div>
         </div>
       </div>
 
-      {/* Main Closing Entry Section: Side-by-Side Digital Accounts & Physical Cash on ALL screens */}
-      <div className="grid grid-cols-2 lg:grid-cols-12 gap-2 sm:gap-5 items-start">
-        {/* Left Column: Digital Accounts Count */}
-        <div className="col-span-1 lg:col-span-7 bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2 sm:p-5 space-y-2 sm:space-y-4 shadow-xs min-w-0">
-          <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-slate-100 pb-2 sm:pb-3">
-            <div className="min-w-0">
-              <h3 className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-1 sm:gap-2 truncate">
-                <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 shrink-0" />
-                <span className="truncate">Digital Accounts</span>
-              </h3>
-              <p className="hidden sm:block text-[11px] text-slate-400">
-                Enter counted closing balance for each account
-              </p>
-            </div>
-
-            {!isDayFinalized && (
-              <button
-                type="button"
-                onClick={openAddAccountModal}
-                className="h-6.5 sm:h-7 px-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-md sm:rounded-lg text-[10px] sm:text-xs font-bold flex items-center gap-0.5 sm:gap-1 transition cursor-pointer shrink-0"
-              >
-                <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> Add
-              </button>
-            )}
-          </div>
-
-          {/* Online Accounts Inputs */}
-          {(data.onlineAccounts || []).length === 0 ? (
-            <div className="text-center py-4 sm:py-6 text-slate-400 text-[10px] sm:text-xs border border-slate-200/80 rounded-xl px-1">
-              No accounts. Click + Add.
-            </div>
-          ) : (
-            <>
-              {/* Desktop / Tablet Single-Line Table */}
-              <div className="hidden sm:block border border-slate-200/80 rounded-xl overflow-hidden">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
-                    <tr>
-                      <th className="p-2.5">Account</th>
-                      <th className="p-2.5 text-center">Balance ({currency})</th>
-                      <th className="p-2.5 text-right">Expected / Diff</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {(data.onlineAccounts || []).map(acc => {
-                      const val = onlineBalances[acc.id] ?? '';
-                      const expectedAcc =
-                        accounting.onlineAccounts.find(a => a.accountId === acc.id)?.expectedClosing ?? 0;
-                      const diff = val !== '' ? Number(val) - expectedAcc : 0;
-
-                      return (
-                        <tr key={acc.id} className="hover:bg-slate-50/70 transition">
-                          <td className="p-2.5">
-                            <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
-                              <span className="font-bold text-slate-900 text-xs truncate">
-                                {acc.name}
-                              </span>
-                              <span className="text-[9px] bg-blue-50 text-blue-700 border border-blue-200/60 px-1.5 py-0.5 rounded font-bold shrink-0">
-                                {acc.bankType || 'Digital Wallet'}
-                              </span>
-                              {acc.showInPos !== false && (
-                                <span className="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200/60 px-1.5 py-0.5 rounded font-bold shrink-0">
-                                  POS
-                                </span>
-                              )}
-                            </div>
-                            {acc.accountNumber && (
-                              <p className="text-[10px] text-slate-400 tabular-nums truncate">
-                                {acc.accountNumber}
-                              </p>
-                            )}
-                          </td>
-
-                          <td className="p-2.5 text-center">
-                            <input
-                              type="number"
-                              min="0"
-                              disabled={isDayFinalized}
-                              value={val}
-                              onChange={e =>
-                                setOnlineBalances(prev => ({
-                                  ...prev,
-                                  [acc.id]: e.target.value === '' ? '' : Number(e.target.value),
-                                }))
-                              }
-                              placeholder="Balance"
-                              className="w-32 text-right tabular-nums font-bold text-xs bg-slate-50 border border-slate-200 rounded-lg py-1 px-2.5 focus:outline-none focus:border-blue-600 focus:bg-white disabled:opacity-75 disabled:cursor-not-allowed"
-                            />
-                          </td>
-
-                          <td className="p-2.5 text-right tabular-nums">
-                            <div className="inline-flex items-center justify-end gap-1">
-                              <div className="text-right leading-tight mr-1">
-                                <div className="text-[10px] font-semibold text-slate-500">
-                                  Exp: {expectedAcc.toLocaleString()}
-                                </div>
-                                {val !== '' && (
-                                  <div
-                                    className={`text-[10px] font-bold ${
-                                      diff === 0 ? 'text-emerald-600' : 'text-amber-600'
-                                    }`}
-                                  >
-                                    {diff >= 0 ? '+' : ''}
-                                    {diff.toLocaleString()}
-                                  </div>
-                                )}
-                              </div>
-
-                              {isAdmin && !isDayFinalized && onUpdateOnlineAccount && (
-                                <button
-                                  type="button"
-                                  onClick={() => openEditAccountModal(acc)}
-                                  className="text-slate-400 hover:text-blue-600 p-1 rounded transition cursor-pointer shrink-0"
-                                  title="Edit Account"
-                                >
-                                  <Edit2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-
-                              {isAdmin && !isDayFinalized && (
-                                <button
-                                  type="button"
-                                  onClick={() => setAccountToDelete(acc)}
-                                  className="text-slate-300 hover:text-rose-600 p-1 rounded transition cursor-pointer shrink-0"
-                                  title="Delete Account"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-
-                    <tr className="bg-blue-50/60 border-t-2 border-blue-200">
-                      <td colSpan={2} className="p-3 font-extrabold text-slate-900 text-xs">
-                        Total Counted Digital:
-                      </td>
-                      <td className="p-3 text-right font-extrabold text-blue-700 text-sm tabular-nums">
-                        {currency} {totalOnlineBalance.toLocaleString()}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Ultra-Compact Mobile Side-by-Side Account Rows */}
-              <div className="block sm:hidden space-y-1.5">
-                {(data.onlineAccounts || []).map(acc => {
-                  const val = onlineBalances[acc.id] ?? '';
-                  const expectedAcc =
-                    accounting.onlineAccounts.find(a => a.accountId === acc.id)?.expectedClosing ?? 0;
-                  const diff = val !== '' ? Number(val) - expectedAcc : 0;
-
-                  return (
-                    <div
-                      key={acc.id}
-                      className="p-1.5 rounded-lg border border-slate-200/80 bg-slate-50/70 space-y-1"
-                    >
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="font-bold text-slate-900 text-[11px] truncate min-w-0">
-                          {acc.name}
-                        </span>
-                        <div className="flex items-center gap-0.5 shrink-0">
-                          {isAdmin && !isDayFinalized && onUpdateOnlineAccount && (
-                            <button
-                              type="button"
-                              onClick={() => openEditAccountModal(acc)}
-                              className="text-slate-400 hover:text-blue-600 p-0.5 rounded transition cursor-pointer"
-                              title="Edit Account"
-                            >
-                              <Edit2 className="w-3 h-3" />
-                            </button>
-                          )}
-                          {isAdmin && !isDayFinalized && (
-                            <button
-                              type="button"
-                              onClick={() => setAccountToDelete(acc)}
-                              className="text-slate-300 hover:text-rose-600 p-0.5 rounded transition cursor-pointer"
-                              title="Delete Account"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      <input
-                        type="number"
-                        min="0"
-                        disabled={isDayFinalized}
-                        value={val}
-                        onChange={e =>
-                          setOnlineBalances(prev => ({
-                            ...prev,
-                            [acc.id]: e.target.value === '' ? '' : Number(e.target.value),
-                          }))
-                        }
-                        placeholder="Balance"
-                        className="compact-mobile-input w-full text-right tabular-nums font-bold text-[11px] bg-white border border-slate-200 rounded-md py-1 px-1.5 h-7 focus:outline-none focus:border-blue-600 disabled:opacity-75 disabled:cursor-not-allowed"
-                      />
-
-                      <div className="flex justify-between items-center text-[9.5px] text-slate-400 tabular-nums">
-                        <span className="truncate">Exp: {expectedAcc.toLocaleString()}</span>
-                        {val !== '' && (
-                          <span className={`font-bold shrink-0 ${diff === 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
-                            {diff >= 0 ? '+' : ''}{diff.toLocaleString()}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-
-                <div className="bg-blue-600 text-white rounded-lg p-2 flex items-center justify-between shadow-2xs gap-1">
-                  <span className="font-bold text-[10px] truncate">Digital Total:</span>
-                  <span className="font-black text-[11px] tabular-nums shrink-0">
-                    {currency} {totalOnlineBalance.toLocaleString()}
-                  </span>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Right Column: Physical Cash Notes Counter (Side-by-side on mobile too) */}
-        <div className="col-span-1 lg:col-span-5 bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2 sm:p-5 space-y-2 sm:space-y-4 shadow-xs min-w-0">
+      {/* Main Closing Entry Section: Physical Cash Counter & Verification */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-5 items-start">
+        {/* Physical Cash Notes Counter */}
+        <div className="col-span-1 lg:col-span-7 bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 space-y-2.5 sm:space-y-4 shadow-xs min-w-0">
           <div className="flex flex-wrap items-center justify-between gap-1 border-b border-slate-100 pb-2 sm:pb-3">
             <div className="min-w-0">
               <h3 className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-1 sm:gap-2 truncate">
@@ -1274,8 +669,8 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
           </div>
         </div>
 
-        {/* Full-Width Compact Verification & Authorization Box Below */}
-        <div className="col-span-2 lg:col-span-12 bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-3 sm:p-5 space-y-2.5 sm:space-y-3.5 shadow-xs">
+        {/* Verification & Authorization Box */}
+        <div className="col-span-1 lg:col-span-5 bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-3 sm:p-5 space-y-2.5 sm:space-y-3.5 shadow-xs">
           <h4 className="font-bold text-slate-900 text-[11px] sm:text-xs uppercase tracking-wider text-slate-500 flex items-center justify-between">
             <span>Closing Verification & Authorization</span>
             {isDayFinalized ? (
@@ -1289,8 +684,8 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
             )}
           </h4>
 
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 sm:gap-4 items-start text-xs">
-            <div className="md:col-span-4">
+          <div className="space-y-2.5 text-xs">
+            <div>
               <label className="block font-semibold text-slate-700 mb-1 text-[11px] sm:text-xs">
                 Cashier / Staff Name *
               </label>
@@ -1303,7 +698,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
               />
             </div>
 
-            <div className="md:col-span-4">
+            <div>
               <label className="block font-semibold text-slate-700 mb-1 text-[11px] sm:text-xs">
                 Closing Notes (Optional)
               </label>
@@ -1317,33 +712,33 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
               />
             </div>
 
-            <div className="md:col-span-4 space-y-2">
-              <div className="bg-slate-50 p-2 rounded-lg border border-slate-200/70 space-y-0.5 text-[10.5px] sm:text-[11px]">
+            <div className="space-y-2 pt-1">
+              <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200/70 space-y-1 text-[11px]">
                 <div className="flex justify-between">
-                  <span className="text-slate-500">System Expected:</span>
+                  <span className="text-slate-500">System Expected Cash:</span>
                   <span className="tabular-nums font-bold text-slate-700">
-                    {currency} {accounting.totalExpectedGrand.toLocaleString()}
+                    {currency} {accounting.totalExpectedCash.toLocaleString()}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Counted Total:</span>
+                  <span className="text-slate-500">Counted Cash In Hand:</span>
                   <span className="tabular-nums font-bold text-slate-900">
-                    {currency} {grandTotal.toLocaleString()}
+                    {currency} {totalPhysicalCash.toLocaleString()}
                   </span>
                 </div>
-                <div className="flex justify-between pt-0.5 border-t border-slate-200">
+                <div className="flex justify-between pt-1 border-t border-slate-200">
                   <span className="font-bold text-slate-700">Difference:</span>
                   <span
                     className={`tabular-nums font-bold ${
-                      totalDifference === 0
+                      cashDifference === 0
                         ? 'text-emerald-600'
-                        : totalDifference > 0
+                        : cashDifference > 0
                         ? 'text-blue-600'
                         : 'text-rose-600'
                     }`}
                   >
-                    {totalDifference > 0 ? '+' : ''}
-                    {currency} {totalDifference.toLocaleString()}
+                    {cashDifference > 0 ? '+' : ''}
+                    {currency} {cashDifference.toLocaleString()}
                   </span>
                 </div>
               </div>
@@ -1352,7 +747,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                 <button
                   type="button"
                   onClick={handleFinalizeClosing}
-                  className="w-full py-2 sm:py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white text-xs font-extrabold rounded-lg sm:rounded-xl shadow-md shadow-emerald-500/25 transition cursor-pointer flex items-center justify-center gap-1.5"
+                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white text-xs font-extrabold rounded-lg sm:rounded-xl shadow-md shadow-emerald-500/25 transition cursor-pointer flex items-center justify-center gap-1.5"
                 >
                   <Lock className="w-3.5 h-3.5" />
                   <span>Finalize Closing ({activeDate})</span>
@@ -1377,7 +772,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
               <FileText className="w-4 h-4 text-emerald-600" /> Daily Closing History ({filteredHistory.length})
             </h3>
             <p className="text-[10px] sm:text-[11px] text-slate-400">
-              Audit opening balances, note breakdowns & digital accounts
+              Audit opening balances, note breakdowns & cash drawer closings
             </p>
           </div>
 
@@ -1472,8 +867,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                   <th className="p-3">Staff</th>
                   <th className="p-3 text-right">Opening Cash</th>
                   <th className="p-3 text-right">Counted Cash</th>
-                  <th className="p-3 text-right">Digital Balances</th>
-                  <th className="p-3 text-right">Grand Total</th>
+                  <th className="p-3 text-right">Closing Total</th>
                   <th className="p-3 text-right">Difference</th>
                   <th className="p-3 text-center">Share / Print</th>
                   <th className="p-3 text-center"></th>
@@ -1482,7 +876,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
               <tbody className="divide-y divide-slate-100">
                 {filteredHistory.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="text-center py-10 text-slate-400">
+                    <td colSpan={8} className="text-center py-10 text-slate-400">
                       No closing records found for the selected time period.
                     </td>
                   </tr>
@@ -1518,12 +912,8 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                         {currency} {record.totalCash.toLocaleString()}
                       </td>
 
-                      <td className="p-3 text-right font-bold text-blue-600 tabular-nums">
-                        {currency} {record.totalOnline.toLocaleString()}
-                      </td>
-
                       <td className="p-3 text-right font-extrabold text-slate-900 text-sm tabular-nums">
-                        {currency} {record.grandTotal.toLocaleString()}
+                        {currency} {record.totalCash.toLocaleString()}
                       </td>
 
                       <td className="p-3 text-right tabular-nums font-bold">
@@ -1607,7 +997,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
               </button>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 text-xs">
+            <div className="grid grid-cols-2 gap-2 sm:gap-3 text-xs">
               <div className="p-2.5 sm:p-3 bg-slate-50 rounded-xl border border-slate-200">
                 <span className="text-[10px] uppercase font-bold text-slate-400">Opening Cash</span>
                 <p className="text-sm sm:text-base font-extrabold tabular-nums text-slate-800 mt-0.5 truncate">
@@ -1615,15 +1005,9 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                 </p>
               </div>
               <div className="p-2.5 sm:p-3 bg-emerald-50 rounded-xl border border-emerald-200">
-                <span className="text-[10px] uppercase font-bold text-emerald-700">Counted Cash</span>
+                <span className="text-[10px] uppercase font-bold text-emerald-700">Counted Cash In Hand</span>
                 <p className="text-sm sm:text-base font-extrabold tabular-nums text-emerald-700 mt-0.5 truncate">
                   {currency} {selectedHistoryRecord.totalCash.toLocaleString()}
-                </p>
-              </div>
-              <div className="col-span-2 sm:col-span-1 p-2.5 sm:p-3 bg-blue-50 rounded-xl border border-blue-200">
-                <span className="text-[10px] uppercase font-bold text-blue-700">Counted Digital</span>
-                <p className="text-sm sm:text-base font-extrabold tabular-nums text-blue-700 mt-0.5 truncate">
-                  {currency} {selectedHistoryRecord.totalOnline.toLocaleString()}
                 </p>
               </div>
             </div>
@@ -1648,21 +1032,6 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                 )}
               </div>
             </div>
-
-            {/* Digital Accounts Breakdown */}
-            {selectedHistoryRecord.onlineBalances && selectedHistoryRecord.onlineBalances.length > 0 && (
-              <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-200 space-y-2 text-xs">
-                <h4 className="font-bold text-slate-700 text-xs">Digital Accounts Balances:</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
-                  {selectedHistoryRecord.onlineBalances.map(acc => (
-                    <div key={acc.accountId} className="p-2 bg-white rounded-lg border border-slate-200">
-                      <span className="text-slate-500 font-semibold block">{acc.accountName}</span>
-                      <strong className="tabular-nums text-blue-600 text-xs">{currency} {acc.balance.toLocaleString()}</strong>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {selectedHistoryRecord.notes && (
               <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900">
@@ -1710,14 +1079,10 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
           </div>
 
           <div className="border-t border-b border-dashed border-black py-1.5 my-1.5">
-            <p className="font-bold text-[10px] uppercase mb-1">Opening Balances:</p>
+            <p className="font-bold text-[10px] uppercase mb-1">Opening Balance:</p>
             <div className="flex justify-between text-[11px]">
-              <span>Opening Cash:</span>
+              <span>Opening Cash In Hand:</span>
               <span>{currency} {(selectedClosingForPrint.openingCash || 0).toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between text-[11px]">
-              <span>Opening Digital:</span>
-              <span>{currency} {(selectedClosingForPrint.openingTotalOnline || 0).toLocaleString()}</span>
             </div>
           </div>
 
@@ -1745,26 +1110,10 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
             </div>
           </div>
 
-          {selectedClosingForPrint.onlineBalances && selectedClosingForPrint.onlineBalances.length > 0 && (
-            <div className="border-b border-dashed border-black py-1.5 mb-1.5">
-              <p className="font-bold text-[10px] uppercase mb-1">Digital Accounts:</p>
-              {selectedClosingForPrint.onlineBalances.map(acc => (
-                <div key={acc.accountId} className="flex justify-between text-[11px]">
-                  <span>{acc.accountName}</span>
-                  <span>{currency} {acc.balance.toLocaleString()}</span>
-                </div>
-              ))}
-              <div className="flex justify-between font-bold text-xs pt-1 border-t border-dotted border-black mt-1">
-                <span>Total Digital:</span>
-                <span>{currency} {selectedClosingForPrint.totalOnline.toLocaleString()}</span>
-              </div>
-            </div>
-          )}
-
           <div className="py-1.5">
             <div className="flex justify-between font-extrabold text-sm">
-              <span>GRAND CLOSING TOTAL:</span>
-              <span>{currency} {selectedClosingForPrint.grandTotal.toLocaleString()}</span>
+              <span>CLOSING CASH IN HAND:</span>
+              <span>{currency} {selectedClosingForPrint.totalCash.toLocaleString()}</span>
             </div>
             {selectedClosingForPrint.difference !== undefined && (
               <div className="flex justify-between text-xs pt-1">
@@ -1788,165 +1137,6 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
           </div>
         </div>
       )}
-
-      {/* Add / Edit Online Account Modal */}
-      {isAddAccountModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-100">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-blue-600" />
-                <h3 className="font-bold text-slate-900 text-sm">
-                  {editingAccount ? 'Edit Digital Account' : 'Add New Digital Account'}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsAddAccountModalOpen(false);
-                  setEditingAccount(null);
-                }}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveOnlineAccount} className="space-y-3 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1.5">Account Type *</label>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {(
-                    [
-                      { id: 'Digital Wallet', label: 'Digital Wallet' },
-                      { id: 'Bank Account', label: 'Bank Account' },
-                      { id: 'Load', label: 'Load' },
-                      { id: 'Custom', label: 'Add Another Account' },
-                    ] as const
-                  ).map(opt => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => setNewAccountCategory(opt.id)}
-                      className={`py-2 px-2.5 rounded-xl font-bold border text-center transition cursor-pointer ${
-                        newAccountCategory === opt.id
-                          ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {newAccountCategory === 'Custom' && (
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Custom Account Category *</label>
-                  <input
-                    type="text"
-                    required
-                    value={customAccountCategory}
-                    onChange={e => setCustomAccountCategory(e.target.value)}
-                    placeholder="e.g. SadaPay, NayaPay, Raast, Zindigi"
-                    className="w-full bg-slate-50 border border-blue-300 rounded-xl px-3 py-2 font-medium focus:outline-none focus:border-blue-600"
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Account / Wallet / Load Name *</label>
-                <input
-                  type="text"
-                  required
-                  value={newAccountName}
-                  onChange={e => setNewAccountName(e.target.value)}
-                  placeholder={
-                    newAccountCategory === 'Bank Account'
-                      ? 'e.g. Meezan Bank Current, HBL Shop'
-                      : newAccountCategory === 'Load'
-                      ? 'e.g. Jazz Load, Zong Load, Telenor Load'
-                      : 'e.g. Shop JazzCash, Easypaisa Counter'
-                  }
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:outline-none focus:border-blue-600"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Account / Phone / IBAN Number (Optional)</label>
-                <input
-                  type="text"
-                  value={newAccountNumber}
-                  onChange={e => setNewAccountNumber(e.target.value)}
-                  placeholder="0300-1234567 or IBAN"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 tabular-nums font-medium focus:outline-none focus:border-blue-600"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Account Title (Optional)</label>
-                <input
-                  type="text"
-                  value={newAccountTitle}
-                  onChange={e => setNewAccountTitle(e.target.value)}
-                  placeholder="Account Holder Name"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:outline-none focus:border-blue-600"
-                />
-              </div>
-
-              <label className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer">
-                <div>
-                  <span className="font-bold text-slate-800 block">Show in POS Billing Cart</span>
-                  <span className="text-[10px] text-slate-500">Show under Payment Channel during billing</span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={newAccountShowInPos}
-                  onChange={e => setNewAccountShowInPos(e.target.checked)}
-                  className="w-4 h-4 accent-blue-600 cursor-pointer"
-                />
-              </label>
-
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsAddAccountModalOpen(false);
-                    setEditingAccount(null);
-                  }}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium text-xs rounded-xl cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md shadow-blue-500/20 cursor-pointer"
-                >
-                  {editingAccount ? 'Save Changes' : 'Save Account'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Account Modal */}
-      <ConfirmModal
-        isOpen={!!accountToDelete}
-        title="Delete Digital Account"
-        message={`Are you sure you want to remove account "${accountToDelete?.name}"? Existing saved closing records will remain safe.`}
-        confirmText="Yes, Delete"
-        cancelText="Cancel"
-        isDestructive={true}
-        onConfirm={() => {
-          if (accountToDelete) {
-            onDeleteOnlineAccount(accountToDelete.id);
-            showToast(`Account "${accountToDelete.name}" removed`, 'info');
-            setAccountToDelete(null);
-          }
-        }}
-        onClose={() => setAccountToDelete(null)}
-      />
 
       {/* Delete Closing Record Modal */}
       <ConfirmModal

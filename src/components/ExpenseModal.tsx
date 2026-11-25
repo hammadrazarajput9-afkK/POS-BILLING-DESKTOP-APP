@@ -1,10 +1,9 @@
-import React, { useRef, useState, useEffect, useMemo } from 'react';
-import { ExpenseCategory, ExpenseItem, OnlineAccount } from '../types';
+import React, { useRef, useState } from 'react';
+import { ExpenseCategory, ExpenseItem } from '../types';
 import { X, Receipt, Upload, Camera, Trash2, CheckCircle2, RotateCcw } from 'lucide-react';
 import { useToast } from './Toast';
 import { useFormDraft } from '../hooks/useFormDraft';
 import { CameraCaptureModal } from './CameraCaptureModal';
-import { normalizePaymentChannel } from '../utils/accounting';
 
 export interface ExpenseModalProps {
   isOpen: boolean;
@@ -20,7 +19,7 @@ export interface ExpenseModalProps {
   }, existingId?: string) => void;
   currency: string;
   categories?: string[];
-  onlineAccounts?: OnlineAccount[];
+  onlineAccounts?: unknown[];
   onOpenManageCategories?: () => void;
   editExpense?: ExpenseItem | null;
 }
@@ -52,7 +51,6 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
   onSave,
   currency,
   categories = DEFAULT_CATEGORIES,
-  onlineAccounts = [],
   onOpenManageCategories,
 }) => {
   const { showToast } = useToast();
@@ -73,22 +71,6 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
     'expense_modal_form',
     initialDraft
   );
-
-  const matchingAccounts = useMemo(() => {
-    return onlineAccounts.filter(a => normalizePaymentChannel(a.bankType || a.name) === formData.paymentMethod);
-  }, [onlineAccounts, formData.paymentMethod]);
-
-  useEffect(() => {
-    if (matchingAccounts.length === 1) {
-      if (formData.accountId !== matchingAccounts[0].id) {
-        setFormData(prev => ({ ...prev, accountId: matchingAccounts[0].id }));
-      }
-    } else if (matchingAccounts.length === 0) {
-      if (formData.accountId !== '') {
-        setFormData(prev => ({ ...prev, accountId: '' }));
-      }
-    }
-  }, [formData.paymentMethod, matchingAccounts, formData.accountId]);
 
   if (!isOpen) return null;
 
@@ -140,19 +122,14 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
       return;
     }
 
-    if (matchingAccounts.length > 1 && !formData.accountId) {
-      showToast(`Please select the specific ${formData.paymentMethod} account.`, 'warning');
-      return;
-    }
-
     onSave({
       description: formData.description.trim(),
       category: formData.category || categories[0] || 'Miscellaneous & Others',
       amount: amt,
       date: new Date(formData.date).toISOString(),
       image: formData.image || undefined,
-      paymentMethod: formData.paymentMethod || 'Cash',
-      accountId: matchingAccounts.length > 0 ? formData.accountId || undefined : undefined,
+      paymentMethod: 'Cash',
+      accountId: undefined,
     });
 
     showToast('Daily expense recorded successfully', 'success');
@@ -317,47 +294,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
             </div>
           </div>
 
-          {/* Payment Method */}
-          <div>
-            <label className="block font-semibold text-slate-700 mb-1">
-              Paid From (Payment Channel)
-            </label>
-            <div className="grid grid-cols-5 gap-1.5">
-              {['Cash', 'Bank', 'JazzCash', 'Easypaisa', 'Card'].map(pm => (
-                <button
-                  key={pm}
-                  type="button"
-                  onClick={() => setFormData(prev => ({ ...prev, paymentMethod: pm }))}
-                  className={`py-1.5 px-2 rounded-xl text-xs font-bold transition cursor-pointer ${
-                    formData.paymentMethod === pm
-                      ? 'bg-rose-600 text-white shadow-2xs'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}
-                >
-                  {pm}
-                </button>
-              ))}
-            </div>
-            {matchingAccounts.length > 1 && (
-              <div className="mt-2.5">
-                <label className="block text-[11px] font-bold text-rose-900 mb-1">
-                  Select Specific {formData.paymentMethod} Account *
-                </label>
-                <select
-                  value={formData.accountId}
-                  onChange={e => setFormData(prev => ({ ...prev, accountId: e.target.value }))}
-                  className="w-full px-3 py-2 bg-white border border-rose-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-rose-600"
-                >
-                  <option value="">-- Choose Account --</option>
-                  {matchingAccounts.map((acc: OnlineAccount) => (
-                    <option key={acc.id} value={acc.id}>
-                      {acc.name} {acc.accountNumber ? `(${acc.accountNumber})` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
+          {/* Paid from Cash In Hand automatically */}
 
           {/* Receipt Photo / Bill Image Attachment */}
             <div className="p-3 bg-rose-50/60 rounded-xl border border-rose-200/80 flex items-center justify-between gap-3">

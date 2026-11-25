@@ -185,7 +185,6 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
   const [selectedPurchaseForView, setSelectedPurchaseForView] = useState<SupplierPurchase | null>(null);
   const [selectedPurchaseForSettlement, setSelectedPurchaseForSettlement] = useState<SupplierPurchase | null>(null);
   const [settlementAmount, setSettlementAmount] = useState<number | ''>('');
-  const [settlementMethod, setSettlementMethod] = useState<string>('Cash');
   const [settlementNotes, setSettlementNotes] = useState<string>('');
   const [purchaseToDelete, setPurchaseToDelete] = useState<SupplierPurchase | null>(null);
   const [purchaseToReverse, setPurchaseToReverse] = useState<SupplierPurchase | null>(null);
@@ -244,7 +243,6 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
   const [partyPhone, setPartyPhone] = useState('');
   const [billNo, setBillNo] = useState('');
   const [purchaseDate, setPurchaseDate] = useState(() => new Date().toISOString().substring(0, 10));
-  const [paymentMethod, setPaymentMethod] = useState('Cash');
   const [paidAmount, setPaidAmount] = useState<number | ''>('');
   const [notes, setNotes] = useState('');
   const [invoiceImage, setInvoiceImage] = useState<string>('');
@@ -368,7 +366,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
         partyPhone,
         billNo,
         purchaseDate,
-        paymentMethod,
+        paymentMethod: 'Cash',
         paidAmount,
         notes,
         invoiceImage,
@@ -387,7 +385,6 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
     partyPhone,
     billNo,
     purchaseDate,
-    paymentMethod,
     paidAmount,
     notes,
     invoiceImage,
@@ -405,7 +402,6 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
         setPartyPhone(parsed.partyPhone || '');
         setBillNo(parsed.billNo || generateInwardBillNo(targetDate, purchases));
         setPurchaseDate(targetDate);
-        setPaymentMethod(parsed.paymentMethod || 'Cash');
         setPaidAmount(parsed.paidAmount ?? '');
         setNotes(parsed.notes || '');
         setInvoiceImage(parsed.invoiceImage || '');
@@ -454,7 +450,6 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
     setPartyPhone('');
     setBillNo(generateInwardBillNo(today, purchases));
     setPurchaseDate(today);
-    setPaymentMethod('Cash');
     setPaidAmount('');
     setNotes('');
     setInvoiceImage('');
@@ -488,7 +483,6 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
     setPartyPhone(purchase.partyPhone || '');
     setBillNo(purchase.billNo || '');
     setPurchaseDate((purchase.date || new Date().toISOString()).substring(0, 10));
-    setPaymentMethod(purchase.paymentMethod || 'Cash');
     setPaidAmount(purchase.paidAmount ?? '');
     setNotes(purchase.notes || '');
     setInvoiceImage(purchase.invoiceImage || '');
@@ -1044,7 +1038,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
     });
 
     const effectivePaymentMethod = isAdmin
-      ? paymentMethod
+      ? 'Cash'
       : editingPurchaseId && originalPurchase
       ? originalPurchase.paymentMethod || 'Credit'
       : 'Credit';
@@ -2629,32 +2623,15 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
               {/* Row 3: Payment Breakdown (Admin Only) & Inventory Sync */}
               <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-200/80 space-y-3">
                 {isAdmin && (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        Payment Method
-                      </label>
-                      <select
-                        value={paymentMethod}
-                        onChange={e => setPaymentMethod(e.target.value)}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500"
-                      >
-                        <option value="Cash">Cash Drawer</option>
-                        <option value="Bank">Bank Account</option>
-                        <option value="JazzCash">JazzCash</option>
-                        <option value="Easypaisa">Easypaisa</option>
-                        <option value="Cheque">Bank Cheque</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        Amount Paid Now ({currency})
+                        Cash Paid Now ({currency})
                       </label>
                       <input
                         type="number"
                         min="0"
-                        placeholder="Enter paid amount"
+                        placeholder="Enter cash paid amount"
                         value={paidAmount}
                         onChange={e => setPaidAmount(e.target.value === '' ? '' : Number(e.target.value))}
                         className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-emerald-700 focus:outline-none focus:border-blue-500"
@@ -2754,7 +2731,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
               </button>
             </div>
 
-            <div className={`grid gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs ${isAdmin ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2'}`}>
+            <div className={`grid gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs ${isAdmin ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2'}`}>
               <div>
                 <span className="text-[10px] text-slate-400 block font-bold">Party / Vendor</span>
                 <span className="font-extrabold text-slate-900">{selectedPurchaseForView.partyName}</span>
@@ -2765,12 +2742,6 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                   {new Date(selectedPurchaseForView.date).toLocaleDateString()}
                 </span>
               </div>
-              {isAdmin && (
-                <div>
-                  <span className="text-[10px] text-slate-400 block font-bold">Payment Method</span>
-                  <span className="font-bold text-slate-700">{selectedPurchaseForView.paymentMethod}</span>
-                </div>
-              )}
               {isAdmin && (
                 <div>
                   <span className="text-[10px] text-slate-400 block font-bold">Status</span>
@@ -2931,7 +2902,6 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                   onClick={() => {
                     setSelectedPurchaseForSettlement(selectedPurchaseForView);
                     setSettlementAmount(selectedPurchaseForView.balanceDue);
-                    setSettlementMethod('Cash');
                     setSettlementNotes('');
                     setSelectedPurchaseForView(null);
                   }}
@@ -3351,30 +3321,16 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
 
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Payment Amount ({currency}):</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Cash Payment Amount ({currency}):</label>
                 <input
                   type="number"
                   min={1}
                   max={selectedPurchaseForSettlement.balanceDue}
-                  placeholder="Enter amount"
+                  placeholder="Enter cash amount"
                   value={settlementAmount}
                   onChange={e => setSettlementAmount(e.target.value === '' ? '' : Number(e.target.value))}
                   className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm tabular-nums font-bold text-slate-900 focus:outline-none focus:border-emerald-600"
                 />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Payment Account / Method:</label>
-                <select
-                  value={settlementMethod}
-                  onChange={e => setSettlementMethod(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-emerald-600"
-                >
-                  <option value="Cash">💵 Cash in Hand</option>
-                  <option value="Bank">🏦 Bank Transfer</option>
-                  <option value="JazzCash">📱 JazzCash</option>
-                  <option value="Easypaisa">📱 Easypaisa</option>
-                </select>
               </div>
 
               <div>
@@ -3383,7 +3339,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                   type="text"
                   value={settlementNotes}
                   onChange={e => setSettlementNotes(e.target.value)}
-                  placeholder="e.g. Paid via online bank transfer receipt #1234"
+                  placeholder="e.g. Paid cash receipt #1234"
                   className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:border-emerald-600"
                 />
               </div>
@@ -3404,7 +3360,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                     onSettlePurchaseDue({
                       purchaseId: selectedPurchaseForSettlement.id,
                       paymentAmount: Number(settlementAmount),
-                      paymentMethod: settlementMethod,
+                      paymentMethod: 'Cash',
                       notes: settlementNotes,
                     });
                     setSelectedPurchaseForSettlement(null);
@@ -3438,7 +3394,6 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
         onPayBillDue={p => {
           setSelectedPurchaseForSettlement(p);
           setSettlementAmount(p.balanceDue);
-          setSettlementMethod('Cash');
           setSettlementNotes('');
         }}
         onReverseBill={p => {

@@ -105,7 +105,6 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   const [activeTab, setActiveTab] = useState<AccountWorkspaceTab>('ledger');
   const [showTransactor, setShowTransactor] = useState<'payment' | 'credit' | null>(null);
   const [amount, setAmount] = useState<number | ''>('');
-  const [paymentMethod, setPaymentMethod] = useState<string>('Cash');
   const [note, setNote] = useState('');
   const [txReceiptImage, setTxReceiptImage] = useState<string>('');
   const [isTxCameraOpen, setIsTxCameraOpen] = useState(false);
@@ -773,14 +772,13 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
       customer.id,
       showTransactor!,
       amt,
-      showTransactor === 'payment' ? paymentMethod : undefined,
+      showTransactor === 'payment' ? 'Cash' : undefined,
       undefined,
       note.trim() || undefined,
       optimizedReceiptImg || undefined
     );
     setAmount('');
     setNote('');
-    setPaymentMethod('Cash');
     setTxReceiptImage('');
     setShowTransactor(null);
   };
@@ -1309,26 +1307,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-                {showTransactor === 'payment' ? (
-                  <div className="flex flex-wrap items-center gap-1">
-                    <span className="text-[10px] font-bold text-slate-600">Channel:</span>
-                    {(['Cash', 'JazzCash', 'Easypaisa', 'Bank'] as const).map(channel => (
-                      <button
-                        key={channel}
-                        type="button"
-                        onClick={() => setPaymentMethod(channel)}
-                        className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition cursor-pointer ${
-                          paymentMethod === channel
-                            ? 'border-purple-600 bg-purple-100 text-purple-900'
-                            : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'
-                        }`}
-                      >
-                        {channel}
-                      </button>
-                    ))}
-                  </div>
-                ) : <div />}
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-0.5">
 
                 <button
                   type="submit"
@@ -1374,7 +1353,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                     type="text"
                     value={ledgerSearch}
                     onChange={e => setLedgerSearch(e.target.value)}
-                    placeholder="Search remarks, amount, or channel..."
+                    placeholder="Search remarks or amount..."
                     className="compact-mobile-input w-full pl-8 pr-3 h-8 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:border-purple-600 focus:bg-white"
                   />
                 </div>

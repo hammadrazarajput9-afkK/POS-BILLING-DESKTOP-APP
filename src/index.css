@@ -36,6 +36,7 @@
   button, input, select, textarea {
     font-family: inherit;
     font-feature-settings: inherit;
+    -webkit-tap-highlight-color: transparent;
   }
 
   /* Hide up/down spinner arrows on all price/amount number inputs across the app; keep ONLY on Quantity inputs (.allow-spinner) */
