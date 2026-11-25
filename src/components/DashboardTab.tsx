@@ -250,6 +250,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
   };
 
   const logoSrc = data.settings.shopLogo || data.settings.logo;
+  const isGraphEnabled = data.settings.showDashboardGraph !== false;
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -361,163 +362,221 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
       </div>
 
       {/* ======================================================== */}
-      {/* REAL-TIME DYNAMIC CASH DRAWER & ASSET BALANCING BANNER   */}
+      {/* CASH DRAWER & REAL-TIME BALANCES (SEPARATE INDIVIDUAL BOXES) */}
       {/* ======================================================== */}
-      <div className="dashboard-hero-card rounded-3xl p-5 sm:p-6 text-white border relative overflow-hidden animate-card-in animate-stagger-1">
-        {/* Theme-matched Ambient Glow Lights */}
-        <div
-          className="animate-ambient-glow absolute -right-10 -bottom-10 w-72 h-72 rounded-full blur-3xl pointer-events-none"
-          style={{ backgroundColor: 'var(--theme-hero-glow-1, rgba(16, 185, 129, 0.16))' }}
-        />
-        <div
-          className="animate-ambient-glow absolute -left-10 -top-10 w-72 h-72 rounded-full blur-3xl pointer-events-none"
-          style={{ backgroundColor: 'var(--theme-hero-glow-2, rgba(59, 130, 246, 0.2))', animationDelay: '2.2s' }}
-        />
-
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative z-10">
-          <div className="flex items-center gap-4 sm:gap-5">
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2.5 px-1">
+          <div className="flex items-center gap-2.5 min-w-0">
             {logoSrc ? (
-              <div className="relative shrink-0">
-                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden flex items-center justify-center">
-                  <img
-                    src={logoSrc}
-                    alt={data.settings.shopName || 'Shop Logo'}
-                    className="w-full h-full object-cover rounded-full"
-                  />
-                </div>
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full overflow-hidden flex items-center justify-center shrink-0">
+                <img
+                  src={logoSrc}
+                  alt={data.settings.shopName || 'Shop Logo'}
+                  className="w-full h-full object-cover rounded-full"
+                />
               </div>
             ) : (
-              <div className="relative shrink-0">
-                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-white/10 backdrop-blur-md flex flex-col items-center justify-center text-white">
-                  <Store className="w-10 h-10 sm:w-12 sm:h-12 text-indigo-200" />
-                </div>
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full brand-badge bg-blue-600 text-white flex items-center justify-center shrink-0">
+                <Store className="w-4 h-4" />
               </div>
             )}
-            <div className="space-y-3 min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/35 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 backdrop-blur-xs">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                  {periodMode === 'live' ? 'Cash In Hand (Live Drawer)' : `Cash Flow (${periodLabel})`}
-                </span>
-
-                {data.settings.shopName && (
-                  <span className="text-xs text-slate-300/90 font-bold flex items-center gap-1">
-                    • {data.settings.shopName}
-                  </span>
-                )}
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
-                <div
-                  onClick={() => setIsDrilldownOpen(true)}
-                  className="group cursor-pointer flex items-baseline gap-2.5"
-                  title="Click to view Cash Ledger Drilldown"
-                >
-                  <h2 className={`kpi-num text-2xl sm:text-4xl lg:text-5xl font-black tabular-nums tracking-tight transition-colors duration-200 truncate max-w-full ${
-                    cashVal < 0 ? 'text-rose-400' : 'text-white group-hover:text-emerald-300'
-                  }`}>
-                    {data.settings.currency} {showBalance ? cashVal.toLocaleString() : '••••••'}
-                  </h2>
-                </div>
-
-                {/* Eye icon to toggle hide/unhide top balance */}
-                <button
-                  type="button"
-                  onClick={toggleShowBalance}
-                  className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition cursor-pointer border border-white/15 backdrop-blur-xs"
-                  title={showBalance ? 'Hide top drawer balance figures' : 'Unhide top drawer balance figures'}
-                >
-                  {showBalance ? <Eye className="w-4 h-4 text-emerald-400" /> : <EyeOff className="w-4 h-4 text-amber-300" />}
-                </button>
-
-                {cashDrawer.bankBalance !== 0 && (
-                  <button
-                    type="button"
-                    onClick={() => openCashDrilldown('BANK', 'ALL')}
-                    className="flex items-baseline gap-1.5 text-slate-300 text-sm font-semibold hover:bg-white/12 bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl transition cursor-pointer backdrop-blur-xs"
-                    title="Click to view Digital / Bank transactions"
-                  >
-                    <span className="text-slate-300/80 text-xs">Digital / Bank:</span>
-                    <span className="tabular-nums font-bold text-sky-300">
-                      {data.settings.currency} {showBalance ? bankVal.toLocaleString() : '••••••'}
-                    </span>
-                  </button>
-                )}
-              </div>
+            <div className="min-w-0">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-neutral-200 truncate">
+                Cash Drawer &amp; Flow ({periodLabel})
+              </h3>
+              {data.settings.shopName && (
+                <p className="text-[11px] text-slate-500 dark:text-neutral-400 font-semibold truncate">
+                  {data.settings.shopName}
+                </p>
+              )}
             </div>
           </div>
 
-          {/* Quick Ledger Action */}
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={() => openCashDrilldown('ALL', 'ALL')}
-              className="group px-4 py-2.5 bg-white/12 hover:bg-white/20 text-white font-bold text-xs rounded-xl transition-all duration-200 flex items-center gap-2 cursor-pointer shadow-sm border border-white/15 backdrop-blur-sm"
+              onClick={toggleShowBalance}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold transition cursor-pointer shadow-2xs"
+              title={showBalance ? 'Hide cash drawer balances' : 'Show cash drawer balances'}
             >
-              <Wallet className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
-              <span>Cash Ledger Drill-Down</span>
-              <ArrowRight className="w-3.5 h-3.5 text-white/70 group-hover:translate-x-0.5 transition-transform" />
+              {showBalance ? (
+                <>
+                  <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Hide Cash</span>
+                </>
+              ) : (
+                <>
+                  <EyeOff className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Show Cash</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => openCashDrilldown('ALL', 'ALL')}
+              className="group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition cursor-pointer shadow-xs"
+            >
+              <Wallet className="w-3.5 h-3.5" />
+              <span>Cash Ledger</span>
+              <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
             </button>
           </div>
         </div>
 
-        {/* Real-time Math Formula Breakdown Strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 mt-5 pt-4 border-t border-white/10 text-xs relative z-10">
-          <div
-            onClick={() => openCashDrilldown('SALE', 'IN')}
-            className="bg-white/[0.06] hover:bg-white/[0.14] rounded-xl p-2.5 sm:p-3 cursor-pointer transition-all duration-200 hover:-translate-y-0.5 border border-white/[0.06] hover:border-emerald-400/35 backdrop-blur-xs"
-            title="Click to view all Cash Sales"
-          >
-            <span className="text-[10px] text-slate-300/80 block font-semibold">(+) Cash Sales</span>
-            <p className="tabular-nums font-bold text-emerald-400 mt-0.5 text-xs sm:text-sm">
-              +{data.settings.currency} {showBalance ? cashDrawer.cashSales.toLocaleString() : '••••••'}
-            </p>
-          </div>
-
-          <div
-            onClick={() => openCashDrilldown('KHATA_RECOVERY', 'IN')}
-            className="bg-white/[0.06] hover:bg-white/[0.14] rounded-xl p-2.5 sm:p-3 cursor-pointer transition-all duration-200 hover:-translate-y-0.5 border border-white/[0.06] hover:border-sky-400/35 backdrop-blur-xs"
-            title="Click to view all Khata Recoveries"
-          >
-            <span className="text-[10px] text-slate-300/80 block font-semibold">(+) Khata Recoveries</span>
-            <p className="tabular-nums font-bold text-sky-400 mt-0.5 text-xs sm:text-sm">
-              +{data.settings.currency} {showBalance ? cashDrawer.khataRecoveriesCash.toLocaleString() : '••••••'}
-            </p>
-          </div>
-
-          <div
-            onClick={() => openCashDrilldown('EXPENSE', 'OUT')}
-            className="bg-white/[0.06] hover:bg-white/[0.14] rounded-xl p-2.5 sm:p-3 cursor-pointer transition-all duration-200 hover:-translate-y-0.5 border border-white/[0.06] hover:border-rose-400/35 backdrop-blur-xs"
-            title="Click to view all Cash Expenses"
-          >
-            <span className="text-[10px] text-slate-300/80 block font-semibold">(-) Cash Expenses</span>
-            <p className="tabular-nums font-bold text-rose-400 mt-0.5 text-xs sm:text-sm">
-              -{data.settings.currency} {showBalance ? cashDrawer.cashExpenses.toLocaleString() : '••••••'}
-            </p>
-          </div>
-
-          <div
-            onClick={() => openCashDrilldown('SUPPLIER_PAYMENT', 'OUT')}
-            className="bg-white/[0.06] hover:bg-white/[0.14] rounded-xl p-2.5 sm:p-3 cursor-pointer transition-all duration-200 hover:-translate-y-0.5 border border-white/[0.06] hover:border-amber-400/35 backdrop-blur-xs"
-            title="Click to view all Supplier Cash Payments"
-          >
-            <span className="text-[10px] text-slate-300/80 block font-semibold">(-) Supplier Paid</span>
-            <p className="tabular-nums font-bold text-amber-400 mt-0.5 text-xs sm:text-sm">
-              -{data.settings.currency} {showBalance ? cashDrawer.supplierPaidCash.toLocaleString() : '••••••'}
-            </p>
-          </div>
-
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-4">
+          {/* BOX 1: CASH IN HAND (LIVE DRAWER) */}
           <div
             onClick={() => openCashDrilldown('ALL', 'ALL')}
-            className="group bg-emerald-500/18 border border-emerald-400/35 rounded-xl p-2.5 sm:p-3 col-span-2 sm:col-span-1 cursor-pointer hover:bg-emerald-500/28 transition-all duration-200 hover:-translate-y-0.5 backdrop-blur-xs"
+            className="dashboard-hero-card animate-card-in animate-stagger-1 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 text-white border flex flex-col justify-between cursor-pointer group relative overflow-hidden"
+            title="Click to view full Cash Ledger Drill-Down"
           >
-            <span className="text-[10px] text-emerald-300 block font-extrabold flex items-center justify-between">
-              <span>(=) Drawer Cash</span>
-              <ArrowRight className="w-3.5 h-3.5 text-emerald-300 group-hover:translate-x-1 transition-transform" />
-            </span>
-            <p className={`tabular-nums font-black mt-0.5 text-xs sm:text-sm ${cashVal < 0 ? 'text-rose-400' : 'text-white'}`}>
-              {data.settings.currency} {showBalance ? cashVal.toLocaleString() : '••••••'}
-            </p>
+            <div className="flex items-center justify-between mb-1.5 sm:mb-3 relative z-10">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-emerald-300 truncate">
+                {periodMode === 'live' ? 'Cash In Hand (Live)' : `Drawer Cash (${periodLabel})`}
+              </span>
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-white/12 text-emerald-300 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300">
+                <Wallet className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+              </div>
+            </div>
+            <div className="relative z-10">
+              <h2
+                className={`kpi-num text-base sm:text-2xl font-black tabular-nums tracking-tight truncate ${
+                  cashVal < 0 ? 'text-rose-400' : 'text-white'
+                }`}
+              >
+                {data.settings.currency} {showBalance ? cashVal.toLocaleString() : '••••••'}
+              </h2>
+              <p className="text-[10px] text-emerald-300/90 font-bold mt-1 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                <span>View Cash Ledger</span>
+                <ArrowRight className="w-3 h-3" />
+              </p>
+            </div>
+          </div>
+
+          {/* BOX 2: DIGITAL / BANK BALANCE */}
+          <div
+            onClick={() => openCashDrilldown('BANK', 'ALL')}
+            className="dashboard-metric-card metric-stock animate-card-in animate-stagger-2 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 shadow-sm dark:shadow-none hover:border-sky-400 hover:shadow-lg flex flex-col justify-between cursor-pointer group"
+            title="Click to view Digital / Bank transactions"
+          >
+            <div className="flex items-center justify-between mb-1.5 sm:mb-3">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 truncate">
+                Digital / Bank
+              </span>
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300">
+                <Building2 className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+              </div>
+            </div>
+            <div>
+              <h3 className="kpi-num text-sm sm:text-2xl font-black text-sky-600 dark:text-sky-400 tabular-nums tracking-tight truncate">
+                {data.settings.currency} {showBalance ? bankVal.toLocaleString() : '••••••'}
+              </h3>
+              <p className="text-[10px] text-sky-600/80 font-bold mt-1 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                <span>Bank &amp; Wallet Ledger</span>
+                <ArrowRight className="w-3 h-3" />
+              </p>
+            </div>
+          </div>
+
+          {/* BOX 3: (+) CASH SALES */}
+          <div
+            onClick={() => openCashDrilldown('SALE', 'IN')}
+            className="dashboard-metric-card metric-profit animate-card-in animate-stagger-3 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 shadow-sm dark:shadow-none hover:border-emerald-400 hover:shadow-lg flex flex-col justify-between cursor-pointer group"
+            title="Click to view all Cash Sales"
+          >
+            <div className="flex items-center justify-between mb-1.5 sm:mb-3">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 truncate">
+                (+) Cash Sales
+              </span>
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300">
+                <ArrowUpRight className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+              </div>
+            </div>
+            <div>
+              <h3 className="kpi-num text-sm sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums tracking-tight truncate">
+                +{data.settings.currency} {showBalance ? cashDrawer.cashSales.toLocaleString() : '••••••'}
+              </h3>
+              <p className="text-[10px] text-emerald-600/80 font-bold mt-1 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                <span>Cash Inflow Details</span>
+                <ArrowRight className="w-3 h-3" />
+              </p>
+            </div>
+          </div>
+
+          {/* BOX 4: (+) KHATA RECOVERIES */}
+          <div
+            onClick={() => openCashDrilldown('KHATA_RECOVERY', 'IN')}
+            className="dashboard-metric-card metric-stock animate-card-in animate-stagger-4 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 shadow-sm dark:shadow-none hover:border-blue-400 hover:shadow-lg flex flex-col justify-between cursor-pointer group"
+            title="Click to view all Khata Recoveries"
+          >
+            <div className="flex items-center justify-between mb-1.5 sm:mb-3">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 truncate">
+                (+) Khata Recoveries
+              </span>
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300">
+                <UserPlus className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+              </div>
+            </div>
+            <div>
+              <h3 className="kpi-num text-sm sm:text-2xl font-black text-blue-600 dark:text-blue-400 tabular-nums tracking-tight truncate">
+                +{data.settings.currency} {showBalance ? cashDrawer.khataRecoveriesCash.toLocaleString() : '••••••'}
+              </h3>
+              <p className="text-[10px] text-blue-600/80 font-bold mt-1 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                <span>Recovery Receipts</span>
+                <ArrowRight className="w-3 h-3" />
+              </p>
+            </div>
+          </div>
+
+          {/* BOX 5: (-) CASH EXPENSES */}
+          <div
+            onClick={() => openCashDrilldown('EXPENSE', 'OUT')}
+            className="dashboard-metric-card metric-expense animate-card-in animate-stagger-5 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 shadow-sm dark:shadow-none hover:border-rose-400 hover:shadow-lg flex flex-col justify-between cursor-pointer group"
+            title="Click to view all Cash Expenses"
+          >
+            <div className="flex items-center justify-between mb-1.5 sm:mb-3">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 truncate">
+                (-) Cash Expenses
+              </span>
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300">
+                <ArrowDownRight className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+              </div>
+            </div>
+            <div>
+              <h3 className="kpi-num text-sm sm:text-2xl font-black text-rose-600 dark:text-rose-400 tabular-nums tracking-tight truncate">
+                -{data.settings.currency} {showBalance ? cashDrawer.cashExpenses.toLocaleString() : '••••••'}
+              </h3>
+              <p className="text-[10px] text-rose-600/80 font-bold mt-1 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                <span>Cash Paid Out</span>
+                <ArrowRight className="w-3 h-3" />
+              </p>
+            </div>
+          </div>
+
+          {/* BOX 6: (-) SUPPLIER PAID */}
+          <div
+            onClick={() => openCashDrilldown('SUPPLIER_PAYMENT', 'OUT')}
+            className="dashboard-metric-card metric-purchase animate-card-in animate-stagger-6 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 shadow-sm dark:shadow-none hover:border-amber-400 hover:shadow-lg flex flex-col justify-between cursor-pointer group"
+            title="Click to view all Supplier Cash Payments"
+          >
+            <div className="flex items-center justify-between mb-1.5 sm:mb-3">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 truncate">
+                (-) Supplier Paid
+              </span>
+              <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300">
+                <Truck className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+              </div>
+            </div>
+            <div>
+              <h3 className="kpi-num text-sm sm:text-2xl font-black text-amber-600 dark:text-amber-400 tabular-nums tracking-tight truncate">
+                -{data.settings.currency} {showBalance ? cashDrawer.supplierPaidCash.toLocaleString() : '••••••'}
+              </h3>
+              <p className="text-[10px] text-amber-600/90 font-bold mt-1 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                <span>Party Payouts</span>
+                <ArrowRight className="w-3 h-3" />
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -724,9 +783,9 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
       </div>
 
       {/* ======================================================== */}
-      {/* FINANCIAL CHART                                          */}
+      {/* FINANCIAL CHART (Controlled by Settings -> Show Graph)   */}
       {/* ======================================================== */}
-      <FinancialChart data={data} />
+      {isGraphEnabled && <FinancialChart data={data} />}
 
       {/* ======================================================== */}
       {/* BOTTOM SECTION: LOW STOCK ALERTS (Shortcuts removed)     */}

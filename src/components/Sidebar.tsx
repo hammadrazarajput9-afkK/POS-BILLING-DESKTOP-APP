@@ -12,7 +12,8 @@ import {
   X,
   Activity,
   Calculator,
-  Barcode
+  Barcode,
+  Home,
 } from 'lucide-react';
 import { ShopSettings, UserRole } from '../types';
 
@@ -37,7 +38,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activityCount = 0,
   currentRole = 'admin',
 }) => {
-  const navItems = [
+  const navItems: {
+    id: string;
+    label: string;
+    icon: React.FC<{ className?: string }>;
+    adminOnly?: boolean;
+    mobileOnly?: boolean;
+    badge?: number;
+  }[] = [
+    { id: 'home', label: 'Home Menu', icon: Home, mobileOnly: true },
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, adminOnly: true },
     { id: 'pos', label: 'POS & Billing', icon: ShoppingCart },
     { id: 'inventory', label: 'Inventory Master', icon: Boxes },
@@ -137,6 +146,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   type="button"
                   onClick={() => handleNavClick(item.id)}
                   className={`group relative w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer ${
+                    item.mobileOnly ? 'lg:hidden ' : ''
+                  }${
                     isActive
                       ? 'text-blue-600 bg-blue-50/90 border border-blue-200/70 shadow-2xs font-bold'
                       : 'text-slate-600 hover:text-blue-600 hover:bg-slate-50 border border-transparent'

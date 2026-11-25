@@ -24,6 +24,7 @@ import {
   Clock,
   RotateCcw,
   Database,
+  BarChart3,
 } from 'lucide-react';
 import { useToast } from './Toast';
 import {
@@ -87,6 +88,7 @@ export const Settings: React.FC<SettingsProps> = ({
     lowStockThreshold: settings.lowStockThreshold !== undefined ? settings.lowStockThreshold : 2,
     loginPageName: settings.loginPageName || settings.shopName || 'FMZ SHOP POS',
     loginPageLogo: settings.loginPageLogo || '',
+    showDashboardGraph: settings.showDashboardGraph !== false,
   });
 
   // Keep formData in sync when settings prop updates
@@ -100,6 +102,7 @@ export const Settings: React.FC<SettingsProps> = ({
       lowStockThreshold: settings.lowStockThreshold !== undefined ? settings.lowStockThreshold : 2,
       loginPageName: settings.loginPageName || settings.shopName || 'FMZ SHOP POS',
       loginPageLogo: settings.loginPageLogo || '',
+      showDashboardGraph: settings.showDashboardGraph !== false,
     });
   }, [settings]);
 
@@ -1139,6 +1142,54 @@ export const Settings: React.FC<SettingsProps> = ({
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Dashboard Graph Enable / Disable Option */}
+              <div className="p-3 sm:p-4 bg-slate-50 rounded-xl sm:rounded-2xl border border-slate-200/90 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 border border-blue-200/70 flex items-center justify-center shrink-0">
+                    <BarChart3 className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-extrabold text-slate-900 leading-tight">
+                      Show Dashboard Graph
+                    </p>
+                    <p className="text-[10.5px] text-slate-500 leading-snug mt-0.5">
+                      {formData.showDashboardGraph !== false
+                        ? 'Revenue & profit chart is enabled on Dashboard'
+                        : 'Revenue & profit chart is hidden from Dashboard'}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={formData.showDashboardGraph !== false}
+                  onClick={() => {
+                    const nextVal = formData.showDashboardGraph === false;
+                    const updatedForm = { ...formData, showDashboardGraph: nextVal };
+                    setFormData(updatedForm);
+                    onSaveSettings({
+                      ...updatedForm,
+                      lowStockThreshold:
+                        Number(updatedForm.lowStockThreshold) >= 1
+                          ? Number(updatedForm.lowStockThreshold)
+                          : 2,
+                    });
+                    showToast(
+                      nextVal ? 'Dashboard graph enabled' : 'Dashboard graph disabled',
+                      'info'
+                    );
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition cursor-pointer shrink-0 border ${
+                    formData.showDashboardGraph !== false
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-xs'
+                      : 'bg-slate-200 hover:bg-slate-300 text-slate-700 border-slate-300'
+                  }`}
+                >
+                  {formData.showDashboardGraph !== false ? 'Enabled' : 'Disabled'}
+                </button>
               </div>
 
               {/* Dedicated Invoice Logo Quick Setting */}

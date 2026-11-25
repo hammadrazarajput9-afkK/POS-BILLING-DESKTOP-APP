@@ -419,6 +419,7 @@ export interface ShopSettings {
   lowStockThreshold?: number;
   loginPageName?: string;
   loginPageLogo?: string;
+  showDashboardGraph?: boolean;
 }
 
 export interface DeletedTombstone {

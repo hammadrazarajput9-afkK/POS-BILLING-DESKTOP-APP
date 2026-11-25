@@ -15,6 +15,7 @@ import {
   Download,
   Smartphone,
   ChevronDown,
+  Home,
 } from 'lucide-react';
 import { AppData, ShopSettings, UserRole, UserAccount } from '../types';
 import { OnlineStatusBadge } from './OnlineStatusBadge';
@@ -57,6 +58,7 @@ export const Header: React.FC<HeaderProps> = ({
   const [logoError, setLogoError] = useState(false);
 
   const titles: Record<string, { title: string; shortTitle: string; subtitle: string }> = {
+    home: { title: 'Quick Menu', shortTitle: 'Home Menu', subtitle: 'Select a module to get started' },
     dashboard: { title: 'Dashboard Overview', shortTitle: 'Dashboard', subtitle: 'Live business metrics & real-time cash drawer' },
     pos: { title: 'POS & Billing Terminal', shortTitle: 'POS Billing', subtitle: 'Search products, build cart, print bills' },
     inventory: { title: 'Inventory Master', shortTitle: 'Inventory', subtitle: 'Manage phone devices, IMEI tracking, and retail stock' },
@@ -100,8 +102,28 @@ export const Header: React.FC<HeaderProps> = ({
           <span className="font-extrabold tracking-wide hidden sm:inline">Menu</span>
         </button>
 
+        {activeTab !== 'home' && (
+          <button
+            type="button"
+            onClick={() => onSwitchTab('home')}
+            className="lg:hidden w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 flex items-center justify-center shrink-0 cursor-pointer transition"
+            title="Back to Home Menu"
+          >
+            <Home className="w-4 h-4 text-blue-600" />
+          </button>
+        )}
+
         {/* Shop Logo (Pure circle, no extra border) */}
-        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden shrink-0 flex items-center justify-center">
+        <button
+          type="button"
+          onClick={() => {
+            if (window.innerWidth < 1024) {
+              onSwitchTab('home');
+            }
+          }}
+          className="w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden shrink-0 flex items-center justify-center lg:cursor-default cursor-pointer"
+          title="Home Menu"
+        >
           {logoSrc && !logoError ? (
             <img
               src={logoSrc}
@@ -114,7 +136,7 @@ export const Header: React.FC<HeaderProps> = ({
               <Smartphone className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
           )}
-        </div>
+        </button>
 
         {/* Shop Name + Active Section Title */}
         <div className="min-w-0 flex-1">

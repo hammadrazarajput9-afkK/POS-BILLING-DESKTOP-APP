@@ -80,6 +80,7 @@ import { DailyClosingTab } from './components/DailyClosingTab';
 import { TabSettingsModal } from './components/TabSettingsModal';
 import { PdfExportModal } from './components/PdfExportModal';
 import { PWAUpdateBanner } from './components/PWAUpdateBanner';
+import { MobileHomeLauncher } from './components/MobileHomeLauncher';
 
 // Modular Custom Hooks
 import { useSales } from './hooks/useSales';
@@ -91,8 +92,12 @@ function AppContent() {
   const [data, setData] = useState<AppData>(() => loadStoredData());
   const dataRef = useRef<AppData>(data);
   dataRef.current = data;
-  const [activeTab, setActiveTab] = useState<string>('dashboard');
-  const [isMenuOpen, setIsMenuOpen] = useState<boolean>(true);
+  const [activeTab, setActiveTab] = useState<string>(() =>
+    typeof window !== 'undefined' && window.innerWidth < 1024 ? 'home' : 'dashboard'
+  );
+  const [isMenuOpen, setIsMenuOpen] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
+  );
 
   // PDF Export Modal state
   const [pdfModalOpen, setPdfModalOpen] = useState(false);
@@ -229,15 +234,25 @@ function AppContent() {
     }, DEFAULT_STORE_ID);
   }, []);
 
-  // Safeguard: Ensure salesman role is never on admin-only tabs
+  // Safeguard: Ensure salesman role is never on admin-only tabs & desktop never stays on mobile 'home'
   useEffect(() => {
     if (data.currentRole === 'salesman') {
       const restrictedTabs = ['dashboard', 'reports', 'activity'];
       if (restrictedTabs.includes(activeTab)) {
-        setActiveTab('pos');
+        setActiveTab(typeof window !== 'undefined' && window.innerWidth < 1024 ? 'home' : 'pos');
       }
     }
   }, [data.currentRole, activeTab]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 1024 && activeTab === 'home') {
+        setActiveTab(data.currentRole === 'salesman' ? 'pos' : 'dashboard');
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [activeTab, data.currentRole]);
 
   // Apply visual theme to document root & keep system status bar theme-color synced
   useEffect(() => {
@@ -1830,7 +1845,9 @@ function AppContent() {
             saveCurrentSession(user, rememberMe);
 
             if (user.role === 'salesman') {
-              setActiveTab('pos');
+              setActiveTab(window.innerWidth < 1024 ? 'home' : 'pos');
+            } else {
+              setActiveTab(window.innerWidth < 1024 ? 'home' : 'dashboard');
             }
 
             // 1. Open app IMMEDIATELY (<50ms) using already-mounted / local cached store data
@@ -1976,13 +1993,32 @@ function AppContent() {
 
         {/* Scrollable Tab Content - Optimized with Conditional Rendering (Unmounts Inactive Tabs) */}
         <main
-          className={`flex-1 overflow-y-auto touch-pan-y ${
-            activeTab === 'pos'
-              ? 'p-2 sm:p-3 lg:p-3 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] lg:pb-4'
-              : 'p-2.5 sm:p-5 pb-[calc(4rem+env(safe-area-inset-bottom,0px))] lg:pb-6'
+          className={`flex-1 ${
+            activeTab === 'home'
+              ? 'overflow-hidden p-2.5 pb-[calc(0.65rem+env(safe-area-inset-bottom,0px))] lg:hidden flex flex-col'
+              : activeTab === 'pos'
+              ? 'overflow-y-auto touch-pan-y p-2 sm:p-3 lg:p-3 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] lg:pb-4'
+              : 'overflow-y-auto touch-pan-y p-2.5 sm:p-5 pb-[calc(4rem+env(safe-area-inset-bottom,0px))] lg:pb-6'
           }`}
         >
-          <div className={activeTab === 'pos' ? 'w-full flex flex-col lg:min-h-0' : 'max-w-7xl mx-auto'}>
+          <div
+            className={
+              activeTab === 'home'
+                ? 'w-full h-full flex-1 min-h-0 flex flex-col overflow-hidden'
+                : activeTab === 'pos'
+                ? 'w-full flex flex-col lg:min-h-0'
+                : 'max-w-7xl mx-auto'
+            }
+          >
+            {activeTab === 'home' && (
+              <MobileHomeLauncher
+                currentRole={data.currentRole || 'admin'}
+                activityCount={(data.activities || []).length}
+                onSelectTab={setActiveTab}
+                onOpenSettings={() => setSettingsModalOpen(true)}
+              />
+            )}
+
             {activeTab === 'dashboard' && (data.currentRole || 'admin') === 'admin' && (
               <DashboardTab
                 data={data}
@@ -2307,10 +2343,18 @@ function AppContent() {
             ...(dataRef.current.tabPreferences || {}),
             [tabId]: prefs,
           };
+          const chartPref = prefs.showChart;
+          const syncGraphSetting =
+            tabId === 'dashboard' && typeof chartPref === 'boolean';
+          const nextSettings: ShopSettings = syncGraphSetting
+            ? { ...dataRef.current.settings, showDashboardGraph: chartPref }
+            : dataRef.current.settings;
+
           setData(prev => ({
             ...prev,
             lastModified: now,
             tabPreferencesUpdatedAt: now,
+            ...(syncGraphSetting ? { settingsUpdatedAt: now, settings: nextSettings } : {}),
             tabPreferences: {
               ...(prev.tabPreferences || {}),
               [tabId]: prefs,
@@ -2319,6 +2363,7 @@ function AppContent() {
           saveRootConfigToFirestore({
             tabPreferences: nextTabPreferences,
             tabPreferencesUpdatedAt: now,
+            ...(syncGraphSetting ? { settings: nextSettings, settingsUpdatedAt: now } : {}),
           }).catch(err => {
             console.warn('Firestore tab preferences sync warning:', err);
           });
