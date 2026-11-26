@@ -1,24 +1,18 @@
 import React, { useState, useMemo } from 'react';
-import { ExpenseItem, ExpenseCategory } from '../types';
+import { ExpenseItem } from '../types';
 import {
   Receipt,
   Plus,
   Trash2,
   Calendar,
-  Filter,
-  DollarSign,
-  Coffee,
-  Zap,
-  Building,
-  Users,
   Tag,
-  Sliders,
   Image as ImageIcon,
   X,
-  CreditCard,
-  Banknote,
-  Layers,
-  FileText
+  FileText,
+  ArrowLeft,
+  Eye,
+  EyeOff,
+  Search,
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { ConfirmModal } from './ConfirmModal';
@@ -34,6 +28,7 @@ interface ExpensesTabProps {
   onDeleteExpense: (id: string) => void;
   onOpenSettings?: () => void;
   onOpenPdfReport?: () => void;
+  onBackToHome?: () => void;
 }
 
 const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
@@ -44,22 +39,34 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
   onOpenAddModal,
   onOpenManageCategories,
   onDeleteExpense,
-  onOpenSettings,
   onOpenPdfReport,
+  onBackToHome,
 }) => {
   const { showToast } = useToast();
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [expenseToDelete, setExpenseToDelete] = useState<ExpenseItem | null>(null);
   const [search, setSearch] = useState('');
-  const [selectedDate, setSelectedDate] = useState<string>(''); // empty string means "all dates"
+  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [hideAmounts, setHideAmounts] = useState(false);
   const [zoomedImage, setZoomedImage] = useState<{ src: string; title: string } | null>(null);
+
+  const todayStr = useMemo(() => new Date().toISOString().substring(0, 10), []);
+  const yesterdayStr = useMemo(() => new Date(Date.now() - 86400000).toISOString().substring(0, 10), []);
+
+  const dateTab: 'all' | 'today' | 'yesterday' | 'custom' = !selectedDate
+    ? 'all'
+    : selectedDate === todayStr
+    ? 'today'
+    : selectedDate === yesterdayStr
+    ? 'yesterday'
+    : 'custom';
 
   const filtered = useMemo(() => {
     const q = search.trim();
     return expenses.filter(e => {
       const matchCat = selectedCategory === 'ALL' || e.category === selectedCategory;
       const matchSearch =
-        !q || smartMatch(q, [e.description, e.category], [e.paymentMethod, e.amount]);
+        !q || smartMatch(q, [e.description, e.category], [e.amount]);
 
       let matchDate = true;
       if (selectedDate) {
@@ -98,385 +105,378 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
     if (type === 'all') {
       setSelectedDate('');
     } else if (type === 'today') {
-      setSelectedDate(new Date().toISOString().substring(0, 10));
+      setSelectedDate(todayStr);
     } else if (type === 'yesterday') {
-      const y = new Date(Date.now() - 86400000);
-      setSelectedDate(y.toISOString().substring(0, 10));
+      setSelectedDate(yesterdayStr);
     }
   };
 
+  const formatAmount = (amount: number) =>
+    hideAmounts ? `${currency} ••••` : `${currency} ${amount.toLocaleString()}`;
+
   return (
-    <div className="space-y-4 sm:space-y-6 max-w-full overflow-hidden">
-      {/* Metric Highlights - Responsive Mobile & Desktop Layout */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-4">
-        {/* Primary Total Card */}
-        <div className="col-span-2 sm:col-span-1 bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-4.5 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              {selectedDate ? `Expenses (${selectedDate})` : 'Filtered Expenses'}
-            </span>
-            <span className="p-1.5 rounded-lg bg-rose-50 text-rose-600 sm:hidden">
-              <Receipt className="w-3.5 h-3.5" />
-            </span>
-          </div>
-          <h3 className="text-xl sm:text-2xl font-extrabold text-rose-600 tabular-nums mt-0.5 sm:mt-1">
-            {currency} {totalExpenseAmount.toLocaleString()}
-          </h3>
-          <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">
-            {selectedDate ? `Date: ${selectedDate}` : `All-time: ${currency} ${allTimeTotal.toLocaleString()}`}
-          </p>
-        </div>
-
-        {/* Highest Category Card */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-4.5 shadow-xs">
-          <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 block truncate">
-            Top Category
-          </span>
-          <h3 className="text-base sm:text-2xl font-extrabold text-slate-900 mt-0.5 sm:mt-1 truncate">
-            {topCategory}
-          </h3>
-          <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">
-            {topCategory !== 'None'
-              ? `${currency} ${(categoryTotals[topCategory] || 0).toLocaleString()}`
-              : 'No records'}
-          </p>
-        </div>
-
-        {/* Records Count Card */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-4.5 shadow-xs">
-          <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 block truncate">
-            Expense Records
-          </span>
-          <h3 className="text-base sm:text-2xl font-extrabold text-slate-900 tabular-nums mt-0.5 sm:mt-1">
-            {filtered.length} Entries
-          </h3>
-          <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">
-            {Object.keys(categoryTotals).length} categories active
-          </p>
-        </div>
-      </div>
-
-      {/* Main Expenses Container Card */}
-      <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 space-y-2.5 sm:space-y-4 shadow-xs max-w-full overflow-hidden">
-        {/* Controls Bar */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2 sm:gap-3 border-b border-slate-100 pb-2.5 sm:pb-4">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 w-full lg:w-auto">
-            {/* Search Input */}
-            <div className="relative w-full sm:w-60">
-              <input
-                type="text"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search expense description..."
-                className="compact-mobile-input w-full pl-3 pr-7 h-8 sm:h-9 bg-slate-50 border border-slate-200 rounded-lg sm:rounded-xl text-xs font-medium focus:outline-none focus:border-rose-600 focus:bg-white"
-              />
-              {search && (
+    <div className="space-y-3 pb-24 max-w-full overflow-hidden animate-in fade-in duration-200">
+      {/* Top Rose Header + Overlapping White Summary Card */}
+      <div>
+        <div className="bg-rose-600 text-white rounded-2xl shadow-sm pt-3.5 pb-11 px-3.5 sm:px-5">
+          {/* Row 1: Title & Header Controls */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              {onBackToHome && (
                 <button
                   type="button"
-                  onClick={() => setSearch('')}
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm font-bold h-6 w-6 flex items-center justify-center cursor-pointer"
+                  onClick={onBackToHome}
+                  className="lg:hidden w-8 h-8 -ml-1 rounded-full hover:bg-white/15 flex items-center justify-center transition cursor-pointer shrink-0"
+                  aria-label="Back to home"
                 >
-                  ×
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+              )}
+              <h2 className="text-lg sm:text-xl font-extrabold tracking-tight truncate">
+                Daily Expenses
+              </h2>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              {onOpenManageCategories && (
+                <button
+                  type="button"
+                  onClick={onOpenManageCategories}
+                  className="px-2.5 py-1.5 rounded-full bg-white/15 hover:bg-white/25 text-white text-[11px] font-bold transition cursor-pointer inline-flex items-center gap-1 whitespace-nowrap"
+                  title="Manage Categories"
+                >
+                  <Tag className="w-3 h-3" />
+                  <span>Categories</span>
+                </button>
+              )}
+
+              {onOpenPdfReport && (
+                <button
+                  type="button"
+                  onClick={onOpenPdfReport}
+                  className="px-3 py-1.5 rounded-full bg-slate-900/90 hover:bg-slate-900 text-white text-[11px] font-black tracking-wide uppercase shadow-xs transition cursor-pointer inline-flex items-center gap-1 whitespace-nowrap"
+                  title="Export Expenses PDF Report"
+                >
+                  <FileText className="w-3 h-3" />
+                  <span>PDF</span>
                 </button>
               )}
             </div>
+          </div>
 
-            {/* Date Filter & Quick Date Buttons Row */}
-            <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
-              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg sm:rounded-xl px-2 h-8 sm:h-9 text-xs flex-1 sm:flex-initial">
-                <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={e => setSelectedDate(e.target.value)}
-                  className="compact-mobile-input bg-transparent font-medium outline-none text-slate-800 cursor-pointer text-[11px] sm:text-xs w-full"
-                />
-                {selectedDate && (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedDate('')}
-                    className="text-slate-400 hover:text-slate-600 text-xs font-bold px-1 flex items-center justify-center cursor-pointer"
-                    title="Clear Date Filter"
-                  >
-                    ×
-                  </button>
-                )}
+          {/* Row 2: Underline Date Tabs */}
+          <div className="mt-3.5 flex items-center gap-6 border-b border-white/15 overflow-x-auto no-scrollbar">
+            {([
+              { id: 'all', label: `All (${expenses.length})` },
+              { id: 'today', label: 'Today' },
+              { id: 'yesterday', label: 'Yesterday' },
+            ] as const).map(tab => {
+              const active = dateTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setDateShortcut(tab.id)}
+                  className={`pb-2.5 text-[13px] font-bold transition relative cursor-pointer whitespace-nowrap shrink-0 ${
+                    active ? 'text-white' : 'text-rose-100/80 hover:text-white'
+                  }`}
+                >
+                  {tab.label}
+                  {active && (
+                    <span className="absolute left-0 right-0 bottom-0 h-[3px] rounded-full bg-amber-200" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Overlapping White Expense Summary Card */}
+        <div className="-mt-8 mx-2 sm:mx-4 bg-white rounded-2xl border border-slate-200/90 shadow-sm px-3.5 py-3">
+          <div className="flex items-center justify-between gap-2 mb-1.5">
+            <button
+              type="button"
+              onClick={() => setHideAmounts(prev => !prev)}
+              className="text-[11px] font-medium text-slate-500 hover:text-slate-700 flex items-center gap-1 cursor-pointer"
+            >
+              {hideAmounts ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+              <span>{hideAmounts ? 'Show Amounts' : 'Hide Amounts'}</span>
+            </button>
+
+            <span className="text-[10.5px] font-semibold text-slate-400 tabular-nums truncate">
+              {selectedDate ? `Date: ${selectedDate}` : 'All Dates'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 divide-x divide-slate-100 items-center">
+            <div className="pr-3">
+              <div className="text-lg sm:text-2xl font-black text-rose-600 tabular-nums leading-tight truncate">
+                {formatAmount(totalExpenseAmount)}
               </div>
+              <div className="text-[11px] font-semibold text-slate-500 mt-0.5 truncate">
+                {selectedDate ? 'Selected Period' : 'Filtered Expenses'}
+              </div>
+            </div>
 
-              {/* Date Shortcut Pills */}
-              <div className="flex items-center gap-0.5 bg-slate-100 p-0.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs shrink-0 h-8 sm:h-9">
-                <button
-                  type="button"
-                  onClick={() => setDateShortcut('all')}
-                  className={`px-2 py-1 rounded-md sm:rounded-lg font-semibold transition cursor-pointer ${
-                    !selectedDate ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  All
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDateShortcut('today')}
-                  className={`px-2 py-1 rounded-md sm:rounded-lg font-semibold transition cursor-pointer ${
-                    selectedDate === new Date().toISOString().substring(0, 10)
-                      ? 'bg-white text-rose-600 shadow-2xs'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  Today
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDateShortcut('yesterday')}
-                  className={`px-2 py-1 rounded-md sm:rounded-lg font-semibold transition cursor-pointer ${
-                    selectedDate === new Date(Date.now() - 86400000).toISOString().substring(0, 10)
-                      ? 'bg-white text-rose-600 shadow-2xs'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  Yesterday
-                </button>
+            <div className="pl-3">
+              <div className="text-base sm:text-xl font-black text-slate-900 leading-tight truncate">
+                {topCategory}
+              </div>
+              <div className="text-[11px] font-semibold text-slate-500 mt-0.5 tabular-nums truncate">
+                Top: {topCategory !== 'None' ? formatAmount(categoryTotals[topCategory] || 0) : 'No entries'}
               </div>
             </div>
           </div>
 
-          {/* Action Buttons Row */}
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 w-full lg:w-auto">
-            {onOpenPdfReport && (
-              <button
-                type="button"
-                onClick={onOpenPdfReport}
-                className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-lg sm:rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1 transition cursor-pointer shadow-2xs"
-                title="Export Operational Expenses PDF Report"
-              >
-                <FileText className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                <span className="hidden sm:inline">Export PDF Report</span>
-                <span className="sm:hidden">PDF</span>
-              </button>
-            )}
-
-            {onOpenManageCategories && (
-              <button
-                type="button"
-                onClick={onOpenManageCategories}
-                className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-lg sm:rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1 transition cursor-pointer shadow-2xs"
-              >
-                <Tag className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-                <span className="hidden sm:inline">Manage Categories</span>
-                <span className="sm:hidden">Categories</span>
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={onOpenAddModal}
-              className="h-8 sm:h-9 px-3 sm:px-4 rounded-lg sm:rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] sm:text-xs shadow-sm shadow-rose-500/20 flex items-center justify-center gap-1 transition cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5 shrink-0" />
-              <span>Add Expense</span>
-            </button>
+          <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] font-semibold text-slate-500 tabular-nums">
+            <span className="truncate">All-Time: {formatAmount(allTimeTotal)}</span>
+            <span className="shrink-0 ml-2">{filtered.length} entries</span>
           </div>
         </div>
+      </div>
 
-        {/* Category Pills Filter - Horizontal Scrolling on Mobile */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 pt-0.5 no-scrollbar text-[11px] sm:text-xs">
-          {['ALL', ...categories].map(cat => (
+      {/* Search & Specific Date Filter Toolbar */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1 min-w-0">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search expense description..."
+            className="w-full h-10 pl-9 pr-8 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-rose-600 shadow-2xs"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 h-7 w-7 flex items-center justify-center cursor-pointer"
+              aria-label="Clear search"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-2.5 h-10 text-xs shadow-2xs shrink-0">
+          <Calendar className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={e => setSelectedDate(e.target.value)}
+            className="bg-transparent font-semibold outline-none text-slate-800 cursor-pointer text-[11px] sm:text-xs w-[112px] sm:w-auto"
+          />
+          {selectedDate && (
+            <button
+              type="button"
+              onClick={() => setSelectedDate('')}
+              className="text-slate-400 hover:text-rose-600 text-xs font-bold px-0.5 flex items-center justify-center cursor-pointer"
+              title="Clear Date Filter"
+            >
+              ×
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Horizontal Category Filter Strip */}
+      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5 text-[11px] sm:text-xs">
+        {['ALL', ...categories].map(cat => {
+          const active = selectedCategory === cat;
+          const catAmount = cat === 'ALL' ? allTimeTotal : categoryTotals[cat] || 0;
+          return (
             <button
               key={cat}
               type="button"
               onClick={() => setSelectedCategory(cat)}
-              className={`px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer shrink-0 h-7 flex items-center ${
-                selectedCategory === cat
-                  ? 'bg-rose-600 text-white font-bold shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+              className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer shrink-0 whitespace-nowrap flex items-center gap-1.5 border ${
+                active
+                  ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-rose-300 hover:text-rose-700'
               }`}
             >
-              {cat === 'ALL' ? 'All Categories' : cat}
+              <span>{cat === 'ALL' ? 'All Categories' : cat}</span>
+              {cat !== 'ALL' && catAmount > 0 && !hideAmounts && (
+                <span className={`text-[10px] tabular-nums ${active ? 'text-rose-100' : 'text-slate-400'}`}>
+                  {catAmount.toLocaleString()}
+                </span>
+              )}
             </button>
-          ))}
-        </div>
+          );
+        })}
+      </div>
 
-        {/* ========================================================= */}
-        {/* MOBILE VIEW: Touch-Friendly Compact Expense Cards (< md:) */}
-        {/* ========================================================= */}
-        <div className="block md:hidden space-y-2">
-          {filtered.length === 0 ? (
-            <div className="text-center py-8 text-slate-400 bg-slate-50/50 rounded-xl border border-slate-200/80 p-4">
-              <Receipt className="w-7 h-7 mx-auto mb-1.5 text-slate-300" />
-              <p className="font-semibold text-slate-600 text-xs">No expenses recorded</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                {search || selectedDate ? 'Try clearing your filters' : 'Tap "+ Add Expense" to record expenditure'}
-              </p>
-            </div>
-          ) : (
-            filtered.map(expense => (
-              <div
-                key={expense.id}
-                className="bg-white border border-slate-200/90 rounded-xl p-2.5 shadow-2xs space-y-1.5 hover:border-rose-200 transition"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    {/* Thumbnail / Photo */}
-                    {expense.image ? (
-                      <div
-                        onClick={() => setZoomedImage({ src: expense.image!, title: expense.description })}
-                        className="w-9 h-9 rounded-lg border border-slate-200 overflow-hidden bg-slate-100 cursor-pointer hover:opacity-80 transition shrink-0 shadow-2xs"
-                        title="View receipt picture"
-                      >
-                        <img src={expense.image} alt="Receipt thumbnail" className="w-full h-full object-cover" />
-                      </div>
-                    ) : (
-                      <div className="w-9 h-9 rounded-lg border border-slate-200/70 bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
-                        <Receipt className="w-4 h-4 text-slate-400" />
-                      </div>
-                    )}
-
-                    <div className="min-w-0">
-                      <h4 className="font-bold text-slate-900 text-xs truncate leading-snug">
-                        {expense.description}
-                      </h4>
-                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                        <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9.5px] font-bold bg-slate-100 text-slate-700">
-                          {expense.category}
-                        </span>
-                        <span className="text-[10px] font-semibold text-slate-500 tabular-nums">
-                          {new Date(expense.date).toLocaleDateString()}
-                        </span>
-                      </div>
-                    </div>
+      {/* MOBILE VIEW: Unified Clean Card Rows */}
+      <div className="block md:hidden bg-white border border-slate-200/90 rounded-2xl overflow-hidden shadow-xs divide-y divide-slate-100">
+        {filtered.length === 0 ? (
+          <div className="text-center py-10 px-4 text-slate-400">
+            <Receipt className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+            <p className="font-bold text-slate-700 text-xs">No expenses recorded</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              {search || selectedDate ? 'Try clearing your filters' : 'Tap "+ ADD EXPENSE" below to log an expense'}
+            </p>
+          </div>
+        ) : (
+          filtered.map(expense => (
+            <div
+              key={expense.id}
+              className="p-3 flex items-center justify-between gap-2.5 hover:bg-rose-50/30 transition"
+            >
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                {expense.image ? (
+                  <button
+                    type="button"
+                    onClick={() => setZoomedImage({ src: expense.image!, title: expense.description })}
+                    className="w-10 h-10 rounded-xl border border-slate-200 overflow-hidden bg-slate-100 cursor-pointer shrink-0 shadow-2xs"
+                    title="View receipt photo"
+                  >
+                    <img src={expense.image} alt="Receipt" className="w-full h-full object-cover" />
+                  </button>
+                ) : (
+                  <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                    <Receipt className="w-4.5 h-4.5" />
                   </div>
+                )}
 
-                  {/* Amount & Method */}
-                  <div className="text-right shrink-0 flex flex-col items-end">
-                    <span className="tabular-nums font-extrabold text-rose-600 text-xs">
-                      {currency} {expense.amount.toLocaleString()}
-                    </span>
-                    <span className="text-[9.5px] font-medium text-slate-500 mt-0.5">
-                      {expense.paymentMethod || 'Cash'}
+                <div className="min-w-0 flex-1">
+                  <h4 className="font-bold text-slate-900 text-xs truncate leading-snug">
+                    {expense.description}
+                  </h4>
+                  <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5 truncate">
+                    <span className="font-semibold text-slate-600 truncate">{expense.category}</span>
+                    <span aria-hidden="true">·</span>
+                    <span className="tabular-nums shrink-0">
+                      {new Date(expense.date).toLocaleDateString()}
                     </span>
                   </div>
                 </div>
+              </div>
 
-                {isAdmin && (
-                  <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                    {expense.image ? (
-                      <button
-                        type="button"
-                        onClick={() => setZoomedImage({ src: expense.image!, title: expense.description })}
-                        className="text-blue-600 hover:text-blue-700 font-semibold text-[11px] flex items-center gap-1 cursor-pointer h-6.5 px-1.5 rounded-md hover:bg-blue-50"
-                      >
-                        <ImageIcon className="w-3 h-3" /> Receipt
-                      </button>
-                    ) : (
-                      <span className="text-[10px] text-slate-400">No Photo</span>
-                    )}
-
+              <div className="flex items-center gap-1.5 shrink-0">
+                <div className="text-right">
+                  <span className="tabular-nums font-black text-rose-600 text-xs block">
+                    {formatAmount(expense.amount)}
+                  </span>
+                  {expense.image && (
                     <button
                       type="button"
-                      onClick={() => setExpenseToDelete(expense)}
-                      className="px-2 h-6.5 text-rose-600 hover:bg-rose-50 rounded-md transition cursor-pointer text-[11px] font-bold flex items-center gap-1"
+                      onClick={() => setZoomedImage({ src: expense.image!, title: expense.description })}
+                      className="text-[10px] font-semibold text-blue-600 hover:underline inline-flex items-center gap-0.5 cursor-pointer mt-0.5"
                     >
-                      <Trash2 className="w-3 h-3" /> Delete
+                      <ImageIcon className="w-2.5 h-2.5" /> Receipt
                     </button>
-                  </div>
+                  )}
+                </div>
+
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => setExpenseToDelete(expense)}
+                    className="w-8 h-8 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition cursor-pointer"
+                    aria-label="Delete expense"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 )}
               </div>
-            ))
-          )}
-        </div>
+            </div>
+          ))
+        )}
+      </div>
 
-        {/* ========================================================= */}
-        {/* DESKTOP VIEW: Full Data Table (>= md:)                    */}
-        {/* ========================================================= */}
-        <div className="hidden md:block border border-slate-200/80 rounded-xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
+      {/* DESKTOP VIEW: Clean Data Table */}
+      <div className="hidden md:block bg-white border border-slate-200/90 rounded-2xl overflow-hidden shadow-xs">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
+              <tr>
+                <th className="p-3.5">Photo</th>
+                <th className="p-3.5">Date</th>
+                <th className="p-3.5">Expense Detail</th>
+                <th className="p-3.5">Category</th>
+                <th className="p-3.5 text-right">Amount</th>
+                <th className="p-3.5 text-center w-14"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filtered.length === 0 ? (
                 <tr>
-                  <th className="p-3">Photo</th>
-                  <th className="p-3">Date</th>
-                  <th className="p-3">Expense Detail</th>
-                  <th className="p-3">Category</th>
-                  <th className="p-3">Payment Channel</th>
-                  <th className="p-3 text-right">Amount</th>
-                  <th className="p-3 text-center"></th>
+                  <td colSpan={6} className="text-center py-12 text-slate-400">
+                    <Receipt className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                    <p className="font-semibold text-slate-600">No expenses recorded</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      {search || selectedDate ? 'Try clearing your filters' : 'Click "+ Add Expense" to log your first expenditure'}
+                    </p>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="text-center py-12 text-slate-400">
-                      <Receipt className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-                      <p className="font-semibold text-slate-600">No expenses recorded</p>
-                      <p className="text-[11px] text-slate-400 mt-0.5">
-                        {search || selectedDate ? 'Try clearing your filters' : 'Click "Add Expense" to log your first expenditure'}
-                      </p>
+              ) : (
+                filtered.map(expense => (
+                  <tr key={expense.id} className="hover:bg-rose-50/30 transition">
+                    <td className="p-3.5">
+                      {expense.image ? (
+                        <button
+                          type="button"
+                          onClick={() => setZoomedImage({ src: expense.image!, title: expense.description })}
+                          className="w-10 h-10 rounded-xl border border-slate-200 overflow-hidden bg-slate-100 cursor-pointer hover:opacity-80 transition shrink-0 shadow-2xs"
+                          title="Click to view full photo"
+                        >
+                          <img src={expense.image} alt="Receipt" className="w-full h-full object-cover" />
+                        </button>
+                      ) : (
+                        <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-500 flex items-center justify-center shrink-0">
+                          <Receipt className="w-4 h-4" />
+                        </div>
+                      )}
+                    </td>
+
+                    <td className="p-3.5 text-slate-500 tabular-nums text-[11px] whitespace-nowrap">
+                      {new Date(expense.date).toLocaleDateString()}
+                    </td>
+
+                    <td className="p-3.5 font-bold text-slate-900 max-w-xs">
+                      {expense.description}
+                    </td>
+
+                    <td className="p-3.5 text-slate-600 font-semibold">
+                      {expense.category}
+                    </td>
+
+                    <td className="p-3.5 text-right tabular-nums font-extrabold text-rose-600 text-sm whitespace-nowrap">
+                      {formatAmount(expense.amount)}
+                    </td>
+
+                    <td className="p-3.5 text-center">
+                      {isAdmin ? (
+                        <button
+                          type="button"
+                          onClick={() => setExpenseToDelete(expense)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer min-h-[36px] min-w-[36px] flex items-center justify-center mx-auto"
+                          title="Delete Expense"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      ) : (
+                        <span className="text-slate-300 text-[10px]">--</span>
+                      )}
                     </td>
                   </tr>
-                ) : (
-                  filtered.map(expense => (
-                    <tr key={expense.id} className="hover:bg-slate-50/70 transition">
-                      <td className="p-3">
-                        {expense.image ? (
-                          <div
-                            onClick={() => setZoomedImage({ src: expense.image!, title: expense.description })}
-                            className="w-10 h-10 rounded-lg border border-slate-200 overflow-hidden bg-slate-100 cursor-pointer hover:opacity-80 transition shrink-0 shadow-2xs"
-                            title="Click to view full photo"
-                          >
-                            <img src={expense.image} alt="Receipt thumbnail" className="w-full h-full object-cover" />
-                          </div>
-                        ) : (
-                          <div className="w-10 h-10 rounded-lg border border-slate-200/70 bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
-                            <Receipt className="w-4 h-4" />
-                          </div>
-                        )}
-                      </td>
-
-                      <td className="p-3 text-slate-500 tabular-nums text-[11px] whitespace-nowrap">
-                        {new Date(expense.date).toLocaleDateString()}
-                      </td>
-
-                      <td className="p-3 font-semibold text-slate-900 max-w-xs">
-                        {expense.description}
-                      </td>
-
-                      <td className="p-3">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700">
-                          {expense.category}
-                        </span>
-                      </td>
-
-                      <td className="p-3">
-                        <span className="text-[11px] font-semibold text-slate-600 bg-slate-50 px-2 py-0.5 rounded border border-slate-200/70">
-                          {expense.paymentMethod || 'Cash'}
-                        </span>
-                      </td>
-
-                      <td className="p-3 text-right tabular-nums font-extrabold text-rose-600 text-sm tabular-nums whitespace-nowrap">
-                        {currency} {expense.amount.toLocaleString()}
-                      </td>
-
-                      <td className="p-3 text-center">
-                        {isAdmin ? (
-                          <button
-                            type="button"
-                            onClick={() => setExpenseToDelete(expense)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer min-h-[36px] min-w-[36px] flex items-center justify-center"
-                            title="Delete Expense"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        ) : (
-                          <span className="text-slate-300 text-[10px]">--</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
+      </div>
+
+      {/* Floating Bottom Rose CTA */}
+      <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-30">
+        <button
+          type="button"
+          onClick={onOpenAddModal}
+          className="h-11 px-5 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-black text-xs tracking-wide uppercase shadow-lg shadow-rose-600/30 flex items-center gap-2 transition active:scale-[0.97] cursor-pointer"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Add Expense</span>
+        </button>
       </div>
 
       {/* Delete Confirmation Modal */}

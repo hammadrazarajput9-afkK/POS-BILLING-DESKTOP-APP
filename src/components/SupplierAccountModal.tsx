@@ -2,13 +2,10 @@ import React, { useMemo, useState } from 'react';
 import { SupplierPurchase } from '../types';
 import {
   ArrowLeft,
-  Building2,
   Phone,
   Plus,
   Search,
   X,
-  Calendar,
-  Package,
   CreditCard,
   Eye,
   Edit2,
@@ -20,10 +17,10 @@ import {
   Smartphone,
   Barcode,
   FileText,
-  CheckCircle2,
-  AlertCircle,
+  MoreVertical,
 } from 'lucide-react';
 import { smartMatch } from '../utils/smartSearch';
+import { cleanWhatsAppPhone, formatLedgerTimestamp, getInitials } from '../utils/ledgerFormatters';
 
 export interface SupplierAccountSummary {
   key: string;
@@ -85,6 +82,7 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
   const [activeTab, setActiveTab] = useState<AccountSubTab>('bills');
   const [searchQuery, setSearchQuery] = useState('');
   const [billStatusFilter, setBillStatusFilter] = useState<BillFilterStatus>('ALL');
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false);
 
   // Account-level FIFO Settlement Modal State
   const [isSettleAccountOpen, setIsSettleAccountOpen] = useState(false);
@@ -202,11 +200,7 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
 
   if (!isOpen || !account) return null;
 
-  const cleanPhoneForWhatsApp = (() => {
-    const raw = (account.partyPhone || '').replace(/[^0-9]/g, '');
-    if (!raw) return '';
-    return raw.startsWith('0') ? '92' + raw.substring(1) : raw;
-  })();
+  const cleanPhoneForWhatsApp = cleanWhatsAppPhone(account.partyPhone || '');
 
   const handleOpenAccountSettle = () => {
     setAccountSettleAmount(account.totalDue);
@@ -236,492 +230,522 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[45] bg-slate-50 flex flex-col overflow-hidden animate-in fade-in pb-[env(safe-area-inset-bottom,0px)]">
-      <div className="bg-white w-full h-full flex flex-col overflow-hidden">
-        {/* Top Full-Screen Supplier Header */}
-        <div className="app-fullscreen-modal-header bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 px-3 sm:px-5 pt-[calc(env(safe-area-inset-top,0px)+0.85rem)] sm:pt-2.5 pb-3 text-white shrink-0">
-          {/* Top Navigation Bar */}
-          <div className="flex items-center justify-between gap-2 pb-2 border-b border-white/15 mb-2.5">
+    <div className="fixed inset-0 z-[45] bg-slate-50 flex flex-col overflow-hidden animate-in fade-in">
+      {/* Top Blue Header */}
+      <div className="app-fullscreen-modal-header bg-blue-600 text-white px-3 sm:px-5 pt-[calc(env(safe-area-inset-top,0px)+0.85rem)] pb-11 shrink-0 relative">
+        <div className="flex items-center justify-between gap-2 max-w-5xl mx-auto">
+          <div className="flex items-center gap-2.5 min-w-0">
             <button
               type="button"
               onClick={onClose}
-              className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg bg-white/15 hover:bg-white/25 text-white font-bold text-xs transition cursor-pointer shrink-0"
-              aria-label="Back to Suppliers List"
+              className="w-9 h-9 -ml-1 rounded-full hover:bg-white/15 flex items-center justify-center transition cursor-pointer shrink-0"
+              aria-label="Back to Stock Inward"
             >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Back</span>
+              <ArrowLeft className="w-5 h-5" />
             </button>
 
-            <span className="text-[11px] font-bold text-slate-300 truncate hidden sm:inline">
-              Supplier Account • {account.partyName}
-            </span>
+            <div className="w-9 h-9 rounded-full bg-white text-blue-700 font-black text-xs flex items-center justify-center shrink-0 shadow-2xs">
+              {getInitials(account.partyName)}
+            </div>
 
-            <div className="flex items-center gap-1.5 shrink-0">
-              {isAdmin && account.totalDue > 0 && onSettlePurchaseDue && (
-                <button
-                  type="button"
-                  onClick={handleOpenAccountSettle}
-                  className="h-8 px-2.5 sm:px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-[11px] sm:text-xs shadow-sm transition flex items-center gap-1 cursor-pointer"
-                >
-                  <CreditCard className="w-3.5 h-3.5" />
-                  <span>Pay Due</span>
-                </button>
-              )}
+            <div className="min-w-0">
+              <h2 className="text-sm sm:text-base font-extrabold tracking-tight truncate">
+                {account.partyName}
+              </h2>
+              <p className="text-[11px] text-blue-100 font-medium truncate tabular-nums">
+                {account.activeBillsCount} Active Bill{account.activeBillsCount === 1 ? '' : 's'} ·{' '}
+                {account.totalUnits.toLocaleString()} pcs
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1 shrink-0">
+            {isAdmin && account.partyPhone && (
+              <a
+                href={`tel:${account.partyPhone.replace(/[^0-9+]/g, '')}`}
+                className="w-9 h-9 rounded-full hover:bg-white/15 flex items-center justify-center transition"
+                title={`Call ${account.partyPhone}`}
+              >
+                <Phone className="w-4 h-4" />
+              </a>
+            )}
+            <div className="relative">
               <button
                 type="button"
-                onClick={() => onAddInwardForSupplier(account.partyName, account.partyPhone)}
-                className="h-8 px-2.5 sm:px-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-[11px] sm:text-xs shadow-sm transition flex items-center gap-1 cursor-pointer"
+                onClick={() => setShowHeaderMenu(prev => !prev)}
+                className="w-9 h-9 rounded-full hover:bg-white/15 flex items-center justify-center transition cursor-pointer"
+                aria-label="Supplier options"
               >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Stock Inward</span>
+                <MoreVertical className="w-4.5 h-4.5" />
               </button>
+
+              {showHeaderMenu && (
+                <>
+                  <div className="fixed inset-0 z-20" onClick={() => setShowHeaderMenu(false)} />
+                  <div className="absolute right-0 top-full mt-1 w-48 bg-white text-slate-800 rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 text-xs font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowHeaderMenu(false);
+                        onAddInwardForSupplier(account.partyName, account.partyPhone);
+                      }}
+                      className="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4 text-blue-600" /> Add Stock Inward
+                    </button>
+                    {isAdmin && account.totalDue > 0 && onSettlePurchaseDue && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowHeaderMenu(false);
+                          handleOpenAccountSettle();
+                        }}
+                        className="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                      >
+                        <CreditCard className="w-4 h-4 text-rose-600" /> Pay Supplier Due
+                      </button>
+                    )}
+                    {isAdmin && cleanPhoneForWhatsApp && (
+                      <a
+                        href={`https://wa.me/${cleanPhoneForWhatsApp}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => setShowHeaderMenu(false)}
+                        className="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center gap-2"
+                      >
+                        <MessageCircle className="w-4 h-4 text-emerald-600" /> Chat on WhatsApp
+                      </a>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </div>
+        </div>
+      </div>
 
-          {/* Supplier Identity Row */}
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl border border-white/20 bg-white/10 flex items-center justify-center shrink-0">
-                <Building2 className="w-5 h-5 sm:w-6 sm:h-6 text-blue-300" />
-              </div>
-
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <h2 className="text-sm sm:text-lg font-extrabold tracking-tight leading-snug truncate">
-                    {account.partyName}
-                  </h2>
-                  <span className="text-[10px] font-bold text-blue-200 bg-white/10 px-1.5 py-0.5 rounded border border-white/15 tabular-nums">
-                    {account.activeBillsCount} Active Bill{account.activeBillsCount === 1 ? '' : 's'}
-                  </span>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] sm:text-xs text-slate-200 mt-0.5">
-                  {isAdmin && account.partyPhone ? (
-                    <a
-                      href={`tel:${account.partyPhone.replace(/[^0-9+]/g, '')}`}
-                      className="flex items-center gap-1 hover:text-white transition font-semibold tabular-nums"
-                    >
-                      <Phone className="w-3 h-3 text-emerald-400" />
-                      {account.partyPhone}
-                    </a>
-                  ) : (
-                    <span className="text-slate-300 text-[11px]">
-                      Unified Supplier Account &amp; Stock Inward History
-                    </span>
-                  )}
-
-                  {isAdmin && cleanPhoneForWhatsApp && (
-                    <a
-                      href={`https://wa.me/${cleanPhoneForWhatsApp}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-emerald-300 hover:text-emerald-200 font-bold text-[11px]"
-                    >
-                      <MessageCircle className="w-3 h-3" />
-                      WhatsApp
-                    </a>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Account KPI Cards */}
+      {/* Overlapping White Balance Card */}
+      <div className="-mt-8 px-3 sm:px-5 shrink-0 relative z-10">
+        <div className="max-w-5xl mx-auto bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden">
           {isAdmin ? (
-            <div className="grid grid-cols-4 gap-1.5 sm:gap-2.5 mt-2.5 pt-2.5 border-t border-white/10">
-              <div className="bg-white/10 rounded-lg sm:rounded-xl p-1.5 sm:p-2.5 min-w-0">
-                <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-300 block truncate">
-                  Payable Due
-                </span>
-                <p
-                  className={`text-[11px] sm:text-base font-extrabold tabular-nums mt-0.5 truncate ${
-                    account.totalDue > 0 ? 'text-amber-300' : 'text-emerald-300'
-                  }`}
-                >
-                  {currency} {account.totalDue.toLocaleString()}
+            <div className="px-4 py-3 flex items-center justify-between gap-2 border-b border-slate-100">
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-700">
+                  {account.totalDue > 0 ? 'Payable Balance' : 'Account Settled'}
                 </p>
-              </div>
-
-              <div className="bg-white/10 rounded-lg sm:rounded-xl p-1.5 sm:p-2.5 min-w-0">
-                <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-300 block truncate">
-                  Total Stock
-                </span>
-                <p className="text-[11px] sm:text-base font-extrabold tabular-nums text-white mt-0.5 truncate">
-                  {currency} {account.totalAmount.toLocaleString()}
-                </p>
-              </div>
-
-              <div className="bg-white/10 rounded-lg sm:rounded-xl p-1.5 sm:p-2.5 min-w-0">
-                <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-300 block truncate">
-                  Total Paid
-                </span>
-                <p className="text-[11px] sm:text-base font-extrabold tabular-nums text-emerald-300 mt-0.5 truncate">
+                <p className="text-[11px] text-slate-400 tabular-nums truncate mt-0.5">
+                  Purchased: {currency} {account.totalAmount.toLocaleString()} · Paid:{' '}
                   {currency} {account.totalPaid.toLocaleString()}
                 </p>
               </div>
 
-              <div className="bg-white/10 rounded-lg sm:rounded-xl p-1.5 sm:p-2.5 min-w-0">
-                <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-300 block truncate">
-                  Units
-                </span>
-                <p className="text-[11px] sm:text-base font-extrabold tabular-nums text-blue-200 mt-0.5 truncate">
-                  {account.totalUnits.toLocaleString()} pcs
+              <div className="text-right shrink-0">
+                <p
+                  className={`text-lg sm:text-xl font-extrabold tabular-nums leading-tight ${
+                    account.totalDue > 0 ? 'text-rose-600' : 'text-emerald-600'
+                  }`}
+                >
+                  {currency} {account.totalDue.toLocaleString()}
+                </p>
+                <p className="text-[10px] font-semibold text-slate-400">
+                  {account.totalDue > 0 ? "You'll Give" : 'Cleared'}
                 </p>
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-2 mt-2.5 pt-2.5 border-t border-white/10">
-              <div className="bg-white/10 rounded-lg p-2 min-w-0">
-                <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-300 block truncate">
-                  Stock Inward Entries
-                </span>
-                <p className="text-sm sm:text-base font-extrabold tabular-nums text-white mt-0.5">
-                  {account.bills.length}
+            <div className="px-4 py-3 flex items-center justify-between gap-2 border-b border-slate-100">
+              <div>
+                <p className="text-xs font-bold text-slate-700">Total Stock Received</p>
+                <p className="text-[11px] text-slate-400 mt-0.5 tabular-nums">
+                  {account.bills.length} Stock Inward Entries
                 </p>
               </div>
-              <div className="bg-white/10 rounded-lg p-2 min-w-0">
-                <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-300 block truncate">
-                  Total Units Received
-                </span>
-                <p className="text-sm sm:text-base font-extrabold tabular-nums text-blue-200 mt-0.5">
-                  {account.totalUnits.toLocaleString()} pcs
-                </p>
-              </div>
+              <p className="text-lg font-extrabold text-blue-600 tabular-nums">
+                {account.totalUnits.toLocaleString()} pcs
+              </p>
             </div>
           )}
-        </div>
 
-        {/* Account Sub-Tabs */}
-        <div className="bg-white border-b border-slate-200 px-3 sm:px-5 py-2 flex items-center justify-between gap-2 shrink-0">
-          <div className="flex items-center gap-1.5">
+          {/* Action Icon Strip */}
+          <div className={`grid ${isAdmin ? 'grid-cols-4' : 'grid-cols-2'} divide-x divide-slate-100 py-2`}>
             <button
               type="button"
-              onClick={() => setActiveTab('bills')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer ${
-                activeTab === 'bills'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
+              onClick={() => onAddInwardForSupplier(account.partyName, account.partyPhone)}
+              className="flex flex-col items-center justify-center gap-1 py-1 hover:bg-slate-50 transition cursor-pointer"
             >
-              Inward Bills ({account.bills.length})
+              <Plus className="w-4 h-4 text-blue-600" />
+              <span className="text-[11px] font-bold text-slate-700">New Inward</span>
             </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('items')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer ${
-                activeTab === 'items'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              Products &amp; IMEIs
-            </button>
+
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (account.totalDue > 0 && onSettlePurchaseDue) {
+                    handleOpenAccountSettle();
+                  }
+                }}
+                disabled={account.totalDue <= 0}
+                className="flex flex-col items-center justify-center gap-1 py-1 hover:bg-slate-50 transition cursor-pointer disabled:opacity-45"
+              >
+                <CreditCard className="w-4 h-4 text-rose-600" />
+                <span className="text-[11px] font-bold text-slate-700">Pay Due</span>
+              </button>
+            )}
+
+            {isAdmin && (
+              <a
+                href={cleanPhoneForWhatsApp ? `https://wa.me/${cleanPhoneForWhatsApp}` : '#'}
+                target={cleanPhoneForWhatsApp ? '_blank' : undefined}
+                rel={cleanPhoneForWhatsApp ? 'noopener noreferrer' : undefined}
+                onClick={e => {
+                  if (!cleanPhoneForWhatsApp) e.preventDefault();
+                }}
+                className={`flex flex-col items-center justify-center gap-1 py-1 hover:bg-slate-50 transition ${
+                  !cleanPhoneForWhatsApp ? 'opacity-45 pointer-events-none' : ''
+                }`}
+              >
+                <MessageCircle className="w-4 h-4 text-emerald-600" />
+                <span className="text-[11px] font-bold text-slate-700">WhatsApp</span>
+              </a>
+            )}
+
+            {isAdmin ? (
+              <a
+                href={account.partyPhone ? `tel:${account.partyPhone.replace(/[^0-9+]/g, '')}` : '#'}
+                onClick={e => {
+                  if (!account.partyPhone) e.preventDefault();
+                }}
+                className={`flex flex-col items-center justify-center gap-1 py-1 hover:bg-slate-50 transition ${
+                  !account.partyPhone ? 'opacity-45 pointer-events-none' : ''
+                }`}
+              >
+                <Phone className="w-4 h-4 text-slate-700" />
+                <span className="text-[11px] font-bold text-slate-700">Call</span>
+              </a>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setActiveTab(activeTab === 'bills' ? 'items' : 'bills')}
+                className="flex flex-col items-center justify-center gap-1 py-1 hover:bg-slate-50 transition cursor-pointer"
+              >
+                <Smartphone className="w-4 h-4 text-indigo-600" />
+                <span className="text-[11px] font-bold text-slate-700">
+                  {activeTab === 'bills' ? 'Products & IMEIs' : 'Inward Bills'}
+                </span>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Sub-Tabs & Search */}
+      <div className="px-3 sm:px-5 pt-3 pb-2 shrink-0">
+        <div className="max-w-5xl mx-auto space-y-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-5 border-b border-slate-200">
+              <button
+                type="button"
+                onClick={() => setActiveTab('bills')}
+                className={`pb-2 text-xs font-extrabold transition relative cursor-pointer ${
+                  activeTab === 'bills' ? 'text-blue-700' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Inward Bills ({account.bills.length})
+                {activeTab === 'bills' && (
+                  <span className="absolute left-0 right-0 bottom-0 h-[2.5px] rounded-full bg-blue-600" />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('items')}
+                className={`pb-2 text-xs font-extrabold transition relative cursor-pointer ${
+                  activeTab === 'items' ? 'text-blue-700' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Products &amp; IMEIs
+                {activeTab === 'items' && (
+                  <span className="absolute left-0 right-0 bottom-0 h-[2.5px] rounded-full bg-blue-600" />
+                )}
+              </button>
+            </div>
+
+            {activeTab === 'bills' && (
+              <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-[11px] font-bold overflow-x-auto no-scrollbar shrink-0">
+                {(isAdmin
+                  ? (['ALL', 'ACTIVE', 'DUE', 'PAID', 'REVERSED'] as const)
+                  : (['ALL', 'ACTIVE', 'REVERSED'] as const)
+                ).map(f => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setBillStatusFilter(f)}
+                    className={`px-2.5 py-1 rounded-md transition cursor-pointer whitespace-nowrap ${
+                      billStatusFilter === f
+                        ? 'bg-white text-blue-700 shadow-2xs font-extrabold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {f === 'ALL'
+                      ? 'All'
+                      : f === 'ACTIVE'
+                      ? 'Active'
+                      : f === 'DUE'
+                      ? 'Due'
+                      : f === 'PAID'
+                      ? 'Paid'
+                      : 'Reversed'}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          <button
-            type="button"
-            onClick={() => onAddInwardForSupplier(account.partyName, account.partyPhone)}
-            className="hidden sm:inline-flex items-center gap-1 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-extrabold transition cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Add New Stock Inward</span>
-          </button>
-        </div>
-
-        {/* Search & Filter Toolbar */}
-        <div className="bg-white border-b border-slate-100 px-3 sm:px-5 py-2.5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 shrink-0">
-          <div className="relative flex-1">
+          <div className="relative">
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search bill #, model, IMEI, RAM/ROM, note inside this account..."
-              className="w-full pl-8 pr-8 h-8 sm:h-9 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500"
+              placeholder="Search bill #, model, IMEI, RAM/ROM..."
+              className="w-full pl-9 pr-8 h-9 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-600"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
-
-          {activeTab === 'bills' && (
-            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-[11px] font-bold overflow-x-auto no-scrollbar shrink-0">
-              {(isAdmin
-                ? (['ALL', 'ACTIVE', 'DUE', 'PAID', 'REVERSED'] as const)
-                : (['ALL', 'ACTIVE', 'REVERSED'] as const)
-              ).map(f => (
-                <button
-                  key={f}
-                  type="button"
-                  onClick={() => setBillStatusFilter(f)}
-                  className={`px-2.5 py-1 rounded-md transition cursor-pointer whitespace-nowrap ${
-                    billStatusFilter === f
-                      ? 'bg-white text-blue-600 shadow-2xs font-extrabold'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  {f === 'ALL'
-                    ? 'All'
-                    : f === 'ACTIVE'
-                    ? 'Active'
-                    : f === 'DUE'
-                    ? 'Due'
-                    : f === 'PAID'
-                    ? 'Paid'
-                    : 'Reversed'}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
+      </div>
 
-        {/* Scrollable Content Workspace */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-2.5 bg-slate-50">
+      {/* Column Headers for Bills Register */}
+      {activeTab === 'bills' && filteredBills.length > 0 && (
+        <div className="px-3 sm:px-5 pb-1 shrink-0">
+          <div className="max-w-5xl mx-auto grid grid-cols-12 text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3">
+            <div className="col-span-6">Bill &amp; Items</div>
+            {isAdmin ? (
+              <>
+                <div className="col-span-3 text-right">Paid</div>
+                <div className="col-span-3 text-right">Bill / Due</div>
+              </>
+            ) : (
+              <div className="col-span-6 text-right">Units</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Scrollable Register List */}
+      <div className="flex-1 overflow-y-auto px-3 sm:px-5 pb-24">
+        <div className="max-w-5xl mx-auto">
           {activeTab === 'bills' ? (
             filteredBills.length === 0 ? (
-              <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center space-y-2">
-                <Package className="w-8 h-8 text-slate-300 mx-auto" />
-                <p className="text-sm font-bold text-slate-700">No Matching Bills in {account.partyName}</p>
+              <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center space-y-2 mt-2">
+                <FileText className="w-8 h-8 text-slate-300 mx-auto" />
+                <p className="text-sm font-bold text-slate-700">No Matching Bills</p>
                 <p className="text-xs text-slate-400">
-                  Adjust filters or add a new stock inward entry directly into this supplier&apos;s account.
+                  Adjust filters or tap + ADD STOCK INWARD below.
                 </p>
               </div>
             ) : (
-              filteredBills.map(p => {
-                const isReversed = p.status === 'REVERSED';
-                const isFullyPaid = (p.balanceDue || 0) <= 0;
-                const totalUnits = (p.items || []).reduce((sum, i) => sum + (i.qty || 0), 0);
-                const salesmanCanEdit = !isAdmin && canSalesmanEditPurchase(p);
-                const salesmanAlreadyEdited =
-                  !isAdmin &&
-                  !isReversed &&
-                  p.createdByRole === 'salesman' &&
-                  (p.salesmanEditCount || 0) >= 1;
+              <div className="bg-white border border-slate-200/90 rounded-2xl divide-y divide-slate-100 overflow-hidden shadow-2xs">
+                {filteredBills.map(p => {
+                  const isReversed = p.status === 'REVERSED';
+                  const isFullyPaid = (p.balanceDue || 0) <= 0;
+                  const totalUnits = (p.items || []).reduce((sum, i) => sum + (i.qty || 0), 0);
+                  const salesmanCanEdit = !isAdmin && canSalesmanEditPurchase(p);
+                  const salesmanAlreadyEdited =
+                    !isAdmin &&
+                    !isReversed &&
+                    p.createdByRole === 'salesman' &&
+                    (p.salesmanEditCount || 0) >= 1;
+                  const itemsPreview = (p.items || [])
+                    .slice(0, 2)
+                    .map(it => `${it.name}${it.ram || it.storage ? ` (${[it.ram, it.storage].filter(Boolean).join('/')})` : ''} × ${it.qty}`)
+                    .join(' · ');
 
-                return (
-                  <div
-                    key={p.id}
-                    className={`bg-white border rounded-xl p-3 space-y-2.5 shadow-2xs transition ${
-                      isReversed ? 'border-rose-200 bg-rose-50/20' : 'border-slate-200'
-                    }`}
-                  >
-                    {/* Card Header */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 space-y-0.5">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-black text-xs sm:text-sm text-slate-900 tabular-nums">
-                            #{p.billNo}
-                          </span>
-                          {isReversed ? (
-                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-rose-600 text-white">
-                              REVERSED
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() => onViewBill(p)}
+                      className={`px-3 py-3 transition cursor-pointer hover:bg-blue-50/25 ${
+                        isReversed ? 'bg-rose-50/20' : ''
+                      }`}
+                    >
+                      <div className="grid grid-cols-12 items-start gap-2">
+                        {/* Left Column: Bill # & Items */}
+                        <div className="col-span-6 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[13px] font-extrabold text-slate-900 tabular-nums">
+                              #{p.billNo}
                             </span>
-                          ) : isAdmin && isFullyPaid ? (
-                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-emerald-100 text-emerald-800 inline-flex items-center gap-0.5">
-                              <CheckCircle2 className="w-2.5 h-2.5" />
-                              PAID
+                            <span className="text-[11px] text-slate-400">
+                              · {formatLedgerTimestamp(p.date, true)}
                             </span>
-                          ) : isAdmin ? (
-                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-rose-100 text-rose-800 inline-flex items-center gap-0.5">
-                              <AlertCircle className="w-2.5 h-2.5" />
-                              DUE
-                            </span>
-                          ) : null}
-                          <span className="text-[11px] text-slate-500 font-semibold tabular-nums inline-flex items-center gap-1">
-                            <Calendar className="w-3 h-3 text-slate-400" />
-                            {new Date(p.date).toLocaleDateString()}
-                          </span>
-                        </div>
-
-                        <p className="text-[11px] text-slate-500 font-medium">
-                          {p.items?.length || 0} product line(s) • <strong className="text-slate-700">{totalUnits} units</strong>
-                        </p>
-                      </div>
-
-                      {isAdmin ? (
-                        <div className="text-right shrink-0">
-                          <p className={`text-xs sm:text-sm font-black tabular-nums ${isReversed ? 'line-through text-slate-400' : 'text-slate-900'}`}>
-                            {currency} {(p.totalAmount || 0).toLocaleString()}
+                          </div>
+                          <p className="text-[11px] text-slate-600 font-medium truncate mt-0.5">
+                            {itemsPreview || `${p.items?.length || 0} item(s)`}
+                            {(p.items?.length || 0) > 2 ? ` +${(p.items?.length || 0) - 2} more` : ''}
                           </p>
-                          {!isReversed && (
-                            <div className="text-[10px] tabular-nums space-y-0.5">
-                              <span className="text-emerald-700 font-bold block">
-                                Paid: {currency} {(p.paidAmount || 0).toLocaleString()}
-                              </span>
-                              {(p.balanceDue || 0) > 0 && (
-                                <span className="text-rose-600 font-extrabold block">
-                                  Due: {currency} {(p.balanceDue || 0).toLocaleString()}
-                                </span>
-                              )}
-                            </div>
-                          )}
+                          <p className="text-[10px] text-slate-400 mt-0.5 tabular-nums">
+                            {totalUnits} pcs
+                            {p.notes ? ` · ${p.notes}` : ''}
+                          </p>
                         </div>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-extrabold text-[11px] tabular-nums shrink-0">
-                          {totalUnits} pcs
-                        </span>
-                      )}
-                    </div>
 
-                    {/* Itemized Preview Inside Supplier Bill Card */}
-                    <div className="bg-slate-50/90 border border-slate-200/70 rounded-lg p-2 space-y-1.5">
-                      {(p.items || []).map((it, idx) => {
-                        const specs = [it.ram, it.storage, it.color].filter(Boolean).join(' / ');
-                        const imeis =
-                          it.imeis && it.imeis.length > 0
-                            ? it.imeis.filter(Boolean)
-                            : it.imei
-                            ? it.imei.split(',').map(s => s.trim()).filter(Boolean)
-                            : [];
-                        return (
-                          <div
-                            key={idx}
-                            className="text-[11px] pb-1 last:pb-0 border-b last:border-b-0 border-slate-200/70"
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="min-w-0 font-bold text-slate-800 truncate">
-                                {it.name}
-                                {specs && (
-                                  <span className="text-[10px] font-semibold text-indigo-600 ml-1">
-                                    ({specs})
-                                  </span>
-                                )}
-                              </div>
-                              <div className="shrink-0 tabular-nums font-bold text-slate-700">
-                                {it.qty} pcs
-                                {isAdmin && (
-                                  <span className="text-slate-500 font-semibold ml-1.5">
-                                    @ {currency} {(it.costPrice || 0).toLocaleString()}
-                                  </span>
-                                )}
-                              </div>
+                        {isAdmin ? (
+                          <>
+                            {/* Middle Column: Paid */}
+                            <div className="col-span-3 text-right tabular-nums">
+                              <span className="text-xs font-extrabold text-emerald-600">
+                                {isReversed ? '—' : `${currency} ${(p.paidAmount || 0).toLocaleString()}`}
+                              </span>
                             </div>
-                            {imeis.length > 0 && (
-                              <div className="text-[10px] text-slate-500 tabular-nums mt-0.5 break-all">
-                                IMEI: {imeis.join(', ')}
-                              </div>
-                            )}
-                            {it.barcode && (
-                              <div className="text-[10px] text-slate-500 tabular-nums mt-0.5">
-                                Code: {it.barcode}
-                              </div>
-                            )}
-                            {it.note && (
-                              <div className="text-[10px] text-amber-800 bg-amber-50 border border-amber-200/70 rounded px-1.5 py-0.5 mt-0.5 inline-block font-medium">
-                                Note: {it.note}
-                              </div>
+
+                            {/* Right Column: Total & Due status */}
+                            <div className="col-span-3 text-right tabular-nums">
+                              <span
+                                className={`text-xs font-extrabold block ${
+                                  isReversed
+                                    ? 'line-through text-slate-400'
+                                    : isFullyPaid
+                                    ? 'text-slate-900'
+                                    : 'text-rose-600'
+                                }`}
+                              >
+                                {currency} {(p.totalAmount || 0).toLocaleString()}
+                              </span>
+                              <span
+                                className={`inline-block mt-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                  isReversed
+                                    ? 'bg-rose-100 text-rose-700'
+                                    : isFullyPaid
+                                    ? 'bg-emerald-50 text-emerald-700'
+                                    : 'bg-rose-50 text-rose-600'
+                                }`}
+                              >
+                                {isReversed
+                                  ? 'Reversed'
+                                  : isFullyPaid
+                                  ? 'Paid'
+                                  : `Due ${currency} ${(p.balanceDue || 0).toLocaleString()}`}
+                              </span>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="col-span-6 text-right tabular-nums">
+                            <span className="text-xs font-extrabold text-blue-600">
+                              {totalUnits} pcs
+                            </span>
+                            {isReversed && (
+                              <span className="block text-[10px] font-bold text-rose-600">Reversed</span>
                             )}
                           </div>
-                        );
-                      })}
-                    </div>
-
-                    {p.notes && (
-                      <div className="text-[11px] text-slate-600 bg-blue-50/50 border border-blue-100 rounded-lg px-2.5 py-1.5 whitespace-pre-line">
-                        {p.notes}
-                      </div>
-                    )}
-
-                    {/* Action Bar */}
-                    <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1 border-t border-slate-100 text-[11px]">
-                      <div className="flex items-center gap-1">
-                        {p.invoiceImage && (
-                          <button
-                            type="button"
-                            onClick={() => onZoomImage(p.invoiceImage!)}
-                            className="h-7 px-2 bg-blue-50 text-blue-700 font-bold rounded-lg text-[10px] flex items-center gap-1 border border-blue-200 cursor-pointer"
-                          >
-                            <Camera className="w-3 h-3" />
-                            <span>Photo</span>
-                          </button>
-                        )}
-                        {isAdmin && !isReversed && (p.balanceDue || 0) > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => onPayBillDue(p)}
-                            className="h-7 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[10px] flex items-center gap-1 cursor-pointer"
-                          >
-                            <CreditCard className="w-3 h-3" />
-                            <span>Pay Due</span>
-                          </button>
                         )}
                       </div>
 
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => onViewBill(p)}
-                          className="h-7 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-lg text-[11px] flex items-center gap-1 cursor-pointer"
-                        >
-                          <Eye className="w-3 h-3" />
-                          <span>View</span>
-                        </button>
+                      {/* Subtle Quick Action Strip */}
+                      <div
+                        className="flex flex-wrap items-center justify-between gap-1.5 mt-2 pt-2 border-t border-slate-100/80 text-[11px]"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          {p.invoiceImage && (
+                            <button
+                              type="button"
+                              onClick={() => onZoomImage(p.invoiceImage!)}
+                              className="h-7 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-[10px] inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <Camera className="w-3 h-3 text-blue-600" />
+                              <span>Photo</span>
+                            </button>
+                          )}
+                          {isAdmin && !isReversed && (p.balanceDue || 0) > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => onPayBillDue(p)}
+                              className="h-7 px-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-[10px] inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <CreditCard className="w-3 h-3" />
+                              <span>Pay Due</span>
+                            </button>
+                          )}
+                        </div>
 
-                        {!isReversed && (isAdmin || salesmanCanEdit) && (
+                        <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            onClick={() => onEditBill(p)}
-                            className="h-7 px-2 text-indigo-600 hover:bg-indigo-50 rounded-lg border border-indigo-200 flex items-center justify-center gap-1 cursor-pointer font-bold text-[11px]"
-                            title={isAdmin ? 'Edit Bill' : 'Edit Stock Inward (1 edit allowed)'}
+                            onClick={() => onViewBill(p)}
+                            className="h-7 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-[10px] inline-flex items-center gap-1 cursor-pointer"
                           >
-                            <Edit2 className="w-3 h-3" />
-                            <span>{isAdmin ? 'Edit' : 'Edit (1x)'}</span>
+                            <Eye className="w-3 h-3" />
+                            <span>View</span>
                           </button>
-                        )}
 
-                        {salesmanAlreadyEdited && (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-slate-400 font-semibold bg-slate-100 px-2 h-7 rounded-lg">
-                            <Lock className="w-3 h-3" />
-                            Edited
-                          </span>
-                        )}
+                          {!isReversed && (isAdmin || salesmanCanEdit) && (
+                            <button
+                              type="button"
+                              onClick={() => onEditBill(p)}
+                              className="h-7 px-2 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 font-bold rounded-lg text-[10px] inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                              <span>{isAdmin ? 'Edit' : 'Edit (1x)'}</span>
+                            </button>
+                          )}
 
-                        {isAdmin && (
-                          <button
-                            type="button"
-                            onClick={() => onDownloadPdf(p)}
-                            className="h-7 w-7 text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200 flex items-center justify-center cursor-pointer"
-                            title="Download Bill PDF"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                          </button>
-                        )}
+                          {salesmanAlreadyEdited && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-slate-400 font-semibold bg-slate-100 px-2 h-7 rounded-lg">
+                              <Lock className="w-3 h-3" />
+                              Edited
+                            </span>
+                          )}
 
-                        {isAdmin && (
-                          <button
-                            type="button"
-                            onClick={() => onShareWhatsApp(p)}
-                            className="h-7 w-7 text-emerald-600 hover:bg-emerald-50 rounded-lg border border-emerald-200 flex items-center justify-center cursor-pointer"
-                            title="Share on WhatsApp"
-                          >
-                            <MessageCircle className="w-3.5 h-3.5" />
-                          </button>
-                        )}
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => onDownloadPdf(p)}
+                              className="h-7 w-7 text-slate-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg border border-slate-200 flex items-center justify-center cursor-pointer"
+                              title="Download Bill PDF"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </button>
+                          )}
 
-                        {isAdmin && !isReversed && (
-                          <button
-                            type="button"
-                            onClick={() => onReverseBill(p)}
-                            className="h-7 w-7 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition border border-slate-200 flex items-center justify-center cursor-pointer"
-                            title="Reverse Bill"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                          </button>
-                        )}
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => onShareWhatsApp(p)}
+                              className="h-7 w-7 text-emerald-600 hover:bg-emerald-50 rounded-lg border border-slate-200 flex items-center justify-center cursor-pointer"
+                              title="Share on WhatsApp"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
+                          {isAdmin && !isReversed && (
+                            <button
+                              type="button"
+                              onClick={() => onReverseBill(p)}
+                              className="h-7 w-7 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition border border-slate-200 flex items-center justify-center cursor-pointer"
+                              title="Reverse Bill"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })
+                  );
+                })}
+              </div>
             )
           ) : flatItemEntries.length === 0 ? (
-            <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center space-y-2">
+            <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center space-y-2 mt-2">
               <Smartphone className="w-8 h-8 text-slate-300 mx-auto" />
               <p className="text-sm font-bold text-slate-700">No Matching Products or IMEIs</p>
               <p className="text-xs text-slate-400">
@@ -729,76 +753,97 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
               </p>
             </div>
           ) : (
-            flatItemEntries.map((entry, idx) => (
-              <div
-                key={`${entry.billId}-${idx}`}
-                className={`bg-white border rounded-xl p-3 space-y-1.5 shadow-2xs ${
-                  entry.isReversed ? 'border-rose-200 bg-rose-50/20' : 'border-slate-200'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-extrabold text-xs sm:text-sm text-slate-900">
+            <div className="bg-white border border-slate-200/90 rounded-2xl divide-y divide-slate-100 overflow-hidden shadow-2xs">
+              {flatItemEntries.map((entry, idx) => (
+                <div
+                  key={`${entry.billId}-${idx}`}
+                  onClick={() => onViewBill(entry.billRef)}
+                  className={`p-3 space-y-1.5 hover:bg-blue-50/20 cursor-pointer transition ${
+                    entry.isReversed ? 'bg-rose-50/20' : ''
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-bold text-xs sm:text-sm text-slate-900">
                         {entry.name}
+                        {(entry.ram || entry.storage || entry.color) && (
+                          <span className="text-[11px] font-semibold text-blue-700 ml-1.5">
+                            {[entry.ram, entry.storage, entry.color].filter(Boolean).join(' / ')}
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-0.5 tabular-nums">
+                        #{entry.billNo} · {new Date(entry.date).toLocaleDateString()} · {entry.category}
+                        {entry.isReversed ? ' · REVERSED' : ''}
+                      </p>
+                    </div>
+
+                    <div className="text-right shrink-0 tabular-nums">
+                      <span className="text-xs font-extrabold text-blue-600 block">
+                        {entry.qty} pcs
                       </span>
-                      {(entry.ram || entry.storage || entry.color) && (
-                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">
-                          {[entry.ram, entry.storage, entry.color].filter(Boolean).join(' / ')}
-                        </span>
-                      )}
-                      {entry.isReversed && (
-                        <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-rose-600 text-white">
-                          REVERSED
+                      {isAdmin && (
+                        <span className="text-[11px] font-semibold text-slate-600">
+                          Cost: {currency} {entry.costPrice.toLocaleString()}
                         </span>
                       )}
                     </div>
-                    <p className="text-[11px] text-slate-500 mt-0.5 tabular-nums">
-                      Bill #{entry.billNo} • {new Date(entry.date).toLocaleDateString()} • {entry.category}
+                  </div>
+
+                  {entry.imeis.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-0.5">
+                      {entry.imeis.map((im, imIdx) => (
+                        <span
+                          key={imIdx}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[10px] font-bold tabular-nums"
+                        >
+                          <Smartphone className="w-2.5 h-2.5 text-blue-600" />
+                          {im}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {entry.barcode && (
+                    <div className="inline-flex items-center gap-1 text-[10px] text-slate-600 bg-slate-100 px-2 py-0.5 rounded font-semibold tabular-nums">
+                      <Barcode className="w-3 h-3" />
+                      {entry.barcode}
+                    </div>
+                  )}
+
+                  {entry.note && (
+                    <p className="text-[10px] text-amber-700 font-medium">
+                      Note: {entry.note}
                     </p>
-                  </div>
-
-                  <div className="text-right shrink-0 tabular-nums">
-                    <span className="text-xs font-black text-blue-700 block">
-                      {entry.qty} pcs
-                    </span>
-                    {isAdmin && (
-                      <span className="text-[11px] font-bold text-slate-700">
-                        Cost: {currency} {entry.costPrice.toLocaleString()}
-                      </span>
-                    )}
-                  </div>
+                  )}
                 </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
 
-                {entry.imeis.length > 0 && (
-                  <div className="flex flex-wrap gap-1 pt-1">
-                    {entry.imeis.map((im, imIdx) => (
-                      <span
-                        key={imIdx}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-800 border border-blue-200/70 rounded text-[10px] font-bold tabular-nums"
-                      >
-                        <Smartphone className="w-2.5 h-2.5" />
-                        {im}
-                      </span>
-                    ))}
-                  </div>
-                )}
+      {/* Pinned Bottom Dual Pill Action Footer */}
+      <div className="fixed bottom-0 left-0 right-0 z-20 bg-white/95 backdrop-blur-md border-t border-slate-200 px-3 sm:px-5 pt-2.5 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]">
+        <div className="max-w-5xl mx-auto flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => onAddInwardForSupplier(account.partyName, account.partyPhone)}
+            className="flex-1 h-11 rounded-full bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-black text-xs tracking-wide uppercase shadow-md shadow-blue-600/20 flex items-center justify-center gap-1.5 transition cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>ADD STOCK INWARD</span>
+          </button>
 
-                {entry.barcode && (
-                  <div className="inline-flex items-center gap-1 text-[10px] text-slate-600 bg-slate-100 px-2 py-0.5 rounded font-semibold tabular-nums">
-                    <Barcode className="w-3 h-3" />
-                    {entry.barcode}
-                  </div>
-                )}
-
-                {entry.note && (
-                  <div className="flex items-center gap-1 text-[10px] text-amber-800 bg-amber-50 border border-amber-200/70 rounded px-2 py-0.5 font-medium">
-                    <FileText className="w-3 h-3 shrink-0" />
-                    <span>{entry.note}</span>
-                  </div>
-                )}
-              </div>
-            ))
+          {isAdmin && account.totalDue > 0 && onSettlePurchaseDue && (
+            <button
+              type="button"
+              onClick={handleOpenAccountSettle}
+              className="flex-1 h-11 rounded-full bg-rose-600 hover:bg-rose-700 active:scale-[0.98] text-white font-black text-xs tracking-wide uppercase shadow-md shadow-rose-600/20 flex items-center justify-center gap-1.5 transition cursor-pointer tabular-nums"
+            >
+              <CreditCard className="w-4 h-4" />
+              <span>PAY DUE · {currency} {account.totalDue.toLocaleString()}</span>
+            </button>
           )}
         </div>
       </div>
@@ -809,13 +854,13 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
           <div className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-5 shadow-2xl space-y-4 border border-slate-100">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 shrink-0">
+                <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shrink-0">
                   <CreditCard className="w-5 h-5" />
                 </div>
                 <div>
                   <h3 className="font-extrabold text-slate-900 text-sm">Pay Supplier Account Due</h3>
                   <p className="text-[11px] text-slate-400">
-                    {account.partyName} • {unpaidActiveBills.length} unpaid bill(s)
+                    {account.partyName} · {unpaidActiveBills.length} unpaid bill(s)
                   </p>
                 </div>
               </div>
@@ -831,22 +876,28 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 space-y-1 text-xs">
               <div className="flex items-center justify-between text-slate-600 font-bold">
                 <span>Total Purchased:</span>
-                <span className="tabular-nums text-slate-900">{currency} {account.totalAmount.toLocaleString()}</span>
+                <span className="tabular-nums text-slate-900">
+                  {currency} {account.totalAmount.toLocaleString()}
+                </span>
               </div>
               <div className="flex items-center justify-between text-emerald-700 font-bold">
                 <span>Total Paid:</span>
-                <span className="tabular-nums">{currency} {account.totalPaid.toLocaleString()}</span>
+                <span className="tabular-nums">
+                  {currency} {account.totalPaid.toLocaleString()}
+                </span>
               </div>
               <div className="flex items-center justify-between text-rose-600 font-extrabold pt-1 border-t border-slate-200">
                 <span>Total Account Due:</span>
-                <span className="tabular-nums text-sm">{currency} {account.totalDue.toLocaleString()}</span>
+                <span className="tabular-nums text-sm">
+                  {currency} {account.totalDue.toLocaleString()}
+                </span>
               </div>
             </div>
 
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Payment Amount ({currency}):
+                  Cash Payment Amount ({currency}):
                 </label>
                 <input
                   type="number"
@@ -854,9 +905,11 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
                   max={account.totalDue}
                   value={accountSettleAmount}
                   onChange={e =>
-                    setAccountSettleAmount(e.target.value === '' ? '' : Math.min(account.totalDue, Number(e.target.value)))
+                    setAccountSettleAmount(
+                      e.target.value === '' ? '' : Math.min(account.totalDue, Number(e.target.value))
+                    )
                   }
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm tabular-nums font-bold text-slate-900 focus:outline-none focus:border-emerald-600"
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm tabular-nums font-bold text-slate-900 focus:outline-none focus:border-blue-600"
                 />
               </div>
 
@@ -869,7 +922,7 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
                   value={accountSettleNotes}
                   onChange={e => setAccountSettleNotes(e.target.value)}
                   placeholder="e.g. Account payment receipt #..."
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:border-emerald-600"
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-600"
                 />
               </div>
             </div>
@@ -886,9 +939,9 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
                 type="button"
                 onClick={handleConfirmAccountSettle}
                 disabled={!accountSettleAmount || Number(accountSettleAmount) <= 0}
-                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-extrabold rounded-xl transition cursor-pointer shadow-md shadow-emerald-600/20"
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-extrabold rounded-xl transition cursor-pointer shadow-md shadow-blue-600/20"
               >
-                Confirm Account Payment
+                Confirm Cash Payment
               </button>
             </div>
           </div>

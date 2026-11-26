@@ -34,7 +34,11 @@ import {
   MessageCircle,
   ScanLine,
   Lock,
-  Copy
+  Copy,
+  ArrowLeft,
+  EyeOff,
+  SlidersHorizontal,
+  ChevronRight,
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { ConfirmModal } from './ConfirmModal';
@@ -46,6 +50,7 @@ import { sharePurchaseOnWhatsApp } from '../utils/whatsappInvoice';
 import { compressImage } from '../utils/imageCompressor';
 import { smartFilterAndSort, smartMatch } from '../utils/smartSearch';
 import { SupplierAccountModal, SupplierAccountSummary } from './SupplierAccountModal';
+import { formatLedgerTimestamp, getInitials } from '../utils/ledgerFormatters';
 
 const normalizeSupplierKey = (name?: string): string =>
   (name || 'Unknown Supplier').trim().replace(/\s+/g, ' ').toLowerCase();
@@ -85,6 +90,7 @@ interface PurchasesTabProps {
   onSettlePurchaseDue?: (params: { purchaseId: string; paymentAmount: number; paymentMethod: string; notes?: string }) => void;
   onOpenPdfReport?: () => void;
   onRecoverMissingPurchases?: () => Promise<number> | void;
+  onBackToHome?: () => void;
 }
 
 export interface InwardDraftItem {
@@ -148,6 +154,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
   onSettlePurchaseDue,
   onOpenPdfReport,
   onRecoverMissingPurchases,
+  onBackToHome,
 }) => {
   const { showToast } = useToast();
   const [isRecovering, setIsRecovering] = useState(false);
@@ -172,6 +179,10 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'REVERSED' | 'PAID' | 'DUE'>('ALL');
   const [dateFilter, setDateFilter] = useState('');
+  const [inwardTab, setInwardTab] = useState<'suppliers' | 'bills' | 'due'>('suppliers');
+  const [hideAmounts, setHideAmounts] = useState(false);
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [sortBy, setSortBy] = useState<'due' | 'latest' | 'name'>(isAdmin ? 'due' : 'latest');
   const [isSearchScannerOpen, setIsSearchScannerOpen] = useState(false);
   const [isScannerModalOpen, setIsScannerModalOpen] = useState(false);
   const [scannerTarget, setScannerTarget] = useState<{ itemIdx: number; imeiIdx: number } | null>(null);
@@ -1329,260 +1340,421 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
     return { totalPurchased, totalPaid, totalDue, totalInwardUnits };
   }, [purchases]);
 
+  // Filtered & sorted supplier accounts respecting inwardTab & sortBy
+  const displayedSupplierAccounts = useMemo(() => {
+    const base =
+      inwardTab === 'due'
+        ? filteredSupplierAccounts.filter(acc => acc.totalDue > 0)
+        : filteredSupplierAccounts;
+
+    return [...base].sort((a, b) => {
+      if (sortBy === 'name') return a.partyName.localeCompare(b.partyName);
+      if (sortBy === 'due' && isAdmin) {
+        if (b.totalDue !== a.totalDue) return b.totalDue - a.totalDue;
+      }
+      return new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime();
+    });
+  }, [filteredSupplierAccounts, inwardTab, sortBy, isAdmin]);
+
+  // Flat chronological bills for the "All Bills" ledger view
+  const filteredAllBills = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return [...purchases]
+      .filter(p => {
+        const isReversed = p.status === 'REVERSED';
+        const matchesStatus =
+          statusFilter === 'ALL'
+            ? true
+            : statusFilter === 'ACTIVE'
+            ? !isReversed
+            : statusFilter === 'REVERSED'
+            ? isReversed
+            : statusFilter === 'PAID'
+            ? !isReversed && (p.balanceDue || 0) <= 0
+            : !isReversed && (p.balanceDue || 0) > 0;
+        if (!matchesStatus) return false;
+        if (dateFilter && !p.date.startsWith(dateFilter)) return false;
+        if (!q) return true;
+
+        const itemsText = (p.items || [])
+          .map(i => `${i.name} ${i.category || ''} ${i.ram || ''} ${i.storage || ''} ${i.color || ''} ${i.barcode || ''} ${i.imei || ''} ${(i.imeis || []).join(' ')}`)
+          .join(' ');
+        return (
+          billNosFromImeiRecords.has((p.billNo || '').trim().toLowerCase()) ||
+          smartMatch(q, [p.partyName, p.billNo, itemsText], [isAdmin ? p.partyPhone : '', p.notes])
+        );
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.date).getTime() - new Date(a.date).getTime() ||
+          new Date(b.updatedAt || b.date).getTime() - new Date(a.updatedAt || a.date).getTime()
+      );
+  }, [purchases, search, statusFilter, dateFilter, billNosFromImeiRecords, isAdmin]);
+
+  const dueSupplierCount = useMemo(
+    () => supplierAccounts.filter(a => a.totalDue > 0).length,
+    [supplierAccounts]
+  );
+
   return (
-      <div className="space-y-4 sm:space-y-5 animate-in fade-in duration-200">
-      {/* Top Header & Action Buttons */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 sm:gap-4">
-        <div className="min-w-0">
-          <h2 className="text-base sm:text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-            <span className="p-1.5 sm:p-2 bg-blue-600 text-white rounded-lg sm:rounded-xl shadow-md shadow-blue-500/20 shrink-0">
-              <Truck className="w-4 h-4 sm:w-5 sm:h-5" />
-            </span>
-            <span className="truncate">{isAdmin ? 'Supplier Purchases & Stock Inward' : 'Stock Inward System'}</span>
-          </h2>
-          <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 line-clamp-1">
-            {isAdmin
-              ? 'Record supplier bills, scan IMEI to find party, download PDFs & share via WhatsApp'
-              : 'Record stock inward by party name, scan IMEIs & sync directly to inventory'}
-          </p>
-        </div>
-
-        <div className="w-full sm:w-auto flex flex-wrap items-center gap-1.5 sm:gap-2">
-          {isAdmin && onRecoverMissingPurchases && (
-            <button
-              type="button"
-              onClick={handleTriggerRecover}
-              disabled={isRecovering}
-              className="inline-flex items-center justify-center gap-1.5 h-8 sm:h-9 px-2.5 sm:px-3.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[11px] sm:text-xs font-extrabold rounded-lg sm:rounded-xl shadow-2xs transition cursor-pointer active:scale-95 disabled:opacity-60 shrink-0"
-              title="Scan Cloud Firestore, Local Cache, and History Logs to restore missing Stock Inward bills"
-            >
-              <RotateCcw className={`w-3.5 h-3.5 ${isRecovering ? 'animate-spin' : ''}`} />
-              <span>{isRecovering ? 'Scanning...' : 'Recover'}</span>
-            </button>
-          )}
-          {isAdmin && onOpenPdfReport && (
-            <button
-              type="button"
-              onClick={onOpenPdfReport}
-              className="inline-flex items-center justify-center gap-1.5 h-8 sm:h-9 px-2.5 sm:px-3.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 text-[11px] sm:text-xs font-extrabold rounded-lg sm:rounded-xl shadow-2xs transition cursor-pointer active:scale-95 shrink-0"
-            >
-              <Download className="w-3.5 h-3.5 text-blue-600" />
-              <span className="sm:hidden">PDF</span>
-              <span className="hidden sm:inline">Download PDF Report</span>
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={openAddModal}
-            className="inline-flex items-center justify-center gap-1.5 h-8 sm:h-9 px-3 sm:px-4 bg-blue-600 hover:bg-blue-700 text-white text-[11px] sm:text-xs font-bold rounded-lg sm:rounded-xl shadow-md shadow-blue-600/20 transition cursor-pointer active:scale-95 shrink-0"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>{isAdmin ? 'Add Purchase' : 'Add Stock Inward'}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Metric Cards */}
-      {isAdmin ? (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
-          <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between">
-            <div className="flex items-center justify-between text-slate-400 mb-1 sm:mb-2">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">Total Purchases</span>
-              <DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 shrink-0" />
+    <div className="space-y-3 pb-24 animate-in fade-in duration-200">
+      {/* Top Blue Header + Overlapping Summary Card (White & Blue Theme) */}
+      <div>
+        <div className="bg-blue-600 text-white rounded-2xl shadow-sm pt-3.5 pb-11 px-3.5 sm:px-5">
+          {/* Row 1: Title & Quick Pill CTA */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              {onBackToHome && (
+                <button
+                  type="button"
+                  onClick={onBackToHome}
+                  className="lg:hidden w-8 h-8 -ml-1 rounded-full hover:bg-white/15 flex items-center justify-center transition cursor-pointer shrink-0"
+                  aria-label="Back to home"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+              )}
+              <div className="min-w-0">
+                <h2 className="text-lg sm:text-xl font-extrabold tracking-tight truncate">
+                  Stock Inward
+                </h2>
+              </div>
             </div>
-            <p className="text-sm sm:text-xl font-black text-slate-900 truncate">
-              {currency} {stats.totalPurchased.toLocaleString()}
-            </p>
-            <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">{purchases.length} total bills</p>
-          </div>
 
-          <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between">
-            <div className="flex items-center justify-between text-slate-400 mb-1 sm:mb-2">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-emerald-600 line-clamp-1">Total Paid</span>
-              <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 shrink-0" />
-            </div>
-            <p className="text-sm sm:text-xl font-black text-emerald-700 truncate">
-              {currency} {stats.totalPaid.toLocaleString()}
-            </p>
-            <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Cleared via Cash/Bank</p>
-          </div>
-
-          <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between">
-            <div className="flex items-center justify-between text-slate-400 mb-1 sm:mb-2">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-rose-600 line-clamp-1">Payables / Due</span>
-              <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-600 shrink-0" />
-            </div>
-            <p className="text-sm sm:text-xl font-black text-rose-600 truncate">
-              {currency} {stats.totalDue.toLocaleString()}
-            </p>
-            <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Supplier balance</p>
-          </div>
-
-          <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between">
-            <div className="flex items-center justify-between text-slate-400 mb-1 sm:mb-2">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-indigo-600 line-clamp-1">Inward Units</span>
-              <Package className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600 shrink-0" />
-            </div>
-            <p className="text-sm sm:text-xl font-black text-indigo-900 truncate">
-              {stats.totalInwardUnits.toLocaleString()} pcs
-            </p>
-            <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Stock inward total</p>
-          </div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-3 gap-2.5 sm:gap-4">
-          <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between">
-            <div className="flex items-center justify-between text-slate-400 mb-1 sm:mb-2">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">Total Entries</span>
-              <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 shrink-0" />
-            </div>
-            <p className="text-sm sm:text-xl font-black text-slate-900 truncate tabular-nums">
-              {purchases.length}
-            </p>
-            <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Stock inward bills</p>
-          </div>
-
-          <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between">
-            <div className="flex items-center justify-between text-slate-400 mb-1 sm:mb-2">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-indigo-600 line-clamp-1">Inward Units</span>
-              <Package className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600 shrink-0" />
-            </div>
-            <p className="text-sm sm:text-xl font-black text-indigo-900 truncate tabular-nums">
-              {stats.totalInwardUnits.toLocaleString()} pcs
-            </p>
-            <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Stock received</p>
-          </div>
-
-          <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between">
-            <div className="flex items-center justify-between text-slate-400 mb-1 sm:mb-2">
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-emerald-600 line-clamp-1">Parties</span>
-              <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 shrink-0" />
-            </div>
-            <p className="text-sm sm:text-xl font-black text-emerald-700 truncate tabular-nums">
-              {existingParties.length}
-            </p>
-            <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate">Supplier parties</p>
-          </div>
-        </div>
-      )}
-
-      {/* Search & Filter Toolbar */}
-      <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2 sm:gap-3">
-        <div className="flex items-center gap-1.5 flex-1">
-          <div className="relative flex-1">
-            <Search className="w-3.5 h-3.5 absolute left-2.5 sm:left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search or scan IMEI, party, bill #..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="compact-mobile-input w-full pl-8 sm:pl-9 pr-7 h-8 sm:h-9 bg-slate-50 border border-slate-200 rounded-lg sm:rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-            />
-            {search && (
+            {isAdmin ? (
               <button
                 type="button"
-                onClick={() => setSearch('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 cursor-pointer"
-                title="Clear search"
+                onClick={() => setInwardTab(prev => (prev === 'due' ? 'suppliers' : 'due'))}
+                className={`px-3.5 py-1.5 rounded-full text-[11px] font-black tracking-wide uppercase shadow-xs transition cursor-pointer shrink-0 ${
+                  inwardTab === 'due'
+                    ? 'bg-white text-blue-700'
+                    : 'bg-slate-900/90 hover:bg-slate-900 text-white'
+                }`}
               >
-                <X className="w-3.5 h-3.5" />
+                {inwardTab === 'due' ? 'ALL SUPPLIERS' : `DUE BILLS (${dueSupplierCount})`}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setInwardTab(prev => (prev === 'bills' ? 'suppliers' : 'bills'))}
+                className="px-3.5 py-1.5 rounded-full bg-slate-900/90 hover:bg-slate-900 text-white text-[11px] font-black tracking-wide uppercase shadow-xs transition cursor-pointer shrink-0"
+              >
+                {inwardTab === 'bills' ? 'SUPPLIERS' : 'ALL ENTRIES'}
               </button>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => setIsSearchScannerOpen(true)}
-            className="inline-flex items-center gap-1 h-8 sm:h-9 px-2.5 sm:px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold transition cursor-pointer shrink-0"
-            title="Scan IMEI / Barcode to find Supplier Party"
-          >
-            <ScanLine className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            <span className="hidden sm:inline">Scan IMEI</span>
-          </button>
+
+          {/* Row 2: Clean Underline Sub-Tabs */}
+          <div className="mt-3.5 flex items-center gap-6 border-b border-white/15">
+            {(isAdmin
+              ? ([
+                  { id: 'suppliers', label: 'Suppliers' },
+                  { id: 'bills', label: 'All Bills' },
+                  { id: 'due', label: 'Due Only' },
+                ] as const)
+              : ([
+                  { id: 'suppliers', label: 'Suppliers' },
+                  { id: 'bills', label: 'All Entries' },
+                ] as const)
+            ).map(tab => {
+              const active = inwardTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setInwardTab(tab.id)}
+                  className={`pb-2.5 text-[13px] font-bold transition relative cursor-pointer ${
+                    active ? 'text-white' : 'text-blue-100/80 hover:text-white'
+                  }`}
+                >
+                  {tab.label}
+                  {active && (
+                    <span className="absolute left-0 right-0 bottom-0 h-[3px] rounded-full bg-sky-300" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-          <div className="flex bg-slate-100 p-0.5 sm:p-1 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold shrink-0">
-            {(isAdmin ? (['ALL', 'ACTIVE', 'REVERSED', 'PAID', 'DUE'] as const) : (['ALL', 'ACTIVE', 'REVERSED'] as const)).map(tab => (
+        {/* Overlapping White Summary Card */}
+        <div className="-mt-8 mx-2 sm:mx-4 bg-white rounded-2xl border border-slate-200/90 shadow-sm px-3.5 py-3">
+          <div className="flex items-center justify-between mb-1.5">
+            {isAdmin ? (
+              <button
+                type="button"
+                onClick={() => setHideAmounts(prev => !prev)}
+                className="text-[11px] font-medium text-slate-500 hover:text-slate-700 flex items-center gap-1 cursor-pointer"
+              >
+                {hideAmounts ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                <span>{hideAmounts ? 'Show Amounts' : 'Hide Amounts'}</span>
+              </button>
+            ) : (
+              <span className="text-[11px] font-medium text-slate-500">
+                Stock Inward Overview
+              </span>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setInwardTab('bills')}
+              className="text-[11px] font-bold text-blue-600 hover:text-blue-700 cursor-pointer flex items-center gap-0.5 tabular-nums"
+            >
+              <span>All Bills ({purchases.length})</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {isAdmin ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setInwardTab(prev => (prev === 'bills' ? 'suppliers' : 'bills'))}
+                className="w-full flex items-center justify-between gap-2 text-left cursor-pointer group"
+              >
+                <div className="flex-1 text-center py-0.5">
+                  <p className="text-base sm:text-xl font-extrabold text-emerald-600 tabular-nums leading-tight">
+                    {hideAmounts ? `${currency} •••••` : `${currency} ${stats.totalPaid.toLocaleString()}`}
+                  </p>
+                  <p className="text-[11px] font-medium text-slate-500 mt-0.5">Total Paid</p>
+                </div>
+
+                <div className="w-px h-9 bg-slate-100 shrink-0" />
+
+                <div className="flex-1 text-center py-0.5">
+                  <p className="text-base sm:text-xl font-extrabold text-rose-600 tabular-nums leading-tight">
+                    {hideAmounts ? `${currency} •••••` : `${currency} ${stats.totalDue.toLocaleString()}`}
+                  </p>
+                  <p className="text-[11px] font-medium text-slate-500 mt-0.5">Payable Due</p>
+                </div>
+
+                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 transition shrink-0" />
+              </button>
+
+              <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 tabular-nums">
+                <span>
+                  Purchased:{' '}
+                  <strong className="text-slate-800">
+                    {hideAmounts ? `${currency} •••••` : `${currency} ${stats.totalPurchased.toLocaleString()}`}
+                  </strong>
+                </span>
+                <span>
+                  Inward: <strong className="text-slate-800">{stats.totalInwardUnits.toLocaleString()} pcs</strong>
+                </span>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-between gap-2 text-center py-0.5">
+              <div className="flex-1">
+                <p className="text-base sm:text-xl font-extrabold text-blue-600 tabular-nums">
+                  {purchases.filter(p => p.status !== 'REVERSED').length} Bills
+                </p>
+                <p className="text-[11px] font-medium text-slate-500">Active Entries</p>
+              </div>
+              <div className="w-px h-9 bg-slate-100 shrink-0" />
+              <div className="flex-1">
+                <p className="text-base sm:text-xl font-extrabold text-slate-900 tabular-nums">
+                  {stats.totalInwardUnits.toLocaleString()} pcs
+                </p>
+                <p className="text-[11px] font-medium text-slate-500">Units Received</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Search + Scan IMEI + Filter + PDF Toolbar */}
+      <div className="flex items-center gap-2 px-0.5">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder={`Search ${supplierAccounts.length} Suppliers, IMEI, bill #...`}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full pl-9 pr-8 h-10 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 shadow-2xs transition"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+              title="Clear search"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsSearchScannerOpen(true)}
+          className="h-10 px-2.5 sm:px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shrink-0"
+          title="Scan IMEI / Barcode to find Supplier Party"
+        >
+          <ScanLine className="w-4 h-4" />
+          <span className="hidden sm:inline">Scan IMEI</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setShowFilterPanel(prev => !prev)}
+          className={`h-10 w-10 rounded-xl border flex items-center justify-center transition cursor-pointer shrink-0 ${
+            showFilterPanel || statusFilter !== 'ALL' || !!dateFilter
+              ? 'bg-blue-50 border-blue-300 text-blue-700'
+              : 'bg-white border-slate-200 text-blue-600 hover:bg-slate-50'
+          }`}
+          title="Filter, Sort & Recovery Tools"
+        >
+          <SlidersHorizontal className="w-4 h-4" />
+        </button>
+
+        {isAdmin && onOpenPdfReport && (
+          <button
+            type="button"
+            onClick={onOpenPdfReport}
+            className="h-10 px-2.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-blue-600 flex flex-col items-center justify-center transition cursor-pointer shrink-0"
+            title="Download Purchase PDF Report"
+          >
+            <FileText className="w-3.5 h-3.5 leading-none" />
+            <span className="text-[9px] font-black leading-none mt-0.5">PDF</span>
+          </button>
+        )}
+      </div>
+
+      {/* Expandable Filter, Sort & Recovery Strip */}
+      {showFilterPanel && (
+        <div className="bg-white border border-slate-200 rounded-2xl p-3 space-y-2.5 shadow-2xs">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1">
+              Status:
+            </span>
+            {(isAdmin
+              ? (['ALL', 'ACTIVE', 'DUE', 'PAID', 'REVERSED'] as const)
+              : (['ALL', 'ACTIVE', 'REVERSED'] as const)
+            ).map(tab => (
               <button
                 key={tab}
                 type="button"
                 onClick={() => setStatusFilter(tab)}
-                className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg transition cursor-pointer whitespace-nowrap ${
+                className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition cursor-pointer ${
                   statusFilter === tab
-                    ? 'bg-white text-blue-600 shadow-2xs font-extrabold'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
               >
                 {tab === 'ALL'
                   ? 'All'
                   : tab === 'ACTIVE'
                   ? 'Active'
-                  : tab === 'REVERSED'
-                  ? 'Reversed'
+                  : tab === 'DUE'
+                  ? 'Due'
                   : tab === 'PAID'
                   ? 'Paid'
-                  : 'Due'}
+                  : 'Reversed'}
               </button>
             ))}
           </div>
 
-          <input
-            type="date"
-            value={dateFilter}
-            onChange={e => setDateFilter(e.target.value)}
-            className="compact-mobile-input h-8 sm:h-9 px-2 sm:px-3 bg-slate-50 border border-slate-200 rounded-lg sm:rounded-xl text-[11px] sm:text-xs tabular-nums font-semibold text-slate-700 focus:outline-none focus:border-blue-500 cursor-pointer shrink-0"
-          />
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1">
+                Sort:
+              </span>
+              {([
+                ...(isAdmin ? [{ id: 'due', label: 'Highest Due' } as const] : []),
+                { id: 'latest', label: 'Latest Inward' } as const,
+                { id: 'name', label: 'Name A–Z' } as const,
+              ]).map(opt => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setSortBy(opt.id)}
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition cursor-pointer ${
+                    sortBy === opt.id
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
 
-          {dateFilter && (
-            <button
-              type="button"
-              onClick={() => setDateFilter('')}
-              className="text-[11px] text-rose-600 hover:text-rose-800 font-bold px-1.5 py-1 shrink-0 cursor-pointer"
-            >
-              Clear
-            </button>
-          )}
+            <div className="flex items-center gap-1.5">
+              <input
+                type="date"
+                value={dateFilter}
+                onChange={e => setDateFilter(e.target.value)}
+                className="h-8 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] tabular-nums font-semibold text-slate-700 focus:outline-none focus:border-blue-600"
+              />
+              {dateFilter && (
+                <button
+                  type="button"
+                  onClick={() => setDateFilter('')}
+                  className="text-[11px] text-rose-600 font-bold px-1.5 cursor-pointer"
+                >
+                  Clear
+                </button>
+              )}
+              {isAdmin && onRecoverMissingPurchases && (
+                <button
+                  type="button"
+                  onClick={handleTriggerRecover}
+                  disabled={isRecovering}
+                  className="h-8 px-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-60"
+                >
+                  <RotateCcw className={`w-3 h-3 ${isRecovering ? 'animate-spin' : ''}`} />
+                  <span>{isRecovering ? 'Scanning...' : 'Recover Old Bills'}</span>
+                </button>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Prominent IMEI -> Supplier / Party Match Card */}
       {imeiPartyMatches.length > 0 && (
-        <div className="bg-blue-50/90 border border-blue-200 rounded-2xl p-4 space-y-2.5 shadow-xs animate-in fade-in">
+        <div className="bg-blue-50/80 border border-blue-200 rounded-2xl p-3.5 space-y-2 shadow-2xs animate-in fade-in">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 text-xs font-extrabold text-blue-900">
               <Smartphone className="w-4 h-4 text-blue-600" />
-              <span>IMEI Supplier / Party Lookup ({imeiPartyMatches.length} match{imeiPartyMatches.length > 1 ? 'es' : ''})</span>
+              <span>
+                IMEI Party Lookup ({imeiPartyMatches.length} match{imeiPartyMatches.length > 1 ? 'es' : ''})
+              </span>
             </div>
-            <span className="text-[11px] font-bold text-blue-700">Matched from Stock Inward History</span>
+            <span className="text-[11px] font-semibold text-blue-700">Stock Inward History</span>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {imeiPartyMatches.map((m, idx) => (
               <div
                 key={idx}
-                className="bg-white border border-blue-200/80 rounded-xl p-3 flex items-center justify-between gap-3"
+                className="bg-white border border-blue-200/80 rounded-xl p-2.5 flex items-center justify-between gap-3"
               >
                 <div className="min-w-0 space-y-0.5">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <Building2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                    <span className="font-black text-sm text-slate-900 truncate">{m.partyName}</span>
+                    <span className="font-extrabold text-xs sm:text-sm text-slate-900 truncate">
+                      {m.partyName}
+                    </span>
                     {isAdmin && m.partyPhone && (
-                      <span className="text-[11px] font-semibold text-slate-500 tabular-nums">({m.partyPhone})</span>
+                      <span className="text-[11px] font-medium text-slate-500 tabular-nums">
+                        ({m.partyPhone})
+                      </span>
                     )}
                   </div>
                   <p className="text-xs font-bold text-slate-700 truncate">{m.productName}</p>
                   <p className="text-[11px] text-slate-500 tabular-nums">
-                    IMEI: <strong className="text-blue-700">{m.imei}</strong> • Bill #{m.billNo}
-                    {m.date ? ` • ${new Date(m.date).toLocaleDateString()}` : ''}
-                    {isAdmin && m.costPrice !== undefined ? ` • Cost: ${currency} ${m.costPrice.toLocaleString()}` : ''}
+                    IMEI: <strong className="text-blue-700">{m.imei}</strong> · #{m.billNo}
+                    {m.date ? ` · ${new Date(m.date).toLocaleDateString()}` : ''}
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   <button
                     type="button"
                     onClick={() => setActiveSupplierKey(normalizeSupplierKey(m.partyName))}
-                    className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[11px] font-bold cursor-pointer transition"
+                    className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-[11px] font-bold cursor-pointer transition"
                   >
-                    Open Account
+                    Account
                   </button>
                   {m.purchase && (
                     <button
@@ -1590,7 +1762,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                       onClick={() => setSelectedPurchaseForView(m.purchase!)}
                       className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold cursor-pointer transition"
                     >
-                      View Bill
+                      Bill
                     </button>
                   )}
                 </div>
@@ -1600,250 +1772,194 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
         </div>
       )}
 
-      {/* Unified Supplier Accounts List */}
-      {filteredSupplierAccounts.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center space-y-3">
-          <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto text-slate-400">
-            <Truck className="w-6 h-6" />
-          </div>
-          <h3 className="text-base font-bold text-slate-800">No Supplier Purchases Found</h3>
-          <p className="text-xs text-slate-500 max-w-sm mx-auto">
-            {search || dateFilter || statusFilter !== 'ALL'
-              ? 'Try adjusting your search criteria or filters to locate supplier invoices.'
-              : 'Start logging stock inward and vendor bills to manage your inventory costs and supplier payables.'}
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
-            {isAdmin && onRecoverMissingPurchases && (
-              <button
-                type="button"
-                onClick={handleTriggerRecover}
-                disabled={isRecovering}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-xl text-xs font-extrabold transition cursor-pointer disabled:opacity-60"
-              >
-                <RotateCcw className={`w-4 h-4 ${isRecovering ? 'animate-spin' : ''}`} />
-                {isRecovering ? 'Scanning History & Cloud...' : 'Recover Old Bills'}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={openAddModal}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              {isAdmin ? 'Add First Purchase Bill' : 'Add First Stock Inward'}
-            </button>
-          </div>
-        </div>
-      ) : (
-        <>
-          {/* Desktop Unified Supplier Accounts Table (>= lg: breakpoint) */}
-          <div className="hidden lg:block bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    <th className="py-3 px-4">{isAdmin ? 'Supplier Account' : 'Supplier / Party'}</th>
-                    <th className="py-3 px-4">Stock Inward Summary</th>
-                    <th className="py-3 px-4">Last Inward</th>
-                    {isAdmin && <th className="py-3 px-4 text-right">Total Purchased</th>}
-                    {isAdmin && <th className="py-3 px-4 text-right">Total Paid</th>}
-                    {isAdmin && <th className="py-3 px-4 text-right">Balance Due</th>}
-                    <th className="py-3 px-4 text-right">Account Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                  {filteredSupplierAccounts.map(acc => {
-                    const isSettled = acc.totalDue <= 0;
-                    return (
-                      <tr
-                        key={acc.key}
-                        onClick={() => setActiveSupplierKey(acc.key)}
-                        className="hover:bg-blue-50/40 transition cursor-pointer"
-                      >
-                        <td className="py-3.5 px-4">
-                          <div className="font-extrabold text-slate-900 flex items-center gap-2 text-sm">
-                            <span className="p-1.5 rounded-lg bg-blue-50 text-blue-600 shrink-0">
-                              <Building2 className="w-4 h-4" />
-                            </span>
-                            <span>{acc.partyName}</span>
-                          </div>
-                          {isAdmin && acc.partyPhone && (
-                            <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5 ml-8 tabular-nums">
-                              <Phone className="w-3 h-3 text-slate-400" />
-                              {acc.partyPhone}
-                            </div>
-                          )}
-                        </td>
-
-                        <td className="py-3.5 px-4">
-                          <div className="font-bold text-slate-800 tabular-nums">
-                            {acc.activeBillsCount} Bill{acc.activeBillsCount === 1 ? '' : 's'}
-                            {acc.reversedBillsCount > 0 && (
-                              <span className="text-[10px] text-rose-500 font-semibold ml-1.5">
-                                ({acc.reversedBillsCount} Reversed)
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-[11px] text-slate-500 tabular-nums">
-                            {acc.totalUnits.toLocaleString()} total inward units
-                          </span>
-                        </td>
-
-                        <td className="py-3.5 px-4">
-                          <div className="text-xs font-semibold text-slate-700 flex items-center gap-1 tabular-nums">
-                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                            {new Date(acc.latestDate).toLocaleDateString()}
-                          </div>
-                          <span className="text-[10px] text-slate-400 tabular-nums">
-                            Latest #{acc.bills[0]?.billNo || '-'}
-                          </span>
-                        </td>
-
-                        {isAdmin && (
-                          <td className="py-3.5 px-4 text-right font-black text-slate-900 tabular-nums">
-                            {currency} {acc.totalAmount.toLocaleString()}
-                          </td>
-                        )}
-
-                        {isAdmin && (
-                          <td className="py-3.5 px-4 text-right font-bold text-emerald-600 tabular-nums">
-                            {currency} {acc.totalPaid.toLocaleString()}
-                          </td>
-                        )}
-
-                        {isAdmin && (
-                          <td className="py-3.5 px-4 text-right">
-                            {isSettled ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800">
-                                <CheckCircle2 className="w-3 h-3" />
-                                SETTLED
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 tabular-nums">
-                                {currency} {acc.totalDue.toLocaleString()} DUE
-                              </span>
-                            )}
-                          </td>
-                        )}
-
-                        <td className="py-3.5 px-4 text-right" onClick={e => e.stopPropagation()}>
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => openAddModalForSupplier(acc.partyName, acc.partyPhone)}
-                              className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-[11px] font-extrabold inline-flex items-center gap-1 transition cursor-pointer"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                              <span>Inward</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setActiveSupplierKey(acc.key)}
-                              className="px-3 py-1.5 bg-slate-900 hover:bg-blue-600 text-white rounded-lg text-[11px] font-extrabold inline-flex items-center gap-1 transition cursor-pointer shadow-xs"
-                            >
-                              <span>Open Account</span>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+      {/* Main Clean Ledger List: Suppliers OR All Bills */}
+      {inwardTab === 'bills' ? (
+        <div className="bg-white border border-slate-200/90 rounded-2xl divide-y divide-slate-100 overflow-hidden shadow-2xs">
+          {filteredAllBills.length === 0 ? (
+            <div className="py-12 px-4 text-center space-y-2">
+              <FileText className="w-9 h-9 mx-auto text-slate-300" />
+              <p className="text-sm font-bold text-slate-700">No Matching Stock Inward Bills</p>
+              <p className="text-xs text-slate-400">
+                Try adjusting search or tap STOCK INWARD below.
+              </p>
             </div>
-          </div>
-
-          {/* Mobile Compact Supplier Account Cards View (< lg: breakpoint) */}
-          <div className="block lg:hidden space-y-2">
-            {filteredSupplierAccounts.map(acc => {
-              const isSettled = acc.totalDue <= 0;
+          ) : (
+            filteredAllBills.map(p => {
+              const isReversed = p.status === 'REVERSED';
+              const isPaid = (p.balanceDue || 0) <= 0;
+              const units = (p.items || []).reduce((sum, i) => sum + (i.qty || 0), 0);
               return (
                 <div
-                  key={acc.key}
-                  onClick={() => setActiveSupplierKey(acc.key)}
-                  className="bg-white border border-slate-200 rounded-xl p-2.5 space-y-2 shadow-2xs active:bg-slate-50 transition cursor-pointer"
+                  key={p.id}
+                  onClick={() => setSelectedPurchaseForView(p)}
+                  className={`px-3.5 py-3 flex items-center justify-between gap-3 hover:bg-blue-50/30 active:bg-slate-50 transition cursor-pointer ${
+                    isReversed ? 'bg-rose-50/20' : ''
+                  }`}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="space-y-0.5 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <h4 className="font-extrabold text-slate-900 text-xs flex items-center gap-1 truncate">
-                          <Building2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                          <span className="truncate">{acc.partyName}</span>
-                        </h4>
-                        {isAdmin && (
-                          isSettled ? (
-                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-emerald-100 text-emerald-800">
-                              SETTLED
-                            </span>
-                          ) : (
-                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-rose-100 text-rose-800">
-                              DUE
-                            </span>
-                          )
-                        )}
-                      </div>
-
-                      {isAdmin && acc.partyPhone && (
-                        <p className="text-[10px] text-slate-500 font-semibold tabular-nums flex items-center gap-1">
-                          <Phone className="w-2.5 h-2.5 text-slate-400" />
-                          {acc.partyPhone}
-                        </p>
-                      )}
-
-                      <div className="text-[10px] text-slate-500 font-medium tabular-nums">
-                        {acc.activeBillsCount} bill{acc.activeBillsCount === 1 ? '' : 's'} • {acc.totalUnits} units • {new Date(acc.latestDate).toLocaleDateString()}
-                      </div>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-full bg-blue-50 border border-blue-200/80 text-blue-700 font-bold text-xs flex items-center justify-center shrink-0">
+                      {getInitials(p.partyName)}
                     </div>
+                    <div className="min-w-0">
+                      <p className="text-[13px] sm:text-sm font-semibold text-slate-900 truncate">
+                        {p.partyName}
+                      </p>
+                      <p className="text-[11px] text-slate-400 truncate tabular-nums">
+                        #{p.billNo} · {units} pcs · {formatLedgerTimestamp(p.date, true)}
+                      </p>
+                    </div>
+                  </div>
 
-                    {isAdmin ? (
-                      <div className="text-right shrink-0">
-                        <span className="tabular-nums font-black text-xs text-slate-900 block">
-                          {currency} {acc.totalAmount.toLocaleString()}
-                        </span>
-                        {acc.totalDue > 0 && (
-                          <span className="text-[10px] tabular-nums font-extrabold text-rose-600 block">
-                            Due: {currency} {acc.totalDue.toLocaleString()}
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="text-right shrink-0">
-                        <span className="inline-block px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-extrabold text-[11px] tabular-nums">
-                          {acc.totalUnits} pcs
-                        </span>
-                      </div>
+                  {isAdmin ? (
+                    <div className="text-right shrink-0 tabular-nums">
+                      <p
+                        className={`text-[13px] sm:text-sm font-extrabold ${
+                          isReversed
+                            ? 'line-through text-slate-400'
+                            : isPaid
+                            ? 'text-emerald-600'
+                            : 'text-rose-600'
+                        }`}
+                      >
+                        {hideAmounts
+                          ? `${currency} ••••`
+                          : `${currency} ${(p.totalAmount || 0).toLocaleString()}`}
+                      </p>
+                      <p className="text-[10px] font-medium text-slate-400">
+                        {isReversed
+                          ? 'Reversed'
+                          : isPaid
+                          ? 'Paid'
+                          : `Due ${currency} ${(p.balanceDue || 0).toLocaleString()}`}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="text-right shrink-0 tabular-nums">
+                      <p className="text-[13px] font-extrabold text-blue-600">{units} pcs</p>
+                      <p className="text-[10px] text-slate-400">
+                        {isReversed ? 'Reversed' : `${p.items?.length || 0} items`}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      ) : displayedSupplierAccounts.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center space-y-2.5">
+          <Truck className="w-9 h-9 text-slate-300 mx-auto" />
+          <h3 className="text-sm font-bold text-slate-800">
+            {inwardTab === 'due' ? 'No Pending Supplier Dues' : 'No Supplier Accounts Found'}
+          </h3>
+          <p className="text-xs text-slate-400 max-w-sm mx-auto">
+            {search || dateFilter || statusFilter !== 'ALL'
+              ? 'Try clearing search or filters to view all suppliers.'
+              : 'Tap STOCK INWARD below to record your first supplier bill.'}
+          </p>
+          {isAdmin && onRecoverMissingPurchases && (
+            <button
+              type="button"
+              onClick={handleTriggerRecover}
+              disabled={isRecovering}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-xl text-xs font-bold transition cursor-pointer disabled:opacity-60"
+            >
+              <RotateCcw className={`w-3.5 h-3.5 ${isRecovering ? 'animate-spin' : ''}`} />
+              <span>{isRecovering ? 'Scanning...' : 'Recover Old Bills'}</span>
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="bg-white border border-slate-200/90 rounded-2xl divide-y divide-slate-100 overflow-hidden shadow-2xs">
+          {displayedSupplierAccounts.map(acc => {
+            const hasDue = isAdmin && acc.totalDue > 0;
+            const timeStr = formatLedgerTimestamp(acc.latestDate, true);
+            return (
+              <div
+                key={acc.key}
+                onClick={() => setActiveSupplierKey(acc.key)}
+                className="px-3.5 py-3 flex items-center justify-between gap-3 hover:bg-blue-50/30 active:bg-slate-50 transition cursor-pointer group"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="relative shrink-0">
+                    <div className="w-10 h-10 rounded-full bg-blue-50 border border-blue-200/80 text-blue-700 font-bold text-xs flex items-center justify-center">
+                      {getInitials(acc.partyName)}
+                    </div>
+                    {hasDue && (
+                      <span
+                        className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-amber-400 border-2 border-white"
+                        title="Payable Due"
+                      />
                     )}
                   </div>
 
-                  {/* Mobile Compact Action Bar */}
-                  <div
-                    className="flex items-center justify-between gap-1.5 pt-1.5 border-t border-slate-100 text-[11px]"
-                    onClick={e => e.stopPropagation()}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => openAddModalForSupplier(acc.partyName, acc.partyPhone)}
-                      className="h-7 px-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-extrabold rounded-lg text-[11px] inline-flex items-center gap-1 cursor-pointer"
-                    >
-                      <Plus className="w-3 h-3" />
-                      <span>+ Inward</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setActiveSupplierKey(acc.key)}
-                      className="h-7 px-3 bg-slate-900 hover:bg-blue-600 text-white font-extrabold rounded-lg text-[11px] inline-flex items-center gap-1 cursor-pointer"
-                    >
-                      <Eye className="w-3 h-3" />
-                      <span>Open Account</span>
-                    </button>
+                  <div className="min-w-0">
+                    <p className="text-[13px] sm:text-sm font-semibold text-slate-900 truncate group-hover:text-blue-700 transition">
+                      {acc.partyName}
+                    </p>
+                    <p className="text-[11px] text-slate-400 truncate tabular-nums">
+                      {acc.activeBillsCount} Bill{acc.activeBillsCount === 1 ? '' : 's'} ·{' '}
+                      {acc.totalUnits.toLocaleString()} pcs · {timeStr}
+                    </p>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        </>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* Subtle desktop quick Inward action on hover */}
+                  <button
+                    type="button"
+                    onClick={e => {
+                      e.stopPropagation();
+                      openAddModalForSupplier(acc.partyName, acc.partyPhone);
+                    }}
+                    className="hidden lg:inline-flex opacity-0 group-hover:opacity-100 transition items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-[11px] font-bold cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" /> Inward
+                  </button>
+
+                  {isAdmin ? (
+                    <div className="text-right tabular-nums">
+                      <p
+                        className={`text-[13px] sm:text-sm font-extrabold ${
+                          hasDue ? 'text-rose-600' : 'text-emerald-600'
+                        }`}
+                      >
+                        {hideAmounts
+                          ? `${currency} ••••`
+                          : hasDue
+                          ? `${currency} ${acc.totalDue.toLocaleString()}`
+                          : `${currency} ${acc.totalAmount.toLocaleString()}`}
+                      </p>
+                      <p className="text-[10px] font-medium text-slate-400">
+                        {hasDue ? "You'll Give" : 'Settled'}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="text-right tabular-nums">
+                      <p className="text-[13px] font-extrabold text-blue-600">
+                        {acc.totalUnits.toLocaleString()} pcs
+                      </p>
+                      <p className="text-[10px] text-slate-400">
+                        {acc.activeBillsCount} bill{acc.activeBillsCount === 1 ? '' : 's'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
+
+      {/* Floating Bottom Blue Pill CTA */}
+      <button
+        type="button"
+        onClick={openAddModal}
+        className="fixed bottom-[calc(1.25rem+env(safe-area-inset-bottom,0px))] right-4 z-30 h-11 px-4 rounded-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-xs tracking-wide uppercase shadow-lg shadow-blue-600/30 flex items-center gap-2 transition cursor-pointer"
+      >
+        <Plus className="w-4 h-4" />
+        <span>STOCK INWARD</span>
+      </button>
 
       {/* ========================================================= */}
       {/* ADD PURCHASE / STOCK INWARD MODAL */}
@@ -2905,10 +3021,26 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                     setSettlementNotes('');
                     setSelectedPurchaseForView(null);
                   }}
-                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-extrabold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm"
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm"
                 >
                   <CreditCard className="w-4 h-4" />
                   <span>Pay Due ({currency} {selectedPurchaseForView.balanceDue.toLocaleString()})</span>
+                </button>
+              )}
+              {isAdmin && selectedPurchaseForView.status !== 'REVERSED' && onReversePurchase && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = selectedPurchaseForView;
+                    setSelectedPurchaseForView(null);
+                    setPurchaseToReverse(target);
+                    setReversalReason('Goods Returned to Supplier');
+                    setReversalNotes('');
+                  }}
+                  className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reverse</span>
                 </button>
               )}
               <button

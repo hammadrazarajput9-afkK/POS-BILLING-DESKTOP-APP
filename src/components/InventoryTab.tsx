@@ -30,7 +30,10 @@ import {
   Truck,
   Building2,
   Cpu,
-  HardDrive
+  HardDrive,
+  ArrowLeft,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { ConfirmModal } from './ConfirmModal';
@@ -57,6 +60,7 @@ interface InventoryTabProps {
   onDeleteCategory: (category: string) => boolean;
   onRenameCategory?: (oldName: string, newName: string) => boolean;
   onOpenPdfReport?: (category?: string) => void;
+  onBackToHome?: () => void;
 }
 
 const InventoryTabComponent: React.FC<InventoryTabProps> = ({
@@ -78,11 +82,13 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
   onDeleteCategory,
   onRenameCategory,
   onOpenPdfReport,
+  onBackToHome,
 }) => {
   const { showToast } = useToast();
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
-  const [statusFilter, setStatusFilter] = useState<'ACTIVE' | 'ARCHIVED' | 'ALL'>('ALL');
+  const [inventoryTab, setInventoryTab] = useState<'all' | 'low' | 'archived'>('all');
+  const [hideValuation, setHideValuation] = useState(false);
   const [copiedImei, setCopiedImei] = useState<string | null>(null);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isAdjustmentsModalOpen, setIsAdjustmentsModalOpen] = useState(false);
@@ -475,8 +481,12 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
 
   const filtered = useMemo(() => {
     const preFiltered = unifiedInventory.filter(item => {
-      if (statusFilter === 'ACTIVE' && item.status === 'ARCHIVED') return false;
-      if (statusFilter === 'ARCHIVED' && item.status !== 'ARCHIVED') return false;
+      if (inventoryTab === 'archived') {
+        if (item.status !== 'ARCHIVED') return false;
+      } else {
+        if (item.status === 'ARCHIVED') return false;
+        if (inventoryTab === 'low' && item.qty > 1) return false;
+      }
       if (categoryFilter !== 'ALL' && item.category !== categoryFilter) return false;
       return true;
     });
@@ -499,11 +509,15 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
         secondary: [item.ram, item.storage, item.color, item.note, variantSpecsAndColors, item.barcode, imeiString],
       };
     });
-  }, [unifiedInventory, search, categoryFilter, statusFilter]);
+  }, [unifiedInventory, search, categoryFilter, inventoryTab]);
 
   const activeItems = useMemo(() => {
     return inventory.filter(i => i.status !== 'ARCHIVED');
   }, [inventory]);
+
+  const archivedCount = useMemo(() => {
+    return unifiedInventory.filter(i => i.status === 'ARCHIVED').length;
+  }, [unifiedInventory]);
 
   const totalCostValuation = useMemo(() => {
     return activeItems.reduce((acc, i) => {
@@ -547,8 +561,8 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
 
   // Low stock alert: only when an active product has 1 single unit remaining (or 0)
   const lowStockCount = useMemo(() => {
-    return activeItems.filter(i => i.qty <= 1).length;
-  }, [activeItems]);
+    return unifiedInventory.filter(i => i.status !== 'ARCHIVED' && i.qty <= 1).length;
+  }, [unifiedInventory]);
 
   // Per-category Products & Total Pieces count (e.g., Android: 12 Products • 48 Pcs)
   const categoryStats = useMemo(() => {
@@ -556,8 +570,10 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
     categories.forEach(c => statsMap.set(c, { products: 0, pieces: 0 }));
 
     const sourceItems = unifiedInventory.filter(item => {
-      if (statusFilter === 'ARCHIVED') return item.status === 'ARCHIVED';
-      return item.status !== 'ARCHIVED';
+      if (inventoryTab === 'archived') return item.status === 'ARCHIVED';
+      if (item.status === 'ARCHIVED') return false;
+      if (inventoryTab === 'low') return item.qty <= 1;
+      return true;
     });
 
     let totalProducts = 0;
@@ -579,7 +595,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
     }
 
     return { totalProducts, totalPieces, statsMap };
-  }, [unifiedInventory, categories, statusFilter]);
+  }, [unifiedInventory, categories, inventoryTab]);
 
   const handleCopyImei = (imei: string) => {
     navigator.clipboard.writeText(imei);
@@ -632,378 +648,422 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
   };
 
   return (
-    <div className="space-y-3 sm:space-y-5">
-      {/* Metric Highlights */}
-      <div className={`grid grid-cols-2 gap-2 sm:gap-3.5 ${isAdmin ? 'lg:grid-cols-4' : ''}`}>
-        {isAdmin && (
-          <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs flex flex-col justify-between">
-            <span className="text-[9.5px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 truncate">
-              Total Capital Invested
-            </span>
-            <h3 className="text-xs sm:text-lg font-extrabold text-slate-900 tabular-nums mt-0.5 truncate">
-              {currency} {totalCostValuation.toLocaleString()}
-            </h3>
-            <p className="text-[9.5px] sm:text-xs text-slate-400 hidden sm:block mt-0.5 truncate">
-              Stock cost valuation
-            </p>
-          </div>
-        )}
+    <div className="space-y-3 pb-24 animate-in fade-in duration-200">
+      {/* Top Blue Header + Overlapping Summary Card (Smart App Layout) */}
+      <div>
+        <div className="bg-blue-600 text-white rounded-2xl shadow-sm pt-3.5 pb-11 px-3.5 sm:px-5">
+          {/* Row 1: Title & Quick Action Pills */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              {onBackToHome && (
+                <button
+                  type="button"
+                  onClick={onBackToHome}
+                  className="lg:hidden w-8 h-8 -ml-1 rounded-full hover:bg-white/15 flex items-center justify-center transition cursor-pointer shrink-0"
+                  aria-label="Back to home"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+              )}
+              <div className="min-w-0">
+                <h2 className="text-lg sm:text-xl font-extrabold tracking-tight truncate">
+                  Inventory &amp; Stock
+                </h2>
+              </div>
+            </div>
 
-        {isAdmin && (
-          <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs flex flex-col justify-between">
-            <span className="text-[9.5px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 truncate">
-              Expected Retail Value
-            </span>
-            <h3 className="text-xs sm:text-lg font-extrabold text-emerald-600 tabular-nums mt-0.5 truncate">
-              {currency} {totalRetailValuation.toLocaleString()}
-            </h3>
-            <p className="text-[9.5px] sm:text-xs text-slate-400 hidden sm:block mt-0.5 truncate">
-              Margin: +{currency} {(totalRetailValuation - totalCostValuation).toLocaleString()}
-            </p>
-          </div>
-        )}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsCategoryModalOpen(true)}
+                className="px-2.5 py-1.5 rounded-full bg-white/15 hover:bg-white/25 text-white text-[11px] font-bold transition cursor-pointer inline-flex items-center gap-1"
+                title="Manage Categories"
+              >
+                <Tag className="w-3 h-3" />
+                <span className="hidden sm:inline">Categories</span>
+              </button>
 
-        <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs flex flex-col justify-between">
-          <span className="text-[9.5px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 truncate">
-            Total In-Stock Units
-          </span>
-          <h3 className="text-xs sm:text-lg font-extrabold text-slate-900 tabular-nums mt-0.5 truncate">
-            {totalUnits.toLocaleString()} Units · <span className="text-slate-500 font-semibold">{inventory.length} items</span>
-          </h3>
-          <p className="text-[9.5px] sm:text-xs text-slate-400 hidden sm:block mt-0.5 truncate">Active catalog</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setLogModalTab('activity');
+                  setIsAdjustmentsModalOpen(true);
+                }}
+                className="px-3 py-1.5 rounded-full bg-slate-900/90 hover:bg-slate-900 text-white text-[11px] font-black tracking-wide uppercase shadow-xs transition cursor-pointer inline-flex items-center gap-1.5"
+                title="View Inventory Logs & Missing Alerts"
+              >
+                <History className="w-3 h-3" />
+                <span>Logs</span>
+                {(inventoryActivities.length > 0 || stockAdjustments.length > 0) && (
+                  <span className="bg-amber-400 text-slate-950 text-[9px] px-1.5 py-0.2 rounded-full font-black tabular-nums">
+                    {inventoryActivities.length + stockAdjustments.length}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Row 2: Clean Underline Sub-Tabs */}
+          <div className="mt-3.5 flex items-center gap-6 border-b border-white/15 overflow-x-auto no-scrollbar">
+            {([
+              { id: 'all', label: `All Stock (${unifiedInventory.filter(i => i.status !== 'ARCHIVED').length})` },
+              { id: 'low', label: `Low Stock (${lowStockCount})` },
+              { id: 'archived', label: `Archived (${archivedCount})` },
+            ] as const).map(tab => {
+              const active = inventoryTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setInventoryTab(tab.id)}
+                  className={`pb-2.5 text-[13px] font-bold transition relative cursor-pointer whitespace-nowrap shrink-0 ${
+                    active ? 'text-white' : 'text-blue-100/80 hover:text-white'
+                  }`}
+                >
+                  {tab.label}
+                  {active && (
+                    <span className="absolute left-0 right-0 bottom-0 h-[3px] rounded-full bg-sky-300" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs flex flex-col justify-between">
-          <span className="text-[9.5px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 truncate">
-            Low Stock Alert
-          </span>
-          <h3 className="text-xs sm:text-lg font-extrabold text-rose-600 tabular-nums mt-0.5 truncate">
-            {lowStockCount} Items <span className="text-[10px] font-medium text-slate-400">(≤ 1 unit)</span>
-          </h3>
-          <p className="text-[9.5px] sm:text-xs text-slate-400 hidden sm:block mt-0.5 truncate">Needs restock soon</p>
+        {/* Overlapping White Valuation & Stock Card */}
+        <div className="-mt-8 mx-2 sm:mx-4 bg-white rounded-2xl border border-slate-200/90 shadow-sm px-3.5 py-3">
+          <div className="flex items-center justify-between gap-2 mb-1.5">
+            {isAdmin ? (
+              <button
+                type="button"
+                onClick={() => setHideValuation(prev => !prev)}
+                className="text-[11px] font-medium text-slate-500 hover:text-slate-700 flex items-center gap-1 cursor-pointer"
+              >
+                {hideValuation ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                <span>{hideValuation ? 'Show Valuation' : 'Hide Valuation'}</span>
+              </button>
+            ) : (
+              <span className="text-[11px] font-medium text-slate-500">
+                Catalog Overview
+              </span>
+            )}
+
+            <div className="flex items-center gap-1.5">
+              {onOpenPdfReport && (
+                <button
+                  type="button"
+                  onClick={() => onOpenPdfReport(categoryFilter !== 'ALL' ? categoryFilter : 'all')}
+                  className="px-2 py-0.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/70 text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition"
+                  title="Export Stock PDF Report"
+                >
+                  <FileText className="w-3 h-3" />
+                  <span>PDF</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleExportCSV}
+                className="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200/80 text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition"
+                title="Export CSV"
+              >
+                <Download className="w-3 h-3" />
+                <span>CSV</span>
+              </button>
+            </div>
+          </div>
+
+          {isAdmin ? (
+            <>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex-1 text-center py-0.5">
+                  <p className="text-base sm:text-xl font-extrabold text-slate-900 tabular-nums leading-tight">
+                    {hideValuation
+                      ? `${currency} •••••`
+                      : `${currency} ${totalCostValuation.toLocaleString()}`}
+                  </p>
+                  <p className="text-[11px] font-medium text-slate-500 mt-0.5">Cost Value</p>
+                </div>
+
+                <div className="w-px h-9 bg-slate-100 shrink-0" />
+
+                <div className="flex-1 text-center py-0.5">
+                  <p className="text-base sm:text-xl font-extrabold text-emerald-600 tabular-nums leading-tight">
+                    {hideValuation
+                      ? `${currency} •••••`
+                      : `${currency} ${totalRetailValuation.toLocaleString()}`}
+                  </p>
+                  <p className="text-[11px] font-medium text-slate-500 mt-0.5">Retail Value</p>
+                </div>
+              </div>
+
+              <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 tabular-nums">
+                <span>
+                  Stock:{' '}
+                  <strong className="text-slate-800">{totalUnits.toLocaleString()} pcs</strong> ·{' '}
+                  {activeItems.length} entries
+                </span>
+                <span>
+                  Est. Margin:{' '}
+                  <strong className="text-emerald-600">
+                    {hideValuation
+                      ? `${currency} ••••`
+                      : `+${currency} ${(totalRetailValuation - totalCostValuation).toLocaleString()}`}
+                  </strong>
+                </span>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-between gap-2 text-center py-0.5">
+              <div className="flex-1">
+                <p className="text-base sm:text-xl font-extrabold text-blue-600 tabular-nums">
+                  {totalUnits.toLocaleString()} pcs
+                </p>
+                <p className="text-[11px] font-medium text-slate-500">Total In Stock</p>
+              </div>
+              <div className="w-px h-9 bg-slate-100 shrink-0" />
+              <div className="flex-1">
+                <p className="text-base sm:text-xl font-extrabold text-rose-600 tabular-nums">
+                  {lowStockCount} items
+                </p>
+                <p className="text-[11px] font-medium text-slate-500">Low Stock (≤ 1)</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Main Stock Container */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-2.5 sm:p-5 space-y-2.5 sm:space-y-4 shadow-xs">
-        {/* Header + Naturally Sized Action Buttons */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 border-b border-slate-100 pb-2.5 sm:pb-3.5">
-          <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <h3 className="font-extrabold text-slate-900 text-sm sm:text-base truncate">
-                Inventory &amp; IMEI Master Stock
-              </h3>
-              <p className="text-[11px] text-slate-500 hidden sm:block truncate">
-                Manage mobile phones, serial numbers, chargers, displays, and screen protectors
-              </p>
-            </div>
-            {/* Mobile Primary CTA aligned right of title */}
-            <button
-              type="button"
-              onClick={onOpenAddModal}
-              className="lg:hidden h-8 px-3 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-[11px] rounded-lg shadow-sm shadow-blue-500/20 transition inline-flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0"
-            >
-              <Plus className="w-3.5 h-3.5 shrink-0" />
-              <span>Add Product</span>
-            </button>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setLogModalTab('activity');
-                setIsAdjustmentsModalOpen(true);
-              }}
-              className="h-8 sm:h-9 px-2.5 sm:px-3 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-[11px] sm:text-xs rounded-lg sm:rounded-xl border border-amber-200/80 transition inline-flex items-center gap-1.5 cursor-pointer shadow-2xs whitespace-nowrap shrink-0"
-              title="View Inventory Logs, Missing Field Alerts & Stock Adjustments"
-            >
-              <History className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-              <span>Log</span>
-              {(inventoryActivities.length > 0 || stockAdjustments.length > 0) && (
-                <span className="bg-amber-200 text-amber-900 text-[10px] px-1.5 rounded-full font-bold tabular-nums">
-                  {inventoryActivities.length + stockAdjustments.length}
-                </span>
-              )}
-            </button>
-            {onOpenPdfReport && (
+      {/* Smart Search + Camera Scan + Cards/Table Switcher */}
+      <div className="flex items-center gap-2 px-0.5">
+        <div className="relative flex-1 flex items-center">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search Model, Brand, IMEI, Barcode..."
+            className="w-full pl-9 pr-20 h-10 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 shadow-2xs transition"
+          />
+          <div className="absolute right-1.5 flex items-center gap-1">
+            {search && (
               <button
                 type="button"
-                onClick={() => onOpenPdfReport(categoryFilter !== 'ALL' ? categoryFilter : 'all')}
-                className="h-8 sm:h-9 px-2.5 sm:px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[11px] sm:text-xs rounded-lg sm:rounded-xl border border-rose-200/80 transition inline-flex items-center gap-1.5 cursor-pointer shadow-2xs whitespace-nowrap shrink-0"
-                title="Export Stock PDF Report"
+                onClick={() => setSearch('')}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                title="Clear search"
               >
-                <FileText className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                <span>PDF</span>
+                <X className="w-3.5 h-3.5" />
               </button>
             )}
             <button
               type="button"
-              onClick={handleExportCSV}
-              className="h-8 sm:h-9 px-2.5 sm:px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] sm:text-xs rounded-lg sm:rounded-xl border border-slate-200/80 transition inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+              onClick={() => setIsCameraScannerOpen(true)}
+              className="h-7 px-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg flex items-center gap-1 text-[11px] font-bold cursor-pointer transition whitespace-nowrap"
+              title="Scan Barcode / IMEI"
             >
-              <Download className="w-3.5 h-3.5 shrink-0" />
-              <span>CSV</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsCategoryModalOpen(true)}
-              className="h-8 sm:h-9 px-2.5 sm:px-3 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-[11px] sm:text-xs rounded-lg sm:rounded-xl border border-purple-200/60 transition inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
-            >
-              <Tag className="w-3.5 h-3.5 shrink-0" />
-              <span>Categories</span>
-            </button>
-            <button
-              type="button"
-              onClick={onOpenAddModal}
-              className="hidden lg:inline-flex h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl shadow-md shadow-blue-500/20 transition items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
-            >
-              <Plus className="w-4 h-4 shrink-0" />
-              <span>Add Product</span>
+              <Camera className="w-3.5 h-3.5" />
+              <span className="hidden xs:inline">Scan</span>
             </button>
           </div>
         </div>
 
-        {/* Filter Controls */}
-        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-          <div className="relative flex-1 flex items-center">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search Model, Brand, IMEI, Barcode..."
-              className="compact-mobile-input w-full pl-9 pr-24 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white transition h-9 sm:h-10"
-            />
-            <div className="absolute right-1.5 flex items-center gap-1">
-              {search && (
-                <button
-                  type="button"
-                  onClick={() => setSearch('')}
-                  className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
-                  title="Clear search"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setIsCameraScannerOpen(true)}
-                className="h-7 px-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-xs flex items-center gap-1 text-[11px] font-extrabold cursor-pointer transition whitespace-nowrap"
-                title="Fast Camera Barcode & IMEI Scanner"
-              >
-                <Camera className="w-3.5 h-3.5" />
-                <span>Scan</span>
-              </button>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-2 sm:w-auto">
-            <select
-              value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value as any)}
-              className="compact-mobile-input w-full bg-slate-50 border border-slate-200 text-slate-700 text-[11px] sm:text-xs font-semibold rounded-xl px-2.5 py-1.5 outline-none focus:border-blue-600 cursor-pointer h-8.5 sm:h-10"
-            >
-              <option value="ALL">All Statuses</option>
-              <option value="ACTIVE">Active Only</option>
-              <option value="ARCHIVED">Archived</option>
-            </select>
-            <select
-              value={categoryFilter}
-              onChange={e => setCategoryFilter(e.target.value)}
-              className="compact-mobile-input w-full bg-slate-50 border border-slate-200 text-slate-700 text-[11px] sm:text-xs font-semibold rounded-xl px-2.5 py-1.5 outline-none focus:border-blue-600 cursor-pointer h-8.5 sm:h-10 truncate"
-            >
-              <option value="ALL">
-                All Categories ({categoryStats.totalProducts} • {categoryStats.totalPieces})
-              </option>
-              {categories.map(cat => {
-                const st = categoryStats.statsMap.get(cat) || { products: 0, pieces: 0 };
-                return (
-                  <option key={cat} value={cat}>
-                    {cat} ({st.products} • {st.pieces})
-                  </option>
-                );
-              })}
-            </select>
-          </div>
-        </div>
-
-        {/* Category Wise Products & Piece Count Breakdown Strip */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin touch-pan-x">
+        {/* Clean View Switcher */}
+        <div className="h-10 bg-white border border-slate-200 p-1 rounded-xl inline-flex items-center gap-0.5 shadow-2xs shrink-0">
           <button
             type="button"
-            onClick={() => setCategoryFilter('ALL')}
-            className={`shrink-0 px-2.5 py-1 rounded-lg border text-left transition cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap ${
-              categoryFilter === 'ALL'
-                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+            onClick={() => setViewMode('grid')}
+            className={`h-8 px-2.5 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer whitespace-nowrap ${
+              viewMode === 'grid' ? 'bg-blue-600 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+            }`}
+            title="Product Cards"
+          >
+            <LayoutGrid className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Cards</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('table')}
+            className={`h-8 px-2.5 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer whitespace-nowrap ${
+              viewMode === 'table' ? 'bg-blue-600 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+            }`}
+            title="Table View"
+          >
+            <List className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Table</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Category Filter Strip */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar touch-pan-x px-0.5">
+        <button
+          type="button"
+          onClick={() => setCategoryFilter('ALL')}
+          className={`shrink-0 px-3 py-1.5 rounded-xl border text-left transition cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap ${
+            categoryFilter === 'ALL'
+              ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+              : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+          }`}
+        >
+          <span className="text-[11px] font-extrabold">All</span>
+          <span
+            className={`text-[10px] font-bold tabular-nums ${
+              categoryFilter === 'ALL' ? 'text-blue-100' : 'text-slate-400'
             }`}
           >
-            <span className="text-[11px] font-extrabold">All</span>
-            <span
-              className={`text-[10px] font-bold tabular-nums ${
-                categoryFilter === 'ALL' ? 'text-blue-100' : 'text-slate-500'
+            {categoryStats.totalProducts}·{categoryStats.totalPieces}
+          </span>
+        </button>
+        {categories.map(cat => {
+          const st = categoryStats.statsMap.get(cat) || { products: 0, pieces: 0 };
+          const isActive = categoryFilter === cat;
+          return (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setCategoryFilter(isActive ? 'ALL' : cat)}
+              className={`shrink-0 px-3 py-1.5 rounded-xl border text-left transition cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap ${
+                isActive
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                  : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
               }`}
             >
-              {categoryStats.totalProducts}·{categoryStats.totalPieces}
-            </span>
-          </button>
-          {categories.map(cat => {
-            const st = categoryStats.statsMap.get(cat) || { products: 0, pieces: 0 };
-            const isActive = categoryFilter === cat;
-            return (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setCategoryFilter(isActive ? 'ALL' : cat)}
-                className={`shrink-0 px-2.5 py-1 rounded-lg border text-left transition cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap ${
-                  isActive
-                    ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                    : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+              <span className="text-[11px] font-extrabold">{cat}</span>
+              <span
+                className={`text-[10px] font-bold tabular-nums ${
+                  isActive ? 'text-blue-100' : 'text-slate-400'
                 }`}
               >
-                <span className="text-[11px] font-extrabold">{cat}</span>
-                <span
-                  className={`text-[10px] font-bold tabular-nums ${
-                    isActive ? 'text-blue-100' : 'text-slate-500'
-                  }`}
-                >
-                  {st.products}·{st.pieces}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+                {st.products}·{st.pieces}
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
-        {/* View Mode Toggle & Product Grid / Table */}
-        <div className="space-y-2.5 sm:space-y-3.5 pt-0.5">
-          <div className="flex items-center justify-between gap-2 bg-slate-50 px-2.5 py-1.5 sm:p-2.5 rounded-xl border border-slate-200/80">
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              <span className="text-[11px] font-bold text-slate-600 hidden sm:inline">View:</span>
-              <div className="bg-white p-0.5 rounded-lg border border-slate-200 inline-flex items-center gap-0.5 shadow-2xs">
-                <button
-                  type="button"
-                  onClick={() => setViewMode('grid')}
-                  className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition flex items-center gap-1 cursor-pointer whitespace-nowrap ${
-                    viewMode === 'grid' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <LayoutGrid className="w-3 h-3" />
-                  <span className="sm:hidden">Cards</span>
-                  <span className="hidden sm:inline">Product Cards</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode('table')}
-                  className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition flex items-center gap-1 cursor-pointer whitespace-nowrap ${
-                    viewMode === 'table' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <List className="w-3 h-3" />
-                  <span>Table</span>
-                </button>
+      {/* Model / Pieces Count Strip */}
+      <div className="flex items-center justify-between px-1 text-[11px] text-slate-500 font-semibold">
+        <span>
+          {inventoryTab === 'low'
+            ? 'Low Stock Products (≤ 1 unit)'
+            : inventoryTab === 'archived'
+            ? 'Archived Catalog'
+            : categoryFilter === 'ALL'
+            ? 'All Products'
+            : categoryFilter}
+        </span>
+        <span className="tabular-nums font-bold text-slate-700">
+          {filtered.length} models ·{' '}
+          {filtered.reduce((sum, item) => sum + Math.max(0, Number(item.qty) || 0), 0).toLocaleString()} pcs
+        </span>
+      </div>
+
+      {/* Product Grid / Table */}
+      <div className="space-y-3">
+        {viewMode === 'grid' ? (
+          /* Smart App 3-Column Card Grid on Mobile (Bigger & Taller Cards) -> 4/5/6 on Larger Screens */
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2.5 sm:gap-3.5">
+            {filtered.length === 0 ? (
+              <div className="col-span-full text-center py-14 bg-white rounded-2xl border border-dashed border-slate-300">
+                <Package className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+                <p className="font-bold text-slate-700 text-sm">No matching products found</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Try another search query, category, or tap ADD PRODUCT below.
+                </p>
               </div>
-            </div>
-            <span className="text-[10.5px] sm:text-xs font-bold text-slate-600 tabular-nums truncate">
-              {filtered.length} models ·{' '}
-              {filtered.reduce((sum, item) => sum + Math.max(0, Number(item.qty) || 0), 0).toLocaleString()} pcs
-            </span>
-          </div>
+            ) : (
+              filtered.map(item => {
+                const isArchived = item.status === 'ARCHIVED';
+                const specs = Array.from(
+                  new Set(
+                    [
+                      ...(item.variants || []).map(v => [v.ram, v.storage].filter(Boolean).join('/')),
+                      [item.ram, item.storage].filter(Boolean).join('/'),
+                    ].filter(Boolean)
+                  )
+                );
+                const prices = (item.variants || []).map(v => Number(v.salePrice)).filter(p => !isNaN(p) && p > 0);
+                if (prices.length === 0) prices.push(item.salePrice);
+                const minPrice = Math.min(...prices);
+                const maxPrice = Math.max(...prices);
+                const priceLabel =
+                  minPrice === maxPrice
+                    ? `${currency} ${minPrice.toLocaleString()}`
+                    : `${currency} ${minPrice.toLocaleString()}+`;
 
-          {viewMode === 'grid' ? (
-            /* Compact 4-Column Horizontal Grid on Mobile -> 5/6 Columns on Tablet/Desktop */
-            <div className="grid grid-cols-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-1.5 sm:gap-3">
-              {filtered.length === 0 ? (
-                <div className="col-span-full text-center py-12 bg-slate-50 rounded-2xl border border-dashed border-slate-300">
-                  <Package className="w-9 h-9 mx-auto mb-2 text-slate-300" />
-                  <p className="font-semibold text-slate-700 text-xs">No matching products found</p>
-                  <p className="text-[11px] text-slate-400">Try adjusting your search query or category filter</p>
-                </div>
-              ) : (
-                filtered.map(item => {
-                  const isArchived = item.status === 'ARCHIVED';
-                  const specs = Array.from(
-                    new Set(
-                      [
-                        ...(item.variants || []).map(v => [v.ram, v.storage].filter(Boolean).join('/')),
-                        [item.ram, item.storage].filter(Boolean).join('/'),
-                      ].filter(Boolean)
-                    )
-                  );
-                  const prices = (item.variants || []).map(v => Number(v.salePrice)).filter(p => !isNaN(p) && p > 0);
-                  if (prices.length === 0) prices.push(item.salePrice);
-                  const minPrice = Math.min(...prices);
-                  const maxPrice = Math.max(...prices);
-                  const priceLabel =
-                    minPrice === maxPrice
-                      ? `${currency} ${minPrice.toLocaleString()}`
-                      : `${currency} ${minPrice.toLocaleString()}+`;
-
-                  return (
-                    <div
-                      key={item.id}
-                      onClick={() => setSelectedProductPopup(item)}
-                      className={`bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-1.5 sm:p-2.5 shadow-2xs hover:shadow-lg hover:border-blue-400 transition-all duration-150 cursor-pointer flex flex-col justify-between group min-w-0 ${
-                        isArchived ? 'opacity-70 bg-slate-50' : ''
-                      }`}
-                    >
-                      <div className="min-w-0">
-                        {/* Compact Product Image Frame */}
-                        <div className="relative w-full h-14 sm:h-28 md:h-32 rounded-lg sm:rounded-xl overflow-hidden bg-slate-50 border border-slate-100 flex items-center justify-center p-1 sm:p-1.5">
-                          {item.image ? (
-                            <img
-                              src={item.image}
-                              alt={item.name}
-                              className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-200"
-                            />
-                          ) : (
-                            <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-black text-sm sm:text-lg shadow-inner">
-                              {item.name.charAt(0).toUpperCase()}
-                            </div>
-                          )}
-                          {isArchived && (
-                            <span className="absolute top-1 right-1 bg-slate-800 text-white text-[8px] font-bold px-1 py-0.2 rounded">
-                              Arch
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Product Name */}
-                        <h4 className="font-extrabold text-slate-900 text-[10px] sm:text-xs line-clamp-2 mt-1 sm:mt-2 leading-tight group-hover:text-blue-600 transition">
-                          {item.name}
-                        </h4>
-
-                        {/* Quiet Inline Specs & Category Metadata (Zero pill bloat on small cards) */}
-                        <p className="text-[8.5px] sm:text-[10px] text-slate-500 font-semibold truncate mt-0.5 leading-tight">
-                          {specs.length > 0 ? specs[0] : item.category}
-                          {item.variants && item.variants.length > 1 ? ` · ${item.variants.length}v` : ''}
-                        </p>
+                return (
+                  <div
+                    key={item.id}
+                    onClick={() => setSelectedProductPopup(item)}
+                    className={`bg-white border border-slate-200/90 rounded-2xl p-2 sm:p-3 shadow-2xs hover:shadow-md hover:border-blue-400 active:scale-[0.98] transition-all duration-150 cursor-pointer flex flex-col justify-between group min-w-0 ${
+                      isArchived ? 'opacity-75 bg-slate-50/70' : ''
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      {/* Larger Smart Product Image Stage */}
+                      <div className="relative w-full h-24 sm:h-32 md:h-36 rounded-xl overflow-hidden bg-slate-50 border border-slate-100 flex items-center justify-center p-1.5 sm:p-2">
+                        {item.image ? (
+                          <img
+                            src={item.image}
+                            alt={item.name}
+                            className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-200"
+                          />
+                        ) : (
+                          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center font-black text-lg sm:text-xl shadow-inner">
+                            {item.name.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        {isArchived ? (
+                          <span className="absolute top-1.5 right-1.5 bg-slate-800/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md">
+                            Arch
+                          </span>
+                        ) : item.qty <= 0 ? (
+                          <span className="absolute top-1.5 right-1.5 bg-rose-50 text-rose-600 border border-rose-200 text-[9px] font-bold px-1.5 py-0.5 rounded-md">
+                            Out
+                          </span>
+                        ) : item.qty === 1 ? (
+                          <span className="absolute top-1.5 right-1.5 bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-bold px-1.5 py-0.5 rounded-md">
+                            Low
+                          </span>
+                        ) : null}
                       </div>
 
-                      {/* Compact Price & Stock Footer */}
-                      <div className="mt-1 sm:mt-2 pt-1 sm:pt-1.5 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 min-w-0">
-                        <span className="tabular-nums font-extrabold text-blue-600 text-[9.5px] sm:text-xs truncate">
-                          {priceLabel}
-                        </span>
-                        <span
-                          className={`tabular-nums font-bold text-[8.5px] sm:text-[10px] truncate ${
-                            item.qty > 1
-                              ? 'text-emerald-700'
-                              : item.qty === 1
-                              ? 'text-amber-700'
-                              : 'text-rose-600'
-                          }`}
-                        >
-                          {item.qty} {item.qty === 1 ? 'left' : 'pcs'}
-                        </span>
-                      </div>
+                      {/* Product Title */}
+                      <h4 className="font-extrabold text-slate-900 text-[11.5px] sm:text-[13px] line-clamp-2 mt-2 leading-snug min-h-[2rem] group-hover:text-blue-600 transition">
+                        {item.name}
+                      </h4>
+
+                      {/* Subtle Spec / Category Subtitle */}
+                      <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium truncate mt-0.5 leading-tight">
+                        {specs.length > 0 ? specs[0] : item.category}
+                        {item.variants && item.variants.length > 1 ? ` · ${item.variants.length}v` : ''}
+                      </p>
                     </div>
-                  );
-                })
-              )}
-            </div>
-          ) : (
+
+                    {/* Clean Price & Stock Footer */}
+                    <div className="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between gap-1 min-w-0">
+                      <span className="tabular-nums font-extrabold text-blue-600 text-[11px] sm:text-[13px] truncate">
+                        {priceLabel}
+                      </span>
+                      <span
+                        className={`tabular-nums font-bold text-[10px] sm:text-[11px] shrink-0 ${
+                          item.qty > 1
+                            ? 'text-emerald-600'
+                            : item.qty === 1
+                            ? 'text-amber-600'
+                            : 'text-rose-600'
+                        }`}
+                      >
+                        {item.qty === 1 ? '1 left' : `${item.qty} pcs`}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        ) : (
             /* Table View */
-            <div className="border border-slate-200/80 rounded-xl overflow-hidden">
+            <div className="bg-white border border-slate-200/90 rounded-2xl overflow-hidden shadow-2xs">
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
@@ -1628,7 +1688,15 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
           </div>
         </div>
       )}
-      </div>
+      {/* Floating Bottom Blue Pill CTA */}
+      <button
+        type="button"
+        onClick={onOpenAddModal}
+        className="fixed bottom-[calc(1.25rem+env(safe-area-inset-bottom,0px))] right-4 z-30 h-11 px-4 rounded-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-xs tracking-wide uppercase shadow-lg shadow-blue-600/30 flex items-center gap-2 transition cursor-pointer"
+      >
+        <Plus className="w-4 h-4" />
+        <span>ADD PRODUCT</span>
+      </button>
 
       {/* Category Management Modal with Data Safety Lock */}
       <CategoryModal

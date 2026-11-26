@@ -86,6 +86,7 @@ import { MobileHomeLauncher } from './components/MobileHomeLauncher';
 import { useSales } from './hooks/useSales';
 import { useInventory } from './hooks/useInventory';
 import { useKhata } from './hooks/useKhata';
+import { useCashDrawer } from './utils/useCashDrawer';
 
 function AppContent() {
   const { showToast } = useToast();
@@ -210,6 +211,12 @@ function AppContent() {
     selectedKhataCustomerId,
     setSelectedKhataCustomerId,
   } = useKhata({ data, setData, logActivity, showToast });
+
+  const homeCashSummary = useCashDrawer(data);
+  const homePendingKhataTotal = useMemo(
+    () => (data.khata || []).reduce((sum, c) => sum + (c.balance > 0 ? c.balance : 0), 0),
+    [data.khata]
+  );
 
   // Safe Schema Migration and Firebase Synchronization on Mount (No Risky Data Wipe!)
   const isInitialSyncDoneRef = useRef(false);
@@ -2014,6 +2021,12 @@ function AppContent() {
             {activeTab === 'home' && (
               <MobileHomeLauncher
                 currentRole={data.currentRole || 'admin'}
+                shopName={data.settings.shopName}
+                currency={data.settings.currency}
+                cashInHand={homeCashSummary.cashInHand}
+                todaySales={homeCashSummary.totalSales}
+                pendingKhataTotal={homePendingKhataTotal}
+                inventoryCount={(data.inventory || []).length}
                 activityCount={(data.activities || []).length}
                 onSelectTab={setActiveTab}
                 onOpenSettings={() => setSettingsModalOpen(true)}
@@ -2086,6 +2099,9 @@ function AppContent() {
                 onDeleteCategory={handleDeleteCategory}
                 onRenameCategory={handleRenameCategory}
                 onOpenPdfReport={(cat?: string) => handleOpenPdfReport('inventory', cat)}
+                onBackToHome={() =>
+                  setActiveTab(typeof window !== 'undefined' && window.innerWidth < 1024 ? 'home' : 'dashboard')
+                }
               />
             )}
 
@@ -2112,6 +2128,9 @@ function AppContent() {
                 onRenameCategory={handleRenameCategory}
                 onOpenPdfReport={() => handleOpenPdfReport('purchases')}
                 onRecoverMissingPurchases={handleRecoverMissingPurchases}
+                onBackToHome={() =>
+                  setActiveTab(typeof window !== 'undefined' && window.innerWidth < 1024 ? 'home' : 'dashboard')
+                }
               />
             )}
 
@@ -2157,6 +2176,9 @@ function AppContent() {
                 onDeleteExpense={handleDeleteExpense}
                 onOpenSettings={() => setTabSettingsModalOpen(true)}
                 onOpenPdfReport={() => handleOpenPdfReport('expenses')}
+                onBackToHome={() =>
+                  setActiveTab(typeof window !== 'undefined' && window.innerWidth < 1024 ? 'home' : 'dashboard')
+                }
               />
             )}
 
@@ -2170,6 +2192,9 @@ function AppContent() {
                 onDeleteOnlineAccount={handleDeleteOnlineAccount}
                 onOpenSettings={() => setTabSettingsModalOpen(true)}
                 onOpenPdfReport={() => handleOpenPdfReport('dailyClosing')}
+                onBackToHome={() =>
+                  setActiveTab(typeof window !== 'undefined' && window.innerWidth < 1024 ? 'home' : 'dashboard')
+                }
               />
             )}
 
