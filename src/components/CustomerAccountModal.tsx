@@ -251,6 +251,20 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     return undefined;
   };
 
+  const getDisplayTransactionNote = (tx: KhataCustomer['history'][number]): string => {
+    const note = tx.note || '';
+    const linkedSale = findLinkedSaleForTx(tx, sales);
+    if (linkedSale && linkedSale.items && linkedSale.items.length > 0) {
+      return linkedSale.items.map(it => `${it.name}${it.variantLabel ? ` (${it.variantLabel})` : ''} x${it.qty}`).join(', ');
+    }
+    if (note.includes('Invoice #') || note.includes('INV-')) {
+      const cleaned = note.replace(/Invoice\s*#?[A-Z0-9-]+(\s*\(\d+\s*items\))?/gi, '').trim();
+      if (cleaned) return cleaned;
+      return tx.type === 'credit' ? 'Credit Transaction' : 'Payment Received';
+    }
+    return note;
+  };
+
   const findLinkedReturnForTx = (
     tx: KhataCustomer['history'][number],
     pool: SalesReturnRecord[]
@@ -1781,7 +1795,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                     </span>
                     <div className="flex items-center gap-1 min-w-0">
                       <span className="text-xs sm:text-sm font-bold text-slate-900 truncate">
-                        {tx.note || (isGave ? 'Credit Added' : 'Cash Received')}
+                        {getDisplayTransactionNote(tx) || (isGave ? 'Credit Added' : 'Cash Received')}
                       </span>
                       {tx.receiptImage && (
                         <ImageIcon className="w-3 h-3 text-emerald-600 shrink-0" />

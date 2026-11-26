@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { KhataCustomer, ShopSettings } from '../types';
+import { KhataCustomer, SaleRecord, ShopSettings } from '../types';
 import { formatLedgerTimestamp } from '../utils/ledgerFormatters';
 import { smartMatch } from '../utils/smartSearch';
 import { useToast } from './Toast';
@@ -22,6 +22,7 @@ interface AllTransactionsModalProps {
   onClose: () => void;
   khata: KhataCustomer[];
   settings: ShopSettings;
+  sales?: SaleRecord[];
   onSelectEntry: (customerId: string, txId: string) => void;
 }
 
@@ -44,6 +45,7 @@ export const AllTransactionsModal: React.FC<AllTransactionsModalProps> = ({
   onClose,
   khata,
   settings,
+  sales = [],
   onSelectEntry,
 }) => {
   const { showToast } = useToast();
@@ -64,6 +66,51 @@ export const AllTransactionsModal: React.FC<AllTransactionsModalProps> = ({
   }, [isOpen, onClose]);
 
   const currency = settings.currency || 'Rs';
+
+  const findLinkedSaleForTx = (tx: KhataCustomer['history'][number], pool: SaleRecord[]) => {
+    if (tx.originalInvNo) {
+      const targetOrig = tx.originalInvNo.trim().toLowerCase();
+      const byOrig = pool.find(s => s.invNo.trim().toLowerCase() === targetOrig);
+      if (byOrig) return byOrig;
+    }
+    const noteStr = tx.note || '';
+    const invMatch =
+      noteStr.match(/(INV-[A-Z0-9-]+)/i) ||
+      noteStr.match(/Invoice\s*#?\s*([A-Z0-9-]+)/i) ||
+      noteStr.match(/#([A-Z0-9-]{4,})/i);
+    if (invMatch && invMatch[1]) {
+      const targetInv = invMatch[1].trim().toLowerCase();
+      const byInv = pool.find(s => s.invNo.trim().toLowerCase() === targetInv);
+      if (byInv) return byInv;
+    }
+    if (tx.type === 'credit') {
+      const txTime = new Date(tx.date).getTime();
+      const txDay = tx.date ? tx.date.substring(0, 10) : '';
+      const closeMatch = pool.find(s => {
+        if (s.status === 'CANCELLED') return false;
+        const diffMs = Math.abs(new Date(s.date).getTime() - txTime);
+        const sameDay = txDay && s.date && s.date.substring(0, 10) === txDay;
+        const dueMatches = Math.abs((s.amountDue || 0) - tx.amount) < 1;
+        return (diffMs <= 5 * 60 * 1000 || sameDay) && dueMatches;
+      });
+      if (closeMatch) return closeMatch;
+    }
+    return undefined;
+  };
+
+  const getDisplayTransactionNote = (tx: KhataCustomer['history'][number]): string => {
+    const note = tx.note || '';
+    const linkedSale = findLinkedSaleForTx(tx, sales);
+    if (linkedSale && linkedSale.items && linkedSale.items.length > 0) {
+      return linkedSale.items.map(it => `${it.name}${it.variantLabel ? ` (${it.variantLabel})` : ''} x${it.qty}`).join(', ');
+    }
+    if (note.includes('Invoice #') || note.includes('INV-')) {
+      const cleaned = note.replace(/Invoice\s*#?[A-Z0-9-]+(\s*\(\d+\s*items\))?/gi, '').trim();
+      if (cleaned) return cleaned;
+      return tx.type === 'credit' ? 'Credit Transaction' : 'Payment Received';
+    }
+    return note;
+  };
 
   // Compute running balance per customer first, then flatten & sort newest first
   const allEntries = useMemo<FlattenedLedgerEntry[]>(() => {
@@ -89,7 +136,7 @@ export const AllTransactionsModal: React.FC<AllTransactionsModalProps> = ({
           timestampMs: new Date(tx.date).getTime() || 0,
           type: tx.type,
           amount: tx.amount,
-          note: tx.note,
+          note: getDisplayTransactionNote(tx),
           runningBalance: running,
           paymentMethod: tx.paymentMethod,
         });
@@ -97,7 +144,7 @@ export const AllTransactionsModal: React.FC<AllTransactionsModalProps> = ({
     }
 
     return flat.sort((a, b) => b.timestampMs - a.timestampMs);
-  }, [khata]);
+  }, [khata, sales]);
 
   const filteredEntries = useMemo(() => {
     const q = search.trim();

@@ -1042,6 +1042,7 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
         onClose={() => setShowAllTransactionsModal(false)}
         khata={khata}
         settings={settings}
+        sales={sales}
         onSelectEntry={(customerId, txId) => {
           const cust = khata.find(k => k.id === customerId);
           if (cust) {

@@ -5,6 +5,7 @@ import {
   SalesReturnRecord,
   KhataCustomer,
   ActivityLog,
+  SaleItem,
 } from '../types';
 import { recordImeisSold, extractItemImeis, recordImeisReturned, diffChangedImeiRecords } from '../utils/imeiManager';
 import {
@@ -23,6 +24,11 @@ import {
   removeSaleFromJournal,
 } from '../utils/storage';
 import { generateEntityId } from '../utils/id';
+
+const formatSaleProductSummary = (items: SaleItem[]) => {
+  if (!items || items.length === 0) return 'Sale Transaction';
+  return items.map(it => `${it.name}${it.variantLabel ? ` (${it.variantLabel})` : ''} x${it.qty}`).join(', ');
+};
 
 interface UseSalesProps {
   data: AppData;
@@ -171,7 +177,7 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
               date: txDate,
               type: 'credit',
               amount: saleWithTs.amountDue!,
-              note: `Invoice #${saleWithTs.invNo} (${saleWithTs.items.length} items)`,
+              note: formatSaleProductSummary(saleWithTs.items),
             },
           };
           return {
@@ -185,7 +191,7 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
                 date: txDate,
                 type: 'credit' as const,
                 amount: saleWithTs.amountDue!,
-                note: `Invoice #${saleWithTs.invNo} (${saleWithTs.items.length} items)`,
+                note: formatSaleProductSummary(saleWithTs.items),
               },
               ...c.history,
             ],
@@ -211,7 +217,7 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
               date: txDate,
               type: 'credit',
               amount: saleWithTs.amountDue,
-              note: `Invoice #${saleWithTs.invNo}`,
+              note: formatSaleProductSummary(saleWithTs.items),
             },
           ],
         };
@@ -225,7 +231,7 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
             date: txDate,
             type: 'credit',
             amount: saleWithTs.amountDue,
-            note: `Invoice #${saleWithTs.invNo}`,
+            note: formatSaleProductSummary(saleWithTs.items),
           },
         };
       }
@@ -779,7 +785,7 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
               date: now,
               type: netDelta > 0 ? ('credit' as const) : ('debit' as const),
               amount: Math.abs(netDelta),
-              note: `Invoice #${originalInvNo} Updated (Edited)`,
+              note: formatSaleProductSummary(saleWithTs.items),
             },
             ...targetCust.history,
           ],
@@ -800,7 +806,7 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
               date: now,
               type: 'debit' as const,
               amount: origDue,
-              note: `Invoice #${originalInvNo} Edited (Reversed from old bill)`,
+              note: `Reversed: ${formatSaleProductSummary(saleWithTs.items)}`,
             },
             ...prevCust.history,
           ],
@@ -823,7 +829,7 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
                 date: now,
                 type: 'credit' as const,
                 amount: newDue,
-                note: `Invoice #${originalInvNo} Updated (${saleWithTs.items.length} items)`,
+                note: formatSaleProductSummary(saleWithTs.items),
               },
               ...nextCust.history,
             ],
@@ -845,7 +851,7 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
                 date: now,
                 type: 'credit',
                 amount: newDue,
-                note: `Invoice #${originalInvNo} Updated`,
+                note: formatSaleProductSummary(saleWithTs.items),
               },
             ],
           };
