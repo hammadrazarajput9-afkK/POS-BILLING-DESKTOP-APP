@@ -126,10 +126,13 @@ export function generateEscPosInvoiceData(
   const cur = settings.currency || 'Rs.';
 
   const grandTotal = sale.grandTotal || 0;
+  const prevBalance = Math.max(0, sale.previousBalance || 0);
+  const combinedTotal = grandTotal + prevBalance;
   const amountPaid = sale.amountPaid !== undefined ? sale.amountPaid : grandTotal;
   const amountDue = sale.amountDue !== undefined ? sale.amountDue : Math.max(0, grandTotal - amountPaid);
+  const netBalanceDue = Math.max(0, combinedTotal - amountPaid);
   const totalQty = (sale.items || []).reduce((sum, it) => sum + (Number(it.qty) || 0), 0);
-  const isPaid = amountDue <= 0;
+  const isPaid = netBalanceDue <= 0;
 
   // Header: Center aligned, bold, double height title
   b.align(1)
@@ -189,16 +192,26 @@ export function generateEscPosInvoiceData(
     b.row('Discount:', `-${cur} ${sale.discount.toLocaleString()}`);
   }
 
-  // Grand Total Bold & Larger
-  b.bold(true)
-    .textSize(1, 1)
-    .row('GRAND TOTAL:', `${cur} ${grandTotal.toLocaleString()}`)
-    .textSize(1, 1)
-    .bold(false);
+  if (prevBalance > 0) {
+    b.row('Current Bill:', `${cur} ${grandTotal.toLocaleString()}`);
+    b.row('Prev Balance:', `+${cur} ${prevBalance.toLocaleString()}`);
+    b.bold(true)
+      .textSize(1, 1)
+      .row('TOTAL PAYABLE:', `${cur} ${combinedTotal.toLocaleString()}`)
+      .textSize(1, 1)
+      .bold(false);
+  } else {
+    // Grand Total Bold & Larger
+    b.bold(true)
+      .textSize(1, 1)
+      .row('GRAND TOTAL:', `${cur} ${grandTotal.toLocaleString()}`)
+      .textSize(1, 1)
+      .bold(false);
+  }
 
   b.row(`Paid (${sale.paymentMethod || 'Cash'}):`, `${cur} ${amountPaid.toLocaleString()}`);
-  if (amountDue > 0) {
-    b.bold(true).row('Balance Due:', `${cur} ${amountDue.toLocaleString()}`).bold(false);
+  if (netBalanceDue > 0) {
+    b.bold(true).row(prevBalance > 0 ? 'Net Balance Due:' : 'Balance Due:', `${cur} ${netBalanceDue.toLocaleString()}`).bold(false);
   }
 
   if (sale.notes) {

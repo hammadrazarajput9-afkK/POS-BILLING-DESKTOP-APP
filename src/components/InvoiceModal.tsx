@@ -77,12 +77,15 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   if (!isOpen || !sale) return null;
 
   const grandTotal = sale.grandTotal || 0;
+  const prevBalance = Math.max(0, sale.previousBalance || 0);
+  const combinedTotal = grandTotal + prevBalance;
   const amountPaid = sale.amountPaid !== undefined ? sale.amountPaid : grandTotal;
   const amountDue =
     sale.amountDue !== undefined ? sale.amountDue : Math.max(0, grandTotal - amountPaid);
+  const netBalanceDue = Math.max(0, combinedTotal - amountPaid);
   const totalQty = (sale.items || []).reduce((sum, it) => sum + (Number(it.qty) || 0), 0);
   const totalItemsCount = (sale.items || []).length;
-  const isFullyPaid = amountDue <= 0;
+  const isFullyPaid = netBalanceDue <= 0;
   const isPartial = !isFullyPaid && amountPaid > 0;
 
   const paymentStatusText = isFullyPaid
@@ -160,9 +163,15 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
       `Total Quantity: ${totalQty} pcs (${totalItemsCount} ${totalItemsCount === 1 ? 'item' : 'items'})`,
       `Subtotal: ${settings.currency} ${sale.subtotal.toLocaleString()}`,
       sale.discount > 0 ? `Discount: -${settings.currency} ${sale.discount.toLocaleString()}` : '',
-      `GRAND TOTAL: ${settings.currency} ${grandTotal.toLocaleString()}`,
+      prevBalance > 0
+        ? `Current Bill: ${settings.currency} ${grandTotal.toLocaleString()}`
+        : `GRAND TOTAL: ${settings.currency} ${grandTotal.toLocaleString()}`,
+      prevBalance > 0 ? `Previous Balance: +${settings.currency} ${prevBalance.toLocaleString()}` : '',
+      prevBalance > 0 ? `TOTAL PAYABLE: ${settings.currency} ${combinedTotal.toLocaleString()}` : '',
       `Paid Amount: ${settings.currency} ${amountPaid.toLocaleString()} (${sale.paymentMethod || 'Cash'})`,
-      amountDue > 0 ? `Balance Due: ${settings.currency} ${amountDue.toLocaleString()}` : '',
+      netBalanceDue > 0
+        ? `${prevBalance > 0 ? 'Net Balance Due' : 'Balance Due'}: ${settings.currency} ${netBalanceDue.toLocaleString()}`
+        : '',
       sale.notes ? `Note: ${sale.notes}` : '',
       `==============================`,
       ...footerNoteLines,
@@ -334,25 +343,32 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               </span>
             </div>
           )}
-          {sale.previousBalance !== undefined && sale.previousBalance > 0 && (
-            <div className="flex justify-between font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded">
-              <span>Previous Balance Due:</span>
+          {prevBalance > 0 ? (
+            <>
+              <div className="flex justify-between font-bold pt-1 border-t border-black">
+                <span>Current Bill:</span>
+                <span>
+                  {settings.currency} {grandTotal.toLocaleString()}
+                </span>
+              </div>
+              <div className="flex justify-between font-bold">
+                <span>Previous Balance:</span>
+                <span>
+                  +{settings.currency} {prevBalance.toLocaleString()}
+                </span>
+              </div>
+              <div className="flex justify-between font-black text-[13px] pt-1 border-t border-black">
+                <span>TOTAL PAYABLE:</span>
+                <span>
+                  {settings.currency} {combinedTotal.toLocaleString()}
+                </span>
+              </div>
+            </>
+          ) : (
+            <div className="flex justify-between font-black text-[13px] pt-1 border-t border-black">
+              <span>GRAND TOTAL:</span>
               <span>
-                {settings.currency} {sale.previousBalance.toLocaleString()}
-              </span>
-            </div>
-          )}
-          <div className="flex justify-between font-black text-[13px] pt-1 border-t border-black">
-            <span>GRAND TOTAL:</span>
-            <span>
-              {settings.currency} {grandTotal.toLocaleString()}
-            </span>
-          </div>
-          {sale.totalOutstanding !== undefined && sale.totalOutstanding > 0 && (
-            <div className="flex justify-between font-black text-white bg-rose-700 px-1.5 py-1 rounded">
-              <span>TOTAL OUTSTANDING:</span>
-              <span>
-                {settings.currency} {sale.totalOutstanding.toLocaleString()}
+                {settings.currency} {grandTotal.toLocaleString()}
               </span>
             </div>
           )}
@@ -362,11 +378,11 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               {settings.currency} {amountPaid.toLocaleString()}
             </span>
           </div>
-          {amountDue > 0 && (
-            <div className="flex justify-between font-bold">
-              <span>Remaining Balance:</span>
+          {netBalanceDue > 0 && (
+            <div className="flex justify-between font-black pt-0.5 border-t border-dashed border-black">
+              <span>{prevBalance > 0 ? 'Net Balance Due:' : 'Remaining Balance:'}</span>
               <span>
-                {settings.currency} {amountDue.toLocaleString()}
+                {settings.currency} {netBalanceDue.toLocaleString()}
               </span>
             </div>
           )}
@@ -711,27 +727,32 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 </div>
               )}
 
-              {sale.previousBalance !== undefined && sale.previousBalance > 0 && (
-                <div className="flex justify-between font-bold text-rose-700 bg-rose-50 px-2 py-1 rounded-lg">
-                  <span>Previous Balance Due:</span>
-                  <span>
-                    {settings.currency} {sale.previousBalance.toLocaleString()}
-                  </span>
+              {prevBalance > 0 ? (
+                <div className="space-y-1 pt-1 border-t border-slate-200">
+                  <div className="flex justify-between items-center font-bold text-slate-800">
+                    <span>Current Bill:</span>
+                    <span>
+                      {settings.currency} {grandTotal.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center font-bold text-amber-700 bg-amber-50/90 border border-amber-200/70 px-2 py-1 rounded-lg">
+                    <span>Previous Balance:</span>
+                    <span>
+                      +{settings.currency} {prevBalance.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center font-black text-slate-900 pt-1 border-t border-slate-200">
+                    <span className={is58 ? 'text-xs' : 'text-sm'}>TOTAL PAYABLE:</span>
+                    <span className={`${is58 ? 'text-sm' : 'text-base'} text-blue-700`}>
+                      {settings.currency} {combinedTotal.toLocaleString()}
+                    </span>
+                  </div>
                 </div>
-              )}
-
-              <div className="flex justify-between items-center font-black text-slate-900 pt-1 border-t border-slate-200">
-                <span className={is58 ? 'text-xs' : 'text-sm'}>GRAND TOTAL:</span>
-                <span className={`${is58 ? 'text-sm' : 'text-base'} text-blue-700`}>
-                  {settings.currency} {grandTotal.toLocaleString()}
-                </span>
-              </div>
-
-              {sale.totalOutstanding !== undefined && sale.totalOutstanding > 0 && (
-                <div className="flex justify-between font-black text-white bg-rose-600 px-2 py-1.5 rounded-lg text-xs">
-                  <span>TOTAL OUTSTANDING:</span>
-                  <span>
-                    {settings.currency} {sale.totalOutstanding.toLocaleString()}
+              ) : (
+                <div className="flex justify-between items-center font-black text-slate-900 pt-1 border-t border-slate-200">
+                  <span className={is58 ? 'text-xs' : 'text-sm'}>GRAND TOTAL:</span>
+                  <span className={`${is58 ? 'text-sm' : 'text-base'} text-blue-700`}>
+                    {settings.currency} {grandTotal.toLocaleString()}
                   </span>
                 </div>
               )}
@@ -743,11 +764,11 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 </span>
               </div>
 
-              {amountDue > 0 && (
+              {netBalanceDue > 0 && (
                 <div className="flex justify-between text-rose-600 font-black pt-1 border-t border-dashed border-rose-200">
-                  <span>Remaining Balance:</span>
+                  <span>{prevBalance > 0 ? 'Net Balance Due:' : 'Remaining Balance:'}</span>
                   <span>
-                    {settings.currency} {amountDue.toLocaleString()}
+                    {settings.currency} {netBalanceDue.toLocaleString()}
                   </span>
                 </div>
               )}

@@ -35,11 +35,14 @@ export function formatPhoneNumberForWhatsApp(phoneStr?: string): string {
 export function generateWhatsAppInvoiceText(sale: SaleRecord, settings: ShopSettings): string {
   const cur = settings.currency || 'Rs.';
   const grandTotal = sale.grandTotal || 0;
+  const prevBalance = Math.max(0, sale.previousBalance || 0);
+  const combinedTotal = grandTotal + prevBalance;
   const amountPaid = sale.amountPaid !== undefined ? sale.amountPaid : grandTotal;
   const amountDue = sale.amountDue !== undefined ? sale.amountDue : Math.max(0, grandTotal - amountPaid);
+  const netBalanceDue = Math.max(0, combinedTotal - amountPaid);
   const totalQty = (sale.items || []).reduce((sum, it) => sum + (Number(it.qty) || 0), 0);
   const totalItemsCount = (sale.items || []).length;
-  const isPaid = amountDue <= 0;
+  const isPaid = netBalanceDue <= 0;
   const isWholesale = sale.saleMode === 'wholesale';
 
   const statusEmoji = isPaid ? '✅ PAID' : amountPaid > 0 ? '⚠️ PARTIAL' : '🔴 UNPAID KHATA';
@@ -76,9 +79,19 @@ export function generateWhatsAppInvoiceText(sale: SaleRecord, settings: ShopSett
     `📊 *Total Quantity:* ${totalQty} ${totalQty === 1 ? 'pc' : 'pcs'} (${totalItemsCount} ${totalItemsCount === 1 ? 'item' : 'items'})`,
     `💰 *Subtotal:* ${cur} ${sale.subtotal.toLocaleString()}`,
     sale.discount > 0 ? `🎁 *Discount / Tier:* -${cur} ${sale.discount.toLocaleString()}` : '',
-    `⭐ *GRAND TOTAL:* *${cur} ${grandTotal.toLocaleString()}*`,
+    prevBalance > 0
+      ? `🧾 *Current Bill:* ${cur} ${grandTotal.toLocaleString()}`
+      : `⭐ *GRAND TOTAL:* *${cur} ${grandTotal.toLocaleString()}*`,
+    prevBalance > 0 ? `📌 *Previous Balance:* +${cur} ${prevBalance.toLocaleString()}` : '',
+    prevBalance > 0 ? `⭐ *TOTAL PAYABLE (Bill + Prev):* *${cur} ${combinedTotal.toLocaleString()}*` : '',
     `💵 *Paid Amount:* ${cur} ${amountPaid.toLocaleString()} (${sale.paymentMethod || 'Cash'})`,
-    amountDue > 0 ? `⚠️ *Remaining Balance:* *${cur} ${amountDue.toLocaleString()}*` : '',
+    prevBalance > 0
+      ? netBalanceDue > 0
+        ? `⚠️ *Net Balance Due:* *${cur} ${netBalanceDue.toLocaleString()}*`
+        : ''
+      : amountDue > 0
+      ? `⚠️ *Remaining Balance:* *${cur} ${amountDue.toLocaleString()}*`
+      : '',
     sale.notes ? `📝 *Note:* ${sale.notes}` : '',
     `━━━━━━━━━━━━━━━━━━━━`,
     ...(Array.from(

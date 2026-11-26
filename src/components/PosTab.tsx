@@ -8,30 +8,23 @@ import {
   Trash2,
   Printer,
   Package,
-  Hash,
-  Barcode,
   RotateCcw,
-  UserCheck,
   Banknote,
   BookOpen,
   FileText,
-  Smartphone,
   Calendar,
   Share2,
   Edit,
-  XCircle,
   CheckCircle,
   AlertTriangle,
   Save,
   X,
   Check,
-  ArrowRight,
+  ArrowLeft,
   ChevronUp,
   Camera,
-  Sparkles,
   Layers,
   Copy,
-  Info,
   Sliders
 } from 'lucide-react';
 import { useToast } from './Toast';
@@ -62,6 +55,7 @@ interface PosTabProps {
   onUpdateOnlineAccount?: (account: OnlineAccount, silent?: boolean) => void;
   saleToEdit?: SaleRecord | null;
   onClearSaleToEdit?: () => void;
+  onBackToHome?: () => void;
 }
 
 interface PosDraftState {
@@ -120,6 +114,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   onUpdateSale,
   saleToEdit,
   onClearSaleToEdit,
+  onBackToHome,
 }) => {
   const { showToast } = useToast();
   const [search, setSearch] = useState('');
@@ -584,11 +579,35 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   };
 
   const setCustName = (name: string) => {
-    setDraft(prev => ({ ...prev, custName: name }));
+    setDraft(prev => {
+      const selected = prev.selectedKhataId
+        ? khataCustomers.find(k => k.id === prev.selectedKhataId)
+        : undefined;
+      const keepsSelection =
+        selected && selected.name.trim().toLowerCase() === name.trim().toLowerCase();
+      return {
+        ...prev,
+        custName: name,
+        selectedKhataId: keepsSelection ? prev.selectedKhataId : '',
+      };
+    });
   };
 
   const setCustPhone = (phone: string) => {
-    setDraft(prev => ({ ...prev, custPhone: phone }));
+    setDraft(prev => {
+      const selected = prev.selectedKhataId
+        ? khataCustomers.find(k => k.id === prev.selectedKhataId)
+        : undefined;
+      const normInput = phone.replace(/[^0-9]/g, '');
+      const normSelected = (selected?.phone || '').replace(/[^0-9]/g, '');
+      const keepsSelection =
+        selected && normInput && normSelected && normInput === normSelected;
+      return {
+        ...prev,
+        custPhone: phone,
+        selectedKhataId: keepsSelection ? prev.selectedKhataId : '',
+      };
+    });
   };
 
   const setRetailerShopName = (shop: string) => {
@@ -1104,67 +1123,88 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
   const matchedKhataCustomer = useMemo(() => {
     if (selectedKhataId) {
-      return khataCustomers.find(k => k.id === selectedKhataId);
+      return khataCustomers.find(k => k.id === selectedKhataId) || null;
+    }
+    const rawPhoneDigits = custPhone.replace(/[^0-9]/g, '');
+    if (rawPhoneDigits.length >= 7) {
+      const byPhone = khataCustomers.find(k => {
+        const kDigits = (k.phone || '').replace(/[^0-9]/g, '');
+        return kDigits.length >= 7 && kDigits === rawPhoneDigits;
+      });
+      if (byPhone) return byPhone;
     }
     if (custPhone.trim()) {
       const cleanP = custPhone.trim().toLowerCase();
-      return khataCustomers.find(k => (k.phone || '').trim().toLowerCase() === cleanP);
+      const byExactPhone = khataCustomers.find(k => (k.phone || '').trim().toLowerCase() === cleanP);
+      if (byExactPhone) return byExactPhone;
     }
     if (custName.trim()) {
       const cleanN = custName.trim().toLowerCase();
-      return khataCustomers.find(k => (k.name || '').trim().toLowerCase() === cleanN);
+      return khataCustomers.find(k => (k.name || '').trim().toLowerCase() === cleanN) || null;
     }
     return null;
   }, [selectedKhataId, custPhone, custName, khataCustomers]);
 
-  const previousKhataBalance = matchedKhataCustomer ? (matchedKhataCustomer.balance || 0) : 0;
+  const previousKhataBalance = matchedKhataCustomer ? Math.max(0, matchedKhataCustomer.balance || 0) : 0;
   const totalOutstanding = grandTotal + previousKhataBalance;
+  const netBalanceAfterPaid = Math.max(0, totalOutstanding - actualPaid);
 
   const handleKhataSelect = (khataId: string) => {
     setSelectedKhataId(khataId);
-    if (khataId) {
-      const match = khataCustomers.find(k => k.id === khataId);
-      if (match) {
-        setCustName(match.name);
-        setCustPhone(match.phone);
-      }
+    if (!khataId) {
+      setDraft(prev => ({
+        ...prev,
+        selectedKhataId: '',
+        custName: '',
+        custPhone: '',
+      }));
     }
   };
 
   const renderCartContent = (isMobile = false) => (
     <div
-      className={`bg-white rounded-2xl p-2.5 sm:p-3 flex flex-col ${
-        isMobile ? 'space-y-2.5' : 'gap-2 border border-slate-200/90 shadow-xs'
+      className={`backdrop-blur-2xl rounded-2xl p-3 sm:p-3.5 flex flex-col ${
+        isMobile
+          ? 'bg-transparent space-y-2.5'
+          : 'bg-white/75 border border-white/90 shadow-xl shadow-sky-900/5 gap-2.5'
       }`}
     >
       {/* Cart Header */}
-      <div className="flex items-center justify-between border-b border-slate-100 pb-2 shrink-0">
-        <div className="flex items-center gap-2">
-          <h3 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
-            <ShoppingCart className="w-4 h-4 text-blue-600" /> Active Billing Cart ({totalCartItems})
-          </h3>
-          {hasActiveDraft && cart.length > 0 && (
-            <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold">
-              Draft Saved
-            </span>
-          )}
+      <div className="flex items-center justify-between border-b border-slate-200/70 pb-2 shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 backdrop-blur-md ${
+            saleMode === 'wholesale' ? 'bg-purple-500/15 text-purple-700' : 'bg-blue-500/15 text-blue-700'
+          }`}>
+            <ShoppingCart className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <h3 className="font-extrabold text-slate-900 text-sm leading-tight truncate">
+              Billing Cart ({totalCartItems})
+            </h3>
+            {hasActiveDraft && cart.length > 0 && (
+              <p className="text-[10.5px] text-amber-700 font-semibold leading-tight">
+                Draft auto-saved
+              </p>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 shrink-0">
           {onOpenPdfReport && (
             <button
               type="button"
               onClick={onOpenPdfReport}
-              className="text-[11px] font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 px-2 py-1 rounded-lg transition flex items-center gap-1 cursor-pointer shadow-2xs"
+              className="text-[11px] font-bold text-rose-700 bg-rose-50/80 hover:bg-rose-100/90 backdrop-blur-sm border border-rose-200/80 px-2.5 py-1 rounded-xl transition flex items-center gap-1 cursor-pointer min-h-[32px]"
               title="Export Sales & Invoices PDF Report"
             >
-              <FileText className="w-3 h-3 text-rose-600" /> Sales PDF
+              <FileText className="w-3 h-3 text-rose-600" />
+              <span>PDF</span>
             </button>
           )}
           {cart.length > 0 && (
             <button
               type="button"
               onClick={clearCart}
-              className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2 py-1 rounded-lg transition cursor-pointer"
+              className="text-[11px] font-bold text-rose-600 hover:text-rose-700 bg-white/70 hover:bg-rose-50/90 border border-slate-200/70 px-2.5 py-1 rounded-xl transition cursor-pointer min-h-[32px]"
             >
               Clear
             </button>
@@ -1173,22 +1213,23 @@ const PosTabComponent: React.FC<PosTabProps> = ({
             <button
               type="button"
               onClick={() => setIsMobileCartOpen(false)}
-              className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-slate-800 rounded-xl bg-slate-100/80 hover:bg-slate-200/80 transition cursor-pointer"
+              aria-label="Close cart"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           )}
         </div>
       </div>
 
-      {/* Non-Scrollable Compact Cart Body */}
-      <div className="space-y-2">
+      {/* Cart Body */}
+      <div className="space-y-2.5">
         {draft.editingOriginalDate && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-2 text-[11px] text-amber-900">
+          <div className="bg-amber-50/85 backdrop-blur-md border border-amber-200/80 rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-2 text-[11px] text-amber-900">
             <div className="flex items-center gap-1.5 min-w-0 font-bold">
               <Calendar className="w-3.5 h-3.5 text-amber-600 shrink-0" />
               <span className="truncate">
-                Editing #{draft.editingOriginalInvNo || 'Invoice'} • Original Date:{' '}
+                Editing #{draft.editingOriginalInvNo || 'Invoice'} ·{' '}
                 {new Date(draft.editingOriginalDate).toLocaleDateString()}
               </span>
             </div>
@@ -1201,27 +1242,28 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                   editingOriginalInvNo: undefined,
                 }))
               }
-              className="text-[10px] font-extrabold text-amber-800 hover:text-amber-950 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-lg transition cursor-pointer shrink-0"
+              className="text-[10px] font-extrabold text-amber-800 hover:text-amber-950 bg-amber-100/90 hover:bg-amber-200 px-2 py-0.5 rounded-lg transition cursor-pointer shrink-0"
               title="Use Today's Date Instead"
             >
               Use Today
             </button>
           </div>
         )}
-        {/* Invoice Type + Customer Info Compact Block */}
-        <div className="bg-slate-50 p-2 rounded-xl border border-slate-200/80 space-y-1.5">
-          <div className="grid grid-cols-2 gap-1.5">
+
+        {/* Customer & Payment Mode Card */}
+        <div className="bg-white/60 backdrop-blur-md p-2.5 rounded-xl border border-white/80 shadow-2xs space-y-2">
+          <div className="grid grid-cols-2 gap-1.5 bg-slate-100/80 p-1 rounded-xl">
             <button
               type="button"
               onClick={() => setInvoiceType('cash')}
               className={`py-1.5 px-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer min-h-[34px] ${
                 invoiceType === 'cash'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <Banknote className="w-3.5 h-3.5" />
-              <span>Cash Customer</span>
+              <span>Cash Bill</span>
             </button>
 
             <button
@@ -1229,8 +1271,8 @@ const PosTabComponent: React.FC<PosTabProps> = ({
               onClick={() => setInvoiceType('credit')}
               className={`py-1.5 px-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer min-h-[34px] ${
                 invoiceType === 'credit'
-                  ? 'bg-purple-600 text-white shadow-xs'
-                  : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                  ? 'bg-purple-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <BookOpen className="w-3.5 h-3.5" />
@@ -1238,19 +1280,35 @@ const PosTabComponent: React.FC<PosTabProps> = ({
             </button>
           </div>
 
-          {invoiceType === 'credit' && khataCustomers.length > 0 && (
-            <select
-              value={selectedKhataId}
-              onChange={e => handleKhataSelect(e.target.value)}
-              className="w-full bg-white border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:outline-none focus:border-purple-600 min-h-[34px]"
-            >
-              <option value="">Select Existing Khata Customer...</option>
-              {khataCustomers.map(k => (
-                <option key={k.id} value={k.id}>
-                  {k.name} ({k.phone}) - Due: {currency} {k.balance.toLocaleString()}
+          {khataCustomers.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <select
+                value={selectedKhataId || matchedKhataCustomer?.id || ''}
+                onChange={e => handleKhataSelect(e.target.value)}
+                className="flex-1 min-w-0 bg-white/85 backdrop-blur-sm border border-slate-200/80 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-600 min-h-[36px]"
+              >
+                <option value="">
+                  {invoiceType === 'credit'
+                    ? 'Select Existing Khata Customer...'
+                    : 'Select Regular / Khata Customer (Optional)...'}
                 </option>
-              ))}
-            </select>
+                {khataCustomers.map(k => (
+                  <option key={k.id} value={k.id}>
+                    {k.name} ({k.phone}){k.balance > 0 ? ` — Prev: ${currency} ${k.balance.toLocaleString()}` : ''}
+                  </option>
+                ))}
+              </select>
+              {(selectedKhataId || matchedKhataCustomer) && (
+                <button
+                  type="button"
+                  onClick={() => handleKhataSelect('')}
+                  className="w-9 h-9 rounded-xl bg-white/80 hover:bg-rose-50 border border-slate-200/80 text-slate-400 hover:text-rose-600 flex items-center justify-center shrink-0 transition cursor-pointer"
+                  title="Clear selected customer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
@@ -1258,9 +1316,11 @@ const PosTabComponent: React.FC<PosTabProps> = ({
               type="text"
               value={custName}
               onChange={e => setCustName(e.target.value)}
-              placeholder={saleMode === 'wholesale' ? "Retailer / Contact Person *" : "Customer Name"}
-              className={`border rounded-lg px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:bg-white transition min-h-[34px] ${
-                saleMode === 'wholesale' ? 'bg-purple-50/70 border-purple-200 focus:border-purple-600' : 'bg-white border-slate-200 focus:border-blue-600'
+              placeholder={saleMode === 'wholesale' ? 'Retailer / Contact Person *' : 'Customer Name'}
+              className={`border rounded-xl px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:bg-white transition min-h-[36px] backdrop-blur-sm ${
+                saleMode === 'wholesale'
+                  ? 'bg-purple-50/70 border-purple-200/80 focus:border-purple-600'
+                  : 'bg-white/80 border-slate-200/80 focus:border-blue-600'
               }`}
             />
             <input
@@ -1268,15 +1328,34 @@ const PosTabComponent: React.FC<PosTabProps> = ({
               value={custPhone}
               onChange={e => setCustPhone(e.target.value)}
               placeholder="Phone Number"
-              className={`border rounded-lg px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:bg-white transition min-h-[34px] ${
-                saleMode === 'wholesale' ? 'bg-purple-50/70 border-purple-200 focus:border-purple-600' : 'bg-white border-slate-200 focus:border-blue-600'
+              className={`border rounded-xl px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:bg-white transition min-h-[36px] backdrop-blur-sm ${
+                saleMode === 'wholesale'
+                  ? 'bg-purple-50/70 border-purple-200/80 focus:border-purple-600'
+                  : 'bg-white/80 border-slate-200/80 focus:border-blue-600'
               }`}
             />
           </div>
 
+          {/* Previous Khata Balance Notification */}
+          {previousKhataBalance > 0 && matchedKhataCustomer && (
+            <div className="bg-amber-50/85 backdrop-blur-md border border-amber-200/90 rounded-xl px-2.5 py-2 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-[10.5px] font-bold text-amber-800 leading-tight truncate">
+                  Previous Balance · {matchedKhataCustomer.name}
+                </p>
+                <p className="text-[10px] text-amber-700 leading-tight">
+                  Added automatically to invoice total
+                </p>
+              </div>
+              <span className="tabular-nums font-black text-xs text-rose-700 shrink-0">
+                {currency} {previousKhataBalance.toLocaleString()}
+              </span>
+            </div>
+          )}
+
           {/* Wholesale Retailer Shop Details */}
           {saleMode === 'wholesale' && (
-            <div className="bg-purple-50 border border-purple-200 rounded-lg p-2 space-y-1.5 animate-in fade-in">
+            <div className="bg-purple-50/75 backdrop-blur-md border border-purple-200/80 rounded-xl p-2 space-y-1.5 animate-in fade-in">
               <span className="text-[10px] font-black uppercase text-purple-900 tracking-wider flex items-center gap-1">
                 <Package className="w-3 h-3 text-purple-700" /> Retailer / Shop Details
               </span>
@@ -1286,160 +1365,156 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                   value={retailerShopName}
                   onChange={e => setRetailerShopName(e.target.value)}
                   placeholder="Shop / Business Name"
-                  className="bg-white border border-purple-200 rounded-lg px-2 py-1 text-xs font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[32px]"
+                  className="bg-white/85 border border-purple-200 rounded-lg px-2 py-1 text-xs font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[34px]"
                 />
                 <input
                   type="text"
                   value={retailerCity}
                   onChange={e => setRetailerCity(e.target.value)}
                   placeholder="City"
-                  className="bg-white border border-purple-200 rounded-lg px-2 py-1 text-xs font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[32px]"
+                  className="bg-white/85 border border-purple-200 rounded-lg px-2 py-1 text-xs font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[34px]"
                 />
                 <input
                   type="text"
                   value={retailerNtn}
                   onChange={e => setRetailerNtn(e.target.value)}
                   placeholder="NTN / GST (Opt)"
-                  className="bg-white border border-purple-200 rounded-lg px-2 py-1 text-xs tabular-nums font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[32px]"
+                  className="bg-white/85 border border-purple-200 rounded-lg px-2 py-1 text-xs tabular-nums font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[34px]"
                 />
               </div>
             </div>
           )}
         </div>
 
-        {/* Cart Itemized Table (No nested scrollbar — expands naturally) */}
-        <div className="border border-slate-200/80 rounded-xl overflow-hidden">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
-              <tr>
-                <th className="p-2">Item</th>
-                <th className="p-2 text-center">Qty</th>
-                <th className="p-2 text-right">Price</th>
-                <th className="p-2 text-center w-8"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-xs">
-              {cart.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="text-center py-4 text-slate-400">
-                    <div className="inline-flex items-center gap-1.5 text-xs font-medium">
-                      <ShoppingCart className="w-4 h-4 text-slate-300" />
-                      <span>Cart is empty — Scan IMEI or click Add</span>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                cart.map(item => {
-                  const availableItemImeis = extractItemImeis(item);
-                  const hasMultipleImeis = availableItemImeis.length > 0;
+        {/* Itemized Cart Cards (Smart Glass List — Clean on both Mobile & Desktop) */}
+        <div className="space-y-1.5">
+          {cart.length === 0 ? (
+            <div className="bg-white/55 backdrop-blur-md border border-white/80 rounded-xl py-5 px-3 text-center text-slate-400">
+              <ShoppingCart className="w-5 h-5 mx-auto text-slate-300 mb-1" />
+              <p className="text-xs font-semibold text-slate-500">
+                Cart is empty — Scan IMEI or tap Add
+              </p>
+            </div>
+          ) : (
+            cart.map(item => {
+              const availableItemImeis = extractItemImeis(item);
+              const hasMultipleImeis = availableItemImeis.length > 0;
+              const unitPrice = getItemUnitPrice(item);
 
-                  return (
-                    <tr key={`${item.id}::${item.selectedVariantId || 'default'}`} className="hover:bg-slate-50/60 transition">
-                      <td className="p-2">
-                        <p className="font-semibold text-slate-900 leading-tight line-clamp-1">
-                          {item.name}
-                        </p>
-                        {item.selectedVariantLabel && (
-                          <span className="inline-block mt-0.5 text-[9px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.2 rounded">
-                            {item.selectedVariantLabel}
-                          </span>
-                        )}
-                        {hasMultipleImeis ? (
-                          <div className="mt-1 space-y-0.5">
-                            {Array.from({ length: item.cartQty }).map((_, unitIdx) => {
-                              const curVal = item.selectedImeis?.[unitIdx] || availableItemImeis[unitIdx] || '';
-                              return (
-                                <div key={unitIdx} className="flex items-center gap-1">
-                                  <span className="text-[9px] tabular-nums text-slate-400 font-bold">
-                                    #{unitIdx + 1}:
-                                  </span>
-                                  {availableItemImeis.length > 1 ? (
-                                    <select
-                                      value={curVal}
-                                      onChange={e =>
-                                        handleSelectImeiForCartItem(
-                                          item.id,
-                                          unitIdx,
-                                          e.target.value,
-                                          item.selectedVariantId
-                                        )
-                                      }
-                                      className="text-[10px] tabular-nums text-blue-700 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5 max-w-[165px] outline-none"
-                                    >
-                                      {availableItemImeis.map(im => (
-                                        <option key={im} value={im}>
-                                          IMEI: {im}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  ) : (
-                                    <span className="text-[9px] tabular-nums text-blue-700 bg-blue-50 px-1 py-0.5 rounded border border-blue-100">
-                                      IMEI: {curVal}
-                                    </span>
-                                  )}
-                                </div>
-                              );
-                            })}
+              return (
+                <div
+                  key={`${item.id}::${item.selectedVariantId || 'default'}`}
+                  className="bg-white/75 backdrop-blur-md border border-white/90 shadow-2xs rounded-xl p-2.5 space-y-2 transition hover:bg-white/95"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold text-slate-900 text-xs sm:text-[13px] leading-snug line-clamp-2">
+                        {item.name}
+                      </p>
+                      <p className="text-[10.5px] text-slate-500 font-medium mt-0.5 truncate">
+                        {item.selectedVariantLabel ? `${item.selectedVariantLabel} · ` : ''}
+                        {currency} {unitPrice.toLocaleString()} each
+                        {saleMode === 'wholesale' ? ' (W/S)' : ''}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeFromCart(item.id, item.selectedVariantId)}
+                      className="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50/90 flex items-center justify-center transition cursor-pointer shrink-0"
+                      aria-label={`Remove ${item.name}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* IMEI Selector / Barcode */}
+                  {hasMultipleImeis ? (
+                    <div className="space-y-1">
+                      {Array.from({ length: item.cartQty }).map((_, unitIdx) => {
+                        const curVal =
+                          item.selectedImeis?.[unitIdx] || availableItemImeis[unitIdx] || '';
+                        return (
+                          <div key={unitIdx} className="flex items-center gap-1.5">
+                            <span className="text-[10px] tabular-nums text-slate-400 font-bold shrink-0">
+                              #{unitIdx + 1}
+                            </span>
+                            {availableItemImeis.length > 1 ? (
+                              <select
+                                value={curVal}
+                                onChange={e =>
+                                  handleSelectImeiForCartItem(
+                                    item.id,
+                                    unitIdx,
+                                    e.target.value,
+                                    item.selectedVariantId
+                                  )
+                                }
+                                className="flex-1 min-w-0 text-[10.5px] tabular-nums text-blue-700 bg-blue-50/80 border border-blue-200/80 rounded-lg px-2 py-1 outline-none"
+                              >
+                                {availableItemImeis.map(im => (
+                                  <option key={im} value={im}>
+                                    IMEI: {im}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="text-[10.5px] tabular-nums text-blue-700 font-semibold truncate">
+                                IMEI: {curVal}
+                              </span>
+                            )}
                           </div>
-                        ) : item.barcode ? (
-                          <p className="text-[9px] tabular-nums text-slate-400">
-                            Code: {item.barcode}
-                          </p>
-                        ) : null}
-                      </td>
-                      <td className="p-2 text-center">
-                        <div className="inline-flex items-center gap-1 bg-slate-100 rounded-lg p-0.5">
-                          <button
-                            type="button"
-                            onClick={() => updateCartQty(item.id, -1, item.selectedVariantId)}
-                            className="w-6 h-6 sm:w-5 sm:h-5 bg-white rounded font-bold text-slate-700 hover:bg-slate-200 flex items-center justify-center transition cursor-pointer shadow-2xs"
-                          >
-                            <Minus className="w-3 h-3" />
-                          </button>
-                          <span className="tabular-nums font-bold text-xs px-1 min-w-[18px] text-center">
-                            {item.cartQty}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => updateCartQty(item.id, 1, item.selectedVariantId)}
-                            className="w-6 h-6 sm:w-5 sm:h-5 bg-white rounded font-bold text-slate-700 hover:bg-slate-200 flex items-center justify-center transition cursor-pointer shadow-2xs"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
-                        </div>
-                      </td>
-                      <td className="p-2 text-right tabular-nums font-bold text-slate-900">
-                        {currency} {(getItemUnitPrice(item) * item.cartQty).toLocaleString()}
-                        {saleMode === 'wholesale' && (
-                          <div className="text-[9px] text-purple-700 font-sans">
-                            {currency} {getItemUnitPrice(item).toLocaleString()}/u
-                          </div>
-                        )}
-                      </td>
-                      <td className="p-1.5 text-center">
-                        <button
-                          type="button"
-                          onClick={() => removeFromCart(item.id, item.selectedVariantId)}
-                          className="text-slate-400 hover:text-rose-600 p-1 transition cursor-pointer flex items-center justify-center mx-auto"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                        );
+                      })}
+                    </div>
+                  ) : item.barcode ? (
+                    <p className="text-[10px] tabular-nums text-slate-400">
+                      Code: {item.barcode}
+                    </p>
+                  ) : null}
+
+                  {/* Stepper & Line Total */}
+                  <div className="flex items-center justify-between pt-1.5 border-t border-slate-100/90">
+                    <div className="inline-flex items-center gap-1 bg-slate-100/85 backdrop-blur-sm rounded-xl p-0.5">
+                      <button
+                        type="button"
+                        onClick={() => updateCartQty(item.id, -1, item.selectedVariantId)}
+                        className="w-7 h-7 bg-white/90 rounded-lg font-bold text-slate-700 hover:bg-white flex items-center justify-center transition cursor-pointer shadow-2xs"
+                        aria-label="Decrease quantity"
+                      >
+                        <Minus className="w-3 h-3" />
+                      </button>
+                      <span className="tabular-nums font-extrabold text-xs px-2 min-w-[24px] text-center text-slate-900">
+                        {item.cartQty}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => updateCartQty(item.id, 1, item.selectedVariantId)}
+                        className="w-7 h-7 bg-white/90 rounded-lg font-bold text-slate-700 hover:bg-white flex items-center justify-center transition cursor-pointer shadow-2xs"
+                        aria-label="Increase quantity"
+                      >
+                        <Plus className="w-3 h-3" />
+                      </button>
+                    </div>
+
+                    <span className="tabular-nums font-black text-sm text-slate-900">
+                      {currency} {(unitPrice * item.cartQty).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
 
-        {/* Pricing Totals & Payment Method */}
-        <div className="space-y-1.5 pt-1.5 border-t border-slate-100 text-xs">
-          <div className="space-y-1 text-slate-600">
-            <div className="flex justify-between items-center text-[11px] font-bold text-slate-700 pb-0.5">
-              <span>Total Quantity ({cart.length} {cart.length === 1 ? 'item' : 'items'}):</span>
+        {/* Pricing Totals & Previous Balance Breakdown */}
+        <div className="bg-white/65 backdrop-blur-md border border-white/85 rounded-xl p-2.5 sm:p-3 space-y-1.5 text-xs">
+          <div className="space-y-1.5 text-slate-600">
+            <div className="flex justify-between items-center text-[11px] font-bold text-slate-700">
+              <span>
+                Total Quantity ({cart.length} {cart.length === 1 ? 'item' : 'items'}):
+              </span>
               <span className="tabular-nums font-extrabold text-slate-900">
-                {cart.reduce((sum, it) => sum + (Number(it.qty) || 0), 0)} pcs
+                {totalCartItems} {totalCartItems === 1 ? 'pc' : 'pcs'}
               </span>
             </div>
 
@@ -1458,72 +1533,99 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                 value={discount}
                 onChange={e => setDiscount(e.target.value === '' ? '' : Number(e.target.value))}
                 placeholder="0"
-                className="w-24 text-right bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 tabular-nums font-bold text-xs focus:outline-none focus:border-blue-600 focus:bg-white"
+                className="w-24 text-right bg-white/85 border border-slate-200/80 rounded-lg px-2 py-1 tabular-nums font-bold text-xs focus:outline-none focus:border-blue-600 focus:bg-white"
               />
             </div>
 
-            {/* PREVIOUS KHATA BALANCE DUE */}
-            {previousKhataBalance > 0 && (
-              <div className="bg-rose-50/90 border border-rose-200/90 backdrop-blur-md rounded-xl p-2 flex items-center justify-between text-rose-900 font-bold">
-                <span className="flex items-center gap-1 text-[11px]">
-                  <span>Previous Khata Balance:</span>
-                </span>
-                <span className="tabular-nums font-black text-rose-700">
-                  {currency} {previousKhataBalance.toLocaleString()}
+            {previousKhataBalance > 0 ? (
+              <div className="space-y-1.5 pt-1.5 border-t border-slate-200/70">
+                <div className="flex justify-between items-center font-bold text-slate-800">
+                  <span>Current Bill:</span>
+                  <span className="tabular-nums font-extrabold text-slate-900">
+                    {currency} {grandTotal.toLocaleString()}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center bg-amber-50/85 border border-amber-200/80 rounded-xl px-2.5 py-1.5 text-amber-900 font-bold">
+                  <span className="text-[11px]">+ Previous Balance:</span>
+                  <span className="tabular-nums font-black text-rose-700">
+                    {currency} {previousKhataBalance.toLocaleString()}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center bg-gradient-to-r from-slate-900/90 via-blue-950/90 to-indigo-950/90 backdrop-blur-md text-white rounded-xl px-3 py-2 shadow-md">
+                  <span className="text-xs font-extrabold">Total Payable (Bill + Prev):</span>
+                  <span className="tabular-nums text-sm sm:text-base font-black text-cyan-300">
+                    {currency} {totalOutstanding.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="flex justify-between items-center text-sm sm:text-base font-extrabold text-slate-900 pt-1.5 border-t border-slate-200/70">
+                <span>Grand Total:</span>
+                <span
+                  className={`tabular-nums text-base sm:text-lg ${
+                    saleMode === 'wholesale' ? 'text-purple-700' : 'text-blue-600'
+                  }`}
+                >
+                  {currency} {grandTotal.toLocaleString()}
                 </span>
               </div>
             )}
 
-            <div className="flex justify-between items-center text-sm sm:text-base font-extrabold text-slate-900 pt-1 border-t border-slate-100">
-              <span>Grand Total:</span>
-              <span className={`tabular-nums text-base sm:text-lg ${saleMode === 'wholesale' ? 'text-purple-700' : 'text-blue-600'}`}>
-                {currency} {grandTotal.toLocaleString()}
-              </span>
-            </div>
-
-            {previousKhataBalance > 0 && (
-              <div className="flex justify-between items-center bg-gradient-to-r from-rose-600 to-rose-700 text-white rounded-xl p-2.5 shadow-md shadow-rose-600/20 text-xs font-black">
-                <span>Total Outstanding Balance:</span>
-                <span className="tabular-nums text-sm">
-                  {currency} {totalOutstanding.toLocaleString()}
-                </span>
-              </div>
-            )}
-
-            {/* If Credit Sale, show Paid Now vs Due Balance */}
-            {invoiceType === 'credit' && (
-              <div className="bg-purple-50 p-2 rounded-xl border border-purple-200 space-y-1">
+            {/* Credit Paid / Balance OR Cash + Prev Balance Summary */}
+            {invoiceType === 'credit' ? (
+              <div className="bg-purple-50/80 backdrop-blur-sm p-2.5 rounded-xl border border-purple-200/80 space-y-1.5">
                 <div className="flex justify-between items-center">
-                  <span className="font-bold text-purple-900 text-[11px]">Advance / Paid Now ({currency}):</span>
+                  <span className="font-bold text-purple-900 text-[11px]">
+                    Advance / Paid Now ({currency}):
+                  </span>
                   <input
                     type="number"
                     min="0"
                     max={grandTotal}
                     value={amountPaid}
-                    onChange={e => setAmountPaid(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder="Paid amount"
-                    className="w-28 text-right bg-white border border-purple-300 rounded-lg px-2 py-1 tabular-nums font-bold text-xs focus:outline-none focus:border-purple-600"
+                    onChange={e =>
+                      setAmountPaid(e.target.value === '' ? '' : Number(e.target.value))
+                    }
+                    placeholder="0"
+                    className="w-28 text-right bg-white/90 border border-purple-300/80 rounded-lg px-2 py-1 tabular-nums font-bold text-xs focus:outline-none focus:border-purple-600"
                   />
                 </div>
-                <div className="flex justify-between items-center pt-1 border-t border-purple-200 text-purple-900 text-[11px]">
-                  <span className="font-extrabold">Remaining Due (Khata Balance):</span>
-                  <span className="tabular-nums font-extrabold text-sm text-rose-600">
-                    {currency} {actualDue.toLocaleString()}
+                <div className="flex justify-between items-center pt-1 border-t border-purple-200/80 text-purple-900 text-[11px]">
+                  <span className="font-extrabold">
+                    {previousKhataBalance > 0
+                      ? 'Net Balance Due (Incl. Prev):'
+                      : 'Remaining Due (Khata):'}
+                  </span>
+                  <span className="tabular-nums font-black text-sm text-rose-600">
+                    {currency} {netBalanceAfterPaid.toLocaleString()}
                   </span>
                 </div>
               </div>
+            ) : (
+              previousKhataBalance > 0 && (
+                <div className="bg-slate-100/75 backdrop-blur-sm px-2.5 py-1.5 rounded-xl border border-slate-200/70 flex justify-between items-center text-[11px]">
+                  <span className="font-bold text-slate-700">
+                    Paid Now (Cash) · Prev Khata Left:
+                  </span>
+                  <span className="tabular-nums font-black text-rose-600">
+                    {currency} {netBalanceAfterPaid.toLocaleString()}
+                  </span>
+                </div>
+              )
             )}
           </div>
 
-          {/* Compact Single-Line Per-Bill Note Field */}
-          <div className="pt-1.5 border-t border-slate-100">
+          {/* Per-Bill Note Field */}
+          <div className="pt-1.5 border-t border-slate-200/70">
             <div className="flex items-center justify-between text-[10px] font-bold uppercase text-slate-500 mb-1">
               <span className="flex items-center gap-1">
                 <FileText className="w-3 h-3 text-blue-500" />
                 Bill Note
               </span>
               <span className="text-[9px] font-semibold text-slate-400 normal-case">
-                Urdu / English / Roman Urdu
+                Urdu / English
               </span>
             </div>
             <input
@@ -1532,14 +1634,14 @@ const PosTabComponent: React.FC<PosTabProps> = ({
               value={billNote}
               onChange={e => setBillNote(e.target.value)}
               placeholder="Bill ke neeche koi bhi note likhein (optional)..."
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[34px]"
+              className="w-full bg-white/80 border border-slate-200/80 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[36px]"
             />
           </div>
         </div>
       </div>
 
       {/* Checkout Action Button */}
-      <div className="pt-1.5 border-t border-slate-100 bg-white shrink-0">
+      <div className="pt-2 border-t border-slate-200/70 shrink-0">
         <button
           type="button"
           onClick={() => {
@@ -1547,12 +1649,12 @@ const PosTabComponent: React.FC<PosTabProps> = ({
             if (isMobile) setIsMobileCartOpen(false);
           }}
           disabled={cart.length === 0}
-          className={`w-full py-2.5 text-white font-extrabold rounded-xl shadow-lg transition text-sm flex items-center justify-center gap-2 cursor-pointer min-h-[42px] ${
+          className={`w-full py-3 text-white font-extrabold rounded-xl shadow-lg transition text-sm flex items-center justify-center gap-2 cursor-pointer min-h-[46px] ${
             cart.length > 0
               ? invoiceType === 'credit'
-                ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-500/20'
-                : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20'
-              : 'bg-slate-300 cursor-not-allowed shadow-none'
+                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-purple-500/25'
+                : 'bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 shadow-blue-500/25'
+              : 'bg-slate-300/80 text-slate-500 cursor-not-allowed shadow-none'
           }`}
         >
           <Printer className="w-4 h-4" />
@@ -1670,214 +1772,230 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   }, [filteredSales]);
 
   return (
-    <div className="space-y-2 sm:space-y-3 flex flex-col lg:flex-1 lg:min-h-0">
-      {/* Sub-tab Navigation Panel */}
-      <div className="flex items-center justify-between gap-2 bg-white border border-slate-200/80 rounded-xl sm:rounded-2xl p-1 sm:p-2 shadow-xs w-full max-w-full overflow-hidden shrink-0">
-        <div className="flex bg-slate-100 p-0.5 sm:p-1 rounded-xl w-full sm:w-fit gap-1">
-          <button
-            type="button"
-            onClick={() => setPosSubTab('billing')}
-            className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-2.5 sm:px-4 py-1 rounded-lg text-[11px] sm:text-xs font-extrabold transition cursor-pointer h-8 sm:h-9.5 ${
-              posSubTab === 'billing'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <ShoppingCart className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-            <span className="truncate">New Sale</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setPosSubTab('history')}
-            className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-2.5 sm:px-4 py-1 rounded-lg text-[11px] sm:text-xs font-extrabold transition cursor-pointer h-8 sm:h-9.5 ${
-              posSubTab === 'history'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-            <span className="truncate">History</span>
-            {(sales || []).length > 0 && (
-              <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold ${
-                posSubTab === 'history' ? 'bg-blue-500/30 text-white' : 'bg-slate-200 text-slate-700'
-              }`}>
-                {(sales || []).length}
-              </span>
-            )}
-          </button>
-        </div>
+    <>
+      <div className="relative rounded-2xl sm:rounded-3xl p-1 sm:p-2 bg-gradient-to-br from-sky-100/75 via-slate-50/85 to-indigo-100/75 border border-white/80 flex flex-col lg:flex-1 lg:min-h-0 overflow-hidden">
+        {/* Subtle Ambient Light Orbs for Glassmorphic Transparency Depth */}
+        <div className="pointer-events-none absolute -top-16 -left-16 w-64 h-64 rounded-full bg-sky-300/25 blur-3xl" />
+        <div className="pointer-events-none absolute top-1/3 -right-16 w-64 h-64 rounded-full bg-indigo-300/25 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-16 left-1/4 w-64 h-64 rounded-full bg-cyan-200/25 blur-3xl" />
 
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          {onOpenPosSettings && (
-            <button
-              type="button"
-              onClick={onOpenPosSettings}
-              className="inline-flex items-center gap-1 px-2.5 py-1 sm:py-1.5 rounded-lg sm:rounded-xl bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200/80 text-[11px] sm:text-xs font-bold transition cursor-pointer h-8 sm:h-9 shrink-0 whitespace-nowrap"
-              title="POS & Billing Settings"
-            >
-              <Sliders className="w-3.5 h-3.5 text-blue-600" />
-              <span className="hidden sm:inline">POS Settings</span>
-            </button>
-          )}
-
-          {/* Developer Tag - Hidden on tiny screens to avoid wrapping */}
-          <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 border border-slate-200/80 rounded-xl shrink-0">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="text-[9px] font-extrabold text-slate-500 tracking-wider tabular-nums">
-              HAMMAD DEVELOPER
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {posSubTab === 'billing' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5 sm:gap-4 items-start lg:flex-1 lg:min-h-0">
-          {/* Left Column: Catalog & Search (7 Cols) - Sticky scrollable catalog on desktop, natural document scroll on mobile */}
-          <div className="lg:col-span-7 flex flex-col lg:min-h-0 lg:sticky lg:top-0 lg:max-h-[calc(100dvh-7.5rem)] space-y-2 sm:space-y-3">
-            {/* Mode Switcher Banner: Retail vs Wholesale Mode (Compact on mobile) */}
-            <div className={`border rounded-2xl p-2 sm:p-3 shadow-xs flex items-center justify-between gap-2 shrink-0 transition ${
-              saleMode === 'wholesale'
-                ? 'bg-gradient-to-r from-purple-900 via-indigo-900 to-purple-800 text-white border-purple-700/80 shadow-purple-900/20'
-                : 'bg-white border-slate-200/90 text-slate-900'
-            }`}>
-              <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
-                <div className={`p-1.5 sm:p-2 rounded-xl shrink-0 ${
-                  saleMode === 'wholesale' ? 'bg-white/15 text-amber-300 backdrop-blur-md' : 'bg-emerald-100 text-emerald-700'
-                }`}>
-                  {saleMode === 'wholesale' ? <Package className="w-4 h-4 sm:w-5 sm:h-5 animate-pulse" /> : <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5" />}
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <h4 className="font-extrabold text-xs sm:text-sm leading-tight truncate">
-                      {saleMode === 'wholesale' ? 'B2B Wholesale' : 'Retail Mode'}
-                    </h4>
-                    <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider ${
-                      saleMode === 'wholesale' ? 'bg-amber-400 text-slate-900' : 'bg-emerald-100 text-emerald-800'
-                    }`}>
-                      {saleMode === 'wholesale' ? 'W/S' : 'Retail'}
-                    </span>
-                  </div>
-                  <p className={`text-[10px] sm:text-[11px] mt-0.5 hidden md:block ${saleMode === 'wholesale' ? 'text-purple-100' : 'text-slate-500'}`}>
-                    {saleMode === 'wholesale'
-                      ? 'Wholesale prices & bulk terms active'
-                      : 'Standard retail consumer prices'}
-                  </p>
-                </div>
+        <div className="relative space-y-2.5 sm:space-y-3 flex flex-col lg:flex-1 lg:min-h-0">
+        {/* Smart Frosted App Header */}
+        <div
+          className={`backdrop-blur-xl text-white rounded-2xl px-3 sm:px-4 pt-2.5 pb-1 shadow-lg border border-white/25 shrink-0 transition-colors ${
+            saleMode === 'wholesale'
+              ? 'bg-gradient-to-r from-purple-700/90 via-indigo-700/90 to-violet-700/90 shadow-purple-900/15'
+              : 'bg-gradient-to-r from-sky-600/90 via-blue-600/90 to-indigo-600/90 shadow-blue-900/15'
+          }`}
+        >
+          {/* Row 1: Back, Title, Retail/Wholesale Pill & Quick Utilities */}
+          <div className="flex items-center justify-between gap-2 pb-2">
+            <div className="flex items-center gap-2 min-w-0">
+              {onBackToHome && (
+                <button
+                  type="button"
+                  onClick={onBackToHome}
+                  className="lg:hidden w-8 h-8 -ml-1 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center transition cursor-pointer shrink-0"
+                  aria-label="Back to home"
+                >
+                  <ArrowLeft className="w-4.5 h-4.5" />
+                </button>
+              )}
+              <div className="min-w-0">
+                <h2 className="text-base sm:text-lg font-extrabold tracking-tight truncate leading-tight">
+                  POS &amp; Billing
+                </h2>
               </div>
+            </div>
 
-              {/* Mode Toggle Switcher Buttons */}
-              <div className={`flex items-center p-0.5 sm:p-1 rounded-xl border shrink-0 ${
-                saleMode === 'wholesale' ? 'bg-purple-950/60 border-purple-600/50' : 'bg-slate-100 border-slate-200'
-              }`}>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {/* Compact Retail / Wholesale Mode Switcher */}
+              <div className="flex items-center p-0.5 rounded-xl bg-white/15 backdrop-blur-md border border-white/20 shrink-0">
                 <button
                   type="button"
                   onClick={() => setSaleMode('retail')}
-                  className={`px-2.5 sm:px-3 py-1 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1 h-7 sm:h-8 ${
+                  className={`px-2 sm:px-2.5 py-1 rounded-lg text-[10.5px] sm:text-xs font-extrabold transition cursor-pointer whitespace-nowrap ${
                     saleMode === 'retail'
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'bg-white text-blue-700 shadow-xs'
+                      : 'text-white/80 hover:text-white'
                   }`}
                 >
-                  <ShoppingCart className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                  <span>Retail</span>
+                  Retail
                 </button>
                 <button
                   type="button"
                   onClick={() => setSaleMode('wholesale')}
-                  className={`px-2.5 sm:px-3 py-1 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1 h-7 sm:h-8 ${
+                  className={`px-2 sm:px-2.5 py-1 rounded-lg text-[10.5px] sm:text-xs font-extrabold transition cursor-pointer whitespace-nowrap ${
                     saleMode === 'wholesale'
-                      ? 'bg-purple-600 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-amber-300 text-slate-900 shadow-xs'
+                      : 'text-white/80 hover:text-white'
                   }`}
                 >
-                  <Package className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                  <span>W/S</span>
+                  W/S
                 </button>
               </div>
+
+              {onOpenSalesReturn && (
+                <button
+                  type="button"
+                  onClick={() => onOpenSalesReturn(null)}
+                  className="px-2 sm:px-2.5 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 backdrop-blur-md border border-white/20 text-white text-[10.5px] sm:text-xs font-bold transition cursor-pointer inline-flex items-center gap-1 whitespace-nowrap"
+                  title="Process Customer Sales Return & Refund"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Return</span>
+                </button>
+              )}
+
+              {onOpenPosSettings && (
+                <button
+                  type="button"
+                  onClick={onOpenPosSettings}
+                  className="w-8 h-8 rounded-xl bg-white/15 hover:bg-white/25 backdrop-blur-md border border-white/20 text-white flex items-center justify-center transition cursor-pointer shrink-0"
+                  title="POS & Billing Settings"
+                  aria-label="POS Settings"
+                >
+                  <Sliders className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Row 2: Clean Sub-Tab Navigation + Sales PDF */}
+          <div className="flex items-center justify-between gap-2 border-t border-white/15 pt-1">
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                onClick={() => setPosSubTab('billing')}
+                className={`relative pb-2 pt-1 text-xs sm:text-[13px] font-extrabold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                  posSubTab === 'billing' ? 'text-white' : 'text-white/70 hover:text-white'
+                }`}
+              >
+                <ShoppingCart className="w-3.5 h-3.5" />
+                <span>New Sale</span>
+                {posSubTab === 'billing' && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-cyan-300" />
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPosSubTab('history')}
+                className={`relative pb-2 pt-1 text-xs sm:text-[13px] font-extrabold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                  posSubTab === 'history' ? 'text-white' : 'text-white/70 hover:text-white'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>History ({(sales || []).length})</span>
+                {posSubTab === 'history' && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-cyan-300" />
+                )}
+              </button>
             </div>
 
-            {/* Search & Category Filter Bar */}
-            <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2 sm:p-3 space-y-1.5 sm:space-y-2 shadow-xs shrink-0">
-              {duplicateScanAlert && (
-                <div className="bg-rose-50 border border-rose-300 text-rose-900 rounded-xl px-3 py-2 flex items-start justify-between gap-2 shadow-xs animate-in fade-in">
-                  <div className="flex items-start gap-2 min-w-0">
-                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                    <div className="text-xs min-w-0">
-                      <p className="font-black text-rose-800 leading-tight">{duplicateScanAlert.title}</p>
-                      <p className="text-[11px] font-semibold text-rose-700 mt-0.5 leading-snug">
-                        {duplicateScanAlert.detail}
-                      </p>
+            {onOpenPdfReport && (
+              <button
+                type="button"
+                onClick={onOpenPdfReport}
+                className="mb-1 px-2.5 py-1 rounded-lg bg-slate-950/35 hover:bg-slate-950/50 border border-white/15 text-white text-[10.5px] font-bold transition cursor-pointer inline-flex items-center gap-1 whitespace-nowrap"
+                title="Export Sales & Invoices PDF Report"
+              >
+                <FileText className="w-3 h-3 text-cyan-300" />
+                <span>Sales PDF</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {posSubTab === 'billing' ? (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 items-start lg:flex-1 lg:min-h-0">
+            {/* Left Column: Frosted Catalog & Search (7 Cols) */}
+            <div className="lg:col-span-7 flex flex-col lg:min-h-0 lg:sticky lg:top-0 lg:max-h-[calc(100dvh-9rem)] space-y-2.5 sm:space-y-3">
+              {/* Frosted Search & Category Filter Dock */}
+              <div className="bg-white/75 backdrop-blur-xl border border-white/90 rounded-2xl p-2.5 sm:p-3 space-y-2 shadow-sm shrink-0">
+                {duplicateScanAlert && (
+                  <div className="bg-rose-50/90 backdrop-blur-md border border-rose-300 text-rose-900 rounded-xl px-3 py-2 flex items-start justify-between gap-2 shadow-xs animate-in fade-in">
+                    <div className="flex items-start gap-2 min-w-0">
+                      <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                      <div className="text-xs min-w-0">
+                        <p className="font-black text-rose-800 leading-tight">{duplicateScanAlert.title}</p>
+                        <p className="text-[11px] font-semibold text-rose-700 mt-0.5 leading-snug">
+                          {duplicateScanAlert.detail}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setDuplicateScanAlert(null)}
-                    className="p-1 text-rose-500 hover:text-rose-800 rounded-lg cursor-pointer shrink-0"
-                    title="Dismiss Alert"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
-              <div className="relative flex items-center">
-                <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  value={search}
-                  onChange={e => {
-                    const nextVal = e.target.value;
-                    setSearch(nextVal);
-                    if (nextVal.trim().length >= 8) {
-                      handleScanOrQuickMatch(nextVal, 'typing');
-                    }
-                  }}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && search.trim()) {
-                      e.preventDefault();
-                      handleScanOrQuickMatch(search, 'enter');
-                    }
-                  }}
-                  placeholder="Scan IMEI / barcode or search product..."
-                  className="compact-mobile-input w-full pl-8.5 pr-20 sm:pr-24 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white transition h-8.5 sm:h-10"
-                />
-                <div className="absolute right-1 flex items-center gap-1">
-                  {search && (
                     <button
                       type="button"
-                      onClick={() => setSearch('')}
-                      className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
-                      title="Clear search"
+                      onClick={() => setDuplicateScanAlert(null)}
+                      className="p-1 text-rose-500 hover:text-rose-800 rounded-lg cursor-pointer shrink-0"
+                      title="Dismiss Alert"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCameraScannerTarget('productSearch');
-                      setIsCameraScannerOpen(true);
-                    }}
-                    className="px-2 sm:px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-xs flex items-center gap-1 text-[10.5px] sm:text-[11px] font-extrabold cursor-pointer transition h-6.5 sm:h-8"
-                    title="Live Camera Barcode & IMEI Scanner"
-                  >
-                    <Camera className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                    <span>Scan</span>
-                  </button>
-                </div>
-              </div>
+                  </div>
+                )}
 
-              <div className="flex items-center justify-between gap-1.5 text-xs w-full max-w-full">
-                <div className="flex-1 min-w-0 flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5 touch-pan-x max-w-full">
+                <div className="relative flex items-center">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={search}
+                    onChange={e => {
+                      const nextVal = e.target.value;
+                      setSearch(nextVal);
+                      if (nextVal.trim().length >= 8) {
+                        handleScanOrQuickMatch(nextVal, 'typing');
+                      }
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && search.trim()) {
+                        e.preventDefault();
+                        handleScanOrQuickMatch(search, 'enter');
+                      }
+                    }}
+                    placeholder="Scan IMEI / barcode or search product..."
+                    className="compact-mobile-input w-full pl-9 pr-20 sm:pr-24 py-1.5 bg-white/80 backdrop-blur-sm border border-slate-200/80 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white transition h-9.5 sm:h-10"
+                  />
+                  <div className="absolute right-1.5 flex items-center gap-1">
+                    {search && (
+                      <button
+                        type="button"
+                        onClick={() => setSearch('')}
+                        className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                        title="Clear search"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCameraScannerTarget('productSearch');
+                        setIsCameraScannerOpen(true);
+                      }}
+                      className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-xs flex items-center gap-1 text-[11px] font-extrabold cursor-pointer transition h-7 sm:h-8"
+                      title="Live Camera Barcode & IMEI Scanner"
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>Scan</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Category Chips */}
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 touch-pan-x max-w-full">
                   {['ALL', ...categories].map(cat => (
                     <button
                       key={cat}
                       type="button"
                       onClick={() => setSelectedCategory(cat)}
-                      className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg sm:rounded-xl font-bold text-[10px] sm:text-xs whitespace-nowrap transition shrink-0 cursor-pointer h-6.5 sm:h-7.5 inline-flex items-center ${
+                      className={`px-2.5 py-1 rounded-xl font-bold text-[11px] sm:text-xs whitespace-nowrap transition shrink-0 cursor-pointer h-7.5 inline-flex items-center ${
                         selectedCategory === cat
-                          ? 'bg-blue-600 text-white shadow-xs'
-                          : 'bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200'
+                          ? saleMode === 'wholesale'
+                            ? 'bg-purple-600 text-white shadow-sm'
+                            : 'bg-blue-600 text-white shadow-sm'
+                          : 'bg-white/70 border border-slate-200/70 text-slate-700 hover:bg-white'
                       }`}
                     >
                       {cat === 'ALL' ? 'All' : cat}
@@ -1887,7 +2005,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                     <select
                       value={selectedCategory}
                       onChange={e => setSelectedCategory(e.target.value)}
-                      className="compact-mobile-input px-2 py-0.5 sm:py-1 rounded-lg sm:rounded-xl bg-slate-100 text-slate-700 text-[10px] sm:text-xs font-bold border border-slate-200 shrink-0 cursor-pointer outline-none h-6.5 sm:h-7.5"
+                      className="compact-mobile-input px-2 py-1 rounded-xl bg-white/80 text-slate-700 text-[11px] sm:text-xs font-bold border border-slate-200/80 shrink-0 cursor-pointer outline-none h-7.5"
                     >
                       <option value="ALL">All ({categories.length})</option>
                       {categories.map(c => (
@@ -1898,165 +2016,141 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                     </select>
                   )}
                 </div>
-
-                {onOpenSalesReturn && (
-                  <button
-                    type="button"
-                    onClick={() => onOpenSalesReturn(null)}
-                    className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-0.5 sm:py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-bold transition cursor-pointer shrink-0 shadow-xs whitespace-nowrap h-6.5 sm:h-7.5"
-                    title="Process Customer Sales Return & Refund"
-                  >
-                    <RotateCcw className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-700" />
-                    <span className="hidden sm:inline">Sales Return</span>
-                    <span className="sm:hidden">Return</span>
-                  </button>
-                )}
               </div>
-            </div>
 
-            {/* Product Cards Grid - Compact 4-Column Horizontal Grid on Mobile */}
-            <div ref={productGridRef} className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto pr-0.5 sm:pr-1.5 space-y-2">
-              {/* Recently Scanned IMEI / Barcode Banner */}
-              {lastScannedItem && (() => {
-                const scannedObj = activeInventory.find(i => i.id === lastScannedItem.itemId);
-                if (!scannedObj) return null;
-                return (
-                  <div className="bg-emerald-50 border border-emerald-300 rounded-xl px-3 py-2 flex items-center justify-between gap-2 shadow-2xs">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <div className="min-w-0 text-xs">
-                        <span className="font-extrabold text-emerald-900 truncate block">
-                          Scanned: {scannedObj.name}
-                          {lastScannedItem.variantLabel ? ` (${lastScannedItem.variantLabel})` : ''}
-                        </span>
-                        {lastScannedItem.imei && (
-                          <span className="text-[10px] font-bold text-emerald-700 tabular-nums block truncate">
-                            IMEI: {lastScannedItem.imei} • Pinned at #1 below & added to cart
+              {/* Frosted Glass Product Cards Grid (Clean 2-Col Mobile -> 3/4-Col Desktop) */}
+              <div ref={productGridRef} className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto pr-0.5 sm:pr-1 space-y-2.5">
+                {lastScannedItem && (() => {
+                  const scannedObj = activeInventory.find(i => i.id === lastScannedItem.itemId);
+                  if (!scannedObj) return null;
+                  return (
+                    <div className="bg-emerald-50/85 backdrop-blur-md border border-emerald-300/80 rounded-2xl px-3 py-2 flex items-center justify-between gap-2 shadow-xs">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <div className="min-w-0 text-xs">
+                          <span className="font-extrabold text-emerald-900 truncate block">
+                            Scanned: {scannedObj.name}
+                            {lastScannedItem.variantLabel ? ` (${lastScannedItem.variantLabel})` : ''}
                           </span>
-                        )}
+                          {lastScannedItem.imei && (
+                            <span className="text-[10px] font-bold text-emerald-700 tabular-nums block truncate">
+                              IMEI: {lastScannedItem.imei} · Pinned at #1 &amp; added to cart
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedProductDetails(scannedObj)}
+                          className="px-2 py-1 rounded-lg bg-white/90 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px] font-bold cursor-pointer transition"
+                        >
+                          Details
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setLastScannedItem(null)}
+                          className="p-1 text-emerald-600 hover:text-emerald-900 rounded-lg cursor-pointer"
+                          title="Dismiss"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedProductDetails(scannedObj)}
-                        className="px-2 py-1 rounded-lg bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px] font-bold cursor-pointer transition"
-                      >
-                        Details
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setLastScannedItem(null)}
-                        className="p-1 text-emerald-600 hover:text-emerald-900 rounded-lg cursor-pointer"
-                        title="Dismiss"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                  );
+                })()}
+
+                {filteredItems.length === 0 ? (
+                  <div className="text-center py-12 bg-white/75 backdrop-blur-xl rounded-2xl border border-white/90 text-xs text-slate-400 space-y-2 shadow-sm">
+                    <Package className="w-8 h-8 mx-auto text-slate-300" />
+                    <p className="font-semibold text-slate-600">No matching products found</p>
+                    <button
+                      type="button"
+                      onClick={onOpenAddStock}
+                      className="mt-1.5 inline-flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition cursor-pointer shadow-sm"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add Product
+                    </button>
                   </div>
-                );
-              })()}
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3 pb-28 lg:pb-4">
+                    {filteredItems.map(item => {
+                      const inCartQtyForItem = cart
+                        .filter(c => c.id === item.id)
+                        .reduce((sum, c) => sum + c.cartQty, 0);
+                      const remainingStock = item.qty - inCartQtyForItem;
+                      const isLastScanned = lastScannedItem?.itemId === item.id;
+                      const itemSpecs = Array.from(
+                        new Set(
+                          [
+                            ...(item.variants || []).map(v => [v.ram, v.storage].filter(Boolean).join('/')),
+                            [item.ram, item.storage].filter(Boolean).join('/'),
+                          ].filter(Boolean)
+                        )
+                      );
 
-              {filteredItems.length === 0 ? (
-                <div className="text-center py-12 bg-white rounded-2xl border border-slate-200 text-xs text-slate-400 space-y-2">
-                  <Package className="w-8 h-8 mx-auto text-slate-300" />
-                  <p className="font-semibold text-slate-600">No matching products found</p>
-                  <button
-                    type="button"
-                    onClick={onOpenAddStock}
-                    className="mt-1.5 inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-50 text-blue-600 font-bold rounded-xl hover:bg-blue-100 transition cursor-pointer h-9"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Add Product
-                  </button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-4 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-1.5 sm:gap-2.5 pb-16 lg:pb-3">
-                  {filteredItems.map(item => {
-                    const inCartQtyForItem = cart
-                      .filter(c => c.id === item.id)
-                      .reduce((sum, c) => sum + c.cartQty, 0);
-                    const remainingStock = item.qty - inCartQtyForItem;
-                    const isLastScanned = lastScannedItem?.itemId === item.id;
-                    const itemSpecs = Array.from(
-                      new Set(
-                        [
-                          ...(item.variants || []).map(v => [v.ram, v.storage].filter(Boolean).join('/')),
-                          [item.ram, item.storage].filter(Boolean).join('/'),
-                        ].filter(Boolean)
-                      )
-                    );
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => setSelectedProductDetails(item)}
+                          className={`bg-white/75 hover:bg-white/95 backdrop-blur-lg border rounded-2xl p-2 sm:p-2.5 shadow-sm hover:shadow-md transition-all duration-150 cursor-pointer flex flex-col justify-between group relative min-w-0 ${
+                            isLastScanned
+                              ? 'border-emerald-500 ring-2 ring-emerald-400/60'
+                              : remainingStock <= 0
+                              ? 'opacity-60 border-white/80'
+                              : 'border-white/90 hover:border-blue-400'
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            {/* Translucent Image Stage */}
+                            <div className="relative w-full h-24 sm:h-28 rounded-xl overflow-hidden bg-slate-100/65 backdrop-blur-sm border border-white/80 flex items-center justify-center p-1.5 group-hover:scale-[1.015] transition-transform duration-200">
+                              {item.image ? (
+                                <img
+                                  src={item.image}
+                                  alt={item.name}
+                                  className="w-full h-full object-contain"
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-blue-500/15 text-blue-600 flex items-center justify-center font-black text-base sm:text-lg">
+                                  {item.name.charAt(0).toUpperCase()}
+                                </div>
+                              )}
 
-                    return (
-                      <div
-                        key={item.id}
-                        onClick={() => setSelectedProductDetails(item)}
-                        className={`bg-white border rounded-xl sm:rounded-2xl p-1.5 sm:p-2.5 shadow-2xs hover:shadow-lg transition-all duration-150 cursor-pointer flex flex-col justify-between group relative min-w-0 ${
-                          isLastScanned
-                            ? 'border-emerald-500 ring-2 ring-emerald-400/70 bg-emerald-50/15'
-                            : remainingStock <= 0
-                            ? 'opacity-60 border-slate-200 hover:border-slate-300'
-                            : 'border-slate-200/90 hover:border-blue-500'
-                        }`}
-                      >
-                        <div className="min-w-0">
-                          {/* Compact Product Image Frame */}
-                          <div className="relative w-full h-14 sm:h-32 rounded-lg sm:rounded-xl overflow-hidden bg-slate-50 border border-slate-100 flex items-center justify-center p-1 sm:p-1.5 group-hover:scale-[1.02] transition-transform duration-200">
-                            {item.image ? (
-                              <img
-                                src={item.image}
-                                alt={item.name}
-                                className="w-full h-full object-contain"
-                                loading="lazy"
-                              />
-                            ) : (
-                              <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-black text-xs sm:text-lg shadow-inner">
-                                {item.name.charAt(0).toUpperCase()}
-                              </div>
-                            )}
+                              {inCartQtyForItem > 0 && (
+                                <span className="absolute top-1.5 left-1.5 text-[9px] font-black px-1.5 py-0.5 rounded-md bg-blue-600/90 backdrop-blur-sm text-white shadow-xs tabular-nums">
+                                  {inCartQtyForItem} in cart
+                                </span>
+                              )}
 
-                            {isLastScanned && (
-                              <span className="absolute top-1 left-1 text-[7.5px] sm:text-[9px] font-black px-1 py-0.2 rounded-full bg-emerald-600 text-white shadow-xs">
-                                ✓
+                              <span
+                                className={`absolute top-1.5 right-1.5 text-[9.5px] font-extrabold px-1.5 py-0.5 rounded-md tabular-nums backdrop-blur-sm ${
+                                  remainingStock > 2
+                                    ? 'bg-emerald-600/85 text-white'
+                                    : remainingStock > 0
+                                    ? 'bg-amber-500/90 text-white'
+                                    : 'bg-rose-600/90 text-white'
+                                }`}
+                              >
+                                {remainingStock > 0 ? `${remainingStock} left` : 'Out'}
                               </span>
-                            )}
-
-                            {/* Remaining Stock Badge */}
-                            <span
-                              className={`absolute top-1 right-1 text-[7.5px] sm:text-[9px] font-extrabold px-1 sm:px-1.5 py-0.2 rounded-full tabular-nums shadow-xs backdrop-blur-xs ${
-                                remainingStock > 2
-                                  ? 'bg-emerald-500/90 text-white'
-                                  : remainingStock > 0
-                                  ? 'bg-amber-500/90 text-white'
-                                  : 'bg-rose-500/90 text-white'
-                              }`}
-                            >
-                              {remainingStock > 0 ? remainingStock : '0'}
-                            </span>
-
-                            {/* Click for Details Hint on desktop hover */}
-                            <div className="hidden sm:block absolute inset-x-0 bottom-0 py-0.5 bg-slate-900/60 backdrop-blur-xs text-white text-[8px] font-bold text-center opacity-0 group-hover:opacity-100 transition-opacity">
-                              Click for Details
                             </div>
+
+                            {/* Title & Quiet Unboxed Metadata */}
+                            <h4 className="font-extrabold text-slate-900 text-xs sm:text-[13px] line-clamp-2 mt-2 leading-snug group-hover:text-blue-600 transition">
+                              {item.name}
+                            </h4>
+                            <p className="text-[10.5px] text-slate-500 font-medium truncate mt-0.5">
+                              {itemSpecs.length > 0 ? itemSpecs[0] : item.category}
+                              {item.variants && item.variants.length > 1 ? ` · ${item.variants.length}v` : ''}
+                            </p>
                           </div>
 
-                          {/* Product Title */}
-                          <h4 className="font-extrabold text-slate-900 text-[9.5px] sm:text-xs line-clamp-2 mt-1 sm:mt-1.5 leading-tight group-hover:text-blue-600 transition">
-                            {item.name}
-                          </h4>
-
-                          {/* Quiet Inline Specs & Category Metadata */}
-                          <p className="text-[8px] sm:text-[9.5px] text-slate-500 font-semibold truncate mt-0.5 leading-tight">
-                            {itemSpecs.length > 0 ? itemSpecs[0] : item.category}
-                            {item.variants && item.variants.length > 1 ? ` · ${item.variants.length}v` : ''}
-                          </p>
-                        </div>
-
-                        {/* Price & Add to Cart Action */}
-                        <div className="mt-1 sm:mt-2 pt-1 sm:pt-1.5 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-1 min-w-0">
-                          <div className="min-w-0">
+                          {/* Price & Add CTA */}
+                          <div className="mt-2 pt-2 border-t border-slate-200/60 flex items-center justify-between gap-1.5 min-w-0">
                             <span
-                              className={`tabular-nums font-extrabold text-[9px] sm:text-xs truncate block ${
-                                saleMode === 'wholesale' ? 'text-purple-700' : 'text-blue-600'
+                              className={`tabular-nums font-black text-xs sm:text-[13px] truncate ${
+                                saleMode === 'wholesale' ? 'text-purple-700' : 'text-blue-700'
                               }`}
                             >
                               {(() => {
@@ -2077,436 +2171,416 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                                 return `${currency} ${getItemUnitPrice(item).toLocaleString()}`;
                               })()}
                             </span>
-                          </div>
 
-                          <div className="flex items-center" onClick={e => e.stopPropagation()}>
-                            <button
-                              type="button"
-                              onClick={() => addToCart(item)}
-                              disabled={remainingStock <= 0}
-                              className={`w-full sm:w-auto px-1.5 sm:px-2 py-0.5 sm:py-1 font-bold rounded-md sm:rounded-lg text-[9px] sm:text-xs inline-flex items-center justify-center gap-0.5 transition cursor-pointer h-6 sm:h-7.5 shrink-0 shadow-2xs ${
-                                remainingStock <= 0
-                                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                                  : saleMode === 'wholesale'
-                                  ? 'bg-purple-600 hover:bg-purple-700 text-white active:scale-95'
-                                  : 'bg-blue-600 hover:bg-blue-700 text-white active:scale-95'
-                              }`}
-                              title="Add directly to bill"
-                            >
-                              <Plus className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" />
-                              <span>Add</span>
-                            </button>
+                            <div onClick={e => e.stopPropagation()} className="shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => addToCart(item)}
+                                disabled={remainingStock <= 0}
+                                className={`px-2.5 py-1.5 font-extrabold rounded-xl text-[11px] inline-flex items-center justify-center gap-1 transition cursor-pointer min-h-[34px] shrink-0 shadow-xs ${
+                                  remainingStock <= 0
+                                    ? 'bg-slate-200/80 text-slate-400 cursor-not-allowed'
+                                    : saleMode === 'wholesale'
+                                    ? 'bg-purple-600 hover:bg-purple-700 text-white active:scale-95'
+                                    : 'bg-blue-600 hover:bg-blue-700 text-white active:scale-95'
+                                }`}
+                                title="Add directly to bill"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>Add</span>
+                              </button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right Column: Frosted Desktop Checkout Cart (5 Cols) */}
+            <div className="hidden lg:flex lg:flex-col lg:col-span-5">
+              {renderCartContent(false)}
+            </div>
+          </div>
+        ) : (
+          /* ================= FROSTED HISTORY SUB-TAB VIEW ================= */
+          <div className="space-y-3 sm:space-y-4 lg:flex-1 lg:min-h-0 lg:overflow-y-auto pr-0.5 pb-20 lg:pb-6">
+            {/* Filters & Actions Control Bar */}
+            <div className="bg-white/75 backdrop-blur-xl border border-white/90 rounded-2xl p-2.5 sm:p-4 shadow-sm space-y-2.5 sm:space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 sm:gap-4">
+                <div className="md:col-span-6 relative flex items-center">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={historySearch}
+                    onChange={e => setHistorySearch(e.target.value)}
+                    placeholder="Scan invoice, IMEI, customer name..."
+                    className="compact-mobile-input w-full pl-9 pr-20 sm:pr-24 py-1.5 bg-white/80 border border-slate-200/80 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white transition h-9.5 sm:h-10"
+                  />
+                  <div className="absolute right-1.5 flex items-center gap-1">
+                    {historySearch && (
+                      <button
+                        type="button"
+                        onClick={() => setHistorySearch('')}
+                        className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                        title="Clear search"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCameraScannerTarget('historySearch');
+                        setIsCameraScannerOpen(true);
+                      }}
+                      className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-xs flex items-center gap-1 text-[11px] font-extrabold cursor-pointer transition h-7 sm:h-8"
+                      title="Live Camera Barcode Scanner"
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>Scan</span>
+                    </button>
+                  </div>
                 </div>
+
+                <div className="md:col-span-6 flex items-center gap-1 overflow-x-auto no-scrollbar justify-start md:justify-end">
+                  {(['today', 'weekly', 'monthly', 'yearly', 'custom'] as const).map(range => (
+                    <button
+                      key={range}
+                      type="button"
+                      onClick={() => setHistoryRange(range)}
+                      className={`px-2.5 py-1 rounded-xl text-[10.5px] sm:text-xs font-extrabold uppercase tracking-wider transition cursor-pointer shrink-0 h-7.5 sm:h-8 inline-flex items-center ${
+                        historyRange === range
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'bg-white/75 border border-slate-200/70 text-slate-600 hover:text-slate-900 hover:bg-white'
+                      }`}
+                    >
+                      {range}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {historyRange === 'custom' && (
+                <div className="flex flex-wrap items-center gap-2 sm:gap-4 bg-white/60 p-2.5 sm:p-3 rounded-xl border border-slate-200/70 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">From:</span>
+                    <input
+                      type="date"
+                      value={historyStartDate}
+                      onChange={e => setHistoryStartDate(e.target.value)}
+                      className="compact-mobile-input bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-semibold text-slate-700 focus:outline-none focus:border-blue-600"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">To:</span>
+                    <input
+                      type="date"
+                      value={historyEndDate}
+                      onChange={e => setHistoryEndDate(e.target.value)}
+                      className="compact-mobile-input bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-semibold text-slate-700 focus:outline-none focus:border-blue-600"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/70">
+                <p className="text-[11px] sm:text-xs text-slate-500 font-medium">
+                  Showing <strong className="text-slate-800">{filteredSales.length}</strong> invoices
+                </p>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handlePrintHistoryReport}
+                    className="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1 bg-white/80 hover:bg-white text-slate-700 border border-slate-200/80 rounded-xl text-[11px] sm:text-xs font-bold transition cursor-pointer h-8"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>Print Report</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleShareHistoryReport}
+                    className="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1 bg-emerald-50/90 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] sm:text-xs font-bold transition cursor-pointer h-8"
+                  >
+                    <Share2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>WhatsApp</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Frosted Metrics Summary */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+              <div className="bg-white/75 backdrop-blur-xl border border-white/90 rounded-2xl p-2.5 sm:p-3.5 shadow-sm flex flex-col justify-between">
+                <p className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider line-clamp-1">Net Sales Volume</p>
+                <p className="text-sm sm:text-lg font-black tabular-nums text-blue-600 mt-0.5 truncate">
+                  {currency} {stats.netRevenue.toLocaleString()}
+                </p>
+                <p className="text-[10px] text-slate-500 mt-0.5 font-semibold truncate">{stats.totalInvoices} active bills</p>
+              </div>
+
+              <div className="bg-white/75 backdrop-blur-xl border border-white/90 rounded-2xl p-2.5 sm:p-3.5 shadow-sm flex flex-col justify-between">
+                <p className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider line-clamp-1">Credit Receivables</p>
+                <p className="text-sm sm:text-lg font-black tabular-nums text-purple-600 mt-0.5 truncate">
+                  {currency} {stats.totalCredit.toLocaleString()}
+                </p>
+                <p className="text-[10px] text-slate-500 mt-0.5 font-semibold truncate">balance due</p>
+              </div>
+
+              <div className="bg-white/75 backdrop-blur-xl border border-white/90 rounded-2xl p-2.5 sm:p-3.5 shadow-sm flex flex-col justify-between">
+                <p className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider line-clamp-1">Cancelled Bills</p>
+                <p className="text-sm sm:text-lg font-black tabular-nums text-rose-600 mt-0.5 truncate">
+                  {stats.cancelledCount} Bills
+                </p>
+                <p className="text-[10px] text-slate-500 mt-0.5 font-semibold truncate">Void: {currency} {stats.cancelledSum.toLocaleString()}</p>
+              </div>
+
+              <div className="bg-white/75 backdrop-blur-xl border border-white/90 rounded-2xl p-2.5 sm:p-3.5 shadow-sm flex flex-col justify-between">
+                <p className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider line-clamp-1">Total Invoices</p>
+                <p className="text-sm sm:text-lg font-black tabular-nums text-slate-900 mt-0.5 truncate">
+                  {filteredSales.length} Bills
+                </p>
+                <p className="text-[10px] text-slate-500 mt-0.5 font-semibold truncate">all records</p>
+              </div>
+            </div>
+
+            {/* Historical Invoices List */}
+            <div className="space-y-2.5">
+              {filteredSales.length === 0 ? (
+                <div className="text-center py-12 bg-white/75 backdrop-blur-xl rounded-2xl border border-white/90 text-xs text-slate-400 space-y-2 shadow-sm">
+                  <FileText className="w-10 h-10 mx-auto text-slate-300" />
+                  <p className="font-bold text-slate-600">No matching sales records found</p>
+                  <p className="text-slate-400 max-w-xs mx-auto">Try typing another query or selecting a different date range filter above.</p>
+                </div>
+              ) : (
+                filteredSales.map(sale => {
+                  const isCancelled = sale.status === 'CANCELLED';
+                  const salePrevBal = Math.max(0, sale.previousBalance || 0);
+                  const saleCombined = sale.grandTotal + salePrevBal;
+                  return (
+                    <div
+                      key={sale.invNo}
+                      className={`bg-white/75 hover:bg-white/95 backdrop-blur-xl border rounded-2xl p-3 sm:p-4 flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-4 transition shadow-sm ${
+                        isCancelled
+                          ? 'border-red-200/80 bg-red-50/40'
+                          : sale.invoiceType === 'credit'
+                            ? 'border-purple-200/70 hover:border-purple-400'
+                            : 'border-white/90 hover:border-blue-400'
+                      }`}
+                    >
+                      <div className="space-y-1.5 min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                          <span className="font-black text-slate-900 text-xs sm:text-sm tabular-nums tracking-wider">
+                            #{sale.invNo}
+                          </span>
+                          <span className="text-slate-300">·</span>
+                          <span className={`font-bold text-[11px] ${
+                            isCancelled
+                              ? 'text-rose-600'
+                              : sale.invoiceType === 'credit'
+                              ? 'text-purple-700'
+                              : 'text-emerald-700'
+                          }`}>
+                            {isCancelled ? 'Void' : sale.invoiceType === 'credit' ? 'Credit / Khata' : 'Cash'}
+                          </span>
+                          {sale.returnStatus === 'FULL' && (
+                            <span className="text-[11px] font-bold text-amber-700">· Returned</span>
+                          )}
+                          {sale.returnStatus === 'PARTIAL' && (
+                            <span className="text-[11px] font-bold text-amber-700">· Partial Return</span>
+                          )}
+                          <span className="text-slate-300">·</span>
+                          <span className="text-[10.5px] sm:text-[11px] font-medium text-slate-500 tabular-nums">
+                            {new Date(sale.date).toLocaleDateString()} {new Date(sale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] sm:text-xs">
+                          <p className="font-extrabold text-blue-700">{sale.custName}</p>
+                          {sale.custPhone && (
+                            <p className="text-slate-500 tabular-nums">{sale.custPhone}</p>
+                          )}
+                        </div>
+
+                        <div className="bg-slate-50/70 border border-slate-200/60 p-2 sm:p-2.5 rounded-xl space-y-1 max-w-2xl">
+                          <div className="divide-y divide-slate-200/60">
+                            {sale.items.map((it, idx) => (
+                              <div key={idx} className="py-0.5 text-[11px] sm:text-xs flex flex-wrap items-center justify-between gap-1.5">
+                                <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                                  <span className="font-bold text-slate-800 truncate">{it.name}</span>
+                                  <span className="font-semibold text-slate-400 text-[10px]">x{it.qty}</span>
+                                  {(it.returnedQty || 0) > 0 && (
+                                    <span className="text-[10px] font-bold text-amber-700">
+                                      (Returned{it.returnReason ? `: ${it.returnReason}` : ''})
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap items-center gap-1 text-[10px] tabular-nums text-slate-500">
+                                  {it.barcode && <span>#{it.barcode}</span>}
+                                  {it.imeis && it.imeis.length > 0 ? (
+                                    <span className="text-blue-700 font-semibold">{it.imeis.join(', ')}</span>
+                                  ) : it.imei ? (
+                                    <span className="text-blue-700 font-semibold">{it.imei}</span>
+                                  ) : null}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {sale.notes && (
+                          <p
+                            dir="auto"
+                            className={`text-[11px] px-2.5 py-1 rounded-lg font-medium border ${
+                              isCancelled
+                                ? 'text-rose-700 bg-rose-50/80 border-rose-200/70'
+                                : 'text-slate-800 bg-amber-50/80 border-amber-200/70'
+                            }`}
+                          >
+                            <strong>Note:</strong> {sale.notes}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex flex-row md:flex-col items-center md:items-end justify-between gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-200/70">
+                        <div className="text-left md:text-right">
+                          <p className="text-[15px] sm:text-lg font-black tabular-nums text-slate-900 leading-none">
+                            {currency} {(salePrevBal > 0 ? saleCombined : sale.grandTotal).toLocaleString()}
+                          </p>
+                          {salePrevBal > 0 && (
+                            <p className="mt-0.5 text-[10px] tabular-nums font-bold text-amber-700">
+                              Bill {currency} {sale.grandTotal.toLocaleString()} + Prev {currency} {salePrevBal.toLocaleString()}
+                            </p>
+                          )}
+                          {sale.invoiceType === 'credit' && (
+                            <div className="mt-0.5 flex items-center md:justify-end gap-2 text-[10px] tabular-nums font-bold">
+                              <span className="text-emerald-600">
+                                Pd: {currency} {(sale.amountPaid || 0).toLocaleString()}
+                              </span>
+                              {sale.amountDue && sale.amountDue > 0 ? (
+                                <span className="text-rose-600">
+                                  Due: {currency} {sale.amountDue.toLocaleString()}
+                                </span>
+                              ) : null}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => onViewReceipt(sale)}
+                            className="h-8 w-8 inline-flex items-center justify-center bg-white/90 hover:bg-slate-100 text-slate-700 border border-slate-200/70 rounded-lg transition cursor-pointer"
+                            title="Print Invoice Bill"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleShareWhatsapp(sale)}
+                            className="h-8 w-8 inline-flex items-center justify-center bg-emerald-50/90 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/70 rounded-lg transition cursor-pointer"
+                            title="Share Invoice on WhatsApp"
+                          >
+                            <Share2 className="w-3.5 h-3.5 text-emerald-600" />
+                          </button>
+
+                          {!isCancelled && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditModal(sale)}
+                              className="h-8 w-8 inline-flex items-center justify-center bg-blue-50/90 hover:bg-blue-100 text-blue-700 border border-blue-200/70 rounded-lg transition cursor-pointer"
+                              title="Edit Invoice (Modify items or details)"
+                            >
+                              <Edit className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDeleteModal(sale)}
+                            className={`h-8 w-8 inline-flex items-center justify-center rounded-lg border transition cursor-pointer ${
+                              isCancelled
+                                ? 'bg-rose-100 hover:bg-rose-200 text-rose-800 border-rose-200'
+                                : 'bg-rose-50/90 hover:bg-rose-100 text-rose-700 border-rose-200/70'
+                            }`}
+                            title={isCancelled ? 'Delete Cancelled Invoice Permanently' : 'Delete / Void Invoice'}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>
-
-          {/* Right Column: Checkout & Billing Cart (Desktop Only >= lg:) — Non-scrollable */}
-          <div className="hidden lg:flex lg:flex-col lg:col-span-5">
-            {renderCartContent(false)}
-          </div>
-
-          {/* Mobile Floating Cart Trigger Bar (Sits cleanly right above bottom navigation bar) */}
-          {cart.length > 0 && (
-            <div className="lg:hidden fixed bottom-[calc(4.2rem+env(safe-area-inset-bottom,0px))] left-3 right-3 sm:left-4 sm:right-4 z-30 animate-in slide-in-from-bottom duration-200">
-              <div
-                onClick={() => setIsMobileCartOpen(true)}
-                className="bg-slate-900/95 backdrop-blur-md text-white rounded-2xl p-2.5 sm:p-3 shadow-2xl flex items-center justify-between cursor-pointer border border-slate-700/60 active:scale-[0.99] transition"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="relative p-1.5 sm:p-2 bg-blue-600 rounded-xl text-white shrink-0">
-                    <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5" />
-                    <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[8px] font-black w-3.5 h-3.5 rounded-full flex items-center justify-center shadow-xs animate-pulse">
-                      {cart.reduce((a, b) => a + b.cartQty, 0)}
-                    </span>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[10px] sm:text-[11px] font-bold text-slate-300">
-                      {cart.reduce((a, b) => a + b.cartQty, 0)} items in Cart
-                    </p>
-                    <p className="text-xs sm:text-sm font-extrabold tabular-nums text-emerald-400 tabular-nums">
-                      {currency} {grandTotal.toLocaleString()}
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl flex items-center gap-1 shadow-md shadow-blue-500/25 transition cursor-pointer h-9 sm:h-10"
-                >
-                  <span>Checkout</span>
-                  <ChevronUp className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Mobile Floating Cart Bottom Sheet Drawer (lg:hidden) */}
-          {isMobileCartOpen && (
-            <div className="ios-bottom-sheet-backdrop lg:hidden fixed inset-0 z-50 flex flex-col justify-end animate-in fade-in duration-200">
-              {/* Backdrop */}
-              <div
-                onClick={() => setIsMobileCartOpen(false)}
-                className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs"
-              />
-
-              {/* Drawer Panel */}
-              <div className="ios-bottom-sheet-panel relative z-10 bg-white rounded-t-3xl max-h-[85vh] flex flex-col shadow-2xl border-t border-slate-200 animate-in slide-in-from-bottom duration-300 overflow-hidden">
-                {/* Drawer Handle */}
-                <div className="w-12 h-1.5 bg-slate-300 rounded-full mx-auto mt-2.5 mb-1 shrink-0" />
-
-                {/* Cart Content Container */}
-                <div className="p-2.5 sm:p-4 overflow-y-auto flex-1">
-                  {renderCartContent(true)}
-                </div>
-              </div>
-            </div>
-          )}
+        )}
         </div>
-      ) : (
-        /* ================= HISTORY SUB-TAB VIEW ================= */
-        <div className="space-y-3 sm:space-y-5 lg:flex-1 lg:min-h-0 lg:overflow-y-auto pr-0.5 pb-12 lg:pb-6">
-          {/* Filters & Actions Control Bar */}
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-2.5 sm:p-4 shadow-xs space-y-2.5 sm:space-y-3">
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 sm:gap-4">
-              {/* Intelligent Search Input */}
-              <div className="md:col-span-6 relative flex items-center">
-                <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={historySearch}
-                  onChange={e => setHistorySearch(e.target.value)}
-                  placeholder="Scan invoice, IMEI, customer name..."
-                  className="compact-mobile-input w-full pl-8.5 pr-20 sm:pr-24 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white transition h-8.5 sm:h-10"
-                />
-                <div className="absolute right-1 flex items-center gap-1">
-                  {historySearch && (
-                    <button
-                      type="button"
-                      onClick={() => setHistorySearch('')}
-                      className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
-                      title="Clear search"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCameraScannerTarget('historySearch');
-                      setIsCameraScannerOpen(true);
-                    }}
-                    className="px-2 sm:px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-xs flex items-center gap-1 text-[10.5px] sm:text-[11px] font-extrabold cursor-pointer transition h-6.5 sm:h-8"
-                    title="Live Camera Barcode Scanner"
-                  >
-                    <Camera className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                    <span>Scan</span>
-                  </button>
-                </div>
-              </div>
+      </div>
 
-              {/* Range Selector Buttons */}
-              <div className="md:col-span-6 flex items-center gap-1 overflow-x-auto no-scrollbar justify-start md:justify-end">
-                {(['today', 'weekly', 'monthly', 'yearly', 'custom'] as const).map(range => (
-                  <button
-                    key={range}
-                    type="button"
-                    onClick={() => setHistoryRange(range)}
-                    className={`px-2 sm:px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-extrabold uppercase tracking-wider transition cursor-pointer shrink-0 h-7 sm:h-8 inline-flex items-center ${
-                      historyRange === range
-                        ? 'bg-blue-600 text-white shadow-xs'
-                        : 'bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-                    }`}
-                  >
-                    {range}
-                  </button>
-                ))}
+      {/* Mobile Floating Frosted Glass Cart Dock (lg:hidden) */}
+      {posSubTab === 'billing' && cart.length > 0 && (
+        <div className="lg:hidden fixed bottom-[calc(4.3rem+env(safe-area-inset-bottom,0px))] left-3 right-3 sm:left-4 sm:right-4 z-30 animate-in slide-in-from-bottom duration-200">
+          <div
+            onClick={() => setIsMobileCartOpen(true)}
+            className="bg-slate-900/80 backdrop-blur-2xl text-white rounded-2xl p-2.5 sm:p-3 shadow-2xl shadow-slate-950/35 flex items-center justify-between gap-2.5 cursor-pointer border border-white/20 active:scale-[0.99] transition"
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div
+                className={`relative w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0 border border-white/20 ${
+                  saleMode === 'wholesale' ? 'bg-purple-600/90' : 'bg-blue-600/90'
+                }`}
+              >
+                <ShoppingCart className="w-4.5 h-4.5" />
+                <span className="absolute -top-1.5 -right-1.5 bg-cyan-400 text-slate-950 text-[9px] font-black min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center shadow-sm tabular-nums">
+                  {totalCartItems}
+                </span>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10.5px] font-semibold text-slate-300 truncate">
+                  {totalCartItems} {totalCartItems === 1 ? 'item' : 'items'}
+                  {previousKhataBalance > 0
+                    ? ` · Prev: ${currency} ${previousKhataBalance.toLocaleString()}`
+                    : matchedKhataCustomer
+                    ? ` · ${matchedKhataCustomer.name}`
+                    : ''}
+                </p>
+                <p className="text-sm font-black tabular-nums text-cyan-300 truncate">
+                  {currency}{' '}
+                  {(previousKhataBalance > 0 ? totalOutstanding : grandTotal).toLocaleString()}
+                </p>
               </div>
             </div>
 
-            {/* Custom Specific Date Range Selectors */}
-            {historyRange === 'custom' && (
-              <div className="flex flex-wrap items-center gap-2 sm:gap-4 bg-slate-50 p-2.5 sm:p-3.5 rounded-xl border border-slate-200/60 text-xs">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">From:</span>
-                  <input
-                    type="date"
-                    value={historyStartDate}
-                    onChange={e => setHistoryStartDate(e.target.value)}
-                    className="compact-mobile-input bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-semibold text-slate-700 focus:outline-none focus:border-blue-600"
-                  />
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">To:</span>
-                  <input
-                    type="date"
-                    value={historyEndDate}
-                    onChange={e => setHistoryEndDate(e.target.value)}
-                    className="compact-mobile-input bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-semibold text-slate-700 focus:outline-none focus:border-blue-600"
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Print and WhatsApp Share Actions for Filters */}
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
-              <p className="text-[11px] sm:text-xs text-slate-500 font-medium">
-                Showing <strong className="text-slate-800">{filteredSales.length}</strong> invoices
-              </p>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={handlePrintHistoryReport}
-                  className="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold transition cursor-pointer h-7.5 sm:h-8.5"
-                >
-                  <Printer className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                  <span>Print Report</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleShareHistoryReport}
-                  className="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold transition cursor-pointer h-7.5 sm:h-8.5"
-                >
-                  <Share2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-600" />
-                  <span>WhatsApp</span>
-                </button>
-              </div>
-            </div>
+            <button
+              type="button"
+              className="px-3.5 py-2 bg-white/15 hover:bg-white/25 backdrop-blur-md border border-white/25 text-white font-extrabold text-xs rounded-xl flex items-center gap-1.5 transition cursor-pointer shrink-0 min-h-[40px]"
+            >
+              <span>View Cart</span>
+              <ChevronUp className="w-4 h-4 text-cyan-300" />
+            </button>
           </div>
+        </div>
+      )}
 
-          {/* Quick Net Metrics Summary */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3.5">
-            <div className="bg-white border border-slate-200/80 rounded-xl sm:rounded-2xl p-2 sm:p-3.5 shadow-2xs flex flex-col justify-between">
-              <p className="text-[9.5px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider line-clamp-1">Net Sales Volume</p>
-              <p className="text-xs sm:text-lg font-extrabold tabular-nums text-blue-600 mt-0.5 truncate">
-                {currency} {stats.netRevenue.toLocaleString()}
-              </p>
-              <p className="text-[9.5px] sm:text-[10px] text-slate-500 mt-0.5 font-semibold truncate">{stats.totalInvoices} active bills</p>
+      {/* Mobile Floating Frosted Cart Bottom Sheet Drawer (lg:hidden) */}
+      {isMobileCartOpen && (
+        <div className="ios-bottom-sheet-backdrop lg:hidden fixed inset-0 z-50 flex flex-col justify-end animate-in fade-in duration-200">
+          <div
+            onClick={() => setIsMobileCartOpen(false)}
+            className="fixed inset-0 bg-slate-950/45 backdrop-blur-sm"
+          />
+
+          <div className="ios-bottom-sheet-panel relative z-10 bg-white/88 backdrop-blur-2xl rounded-t-3xl max-h-[88dvh] flex flex-col shadow-2xl border-t border-white/85 animate-in slide-in-from-bottom duration-300 overflow-hidden">
+            <div className="w-12 h-1.5 bg-slate-400/50 rounded-full mx-auto mt-2.5 mb-1 shrink-0" />
+
+            <div className="p-3 sm:p-4 overflow-y-auto flex-1">
+              {renderCartContent(true)}
             </div>
-
-            <div className="bg-white border border-slate-200/80 rounded-xl sm:rounded-2xl p-2 sm:p-3.5 shadow-2xs flex flex-col justify-between">
-              <p className="text-[9.5px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider line-clamp-1">Credit Receivables</p>
-              <p className="text-xs sm:text-lg font-extrabold tabular-nums text-purple-600 mt-0.5 truncate">
-                {currency} {stats.totalCredit.toLocaleString()}
-              </p>
-              <p className="text-[9.5px] sm:text-[10px] text-slate-500 mt-0.5 font-semibold truncate">balance due</p>
-            </div>
-
-            <div className="bg-white border border-slate-200/80 rounded-xl sm:rounded-2xl p-2 sm:p-3.5 shadow-2xs flex flex-col justify-between">
-              <p className="text-[9.5px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider line-clamp-1">Cancelled Bills</p>
-              <p className="text-xs sm:text-lg font-extrabold tabular-nums text-rose-600 mt-0.5 truncate">
-                {stats.cancelledCount} Bills
-              </p>
-              <p className="text-[9.5px] sm:text-[10px] text-slate-500 mt-0.5 font-semibold truncate">Void: {currency} {stats.cancelledSum.toLocaleString()}</p>
-            </div>
-
-            <div className="bg-white border border-slate-200/80 rounded-xl sm:rounded-2xl p-2 sm:p-3.5 shadow-2xs flex flex-col justify-between">
-              <p className="text-[9.5px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider line-clamp-1">Total Invoices</p>
-              <p className="text-xs sm:text-lg font-extrabold tabular-nums text-slate-900 mt-0.5 truncate">
-                {filteredSales.length} Bills
-              </p>
-              <p className="text-[9.5px] sm:text-[10px] text-slate-500 mt-0.5 font-semibold truncate">all records</p>
-            </div>
-          </div>
-
-          {/* Historical Invoices List */}
-          <div className="space-y-2 sm:space-y-3">
-            {filteredSales.length === 0 ? (
-              <div className="text-center py-12 bg-white rounded-2xl border border-slate-200 text-xs text-slate-400 space-y-2">
-                <FileText className="w-10 h-10 mx-auto text-slate-300" />
-                <p className="font-bold text-slate-600">No matching sales records found</p>
-                <p className="text-slate-400 max-w-xs mx-auto">Try typing another query or selecting a different date range filter above.</p>
-              </div>
-            ) : (
-              filteredSales.map(sale => {
-                const isCancelled = sale.status === 'CANCELLED';
-                return (
-                  <div
-                    key={sale.invNo}
-                    className={`bg-white border rounded-xl sm:rounded-2xl p-2.5 sm:p-4 flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-4 transition hover:shadow-xs ${
-                      isCancelled 
-                        ? 'border-red-100 bg-red-50/20' 
-                        : sale.invoiceType === 'credit'
-                          ? 'border-purple-100 hover:border-purple-300'
-                          : 'border-slate-200/80 hover:border-blue-400'
-                    }`}
-                  >
-                    {/* Left Info Column */}
-                    <div className="space-y-1.5 min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="font-black text-slate-900 text-xs sm:text-sm tabular-nums tracking-wider">
-                          #{sale.invNo}
-                        </span>
-                        
-                        {/* Status Badges */}
-                        {isCancelled ? (
-                          <span className="text-[9px] sm:text-[10px] font-bold px-1.5 py-0.2 rounded bg-rose-100 text-rose-700 border border-rose-200">
-                            VOID
-                          </span>
-                        ) : sale.invoiceType === 'credit' ? (
-                          <span className="text-[9px] sm:text-[10px] font-bold px-1.5 py-0.2 rounded bg-purple-100 text-purple-700 border border-purple-200">
-                            CREDIT
-                          </span>
-                        ) : (
-                          <span className="text-[9px] sm:text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-700 border border-emerald-200">
-                            CASH
-                          </span>
-                        )}
-
-                        {sale.returnStatus === 'FULL' && (
-                          <span className="text-[9px] sm:text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-200">
-                            RETURNED
-                          </span>
-                        )}
-                        {sale.returnStatus === 'PARTIAL' && (
-                          <span className="text-[9px] sm:text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-200">
-                            PARTIAL RETURN
-                          </span>
-                        )}
-
-                        <span className="text-[10px] sm:text-[11px] font-semibold text-slate-400 tabular-nums">
-                          {new Date(sale.date).toLocaleDateString()} {new Date(sale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-
-                      {/* Customer Info */}
-                      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] sm:text-xs">
-                        <p className="font-bold text-slate-800">
-                          <span className="font-extrabold text-blue-600">{sale.custName}</span>
-                        </p>
-                        {sale.custPhone && (
-                          <p className="text-slate-500 tabular-nums">{sale.custPhone}</p>
-                        )}
-                        <span className="text-slate-300">•</span>
-                        <p className="text-slate-500 font-semibold">{sale.invoiceType === 'credit' ? 'Credit / Khata' : 'Cash'}</p>
-                      </div>
-
-                      {/* Sold items view with Barcodes and IMEIs */}
-                      <div className="bg-slate-50/80 border border-slate-100 p-2 sm:p-2.5 rounded-lg sm:rounded-xl space-y-1 max-w-2xl">
-                        <div className="divide-y divide-slate-100">
-                          {sale.items.map((it, idx) => (
-                            <div key={idx} className="py-0.5 text-[11px] sm:text-xs flex flex-wrap items-center justify-between gap-1.5">
-                              <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                                <span className="font-bold text-slate-800 truncate">{it.name}</span>
-                                <span className="font-semibold text-slate-400 text-[10px]">x{it.qty}</span>
-                                {(it.returnedQty || 0) > 0 && (
-                                  <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-200">
-                                    Returned{it.returnReason ? `: ${it.returnReason}` : ''}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="flex flex-wrap items-center gap-1">
-                                {it.barcode && (
-                                  <span className="text-[9px] tabular-nums font-bold bg-slate-200/70 text-slate-600 px-1 py-0.2 rounded">
-                                    #{it.barcode}
-                                  </span>
-                                )}
-                                {it.imeis && it.imeis.length > 0 ? (
-                                  it.imeis.map((im, uIdx) => (
-                                    <span key={uIdx} className="text-[9px] tabular-nums font-bold bg-blue-50 text-blue-700 px-1 py-0.2 rounded border border-blue-200">
-                                      {im}
-                                    </span>
-                                  ))
-                                ) : it.imei ? (
-                                  <span className="text-[9px] tabular-nums font-bold bg-blue-50 text-blue-700 px-1 py-0.2 rounded border border-blue-200">
-                                    {it.imei}
-                                  </span>
-                                ) : null}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Notes / Reason for cancellation */}
-                      {sale.notes && (
-                        <p
-                          dir="auto"
-                          className={`text-[11px] px-2.5 py-1 rounded-lg font-medium border ${
-                            isCancelled
-                              ? 'text-rose-700 bg-rose-50 border-rose-100'
-                              : 'text-slate-800 bg-amber-50 border-amber-200/80'
-                          }`}
-                        >
-                          <strong>{isCancelled ? 'Note:' : 'Note:'}</strong> {sale.notes}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Right Price & Actions Column */}
-                    <div className="flex flex-row md:flex-col items-center md:items-end justify-between gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
-                      <div className="text-left md:text-right">
-                        <p className="text-[15px] sm:text-lg font-black tabular-nums text-slate-900 leading-none">
-                          {currency} {sale.grandTotal.toLocaleString()}
-                        </p>
-                        {sale.invoiceType === 'credit' && (
-                          <div className="mt-0.5 flex items-center md:justify-end gap-2 text-[10px] tabular-nums font-bold">
-                            <span className="text-emerald-600">
-                              Pd: {currency} {(sale.amountPaid || 0).toLocaleString()}
-                            </span>
-                            {sale.amountDue && sale.amountDue > 0 ? (
-                              <span className="text-rose-600">
-                                Due: {currency} {sale.amountDue.toLocaleString()}
-                              </span>
-                            ) : null}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Compact Actions */}
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => onViewReceipt(sale)}
-                          className="h-7.5 w-7.5 sm:h-8 sm:w-8 inline-flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition cursor-pointer"
-                          title="Print Invoice Bill"
-                        >
-                          <Printer className="w-3.5 h-3.5" />
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleShareWhatsapp(sale)}
-                          className="h-7.5 w-7.5 sm:h-8 sm:w-8 inline-flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg transition cursor-pointer"
-                          title="Share Invoice on WhatsApp"
-                        >
-                          <Share2 className="w-3.5 h-3.5 text-emerald-600" />
-                        </button>
-
-                        {!isCancelled && (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEditModal(sale)}
-                            className="h-7.5 w-7.5 sm:h-8 sm:w-8 inline-flex items-center justify-center bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition cursor-pointer"
-                            title="Edit Invoice (Modify items or details)"
-                          >
-                            <Edit className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={() => handleOpenDeleteModal(sale)}
-                          className={`h-7.5 w-7.5 sm:h-8 sm:w-8 inline-flex items-center justify-center rounded-lg transition cursor-pointer ${
-                            isCancelled
-                              ? 'bg-rose-100 hover:bg-rose-200 text-rose-800'
-                              : 'bg-rose-50 hover:bg-rose-100 text-rose-700'
-                          }`}
-                          title={isCancelled ? "Delete Cancelled Invoice Permanently" : "Delete / Void Invoice"}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
           </div>
         </div>
       )}
@@ -3241,7 +3315,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
           onClose={() => setShareModalSale(null)}
         />
       )}
-    </div>
+    </>
   );
 };
 

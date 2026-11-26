@@ -87,12 +87,15 @@ export async function generateInvoicePreviewImage(
   const currency = settings.currency || 'Rs.';
 
   const grandTotal = sale.grandTotal || 0;
+  const prevBalance = Math.max(0, sale.previousBalance || 0);
+  const combinedTotal = grandTotal + prevBalance;
   const amountPaid = sale.amountPaid !== undefined ? sale.amountPaid : grandTotal;
   const amountDue =
     sale.amountDue !== undefined ? sale.amountDue : Math.max(0, grandTotal - amountPaid);
+  const netBalanceDue = Math.max(0, combinedTotal - amountPaid);
   const totalQty = (sale.items || []).reduce((sum, it) => sum + (Number(it.qty) || 0), 0);
   const totalItemsCount = (sale.items || []).length;
-  const isFullyPaid = amountDue <= 0;
+  const isFullyPaid = netBalanceDue <= 0;
   const isPartial = !isFullyPaid && amountPaid > 0;
   const statusLabel = isFullyPaid ? 'PAID' : isPartial ? 'PARTIAL' : 'UNPAID KHATA';
   const statusColor = isFullyPaid ? '#059669' : isPartial ? '#d97706' : '#e11d48';
@@ -147,10 +150,11 @@ export async function generateInvoicePreviewImage(
   calcH += 16;
 
   // Totals box height directly under items
-  let totalRows = 3; // Total Quantity + Subtotal + Grand Total
+  let totalRows = 3; // Total Quantity + Subtotal + Grand Total / Current Bill
   if (sale.discount > 0) totalRows += 1;
+  if (prevBalance > 0) totalRows += 2; // Previous Balance + Total Payable
   totalRows += 1; // Paid row
-  if (amountDue > 0) totalRows += 1;
+  if (netBalanceDue > 0) totalRows += 1;
   calcH += 24 + totalRows * 28 + 20;
 
   // Notes box height
@@ -404,21 +408,48 @@ export async function generateInvoicePreviewImage(
     sy += 26;
   }
 
-  // Grand Total Divider & Highlight Row
+  // Grand Total / Current Bill & Previous Balance Rows
   ctx.strokeStyle = '#cbd5e1';
   ctx.beginPath();
   ctx.moveTo(pad + 14, sy - 14);
   ctx.lineTo(W - pad - 14, sy - 14);
   ctx.stroke();
 
-  ctx.fillStyle = '#0f172a';
-  ctx.font = '900 18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-  ctx.fillText('GRAND TOTAL:', pad + 16, sy + 4);
-  ctx.textAlign = 'right';
-  ctx.fillStyle = '#1d4ed8';
-  ctx.fillText(`${currency} ${grandTotal.toLocaleString()}`, W - pad - 16, sy + 4);
-  ctx.textAlign = 'left';
-  sy += 30;
+  if (prevBalance > 0) {
+    ctx.fillStyle = '#0f172a';
+    ctx.font = '800 15px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.fillText('Current Bill:', pad + 16, sy + 2);
+    ctx.textAlign = 'right';
+    ctx.fillText(`${currency} ${grandTotal.toLocaleString()}`, W - pad - 16, sy + 2);
+    ctx.textAlign = 'left';
+    sy += 26;
+
+    ctx.fillStyle = '#b45309';
+    ctx.font = '800 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.fillText('Previous Balance:', pad + 16, sy + 2);
+    ctx.textAlign = 'right';
+    ctx.fillText(`+${currency} ${prevBalance.toLocaleString()}`, W - pad - 16, sy + 2);
+    ctx.textAlign = 'left';
+    sy += 26;
+
+    ctx.fillStyle = '#0f172a';
+    ctx.font = '900 18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.fillText('TOTAL PAYABLE:', pad + 16, sy + 4);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#1d4ed8';
+    ctx.fillText(`${currency} ${combinedTotal.toLocaleString()}`, W - pad - 16, sy + 4);
+    ctx.textAlign = 'left';
+    sy += 30;
+  } else {
+    ctx.fillStyle = '#0f172a';
+    ctx.font = '900 18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.fillText('GRAND TOTAL:', pad + 16, sy + 4);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#1d4ed8';
+    ctx.fillText(`${currency} ${grandTotal.toLocaleString()}`, W - pad - 16, sy + 4);
+    ctx.textAlign = 'left';
+    sy += 30;
+  }
 
   ctx.fillStyle = '#047857';
   ctx.font = '700 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
@@ -427,13 +458,13 @@ export async function generateInvoicePreviewImage(
   ctx.fillText(`${currency} ${amountPaid.toLocaleString()}`, W - pad - 16, sy);
   ctx.textAlign = 'left';
 
-  if (amountDue > 0) {
+  if (netBalanceDue > 0) {
     sy += 26;
     ctx.fillStyle = '#dc2626';
     ctx.font = '900 15px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-    ctx.fillText('Remaining Balance Due:', pad + 16, sy);
+    ctx.fillText(prevBalance > 0 ? 'Net Balance Due:' : 'Remaining Balance Due:', pad + 16, sy);
     ctx.textAlign = 'right';
-    ctx.fillText(`${currency} ${amountDue.toLocaleString()}`, W - pad - 16, sy);
+    ctx.fillText(`${currency} ${netBalanceDue.toLocaleString()}`, W - pad - 16, sy);
     ctx.textAlign = 'left';
   }
 

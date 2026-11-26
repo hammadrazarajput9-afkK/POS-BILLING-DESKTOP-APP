@@ -2070,6 +2070,9 @@ function AppContent() {
                 onUpdateOnlineAccount={handleUpdateOnlineAccount}
                 saleToEdit={saleToEdit}
                 onClearSaleToEdit={() => setSaleToEdit(null)}
+                onBackToHome={() =>
+                  setActiveTab(typeof window !== 'undefined' && window.innerWidth < 1024 ? 'home' : 'dashboard')
+                }
               />
             )}
 
