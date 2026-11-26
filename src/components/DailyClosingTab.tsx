@@ -182,10 +182,34 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
   const onlineDifference = totalOnlineCounted - accounting.totalExpectedOnline;
   const totalDifference = grandTotal - accounting.totalExpectedGrand;
 
-  // Sync denomination & digital balances when activeDate / saved closing changes
+  const resetEntryBoxes = () => {
+    setDenominations({
+      '5000': 0,
+      '1000': 0,
+      '500': 0,
+      '100': 0,
+      '50': 0,
+      '20': 0,
+      '10': 0,
+    });
+    setCoins('');
+    const emptyOnlineMap: Record<string, number | ''> = {};
+    onlineAccounts.forEach(acc => {
+      emptyOnlineMap[acc.id] = '';
+    });
+    setOnlineBalancesInput(emptyOnlineMap);
+    setClosingNotes('');
+  };
+
+  // Start with empty boxes on date switch / initial load so next closing always begins clean
   useEffect(() => {
     setIsUnlockedForEdit(false);
-    if (existingClosingForActiveDate) {
+    resetEntryBoxes();
+  }, [activeDate, onlineAccounts.length]);
+
+  const handleUnlockExistingClosing = () => {
+    if (!existingClosingForActiveDate) return;
+    if (window.confirm(`Re-open closing for ${activeDate}? This will load saved counts for editing.`)) {
       setDenominations({
         '5000': 0,
         '1000': 0,
@@ -204,28 +228,12 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
         savedOnlineMap[acc.id] = found ? found.balance : '';
       });
       setOnlineBalancesInput(savedOnlineMap);
-
       setClosedBy(existingClosingForActiveDate.closedBy || 'Counter Cashier');
       setClosingNotes(existingClosingForActiveDate.notes || '');
-    } else {
-      setDenominations({
-        '5000': 0,
-        '1000': 0,
-        '500': 0,
-        '100': 0,
-        '50': 0,
-        '20': 0,
-        '10': 0,
-      });
-      setCoins('');
-      const initialOnlineMap: Record<string, number | ''> = {};
-      accounting.onlineAccounts.forEach(acc => {
-        initialOnlineMap[acc.accountId] = acc.expectedClosing !== 0 ? acc.expectedClosing : '';
-      });
-      setOnlineBalancesInput(initialOnlineMap);
-      setClosingNotes('');
+      setIsUnlockedForEdit(true);
+      showToast(`Closing for ${activeDate} unlocked for editing`, 'info');
     }
-  }, [activeDate, existingClosingForActiveDate, onlineAccounts.length]);
+  };
 
   // Ensure newly added digital accounts appear cleanly in input map
   useEffect(() => {
@@ -373,7 +381,8 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
     });
 
     setIsUnlockedForEdit(false);
-    showToast(`Daily Closing for ${activeDate} finalized and locked!`, 'success');
+    resetEntryBoxes();
+    showToast(`Daily Closing for ${activeDate} saved! Entry boxes cleared for next closing.`, 'success');
   };
 
   const generateWhatsAppClosingText = (record: DailyClosingRecord): string => {
@@ -603,32 +612,32 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
       {/* ================================================================= */}
       {activeSubTab === 'tally' && (
         <div className="space-y-3.5">
-          {/* Status Warning Banner for Finalized Day */}
-          {isDayFinalized && (
+          {/* Status Banner for Finalized Day */}
+          {isDayFinalized && existingClosingForActiveDate && (
             <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-              <div className="flex items-start gap-2.5">
+              <div className="flex items-start gap-2.5 min-w-0">
                 <ShieldCheck className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="text-xs font-extrabold text-indigo-950">
-                    Business Date ({activeDate}) is Closed &amp; Locked
+                <div className="min-w-0">
+                  <h4 className="text-xs font-extrabold text-indigo-950 truncate">
+                    Closing Saved ({activeDate}) — Boxes Cleared for Next Closing
                   </h4>
-                  <p className="text-[11px] text-indigo-700 mt-0.5">
-                    Saved by <strong>{existingClosingForActiveDate?.closedBy || 'Cashier'}</strong> at {existingClosingForActiveDate?.time}
+                  <p className="text-[11px] text-indigo-700 mt-0.5 tabular-nums truncate">
+                    Saved by <strong>{existingClosingForActiveDate.closedBy || 'Cashier'}</strong> at {existingClosingForActiveDate.time} · Cash {currency} {existingClosingForActiveDate.totalCash.toLocaleString()} · Digital {currency} {(existingClosingForActiveDate.totalOnline || 0).toLocaleString()} · Grand {currency} {(existingClosingForActiveDate.grandTotal || existingClosingForActiveDate.totalCash).toLocaleString()}
                   </p>
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5 shrink-0">
                 <button
                   type="button"
-                  onClick={() => handlePrintRecord(existingClosingForActiveDate!)}
+                  onClick={() => handlePrintRecord(existingClosingForActiveDate)}
                   className="h-8 px-3 bg-white border border-indigo-200 hover:bg-indigo-100 text-indigo-800 font-bold text-[11px] rounded-xl transition flex items-center gap-1 cursor-pointer"
                 >
                   <Printer className="w-3.5 h-3.5" /> Print Slip
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleShareWhatsApp(existingClosingForActiveDate!)}
+                  onClick={() => handleShareWhatsApp(existingClosingForActiveDate)}
                   className="h-8 px-3 bg-white border border-indigo-200 hover:bg-indigo-100 text-indigo-800 font-bold text-[11px] rounded-xl transition flex items-center gap-1 cursor-pointer"
                 >
                   <Share2 className="w-3.5 h-3.5" /> Share
@@ -636,465 +645,347 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                 {isAdmin && (
                   <button
                     type="button"
-                    onClick={() => {
-                      if (window.confirm(`Re-open closing for ${activeDate}? This will unlock counts for editing.`)) {
-                        setIsUnlockedForEdit(true);
-                        showToast(`Closing for ${activeDate} unlocked`, 'info');
-                      }
-                    }}
+                    onClick={handleUnlockExistingClosing}
                     className="h-8 px-3 bg-amber-500 hover:bg-amber-600 text-white font-bold text-[11px] rounded-xl transition flex items-center gap-1 cursor-pointer"
                   >
-                    <Unlock className="w-3.5 h-3.5" /> Unlock
+                    <Unlock className="w-3.5 h-3.5" /> Edit Saved
                   </button>
                 )}
               </div>
             </div>
           )}
 
-          {/* Period Ledger Strip */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
-            <div className="bg-slate-50/90 border-b border-slate-200/80 px-3.5 py-2.5 flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <h3 className="text-xs sm:text-sm font-extrabold text-slate-900 truncate">
-                  Period Cash &amp; Digital Flow
-                </h3>
-                <p className="text-[10.5px] font-medium text-slate-500 truncate">
-                  Since {accounting.previousClosing ? `${accounting.previousClosing.date}${accounting.previousClosing.time ? ` · ${accounting.previousClosing.time}` : ''}` : 'Initial Inception'}
-                </p>
-              </div>
-
-              <div className="text-right shrink-0">
-                <span className="text-[10px] font-semibold text-slate-500 block">Expected Grand</span>
-                <span className="text-xs sm:text-sm font-black text-indigo-700 tabular-nums">
-                  {currency} {accounting.totalExpectedGrand.toLocaleString()}
-                </span>
-              </div>
-            </div>
-
-            <div className="p-2.5 sm:p-3.5 grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px]">
-              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
-                <span className="text-[10px] font-bold text-slate-500 block">Opening Cash</span>
-                <span className="text-xs sm:text-sm font-extrabold text-slate-900 tabular-nums">
-                  {currency} {accounting.cash.opening.toLocaleString()}
-                </span>
-              </div>
-              <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200/70">
-                <span className="text-[10px] font-bold text-emerald-700 block">
-                  + Cash Sales ({accounting.periodSales.length})
-                </span>
-                <span className="text-xs sm:text-sm font-extrabold text-emerald-700 tabular-nums">
-                  +{currency} {accounting.cash.sales.toLocaleString()}
-                </span>
-              </div>
-              <div className="p-2.5 rounded-xl bg-indigo-50/70 border border-indigo-200/70">
-                <span className="text-[10px] font-bold text-indigo-700 block">+ Khata Recovery</span>
-                <span className="text-xs sm:text-sm font-extrabold text-indigo-700 tabular-nums">
-                  +{currency} {accounting.cash.khataRecoveries.toLocaleString()}
-                </span>
-              </div>
-              <div className="p-2.5 rounded-xl bg-rose-50/70 border border-rose-200/70">
-                <span className="text-[10px] font-bold text-rose-700 block">- Expenses</span>
-                <span className="text-xs sm:text-sm font-extrabold text-rose-700 tabular-nums">
-                  -{currency} {accounting.cash.expenses.toLocaleString()}
-                </span>
-              </div>
-              <div className="col-span-2 sm:col-span-1 p-2.5 rounded-xl bg-amber-50/70 border border-amber-200/70">
-                <span className="text-[10px] font-bold text-amber-800 block">- Supplier Paid</span>
-                <span className="text-xs sm:text-sm font-extrabold text-amber-800 tabular-nums">
-                  -{currency} {accounting.cash.supplierPayments.toLocaleString()}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Main 2-Column Closing Workspace */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-start">
-            {/* Left Column: Cash Notes + Digital Accounts */}
-            <div className="col-span-1 lg:col-span-7 space-y-3.5 min-w-0">
-              {/* 1. Physical Cash Notes Counter */}
-              <div className="bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-4 space-y-2.5 shadow-xs">
-                <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                  <div>
-                    <h3 className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
-                      <Wallet className="w-4 h-4 text-indigo-600 shrink-0" />
-                      <span>Physical Cash Notes</span>
-                    </h3>
-                    <p className="hidden sm:block text-[11px] text-slate-400">
-                      Count cash drawer notes &amp; coins
-                    </p>
-                  </div>
-                  {!isDayFinalized && (
-                    <button
-                      type="button"
-                      onClick={handleClearDenominations}
-                      className="text-[11px] font-semibold text-slate-500 hover:text-rose-600 flex items-center gap-1 transition cursor-pointer shrink-0"
-                    >
-                      <RotateCcw className="w-3 h-3" /> Reset
-                    </button>
-                  )}
+          {/* Side-by-Side Workspace: Left = Physical Cash Notes | Right = Digital Accounts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 items-start">
+            {/* LEFT SIDE: Physical Cash Notes Counter */}
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-4 space-y-2.5 shadow-xs min-w-0">
+              <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                <div>
+                  <h3 className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
+                    <Wallet className="w-4 h-4 text-indigo-600 shrink-0" />
+                    <span>Physical Cash Notes</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Enter cash drawer note counts &amp; coins
+                  </p>
                 </div>
-
-                {/* Desktop Notes Table */}
-                <div className="hidden lg:block border border-slate-200/80 rounded-xl overflow-hidden">
-                  <table className="w-full text-left border-collapse text-xs">
-                    <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
-                      <tr>
-                        <th className="p-2.5">Note</th>
-                        <th className="p-2.5 text-center">Count</th>
-                        <th className="p-2.5 text-right">Subtotal ({currency})</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {PAK_DENOMINATIONS.map(denom => {
-                        const count = denominations[denom.toString()] || 0;
-                        const rowSubtotal = denom * count;
-
-                        return (
-                          <tr key={denom} className="hover:bg-indigo-50/30 transition">
-                            <td className="p-2.5 font-bold text-indigo-900 tabular-nums">
-                              Rs. {denom.toLocaleString()}
-                            </td>
-                            <td className="p-2.5 text-center">
-                              <input
-                                type="number"
-                                min="0"
-                                disabled={isDayFinalized}
-                                value={count === 0 ? '' : count}
-                                onChange={e =>
-                                  handleDenomChange(
-                                    denom,
-                                    e.target.value === '' ? 0 : Number(e.target.value)
-                                  )
-                                }
-                                placeholder="0"
-                                className="w-20 text-center tabular-nums font-bold text-xs bg-slate-50 border border-slate-200 rounded-lg py-1 px-2 focus:outline-none focus:border-indigo-600 focus:bg-white disabled:opacity-75 disabled:cursor-not-allowed"
-                              />
-                            </td>
-                            <td className="p-2.5 text-right font-extrabold text-slate-900 tabular-nums">
-                              {rowSubtotal.toLocaleString()}
-                            </td>
-                          </tr>
-                        );
-                      })}
-
-                      <tr className="bg-slate-50/60">
-                        <td className="p-2.5 font-bold text-slate-700">Loose Coins / Change</td>
-                        <td className="p-2.5 text-right font-semibold text-slate-500">Amount:</td>
-                        <td className="p-2.5 text-right">
-                          <input
-                            type="number"
-                            min="0"
-                            disabled={isDayFinalized}
-                            value={coins === '' ? '' : coins}
-                            onChange={e =>
-                              setCoins(e.target.value === '' ? '' : Number(e.target.value))
-                            }
-                            placeholder="0"
-                            className="w-24 text-right tabular-nums font-bold text-xs bg-white border border-slate-200 rounded-lg py-1 px-2 focus:outline-none focus:border-indigo-600 disabled:opacity-75 disabled:cursor-not-allowed"
-                          />
-                        </td>
-                      </tr>
-
-                      <tr className="bg-indigo-50/70 border-t border-indigo-200">
-                        <td colSpan={2} className="p-3 font-extrabold text-slate-900 text-xs">
-                          Total Physical Cash:
-                        </td>
-                        <td className="p-3 text-right font-black text-indigo-700 text-sm tabular-nums">
-                          {currency} {totalPhysicalCash.toLocaleString()}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Compact Mobile Notes Counter */}
-                <div className="block lg:hidden space-y-1.5">
-                  {PAK_DENOMINATIONS.map(denom => {
-                    const count = denominations[denom.toString()] || 0;
-                    const rowSubtotal = denom * count;
-                    return (
-                      <div
-                        key={denom}
-                        className="bg-slate-50 border border-slate-200/80 rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-2"
-                      >
-                        <span className="font-extrabold text-xs tabular-nums text-indigo-900 shrink-0 w-16">
-                          Rs. {denom}
-                        </span>
-                        <input
-                          type="number"
-                          min="0"
-                          disabled={isDayFinalized}
-                          value={count === 0 ? '' : count}
-                          onChange={e =>
-                            handleDenomChange(
-                              denom,
-                              e.target.value === '' ? 0 : Number(e.target.value)
-                            )
-                          }
-                          placeholder="0"
-                          className="compact-mobile-input w-16 text-center tabular-nums font-bold text-xs bg-white border border-slate-300 rounded-lg h-7.5 px-1.5 focus:outline-none focus:border-indigo-600"
-                        />
-                        <span className="font-bold text-xs text-slate-700 tabular-nums text-right min-w-0 flex-1 truncate">
-                          {rowSubtotal > 0 ? rowSubtotal.toLocaleString() : '0'}
-                        </span>
-                      </div>
-                    );
-                  })}
-
-                  <div className="bg-amber-50/70 border border-amber-200 rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-2">
-                    <span className="font-bold text-xs text-amber-900 shrink-0">Loose Coins</span>
-                    <input
-                      type="number"
-                      min="0"
-                      disabled={isDayFinalized}
-                      value={coins === '' ? '' : coins}
-                      onChange={e =>
-                        setCoins(e.target.value === '' ? '' : Number(e.target.value))
-                      }
-                      placeholder="0"
-                      className="compact-mobile-input w-28 text-right tabular-nums font-bold text-xs bg-white border border-amber-300 rounded-lg h-7.5 px-2 focus:outline-none focus:border-amber-600"
-                    />
-                  </div>
-
-                  <div className="bg-indigo-600 text-white rounded-xl px-3 py-2 flex items-center justify-between shadow-2xs">
-                    <span className="font-bold text-xs">Physical Cash Total:</span>
-                    <span className="font-black text-xs tabular-nums">
-                      {currency} {totalPhysicalCash.toLocaleString()}
-                    </span>
-                  </div>
-                </div>
+                {!isDayFinalized && (
+                  <button
+                    type="button"
+                    onClick={handleClearDenominations}
+                    className="text-[11px] font-semibold text-slate-500 hover:text-rose-600 flex items-center gap-1 transition cursor-pointer shrink-0"
+                  >
+                    <RotateCcw className="w-3 h-3" /> Reset
+                  </button>
+                )}
               </div>
 
-              {/* 2. Digital Accounts Closing Balances */}
-              <div className="bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-4 space-y-3 shadow-xs">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                  <div>
-                    <h3 className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
-                      <Smartphone className="w-4 h-4 text-cyan-600 shrink-0" />
-                      <span>Digital Accounts ({onlineAccounts.length})</span>
-                    </h3>
-                    <p className="text-[11px] text-slate-400">
-                      JazzCash, Easypaisa &amp; Bank balances at closing
-                    </p>
-                  </div>
+              {/* Desktop / Tablet Notes Table */}
+              <div className="hidden sm:block border border-slate-200/80 rounded-xl overflow-hidden">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
+                    <tr>
+                      <th className="py-2 px-2.5">Note</th>
+                      <th className="py-2 px-2.5 text-center">Count</th>
+                      <th className="py-2 px-2.5 text-right">Subtotal ({currency})</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {PAK_DENOMINATIONS.map(denom => {
+                      const count = denominations[denom.toString()] || 0;
+                      const rowSubtotal = denom * count;
 
-                  <div className="flex items-center gap-1.5">
-                    {!isDayFinalized && onlineAccounts.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={handleSyncExpectedDigital}
-                        className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition cursor-pointer"
-                        title="Fill expected balances"
-                      >
-                        Match Expected
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={openAddAccountModal}
-                      className="px-2.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold flex items-center gap-1 transition cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Add Account</span>
-                    </button>
-                  </div>
-                </div>
-
-                {onlineAccounts.length === 0 ? (
-                  <div className="text-center py-6 px-4 bg-slate-50/70 rounded-xl border border-dashed border-slate-300 space-y-2">
-                    <Smartphone className="w-7 h-7 mx-auto text-indigo-400" />
-                    <p className="text-xs font-bold text-slate-700">No Digital Accounts Added</p>
-                    <p className="text-[11px] text-slate-500">
-                      Add JazzCash, Easypaisa, or Bank accounts to track closing wallet balances.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={openAddAccountModal}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" /> Add Digital Account
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {onlineAccounts.map(acc => {
-                      const summaryAcc = accounting.onlineAccounts.find(a => a.accountId === acc.id);
-                      const ChannelIcon = getChannelIcon(acc.bankType);
-                      const val = onlineBalancesInput[acc.id];
                       return (
-                        <div
-                          key={acc.id}
-                          className="p-2.5 rounded-xl bg-slate-50/80 border border-slate-200/80 flex items-center justify-between gap-2.5"
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                            <div className="w-9 h-9 rounded-xl bg-cyan-50 text-cyan-700 flex items-center justify-center shrink-0">
-                              <ChannelIcon className="w-4 h-4" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-bold text-xs text-slate-900 truncate">
-                                  {acc.name}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => openEditAccountModal(acc)}
-                                  className="text-slate-400 hover:text-indigo-600 p-0.5 cursor-pointer shrink-0"
-                                  title="Edit account"
-                                >
-                                  <Edit2 className="w-3 h-3" />
-                                </button>
-                              </div>
-                              <div className="text-[10.5px] text-slate-500 truncate tabular-nums">
-                                <span>{acc.bankType || 'Digital Wallet'}</span>
-                                {acc.accountNumber && (
-                                  <>
-                                    <span aria-hidden="true"> · </span>
-                                    <span>{acc.accountNumber}</span>
-                                  </>
-                                )}
-                                <span aria-hidden="true"> · </span>
-                                <span>Exp: {currency} {(summaryAcc?.expectedClosing || 0).toLocaleString()}</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="shrink-0 w-28 sm:w-32">
+                        <tr key={denom} className="hover:bg-indigo-50/30 transition">
+                          <td className="py-1.5 px-2.5 font-bold text-indigo-900 tabular-nums">
+                            Rs. {denom.toLocaleString()}
+                          </td>
+                          <td className="py-1.5 px-2.5 text-center">
                             <input
                               type="number"
                               min="0"
                               disabled={isDayFinalized}
-                              value={val === '' || val === undefined ? '' : val}
+                              value={count === 0 ? '' : count}
                               onChange={e =>
-                                setOnlineBalancesInput(prev => ({
-                                  ...prev,
-                                  [acc.id]: e.target.value === '' ? '' : Number(e.target.value),
-                                }))
+                                handleDenomChange(
+                                  denom,
+                                  e.target.value === '' ? 0 : Number(e.target.value)
+                                )
                               }
                               placeholder="0"
-                              className="compact-mobile-input w-full text-right tabular-nums font-extrabold text-xs bg-white border border-slate-300 rounded-xl h-8.5 px-2.5 focus:outline-none focus:border-cyan-600 disabled:opacity-75 disabled:cursor-not-allowed"
+                              className="w-20 text-center tabular-nums font-bold text-xs bg-slate-50 border border-slate-200 rounded-lg py-1 px-2 focus:outline-none focus:border-indigo-600 focus:bg-white disabled:opacity-65 disabled:cursor-not-allowed"
                             />
-                          </div>
-                        </div>
+                          </td>
+                          <td className="py-1.5 px-2.5 text-right font-extrabold text-slate-900 tabular-nums">
+                            {rowSubtotal.toLocaleString()}
+                          </td>
+                        </tr>
                       );
                     })}
 
-                    <div className="bg-cyan-600 text-white rounded-xl px-3 py-2 flex items-center justify-between shadow-2xs">
-                      <span className="font-bold text-xs">Total Digital Accounts:</span>
-                      <span className="font-black text-xs tabular-nums">
-                        {currency} {totalOnlineCounted.toLocaleString()}
+                    <tr className="bg-slate-50/60">
+                      <td className="py-1.5 px-2.5 font-bold text-slate-700">Coins / Change</td>
+                      <td className="py-1.5 px-2.5 text-center text-[11px] font-semibold text-slate-500">Amount</td>
+                      <td className="py-1.5 px-2.5 text-right">
+                        <input
+                          type="number"
+                          min="0"
+                          disabled={isDayFinalized}
+                          value={coins === '' ? '' : coins}
+                          onChange={e =>
+                            setCoins(e.target.value === '' ? '' : Number(e.target.value))
+                          }
+                          placeholder="0"
+                          className="w-24 text-right tabular-nums font-bold text-xs bg-white border border-slate-200 rounded-lg py-1 px-2 focus:outline-none focus:border-indigo-600 disabled:opacity-65 disabled:cursor-not-allowed"
+                        />
+                      </td>
+                    </tr>
+
+                    <tr className="bg-indigo-50/80 border-t border-indigo-200">
+                      <td colSpan={2} className="py-2.5 px-2.5 font-extrabold text-slate-900 text-xs">
+                        Total Physical Cash:
+                      </td>
+                      <td className="py-2.5 px-2.5 text-right font-black text-indigo-700 text-sm tabular-nums">
+                        {currency} {totalPhysicalCash.toLocaleString()}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Compact Mobile Notes Counter */}
+              <div className="block sm:hidden space-y-1.5">
+                {PAK_DENOMINATIONS.map(denom => {
+                  const count = denominations[denom.toString()] || 0;
+                  const rowSubtotal = denom * count;
+                  return (
+                    <div
+                      key={denom}
+                      className="bg-slate-50 border border-slate-200/80 rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-2"
+                    >
+                      <span className="font-extrabold text-xs tabular-nums text-indigo-900 shrink-0 w-16">
+                        Rs. {denom}
+                      </span>
+                      <input
+                        type="number"
+                        min="0"
+                        disabled={isDayFinalized}
+                        value={count === 0 ? '' : count}
+                        onChange={e =>
+                          handleDenomChange(
+                            denom,
+                            e.target.value === '' ? 0 : Number(e.target.value)
+                          )
+                        }
+                        placeholder="0"
+                        className="compact-mobile-input w-16 text-center tabular-nums font-bold text-xs bg-white border border-slate-300 rounded-lg h-7.5 px-1.5 focus:outline-none focus:border-indigo-600 disabled:opacity-65"
+                      />
+                      <span className="font-bold text-xs text-slate-700 tabular-nums text-right min-w-0 flex-1 truncate">
+                        {rowSubtotal > 0 ? rowSubtotal.toLocaleString() : '0'}
                       </span>
                     </div>
-                  </div>
-                )}
+                  );
+                })}
+
+                <div className="bg-amber-50/70 border border-amber-200 rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-2">
+                  <span className="font-bold text-xs text-amber-900 shrink-0">Loose Coins</span>
+                  <input
+                    type="number"
+                    min="0"
+                    disabled={isDayFinalized}
+                    value={coins === '' ? '' : coins}
+                    onChange={e =>
+                      setCoins(e.target.value === '' ? '' : Number(e.target.value))
+                    }
+                    placeholder="0"
+                    className="compact-mobile-input w-28 text-right tabular-nums font-bold text-xs bg-white border border-amber-300 rounded-lg h-7.5 px-2 focus:outline-none focus:border-amber-600 disabled:opacity-65"
+                  />
+                </div>
+
+                <div className="bg-indigo-600 text-white rounded-xl px-3 py-2 flex items-center justify-between shadow-2xs">
+                  <span className="font-bold text-xs">Physical Cash Total:</span>
+                  <span className="font-black text-xs tabular-nums">
+                    {currency} {totalPhysicalCash.toLocaleString()}
+                  </span>
+                </div>
               </div>
             </div>
 
-            {/* Right Column: Verification & Finalize Closing */}
-            <div className="col-span-1 lg:col-span-5 bg-white border border-slate-200/90 rounded-2xl p-3.5 sm:p-4 space-y-3 shadow-xs">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                <h4 className="font-bold text-slate-800 text-xs sm:text-sm">
-                  Closing Verification
-                </h4>
-                <span
-                  className={`text-[10.5px] font-bold px-2 py-0.5 rounded-lg ${
-                    isDayFinalized ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
-                  }`}
-                >
-                  {isDayFinalized ? 'Locked' : 'Pending'}
-                </span>
+            {/* RIGHT SIDE: Digital Accounts Closing Balances */}
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-4 space-y-2.5 shadow-xs min-w-0">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                <div>
+                  <h3 className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
+                    <Smartphone className="w-4 h-4 text-cyan-600 shrink-0" />
+                    <span>Digital Accounts ({onlineAccounts.length})</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    JazzCash, Easypaisa &amp; Bank balances at closing
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  {!isDayFinalized && onlineAccounts.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleSyncExpectedDigital}
+                      className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition cursor-pointer"
+                      title="Fill expected balances"
+                    >
+                      Match Expected
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={openAddAccountModal}
+                    className="px-2.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold flex items-center gap-1 transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Account</span>
+                  </button>
+                </div>
               </div>
 
-              <div className="space-y-2.5 text-xs">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1 text-[11px]">
-                    Cashier / Staff Name *
-                  </label>
-                  <input
-                    type="text"
-                    disabled={isDayFinalized}
-                    value={closedBy}
-                    onChange={e => setClosedBy(e.target.value)}
-                    className="compact-mobile-input w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium text-xs focus:outline-none focus:border-indigo-600 focus:bg-white transition disabled:opacity-75 disabled:cursor-not-allowed"
-                  />
+              {onlineAccounts.length === 0 ? (
+                <div className="text-center py-8 px-4 bg-slate-50/70 rounded-xl border border-dashed border-slate-300 space-y-2">
+                  <Smartphone className="w-7 h-7 mx-auto text-indigo-400" />
+                  <p className="text-xs font-bold text-slate-700">No Digital Accounts Added</p>
+                  <p className="text-[11px] text-slate-500">
+                    Add JazzCash, Easypaisa, or Bank accounts to track closing wallet balances.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={openAddAccountModal}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add Digital Account
+                  </button>
                 </div>
+              ) : (
+                <div className="space-y-2">
+                  {onlineAccounts.map(acc => {
+                    const summaryAcc = accounting.onlineAccounts.find(a => a.accountId === acc.id);
+                    const ChannelIcon = getChannelIcon(acc.bankType);
+                    const val = onlineBalancesInput[acc.id];
+                    return (
+                      <div
+                        key={acc.id}
+                        className="p-2.5 rounded-xl bg-slate-50/80 border border-slate-200/80 flex items-center justify-between gap-2.5"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          <div className="w-8 h-8 rounded-xl bg-cyan-50 text-cyan-700 flex items-center justify-center shrink-0">
+                            <ChannelIcon className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-xs text-slate-900 truncate">
+                                {acc.name}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => openEditAccountModal(acc)}
+                                className="text-slate-400 hover:text-indigo-600 p-0.5 cursor-pointer shrink-0"
+                                title="Edit account"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                            <div className="text-[10.5px] text-slate-500 truncate tabular-nums">
+                              <span>{acc.bankType || 'Digital Wallet'}</span>
+                              {acc.accountNumber && (
+                                <>
+                                  <span aria-hidden="true"> · </span>
+                                  <span>{acc.accountNumber}</span>
+                                </>
+                              )}
+                              <span aria-hidden="true"> · </span>
+                              <span>Exp: {currency} {(summaryAcc?.expectedClosing || 0).toLocaleString()}</span>
+                            </div>
+                          </div>
+                        </div>
 
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1 text-[11px]">
-                    Closing Notes (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    disabled={isDayFinalized}
-                    value={closingNotes}
-                    onChange={e => setClosingNotes(e.target.value)}
-                    placeholder="Shift notes or shortages..."
-                    className="compact-mobile-input w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium text-xs focus:outline-none focus:border-indigo-600 focus:bg-white transition disabled:opacity-75 disabled:cursor-not-allowed"
-                  />
-                </div>
+                        <div className="shrink-0 w-28 sm:w-32">
+                          <input
+                            type="number"
+                            min="0"
+                            disabled={isDayFinalized}
+                            value={val === '' || val === undefined ? '' : val}
+                            onChange={e =>
+                              setOnlineBalancesInput(prev => ({
+                                ...prev,
+                                [acc.id]: e.target.value === '' ? '' : Number(e.target.value),
+                              }))
+                            }
+                            placeholder="0"
+                            className="compact-mobile-input w-full text-right tabular-nums font-extrabold text-xs bg-white border border-slate-300 rounded-xl h-8.5 px-2.5 focus:outline-none focus:border-cyan-600 disabled:opacity-65 disabled:cursor-not-allowed"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
 
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 space-y-1.5 text-[11px]">
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Expected Physical Cash:</span>
-                    <span className="tabular-nums font-bold text-slate-700">
-                      {currency} {accounting.totalExpectedCash.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Counted Physical Cash:</span>
-                    <span className="tabular-nums font-bold text-indigo-700">
-                      {currency} {totalPhysicalCash.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="flex justify-between pt-1 border-t border-slate-200/80">
-                    <span className="text-slate-500">Expected Digital:</span>
-                    <span className="tabular-nums font-bold text-slate-700">
-                      {currency} {accounting.totalExpectedOnline.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Counted Digital:</span>
-                    <span className="tabular-nums font-bold text-cyan-700">
+                  <div className="bg-cyan-600 text-white rounded-xl px-3 py-2 flex items-center justify-between shadow-2xs">
+                    <span className="font-bold text-xs">Total Digital Accounts:</span>
+                    <span className="font-black text-xs tabular-nums">
                       {currency} {totalOnlineCounted.toLocaleString()}
                     </span>
                   </div>
-                  <div className="flex justify-between pt-1.5 border-t border-slate-200 font-extrabold text-xs">
-                    <span className="text-slate-900">Grand Closing Total:</span>
-                    <span className="tabular-nums text-slate-900">
-                      {currency} {grandTotal.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="font-bold text-slate-600">Net Difference:</span>
-                    <span
-                      className={`tabular-nums font-bold ${
-                        totalDifference === 0
-                          ? 'text-emerald-600'
-                          : totalDifference > 0
-                          ? 'text-blue-600'
-                          : 'text-rose-600'
-                      }`}
-                    >
-                      {totalDifference === 0
-                        ? 'Matched (0)'
-                        : `${totalDifference > 0 ? '+' : '-'}${currency} ${Math.abs(totalDifference).toLocaleString()}`}
-                    </span>
-                  </div>
                 </div>
+              )}
+            </div>
+          </div>
 
+          {/* Compact Bottom Verification & Save Closing Strip */}
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-4 shadow-xs">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
+              <div className="lg:col-span-3">
+                <label className="block font-semibold text-slate-700 mb-1 text-[11px]">
+                  Cashier / Staff Name *
+                </label>
+                <input
+                  type="text"
+                  disabled={isDayFinalized}
+                  value={closedBy}
+                  onChange={e => setClosedBy(e.target.value)}
+                  className="compact-mobile-input w-full bg-slate-50 border border-slate-200 rounded-xl px-3 h-9 font-medium text-xs focus:outline-none focus:border-indigo-600 focus:bg-white transition disabled:opacity-65 disabled:cursor-not-allowed"
+                />
+              </div>
+
+              <div className="lg:col-span-4">
+                <label className="block font-semibold text-slate-700 mb-1 text-[11px]">
+                  Closing Notes (Optional)
+                </label>
+                <input
+                  type="text"
+                  disabled={isDayFinalized}
+                  value={closingNotes}
+                  onChange={e => setClosingNotes(e.target.value)}
+                  placeholder="Shift notes or remarks..."
+                  className="compact-mobile-input w-full bg-slate-50 border border-slate-200 rounded-xl px-3 h-9 font-medium text-xs focus:outline-none focus:border-indigo-600 focus:bg-white transition disabled:opacity-65 disabled:cursor-not-allowed"
+                />
+              </div>
+
+              <div className="lg:col-span-3 flex items-center justify-between bg-slate-50 border border-slate-200/80 rounded-xl px-3 h-9 text-xs tabular-nums">
+                <span className="text-slate-600 font-semibold">Grand Total:</span>
+                <span className="font-black text-indigo-700">
+                  {currency} {grandTotal.toLocaleString()}
+                </span>
+              </div>
+
+              <div className="lg:col-span-2">
                 {!isDayFinalized ? (
                   <button
                     type="button"
                     onClick={handleFinalizeClosing}
-                    className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white text-xs font-extrabold rounded-xl shadow-md shadow-indigo-500/25 transition cursor-pointer flex items-center justify-center gap-1.5"
+                    className="w-full h-9 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white text-xs font-extrabold rounded-xl shadow-sm transition cursor-pointer flex items-center justify-center gap-1.5 px-3"
                   >
-                    <Lock className="w-3.5 h-3.5" />
-                    <span>Finalize Closing ({activeDate})</span>
+                    <Lock className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">Save Closing</span>
                   </button>
                 ) : (
-                  <div className="p-2.5 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-900 text-center">
-                    <p className="text-[11px] font-bold flex items-center justify-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Day Closed &amp; Recorded
-                    </p>
+                  <div className="h-9 px-3 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-800 flex items-center justify-center gap-1 text-xs font-bold">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>Saved</span>
                   </div>
                 )}
               </div>

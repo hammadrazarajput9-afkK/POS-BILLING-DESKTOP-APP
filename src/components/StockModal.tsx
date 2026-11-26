@@ -252,9 +252,6 @@ export const StockModal: React.FC<StockModalProps> = ({
   const [variants, setVariants] = useState<MobileVariant[]>([
     createDefaultVariant('var-1', '4GB', '64GB'),
   ]);
-  const [editAutoFallback, setEditAutoFallback] = useState<
-    Record<string, { costPrice?: number | ''; wholesalePrice?: number | ''; salePrice?: number | '' }>
-  >({});
 
   // Category creation / rename inline state
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
@@ -313,38 +310,21 @@ export const StockModal: React.FC<StockModalProps> = ({
         }
 
         if (editItem.variants && editItem.variants.length > 0) {
-          const fallbackMap: Record<
-            string,
-            { costPrice?: number | ''; wholesalePrice?: number | ''; salePrice?: number | '' }
-          > = {};
           setVariants(
-            editItem.variants.map(v => {
-              const fb: { costPrice?: number | ''; wholesalePrice?: number | ''; salePrice?: number | '' } = {};
-              if (v.autoCostPrice && v.costPrice !== '') fb.costPrice = v.costPrice;
-              if (v.autoWholesalePrice && v.wholesalePrice !== undefined && v.wholesalePrice !== '') {
-                fb.wholesalePrice = v.wholesalePrice;
-              }
-              if (v.autoSalePrice && v.salePrice !== '') fb.salePrice = v.salePrice;
-              if (Object.keys(fb).length > 0) {
-                fallbackMap[v.id] = fb;
-              }
-              return {
-                ...v,
-                note: v.note || '',
-                costPrice: v.autoCostPrice ? '' : v.costPrice,
-                wholesalePrice: v.autoWholesalePrice
-                  ? ''
-                  : v.wholesalePrice !== undefined
-                  ? v.wholesalePrice
-                  : '',
-                salePrice: v.autoSalePrice ? '' : v.salePrice,
-                imeis: v.imeis && v.imeis.length > 0 ? [...v.imeis] : Array(Math.max(1, Number(v.qty) || 1)).fill(''),
-              };
-            })
+            editItem.variants.map(v => ({
+              ...v,
+              note: v.note || '',
+              costPrice: v.autoCostPrice ? '' : v.costPrice,
+              wholesalePrice: v.autoWholesalePrice
+                ? ''
+                : v.wholesalePrice !== undefined
+                ? v.wholesalePrice
+                : '',
+              salePrice: v.autoSalePrice ? '' : v.salePrice,
+              imeis: v.imeis && v.imeis.length > 0 ? [...v.imeis] : Array(Math.max(1, Number(v.qty) || 1)).fill(''),
+            }))
           );
-          setEditAutoFallback(fallbackMap);
         } else if (isMobileCategory(editItem.category)) {
-          setEditAutoFallback({});
           // If mobile category without variants, seed the current item as Variant #1
           const parenMatch = editItem.name.match(/\(([^)]+)\)/);
           const parenColor = parenMatch ? parenMatch[1].trim() : '';
@@ -360,11 +340,8 @@ export const StockModal: React.FC<StockModalProps> = ({
             qty: editItem.qty || 1,
             imeis: existingImeis.length > 0 ? existingImeis : [''],
           }]);
-        } else {
-          setEditAutoFallback({});
         }
       } else {
-        setEditAutoFallback({});
         isEditingRef.current = false;
         // Pre-select last chosen category so adding multiple items in the same category is sticky & fast
         const lastCategory = getLastSelectedCategory(categories);
@@ -560,62 +537,6 @@ export const StockModal: React.FC<StockModalProps> = ({
     return null;
   };
 
-  // Check if two variants share the exact same RAM + Storage spec (for Keypad, RAM/Storage aren't applicable)
-  const isSameSpecForAutoPrice = (a: MobileVariant, b: MobileVariant): boolean => {
-    if (isKeypad) return true;
-    const aRam = (a.ram || '').trim().toLowerCase();
-    const bRam = (b.ram || '').trim().toLowerCase();
-    const aSto = (a.storage || '').trim().toLowerCase();
-    const bSto = (b.storage || '').trim().toLowerCase();
-    if (!aRam && !aSto) return false;
-    return aRam === bRam && aSto === bSto;
-  };
-
-  // Returns faint suggested price ONLY if input is empty and a sibling with the SAME RAM & Storage has a price
-  const getVariantPriceSuggestion = (
-    idx: number,
-    field: 'costPrice' | 'wholesalePrice' | 'salePrice'
-  ): number | '' => {
-    const target = variants[idx];
-    if (!target) return '';
-    if (target[field] !== '' && target[field] !== undefined) return '';
-
-    const autoFlag =
-      field === 'costPrice'
-        ? 'autoCostPrice'
-        : field === 'wholesalePrice'
-        ? 'autoWholesalePrice'
-        : 'autoSalePrice';
-
-    const manualSibling = variants.find(
-      (s, j) =>
-        j !== idx &&
-        isSameSpecForAutoPrice(target, s) &&
-        s[field] !== '' &&
-        s[field] !== undefined &&
-        !s[autoFlag]
-    );
-    if (manualSibling && manualSibling[field] !== '' && manualSibling[field] !== undefined) {
-      return Number(manualSibling[field]);
-    }
-
-    const anySibling = variants.find(
-      (s, j) =>
-        j !== idx &&
-        isSameSpecForAutoPrice(target, s) &&
-        s[field] !== '' &&
-        s[field] !== undefined
-    );
-    if (anySibling && anySibling[field] !== '' && anySibling[field] !== undefined) {
-      return Number(anySibling[field]);
-    }
-
-    const fb = editAutoFallback[target.id]?.[field];
-    if (fb !== undefined && fb !== '') return Number(fb);
-
-    return '';
-  };
-
   // Variant helper functions
   const handleAddVariant = () => {
     const lastVar = variants[variants.length - 1];
@@ -692,7 +613,6 @@ export const StockModal: React.FC<StockModalProps> = ({
   };
 
   const handleUpdateVariantField = (idx: number, field: keyof MobileVariant, value: any) => {
-    const targetId = variants[idx]?.id;
     setVariants(prev => {
       const copy = prev.map(v => ({ ...v }));
       copy[idx][field] = value as never;
@@ -703,15 +623,6 @@ export const StockModal: React.FC<StockModalProps> = ({
 
       return copy;
     });
-
-    if (targetId && (field === 'ram' || field === 'storage')) {
-      setEditAutoFallback(prev => {
-        if (!prev[targetId]) return prev;
-        const next = { ...prev };
-        delete next[targetId];
-        return next;
-      });
-    }
   };
 
   // Critical requirement: When Variant quantity changes, dynamically match IMEIs count exactly!
@@ -1075,21 +986,15 @@ export const StockModal: React.FC<StockModalProps> = ({
     }
   };
 
-  // Totals calculations for mobile variants (resolving faint same-spec auto suggestions too)
+  // Totals calculations for mobile variants (strictly from entered values, no auto-fill)
   const totalVariantsCount = variants.length;
   const totalVariantsQty = variants.reduce((acc, v) => acc + (Number(v.qty) || 0), 0);
-  const totalVariantsCost = variants.reduce((acc, v, idx) => {
-    const effCost =
-      v.costPrice !== '' && v.costPrice !== undefined
-        ? Number(v.costPrice)
-        : Number(getVariantPriceSuggestion(idx, 'costPrice')) || 0;
+  const totalVariantsCost = variants.reduce((acc, v) => {
+    const effCost = v.costPrice !== '' && v.costPrice !== undefined ? Number(v.costPrice) : 0;
     return acc + effCost * (Number(v.qty) || 0);
   }, 0);
-  const totalVariantsSale = variants.reduce((acc, v, idx) => {
-    const effSale =
-      v.salePrice !== '' && v.salePrice !== undefined
-        ? Number(v.salePrice)
-        : Number(getVariantPriceSuggestion(idx, 'salePrice')) || 0;
+  const totalVariantsSale = variants.reduce((acc, v) => {
+    const effSale = v.salePrice !== '' && v.salePrice !== undefined ? Number(v.salePrice) : 0;
     return acc + effSale * (Number(v.qty) || 0);
   }, 0);
   const totalVariantsProfit = totalVariantsSale - totalVariantsCost;
@@ -1110,22 +1015,23 @@ export const StockModal: React.FC<StockModalProps> = ({
       }
 
       for (let i = 0; i < variants.length; i++) {
-        if (variants[i].qty === '' || Number(variants[i].qty) < 1) {
-          showToast(`Please enter quantity (at least 1) for Variant #${i + 1}`, 'warning');
+        if (variants[i].qty === '' || Number(variants[i].qty) < (editItem ? 0 : 1)) {
+          showToast(
+            editItem
+              ? `Please enter a valid quantity for Variant #${i + 1}`
+              : `Please enter quantity (at least 1) for Variant #${i + 1}`,
+            'warning'
+          );
           return;
         }
       }
 
-      // 1. Synchronize every variant's imeis array & resolve effective auto-suggested prices ONLY for matching RAM + Storage
-      const synchronizedVariants = variants.map((v, idx) => {
-        const qty = Math.max(1, Number(v.qty));
+      // 1. Synchronize every variant's imeis array — preserve blank prices as '' (never auto-fill)
+      const synchronizedVariants = variants.map(v => {
+        const qty = editItem ? Math.max(0, Number(v.qty) || 0) : Math.max(1, Number(v.qty));
         const curImeis = v.imeis || [];
         const nextImeis = [...curImeis];
         while (nextImeis.length < qty) nextImeis.push('');
-
-        const suggCost = getVariantPriceSuggestion(idx, 'costPrice');
-        const suggWholesale = getVariantPriceSuggestion(idx, 'wholesalePrice');
-        const suggSale = getVariantPriceSuggestion(idx, 'salePrice');
 
         const hasManualCost = v.costPrice !== '' && v.costPrice !== undefined;
         const hasManualWholesale = v.wholesalePrice !== '' && v.wholesalePrice !== undefined;
@@ -1133,16 +1039,12 @@ export const StockModal: React.FC<StockModalProps> = ({
 
         return {
           ...v,
-          costPrice: hasManualCost ? Number(v.costPrice) : suggCost !== '' ? Number(suggCost) : ('' as const),
-          wholesalePrice: hasManualWholesale
-            ? Number(v.wholesalePrice)
-            : suggWholesale !== ''
-            ? Number(suggWholesale)
-            : ('' as const),
-          salePrice: hasManualSale ? Number(v.salePrice) : suggSale !== '' ? Number(suggSale) : ('' as const),
-          autoCostPrice: !hasManualCost && suggCost !== '',
-          autoWholesalePrice: !hasManualWholesale && suggWholesale !== '',
-          autoSalePrice: !hasManualSale && suggSale !== '',
+          costPrice: hasManualCost ? Number(v.costPrice) : ('' as const),
+          wholesalePrice: hasManualWholesale ? Number(v.wholesalePrice) : ('' as const),
+          salePrice: hasManualSale ? Number(v.salePrice) : ('' as const),
+          autoCostPrice: false,
+          autoWholesalePrice: false,
+          autoSalePrice: false,
           qty,
           imeis: nextImeis.slice(0, qty),
           note: v.note?.trim() || undefined,
@@ -1179,6 +1081,7 @@ export const StockModal: React.FC<StockModalProps> = ({
       const validation = validateImeis({
         imeisToCheck: allVariantImeis,
         currentProductId: editItem?.id,
+        allowedSoldImeis: editItem ? extractItemImeis(editItem) : [],
         inventory,
         imeiRecords,
         sales,
@@ -1194,9 +1097,9 @@ export const StockModal: React.FC<StockModalProps> = ({
         const v = synchronizedVariants[i];
         const cost = Number(v.costPrice) || 0;
         const sale = Number(v.salePrice) || 0;
-        const quantity = Math.max(1, Number(v.qty) || 1);
+        const quantity = editItem ? Math.max(0, Number(v.qty) || 0) : Math.max(1, Number(v.qty) || 1);
 
-        if (cost < 0 || sale < 0 || quantity < 1) {
+        if (cost < 0 || sale < 0 || quantity < 0 || (!editItem && quantity < 1)) {
           showToast(`Variant #${i + 1} has invalid price or quantity`, 'error');
           return;
         }
@@ -1322,9 +1225,11 @@ export const StockModal: React.FC<StockModalProps> = ({
         const validation = validateImeis({
           imeisToCheck: cleaned,
           currentProductId: editItem?.id,
+          allowedSoldImeis: editItem ? extractItemImeis(editItem) : [],
           inventory,
           imeiRecords,
           sales,
+          salesReturns,
         });
 
         if (!validation.valid) {
@@ -1445,13 +1350,13 @@ export const StockModal: React.FC<StockModalProps> = ({
                   : 'Add New Product to Inventory'}
               </h3>
               {isAndroid && !editItem && (
-                <span className="px-1.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold bg-blue-100 text-blue-700 flex items-center gap-1 shrink-0">
+                <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200/70 flex items-center gap-1 shrink-0">
                   <Sparkles className="w-2.5 h-2.5" /> Multi-Variant
                 </span>
               )}
               {isKeypad && !editItem && (
-                <span className="px-1.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold bg-purple-100 text-purple-700 shrink-0">
-                  Keypad / Feature
+                <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200/70 shrink-0">
+                  Keypad
                 </span>
               )}
             </div>
@@ -1689,23 +1594,8 @@ export const StockModal: React.FC<StockModalProps> = ({
               <div className="space-y-2">
                 {variants.map((v, vIdx) => {
                   const currentQty = Math.max(1, Number(v.qty) || 1);
-                  const suggCost = getVariantPriceSuggestion(vIdx, 'costPrice');
-                  const suggWholesale = getVariantPriceSuggestion(vIdx, 'wholesalePrice');
-                  const suggSale = getVariantPriceSuggestion(vIdx, 'salePrice');
-
-                  const effCost =
-                    v.costPrice !== '' && v.costPrice !== undefined
-                      ? Number(v.costPrice)
-                      : Number(suggCost) || 0;
-                  const effSale =
-                    v.salePrice !== '' && v.salePrice !== undefined
-                      ? Number(v.salePrice)
-                      : Number(suggSale) || 0;
-
-                  const isAutoCostHint = (v.costPrice === '' || v.costPrice === undefined) && suggCost !== '';
-                  const isAutoWholesaleHint =
-                    (v.wholesalePrice === '' || v.wholesalePrice === undefined) && suggWholesale !== '';
-                  const isAutoSaleHint = (v.salePrice === '' || v.salePrice === undefined) && suggSale !== '';
+                  const effCost = v.costPrice !== '' && v.costPrice !== undefined ? Number(v.costPrice) : 0;
+                  const effSale = v.salePrice !== '' && v.salePrice !== undefined ? Number(v.salePrice) : 0;
 
                   const marginVal = effSale > 0 && effCost > 0 ? effSale - effCost : 0;
                   const marginPct = marginVal > 0 && effCost > 0 ? Math.round((marginVal / effCost) * 100) : 0;
@@ -1713,7 +1603,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                   return (
                     <div
                       key={v.id || vIdx}
-                      className="bg-white border border-slate-200/90 rounded-xl p-2 sm:p-3 space-y-2 shadow-2xs hover:border-blue-300 transition"
+                      className="animate-scale-in bg-white border border-slate-200/90 rounded-xl p-2 sm:p-2.5 space-y-2 shadow-2xs hover:border-blue-300 transition"
                     >
                       {/* Compact Variant Header + Inline Margin Badge */}
                       <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 gap-1.5">
@@ -1862,13 +1752,8 @@ export const StockModal: React.FC<StockModalProps> = ({
                       <div className={`grid gap-1.5 sm:gap-2 bg-slate-50/80 p-2 rounded-lg border border-slate-200/70 items-center ${canSeeCostAndWholesale ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2'}`}>
                         {canSeeCostAndWholesale && (
                           <div>
-                            <label className="flex items-center justify-between gap-1 font-bold text-slate-700 mb-0.5 text-[10px]" title="Cost Price">
-                              <span className="truncate">1. Cost ({currency})</span>
-                              {isAutoCostHint && (
-                                <span className="px-1 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300/70 text-[9px] font-extrabold shrink-0">
-                                  Auto
-                                </span>
-                              )}
+                            <label className="block font-bold text-slate-700 mb-0.5 text-[10px] truncate" title="Cost Price">
+                              1. Cost ({currency})
                             </label>
                             <input
                               type="number"
@@ -1881,25 +1766,16 @@ export const StockModal: React.FC<StockModalProps> = ({
                                   e.target.value === '' ? '' : Number(e.target.value)
                                 )
                               }
-                              placeholder={isAutoCostHint ? String(suggCost) : 'Cost Price'}
-                              className={`compact-mobile-input w-full rounded-lg px-2 h-8.5 text-xs tabular-nums font-bold focus:outline-none border transition ${
-                                isAutoCostHint
-                                  ? 'bg-amber-50/60 border-amber-300 ring-1 ring-amber-200/60 placeholder:text-amber-700/50 placeholder:font-bold text-slate-900 focus:border-amber-500'
-                                  : 'bg-white border-slate-200 focus:border-blue-600'
-                              }`}
+                              placeholder="Cost Price"
+                              className="compact-mobile-input w-full rounded-lg px-2 h-8.5 text-xs tabular-nums font-bold focus:outline-none border bg-white border-slate-200 focus:border-blue-600 transition"
                             />
                           </div>
                         )}
 
                         {canSeeCostAndWholesale && (
                           <div>
-                            <label className="flex items-center justify-between gap-1 font-bold text-purple-900 mb-0.5 text-[10px]" title="Wholesale Price">
-                              <span className="truncate">2. Wholesale ({currency})</span>
-                              {isAutoWholesaleHint && (
-                                <span className="px-1 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300/70 text-[9px] font-extrabold shrink-0">
-                                  Auto
-                                </span>
-                              )}
+                            <label className="block font-bold text-purple-900 mb-0.5 text-[10px] truncate" title="Wholesale Price">
+                              2. Wholesale ({currency})
                             </label>
                             <input
                               type="number"
@@ -1912,24 +1788,15 @@ export const StockModal: React.FC<StockModalProps> = ({
                                   e.target.value === '' ? '' : Number(e.target.value)
                                 )
                               }
-                              placeholder={isAutoWholesaleHint ? String(suggWholesale) : 'Wholesale'}
-                              className={`compact-mobile-input w-full rounded-lg px-2 h-8.5 text-xs tabular-nums font-bold focus:outline-none border transition ${
-                                isAutoWholesaleHint
-                                  ? 'bg-amber-50/60 border-amber-300 ring-1 ring-amber-200/60 placeholder:text-amber-700/50 placeholder:font-bold text-purple-950 focus:border-amber-500'
-                                  : 'bg-purple-50/70 border-purple-200 text-purple-950 focus:border-purple-600'
-                              }`}
+                              placeholder="Wholesale"
+                              className="compact-mobile-input w-full rounded-lg px-2 h-8.5 text-xs tabular-nums font-bold focus:outline-none border bg-purple-50/70 border-purple-200 text-purple-950 focus:border-purple-600 transition"
                             />
                           </div>
                         )}
 
                         <div>
-                          <label className="flex items-center justify-between gap-1 font-bold text-slate-700 mb-0.5 text-[10px]" title="Sale Price">
-                            <span className="truncate">3. Sale ({currency})</span>
-                            {isAutoSaleHint && (
-                              <span className="px-1 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300/70 text-[9px] font-extrabold shrink-0">
-                                Auto
-                              </span>
-                            )}
+                          <label className="block font-bold text-slate-700 mb-0.5 text-[10px] truncate" title="Sale Price">
+                            3. Sale ({currency})
                           </label>
                           <input
                             type="number"
@@ -1942,12 +1809,8 @@ export const StockModal: React.FC<StockModalProps> = ({
                                 e.target.value === '' ? '' : Number(e.target.value)
                               )
                             }
-                            placeholder={isAutoSaleHint ? String(suggSale) : 'Sale Price'}
-                            className={`compact-mobile-input w-full rounded-lg px-2 h-8.5 text-xs tabular-nums font-bold focus:outline-none border transition ${
-                              isAutoSaleHint
-                                ? 'bg-amber-50/60 border-amber-300 ring-1 ring-amber-200/60 placeholder:text-amber-700/50 placeholder:font-bold text-slate-900 focus:border-amber-500'
-                                : 'bg-white border-slate-200 focus:border-blue-600'
-                            }`}
+                            placeholder="Sale Price"
+                            className="compact-mobile-input w-full rounded-lg px-2 h-8.5 text-xs tabular-nums font-bold focus:outline-none border bg-white border-slate-200 focus:border-blue-600 transition"
                           />
                         </div>
 
@@ -1994,8 +1857,8 @@ export const StockModal: React.FC<StockModalProps> = ({
                             <Smartphone className="w-3 h-3 text-blue-600 shrink-0" />
                             IMEI Boxes — Variant #{vIdx + 1} ({v.imeis.length} {v.imeis.length === 1 ? 'Box' : 'Boxes'} for {v.qty === '' ? 0 : v.qty} units)
                           </span>
-                          <span className="text-[9px] sm:text-[10px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full shrink-0">
-                            1 Box = 1 IMEI Only
+                          <span className="text-[10px] font-bold text-blue-700 px-1.5 py-0.5 rounded-md bg-blue-100/80 shrink-0">
+                            1 Box = 1 IMEI
                           </span>
                         </div>
 
@@ -2218,8 +2081,8 @@ export const StockModal: React.FC<StockModalProps> = ({
                       <Smartphone className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                       Mobile IMEI Boxes ({imeis.length} {imeis.length === 1 ? 'Unit' : 'Units'})
                     </span>
-                    <span className="text-[9px] sm:text-[10px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
-                      1 Box = 1 IMEI Only
+                    <span className="text-[10px] font-bold text-blue-700 px-1.5 py-0.5 rounded-md bg-blue-100/80">
+                      1 Box = 1 IMEI
                     </span>
                   </div>
 

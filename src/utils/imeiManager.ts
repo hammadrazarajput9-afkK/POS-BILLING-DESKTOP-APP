@@ -202,10 +202,17 @@ export interface ImeiValidationResult {
  * 4. Duplicate IMEIs within the same form/input list are blocked.
  * 5. Cross-checks sales returns to prevent re-entering returned stock as new items.
  */
+export function isUsedAndroidCategory(cat?: string): boolean {
+  const c = (cat || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!c) return false;
+  return c.includes('used') && c.includes('android');
+}
+
 export function validateImeis({
   imeisToCheck,
   currentProductId,
   allowedExistingImeis = [],
+  allowedSoldImeis = [],
   inventory = [],
   imeiRecords = [],
   sales = [],
@@ -214,6 +221,7 @@ export function validateImeis({
   imeisToCheck: string[];
   currentProductId?: string;
   allowedExistingImeis?: string[];
+  allowedSoldImeis?: string[];
   inventory?: InventoryItem[];
   imeiRecords?: ImeiRecord[];
   sales?: SaleRecord[];
@@ -225,6 +233,7 @@ export function validateImeis({
   }
 
   const allowedSet = new Set(allowedExistingImeis.map(i => (i || '').toString().trim().toLowerCase()).filter(Boolean));
+  const allowedSoldSet = new Set(allowedSoldImeis.map(i => (i || '').toString().trim().toLowerCase()).filter(Boolean));
 
   // 0. Enforce strictly 1 IMEI per entry box (no embedded delimiters or concatenated IMEIs)
   for (const imei of cleanedList) {
@@ -332,8 +341,8 @@ export function validateImeis({
       };
     }
 
-    // Check if was already sold
-    if (soldImeis.has(lower)) {
+    // Check if was already sold (unless explicitly permitted for historical bill/item preservation)
+    if (soldImeis.has(lower) && !allowedSoldSet.has(lower)) {
       const soldInfo = soldImeis.get(lower);
       return {
         valid: false,
@@ -661,13 +670,18 @@ export function recordImeisReversed({
   purchaseBillNo,
   reversedImeis,
   existingImeiRecords = [],
+  preserveSoldRecords = false,
 }: {
   purchaseBillNo: string;
   reversedImeis: string[];
   existingImeiRecords?: ImeiRecord[];
+  preserveSoldRecords?: boolean;
 }): ImeiRecord[] {
   const cleanReversed = new Set(reversedImeis.map(i => i.toLowerCase().trim()).filter(Boolean));
   return existingImeiRecords.filter(rec => {
+    if (preserveSoldRecords && rec.status === 'SOLD') {
+      return true;
+    }
     if (cleanReversed.has(rec.imei.toLowerCase())) {
       return false;
     }

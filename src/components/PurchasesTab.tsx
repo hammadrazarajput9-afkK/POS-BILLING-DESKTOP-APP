@@ -573,8 +573,8 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
         storage: it.storage || '',
         color: it.color || '',
         costPrice: it.costPrice ?? '',
-        salePrice: it.salePrice ?? '',
-        wholesalePrice: it.wholesalePrice ?? '',
+        salePrice: it.salePrice && Number(it.salePrice) > 0 ? it.salePrice : '',
+        wholesalePrice: it.wholesalePrice !== undefined && Number(it.wholesalePrice) > 0 ? it.wholesalePrice : '',
         imei: nextImeis.filter(Boolean).join(', '),
         imeis: isMob ? nextImeis.slice(0, Math.min(100, q)) : [],
         barcode: it.barcode || '',
@@ -658,65 +658,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
       copy.splice(index + 1, 0, nextRow);
       return copy;
     });
-    showToast('Row duplicated — matching Name + RAM/Storage prices auto-highlighted!', 'info');
-  };
-
-  const isSameInwardSpecForAutoPrice = (a: InwardDraftItem, b: InwardDraftItem): boolean => {
-    const aName = (a.name || '').trim().toLowerCase();
-    const bName = (b.name || '').trim().toLowerCase();
-    if (!aName || !bName || aName !== bName) return false;
-    if ((a.category || '').trim().toLowerCase() !== (b.category || '').trim().toLowerCase()) return false;
-
-    if (isKeypadCategory(a.category) && isKeypadCategory(b.category)) {
-      return true;
-    }
-
-    if (isAndroidCategory(a.category) || isAndroidCategory(b.category)) {
-      const aRam = (a.ram || '').trim().toLowerCase();
-      const bRam = (b.ram || '').trim().toLowerCase();
-      const aSto = (a.storage || '').trim().toLowerCase();
-      const bSto = (b.storage || '').trim().toLowerCase();
-      if (!aRam && !aSto) return false;
-      return aRam === bRam && aSto === bSto;
-    }
-
-    return true;
-  };
-
-  const getInwardPriceSuggestion = (
-    itemsList: InwardDraftItem[],
-    idx: number,
-    field: 'costPrice' | 'wholesalePrice' | 'salePrice'
-  ): number | '' => {
-    const target = itemsList[idx];
-    if (!target) return '';
-    if (target[field] !== '' && target[field] !== undefined) return '';
-
-    const sibling = itemsList.find(
-      (s, j) =>
-        j !== idx &&
-        isSameInwardSpecForAutoPrice(target, s) &&
-        s[field] !== '' &&
-        s[field] !== undefined
-    );
-    if (sibling && sibling[field] !== '' && sibling[field] !== undefined) {
-      return Number(sibling[field]);
-    }
-    return '';
-  };
-
-  const getResolvedInwardPrice = (
-    itemsList: InwardDraftItem[],
-    idx: number,
-    field: 'costPrice' | 'wholesalePrice' | 'salePrice'
-  ): number | undefined => {
-    const item = itemsList[idx];
-    if (!item) return undefined;
-    if (item[field] !== '' && item[field] !== undefined) {
-      return Number(item[field]);
-    }
-    const sugg = getInwardPriceSuggestion(itemsList, idx, field);
-    return sugg !== '' ? Number(sugg) : undefined;
+    showToast('Row duplicated — enter prices & IMEIs for this variant', 'info');
   };
 
   const handleItemQtyChange = (index: number, rawVal: string) => {
@@ -768,8 +710,20 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
           return;
         }
 
+        const editingOwned = editingPurchaseId
+          ? (purchases.find(p => p.id === editingPurchaseId)?.items || []).flatMap(it =>
+              it.imeis && it.imeis.length > 0
+                ? it.imeis.map(s => s.trim()).filter(Boolean)
+                : it.imei
+                ? it.imei.split(',').map(s => s.trim()).filter(Boolean)
+                : []
+            )
+          : [];
+
         const valCheck = validateImeis({
           imeisToCheck: [token],
+          allowedExistingImeis: editingOwned,
+          allowedSoldImeis: editingOwned,
           inventory,
           imeiRecords,
           sales,
@@ -815,8 +769,20 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
         showToast(`Duplicate IMEI detected: "${newlySetImei}" is already added in this bill!`, 'error');
         res.nextImeis[imeiIdx] = '';
       } else {
+        const editingOwned = editingPurchaseId
+          ? (purchases.find(p => p.id === editingPurchaseId)?.items || []).flatMap(it =>
+              it.imeis && it.imeis.length > 0
+                ? it.imeis.map(s => s.trim()).filter(Boolean)
+                : it.imei
+                ? it.imei.split(',').map(s => s.trim()).filter(Boolean)
+                : []
+            )
+          : [];
+
         const valCheck = validateImeis({
           imeisToCheck: [newlySetImei],
+          allowedExistingImeis: editingOwned,
+          allowedSoldImeis: editingOwned,
           inventory,
           imeiRecords,
           sales,
@@ -995,10 +961,10 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
     });
   };
 
-  // Calculations (incorporating auto-highlighted matching Name+RAM+Storage prices)
+  // Calculations using only explicitly entered prices (never auto-populating blank price inputs)
   const totalBillAmount = useMemo(() => {
-    return items.reduce((acc, item, idx) => {
-      const effCost = getResolvedInwardPrice(items, idx, 'costPrice') ?? 0;
+    return items.reduce((acc, item) => {
+      const effCost = item.costPrice !== '' && item.costPrice !== undefined ? Number(item.costPrice) : 0;
       return acc + (Number(item.qty) || 0) * effCost;
     }, 0);
   }, [items]);
@@ -1017,9 +983,14 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
 
     const indexedValidItems = items
       .map((item, idx) => {
-        const effCost = getResolvedInwardPrice(items, idx, 'costPrice') ?? 0;
-        const effWholesale = getResolvedInwardPrice(items, idx, 'wholesalePrice');
-        const effSale = getResolvedInwardPrice(items, idx, 'salePrice');
+        const effCost =
+          item.costPrice !== '' && item.costPrice !== undefined ? Number(item.costPrice) : 0;
+        const effWholesale =
+          item.wholesalePrice !== '' && item.wholesalePrice !== undefined
+            ? Number(item.wholesalePrice)
+            : undefined;
+        const effSale =
+          item.salePrice !== '' && item.salePrice !== undefined ? Number(item.salePrice) : undefined;
         return { item, idx, effCost, effWholesale, effSale };
       })
       .filter(
@@ -1061,6 +1032,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
       const validation = validateImeis({
         imeisToCheck: allInwardImeis,
         allowedExistingImeis: ownedImeis,
+        allowedSoldImeis: ownedImeis,
         inventory,
         imeiRecords,
         sales,
@@ -1086,8 +1058,8 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
           category: item.category,
           qty: Number(item.qty) || 1,
           costPrice: effCost,
-          salePrice: effSale !== undefined ? effSale : effCost * 1.15,
-          wholesalePrice: effWholesale,
+          salePrice: effSale !== undefined && effSale > 0 ? effSale : 0,
+          wholesalePrice: effWholesale !== undefined && effWholesale > 0 ? effWholesale : undefined,
           total: (Number(item.qty) || 1) * effCost,
           ram: isAndroidCategory(item.category) ? item.ram?.trim() || undefined : undefined,
         storage: isAndroidCategory(item.category) ? item.storage?.trim() || undefined : undefined,
@@ -1476,7 +1448,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
               <button
                 type="button"
                 onClick={() => setInwardTab(prev => (prev === 'due' ? 'suppliers' : 'due'))}
-                className={`px-3.5 py-1.5 rounded-full text-[11px] font-black tracking-wide uppercase shadow-xs transition cursor-pointer shrink-0 ${
+                className={`px-3 py-1.5 rounded-xl text-[11px] font-black tracking-wide uppercase shadow-xs transition cursor-pointer shrink-0 ${
                   inwardTab === 'due'
                     ? 'bg-white text-blue-700'
                     : 'bg-slate-900/90 hover:bg-slate-900 text-white'
@@ -1488,7 +1460,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
               <button
                 type="button"
                 onClick={() => setInwardTab(prev => (prev === 'bills' ? 'suppliers' : 'bills'))}
-                className="px-3.5 py-1.5 rounded-full bg-slate-900/90 hover:bg-slate-900 text-white text-[11px] font-black tracking-wide uppercase shadow-xs transition cursor-pointer shrink-0"
+                className="px-3 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-900 text-white text-[11px] font-black tracking-wide uppercase shadow-xs transition cursor-pointer shrink-0"
               >
                 {inwardTab === 'bills' ? 'SUPPLIERS' : 'ALL ENTRIES'}
               </button>
@@ -1529,7 +1501,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
         </div>
 
         {/* Overlapping White Summary Card */}
-        <div className="-mt-8 mx-2 sm:mx-4 bg-white rounded-2xl border border-slate-200/90 shadow-sm px-3.5 py-3">
+        <div className="animate-card-in animate-stagger-1 -mt-8 mx-2 sm:mx-4 bg-white rounded-2xl border border-slate-200/90 shadow-sm px-3.5 py-3">
           <div className="flex items-center justify-between mb-1.5">
             {isAdmin ? (
               <button
@@ -1688,7 +1660,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                 key={tab}
                 type="button"
                 onClick={() => setStatusFilter(tab)}
-                className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition cursor-pointer ${
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
                   statusFilter === tab
                     ? 'bg-blue-600 text-white'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -1721,7 +1693,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                   key={opt.id}
                   type="button"
                   onClick={() => setSortBy(opt.id)}
-                  className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
                     sortBy === opt.id
                       ? 'bg-slate-900 text-white'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -1825,7 +1797,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
 
       {/* Main Clean Ledger List: Suppliers OR All Bills */}
       {inwardTab === 'bills' ? (
-        <div className="bg-white border border-slate-200/90 rounded-2xl divide-y divide-slate-100 overflow-hidden shadow-2xs">
+        <div className="animate-card-in animate-stagger-2 bg-white border border-slate-200/90 rounded-2xl divide-y divide-slate-100 overflow-hidden shadow-2xs">
           {filteredAllBills.length === 0 ? (
             <div className="py-12 px-4 text-center space-y-2">
               <FileText className="w-9 h-9 mx-auto text-slate-300" />
@@ -1921,7 +1893,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
           )}
         </div>
       ) : (
-        <div className="bg-white border border-slate-200/90 rounded-2xl divide-y divide-slate-100 overflow-hidden shadow-2xs">
+        <div className="animate-card-in animate-stagger-2 bg-white border border-slate-200/90 rounded-2xl divide-y divide-slate-100 overflow-hidden shadow-2xs">
           {displayedSupplierAccounts.map(acc => {
             const hasDue = isAdmin && acc.totalDue > 0;
             const timeStr = formatLedgerTimestamp(acc.latestDate, true);
@@ -2013,49 +1985,43 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
       </button>
 
       {/* ========================================================= */}
-      {/* ADD PURCHASE / STOCK INWARD MODAL */}
+      {/* ADD PURCHASE / STOCK INWARD MODAL (COMPACT SMART DESIGN)  */}
       {/* ========================================================= */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
-          <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-2xl lg:max-w-3xl w-full max-h-[82dvh] sm:max-h-[85dvh] flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 glass-modal-backdrop">
+          <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-2xl lg:max-w-3xl w-full max-h-[82dvh] flex flex-col overflow-hidden">
             {/* Compact Pinned Header */}
-            <div className="flex items-center justify-between border-b border-slate-200/70 px-3.5 py-2.5 sm:px-5 sm:py-3 shrink-0">
+            <div className="flex items-center justify-between border-b border-slate-200/70 px-3.5 py-2 sm:px-4 sm:py-2.5 shrink-0">
               <div className="flex items-center gap-2.5 min-w-0">
-                <div className="p-2 bg-blue-600 text-white rounded-xl shadow-md shrink-0">
+                <div className="w-8 h-8 bg-blue-600 text-white rounded-xl flex items-center justify-center shrink-0">
                   <Truck className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
                   <h3 className="font-extrabold text-slate-900 text-xs sm:text-sm truncate">
                     {editingPurchaseId
                       ? isAdmin
-                        ? `Edit Purchase / Inward Bill #${billNo}`
-                        : `Edit Stock Inward #${billNo} (1-Time Edit Only)`
-                      : isAdmin
-                      ? 'Record Supplier Purchase / Stock Inward'
-                      : 'Record Stock Inward'}
+                        ? `Edit Inward #${billNo}`
+                        : `Edit Stock Inward #${billNo}`
+                      : 'Stock Inward Entry'}
                   </h3>
-                  <p className="text-[10px] sm:text-[11px] text-slate-500 truncate">
+                  <p className="text-[10.5px] text-slate-500 truncate">
                     {editingPurchaseId
-                      ? isAdmin
-                        ? 'Update party details, items, IMEIs, prices or payment status and sync inventory'
-                        : 'You can edit this stock-inward entry once — changes will sync to inventory'
-                      : isAdmin
-                      ? 'Add inventory items directly, upload paper bill, and update ledger'
-                      : 'Select party name, enter stock items & prices, and sync directly to inventory'}
+                      ? 'Update supplier bill, IMEIs, or prices & sync inventory'
+                      : 'Record supplier bill, enter prices you know & sync inventory'}
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-1.5 shrink-0">
                 {!editingPurchaseId && hasDraft && (
-                  <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-[10px] font-bold">
+                  <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-[10px] font-bold">
                     <Sparkles className="w-3 h-3 text-amber-500" />
-                    <span>{draftSavedTime ? `Draft Saved (${draftSavedTime})` : 'Saved Draft'}</span>
+                    <span>{draftSavedTime ? `Draft ${draftSavedTime}` : 'Draft'}</span>
                     {items.length === 0 && (
                       <button
                         type="button"
                         onClick={restoreDraft}
-                        className="ml-1 underline text-amber-800 hover:text-amber-950 cursor-pointer"
+                        className="underline text-amber-800 hover:text-amber-950 cursor-pointer"
                       >
                         Restore
                       </button>
@@ -2063,7 +2029,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                     <button
                       type="button"
                       onClick={clearDraft}
-                      className="ml-1 text-slate-400 hover:text-rose-600 cursor-pointer"
+                      className="text-slate-400 hover:text-rose-600 cursor-pointer"
                       title="Clear saved draft"
                     >
                       ×
@@ -2079,12 +2045,12 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                   }}
                   className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
                 >
-                  <X className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
 
-            {/* Scrollable Form Body */}
+            {/* Compact Scrollable Form Body */}
             <form
               id="stock-inward-form"
               onSubmit={handleSubmitPurchase}
@@ -2097,25 +2063,25 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                   e.preventDefault();
                 }
               }}
-              className="overflow-y-auto px-3.5 py-3 sm:px-5 sm:py-3.5 flex-1 min-h-0 space-y-3.5"
+              className="overflow-y-auto px-3.5 py-2.5 sm:px-4 sm:py-3 flex-1 min-h-0 space-y-2.5"
             >
-              {/* Row 1: Supplier & Bill Meta */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 bg-slate-50/70 p-3.5 rounded-xl border border-slate-200">
-                <div className="relative">
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    Supplier Account / Party Name *
+              {/* Row 1: Compact 4-Col Supplier, Phone, Bill #, Date & Photo */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 bg-slate-50/80 p-2.5 rounded-xl border border-slate-200/80">
+                <div className="relative col-span-2 sm:col-span-1">
+                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                    Supplier / Party *
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="Select existing supplier or enter new name..."
+                    placeholder="Supplier name..."
                     value={partyName}
                     onFocus={() => setIsPartyDropdownOpen(true)}
                     onChange={e => {
                       setPartyName(e.target.value);
                       setIsPartyDropdownOpen(true);
                     }}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500"
+                    className="compact-mobile-input w-full px-2.5 h-8.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500"
                     autoComplete="off"
                   />
                   {isPartyDropdownOpen && matchingFormSuppliers.length > 0 && (
@@ -2124,7 +2090,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                         className="fixed inset-0 z-20"
                         onClick={() => setIsPartyDropdownOpen(false)}
                       />
-                      <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-52 overflow-y-auto divide-y divide-slate-100">
+                      <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-48 overflow-y-auto divide-y divide-slate-100">
                         {matchingFormSuppliers.map(acc => (
                           <button
                             key={acc.key}
@@ -2140,11 +2106,11 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                               <p className="font-bold text-slate-900 truncate">{acc.partyName}</p>
                               <p className="text-[10px] text-slate-500 tabular-nums">
                                 {acc.activeBillsCount} bill{acc.activeBillsCount === 1 ? '' : 's'}
-                                {isAdmin && acc.partyPhone ? ` • ${acc.partyPhone}` : ''}
+                                {isAdmin && acc.partyPhone ? ` · ${acc.partyPhone}` : ''}
                               </p>
                             </div>
                             {isAdmin && acc.totalDue > 0 && (
-                              <span className="text-[10px] font-extrabold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded shrink-0 tabular-nums">
+                              <span className="text-[10px] font-bold text-rose-600 shrink-0 tabular-nums">
                                 Due: {currency} {acc.totalDue.toLocaleString()}
                               </span>
                             )}
@@ -2156,69 +2122,55 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    Supplier Phone (Optional)
+                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                    Phone
                   </label>
                   <input
                     type="text"
                     placeholder="0300-1234567"
                     value={partyPhone}
                     onChange={e => setPartyPhone(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500"
+                    className="compact-mobile-input w-full px-2.5 h-8.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    Supplier Bill / Invoice #
+                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                    Bill #
                   </label>
                   <input
                     type="text"
                     placeholder="FMZ-121126"
                     value={billNo}
                     onChange={e => setBillNo(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs tabular-nums font-bold focus:outline-none focus:border-blue-500"
+                    className="compact-mobile-input w-full px-2.5 h-8.5 bg-white border border-slate-200 rounded-lg text-xs tabular-nums font-bold focus:outline-none focus:border-blue-500"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    Purchase Date
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                    Date &amp; Paper Bill
                   </label>
-                  <input
-                    type="date"
-                    required
-                    value={purchaseDate}
-                    onChange={e => {
-                      const nextDate = e.target.value;
-                      setPurchaseDate(nextDate);
-                      if (!billNo.trim() || /^FMZ-\d{6}(-\d+)?$/i.test(billNo.trim())) {
-                        setBillNo(generateInwardBillNo(nextDate, purchases));
-                      }
-                    }}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs tabular-nums font-semibold focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-
-                {/* Physical Bill Image Upload */}
-                <div className="sm:col-span-2">
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center justify-between">
-                    <span>Attach Paper Bill Photo / Scan</span>
-                    {invoiceImage && (
-                      <button
-                        type="button"
-                        onClick={() => setInvoiceImage('')}
-                        className="text-rose-600 hover:text-rose-800 text-[10px] font-bold"
-                      >
-                        Remove Photo
-                      </button>
-                    )}
-                  </label>
-
-                  <div className="flex items-center gap-3">
-                    <label className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-white border border-dashed border-blue-400 rounded-xl text-xs font-bold text-blue-600 hover:bg-blue-50/50 transition cursor-pointer">
-                      <Camera className="w-4 h-4" />
-                      <span>{invoiceImage ? 'Change Bill Photo' : 'Upload Physical Bill (Camera / File)'}</span>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="date"
+                      required
+                      value={purchaseDate}
+                      onChange={e => {
+                        const nextDate = e.target.value;
+                        setPurchaseDate(nextDate);
+                        if (!billNo.trim() || /^FMZ-\d{6}(-\d+)?$/i.test(billNo.trim())) {
+                          setBillNo(generateInwardBillNo(nextDate, purchases));
+                        }
+                      }}
+                      className="compact-mobile-input flex-1 min-w-0 px-2 h-8.5 bg-white border border-slate-200 rounded-lg text-xs tabular-nums font-semibold focus:outline-none focus:border-blue-500"
+                    />
+                    <label
+                      className="h-8.5 px-2.5 bg-white border border-dashed border-blue-400 rounded-lg text-[11px] font-bold text-blue-600 hover:bg-blue-50 transition cursor-pointer flex items-center gap-1 shrink-0"
+                      title={invoiceImage ? 'Change attached bill photo' : 'Attach paper bill photo'}
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">{invoiceImage ? 'Photo ✓' : 'Bill'}</span>
                       <input
                         type="file"
                         accept="image/*"
@@ -2226,102 +2178,60 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                         className="hidden"
                       />
                     </label>
-
                     {invoiceImage && (
-                      <div
+                      <button
+                        type="button"
                         onClick={() => setZoomImage(invoiceImage)}
-                        className="w-10 h-10 rounded-lg overflow-hidden border border-slate-200 cursor-pointer shadow-2xs hover:opacity-80 transition shrink-0"
-                        title="Click to view image"
+                        className="w-8.5 h-8.5 rounded-lg overflow-hidden border border-slate-200 cursor-pointer shrink-0"
+                        title="View attached photo"
                       >
-                        <img
-                          src={invoiceImage}
-                          alt="Physical Bill"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
+                        <img src={invoiceImage} alt="Bill" className="w-full h-full object-cover" />
+                      </button>
                     )}
                   </div>
                 </div>
               </div>
 
-              {/* Row 2: Itemized Stock Entries with Existing Products Search Bar & + Add Product Button */}
-              <div className="space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                  <div>
-                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                      <Package className="w-4 h-4 text-blue-600" />
-                      Inward Stock Products
-                    </h4>
-                    <p className="text-[11px] text-slate-400">
-                      Pick an existing product (loads Name &amp; Category only), switch Category for Android/Keypad/Other layout, or add a new item
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
-                    <button
-                      type="button"
-                      onClick={handleAddItemRow}
-                      className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold shadow-sm transition cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>New Row</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsStockModalOpen(true)}
-                      className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold shadow-sm transition cursor-pointer"
-                      title="Register a new product directly into Inventory"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>+ Add Product</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Existing Products Search Bar with Dropdown */}
-                <div className="relative">
-                  <div className="flex items-center gap-2">
-                    <div className="relative flex-1">
-                      <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                      <input
-                        type="text"
-                        value={productSearch}
-                        onChange={e => {
-                          setProductSearch(e.target.value);
-                          setIsSearchOpen(true);
+              {/* Row 2: Compact Product Search + Quick Add Actions */}
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative flex-1 min-w-[180px]">
+                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={productSearch}
+                      onChange={e => {
+                        setProductSearch(e.target.value);
+                        setIsSearchOpen(true);
+                      }}
+                      onFocus={() => setIsSearchOpen(true)}
+                      placeholder="Pick existing product or add new row..."
+                      className="compact-mobile-input w-full pl-8 pr-7 h-8.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition"
+                    />
+                    {productSearch && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProductSearch('');
+                          setIsSearchOpen(false);
                         }}
-                        onFocus={() => setIsSearchOpen(true)}
-                        placeholder="Search existing products (click to load Product Name & Category only)..."
-                        className="w-full pl-10 pr-9 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition"
-                      />
-                      {productSearch && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setProductSearch('');
-                            setIsSearchOpen(false);
-                          }}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
 
-                  {/* Search Results Dropdown */}
-                  {isSearchOpen && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-20"
-                        onClick={() => setIsSearchOpen(false)}
-                      />
-                      <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl z-30 max-h-60 overflow-y-auto divide-y divide-slate-100">
-                        {filteredSearchInventory.length === 0 ? (
-                          <div className="p-4 text-center text-slate-400 text-xs">
-                            <p className="font-semibold text-slate-600">No matching products found in Inventory</p>
-                            <p className="text-[11px] mt-1 text-slate-500">
-                              Click{' '}
+                    {/* Search Results Dropdown */}
+                    {isSearchOpen && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-20"
+                          onClick={() => setIsSearchOpen(false)}
+                        />
+                        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-52 overflow-y-auto divide-y divide-slate-100">
+                          {filteredSearchInventory.length === 0 ? (
+                            <div className="p-3 text-center text-slate-500 text-xs">
+                              No match.{' '}
                               <button
                                 type="button"
                                 onClick={() => {
@@ -2330,81 +2240,65 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                                 }}
                                 className="font-bold text-blue-600 hover:underline cursor-pointer"
                               >
-                                New Row
-                              </button>{' '}
-                              or{' '}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setIsSearchOpen(false);
-                                  setIsStockModalOpen(true);
-                                }}
-                                className="font-bold text-emerald-600 hover:underline cursor-pointer"
-                              >
-                                + Add Product
-                              </button>{' '}
-                              to add it now.
-                            </p>
-                          </div>
-                        ) : (
-                          filteredSearchInventory.map(prod => (
-                            <div
-                              key={prod.id}
-                              onClick={() => handleSelectProductFromInventory(prod)}
-                              className="p-3 hover:bg-blue-50/70 transition cursor-pointer flex items-center justify-between gap-3 text-xs"
-                            >
-                              <div className="min-w-0">
-                                <p className="font-bold text-slate-900 truncate">{prod.name}</p>
-                                <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-500">
-                                  <span className="px-2 py-0.5 bg-slate-100 rounded text-slate-700 font-semibold">
-                                    {prod.category}
-                                  </span>
-                                </div>
-                              </div>
-                              <div className="text-right shrink-0">
-                                <span className="tabular-nums text-[11px] font-bold text-blue-600 block">
-                                  Select Name &amp; Category →
-                                </span>
-                                <span className="tabular-nums text-[10px] text-slate-400">
-                                  Stock: {prod.qty || 0} units
-                                </span>
-                              </div>
+                                Add New Row
+                              </button>
                             </div>
-                          ))
-                        )}
-                      </div>
-                    </>
-                  )}
+                          ) : (
+                            filteredSearchInventory.map(prod => (
+                              <div
+                                key={prod.id}
+                                onClick={() => handleSelectProductFromInventory(prod)}
+                                className="px-3 py-2 hover:bg-blue-50/70 transition cursor-pointer flex items-center justify-between gap-2 text-xs"
+                              >
+                                <div className="min-w-0">
+                                  <p className="font-bold text-slate-900 truncate">{prod.name}</p>
+                                  <p className="text-[10.5px] text-slate-500 truncate">{prod.category}</p>
+                                </div>
+                                <span className="tabular-nums text-[10.5px] font-bold text-blue-600 shrink-0">
+                                  Stock: {prod.qty || 0}
+                                </span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleAddItemRow}
+                    className="h-8.5 inline-flex items-center gap-1 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition cursor-pointer shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>New Row</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsStockModalOpen(true)}
+                    className="h-8.5 inline-flex items-center gap-1 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition cursor-pointer shrink-0"
+                    title="Register a new product directly into Inventory"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Product</span>
+                  </button>
                 </div>
 
-                {/* Selected Inward Products Table / List */}
-                <div className="space-y-3">
+                {/* Selected Inward Products Compact Cards */}
+                <div className="space-y-2">
                   {items.length === 0 ? (
-                    <div className="p-6 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
-                      <Package className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                      <p className="text-xs font-bold text-slate-700">No inward products added yet</p>
-                      <p className="text-[11px] text-slate-400 max-w-sm mx-auto mt-0.5">
-                        Search an existing product above to load its <strong>Name &amp; Category</strong>, or click <strong>New Row</strong> to enter a product and choose Android / Keypad / Other category.
+                    <div className="p-4 text-center border border-dashed border-slate-300 rounded-xl bg-slate-50/50">
+                      <p className="text-xs font-bold text-slate-700">No items added yet</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Search an existing product above or click <strong>New Row</strong> to add stock.
                       </p>
                     </div>
                   ) : (
                     items.map((item, idx) => {
-                      const suggCost = getInwardPriceSuggestion(items, idx, 'costPrice');
-                      const suggWholesale = getInwardPriceSuggestion(items, idx, 'wholesalePrice');
-                      const suggSale = getInwardPriceSuggestion(items, idx, 'salePrice');
-
-                      const isAutoCostHint =
-                        (item.costPrice === '' || item.costPrice === undefined) && suggCost !== '';
-                      const isAutoWholesaleHint =
-                        (item.wholesalePrice === '' || item.wholesalePrice === undefined) &&
-                        suggWholesale !== '';
-                      const isAutoSaleHint =
-                        (item.salePrice === '' || item.salePrice === undefined) && suggSale !== '';
-
                       const effCost =
                         item.costPrice !== '' && item.costPrice !== undefined
                           ? Number(item.costPrice)
-                          : Number(suggCost) || 0;
+                          : 0;
                       const rowTotal = (Number(item.qty) || 0) * effCost;
                       const isAndroid = isAndroidCategory(item.category);
                       const isKeypad = isKeypadCategory(item.category);
@@ -2414,27 +2308,27 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                       return (
                         <div
                           key={idx}
-                          className="p-3.5 bg-slate-50/90 rounded-2xl border border-slate-200/90 space-y-3 shadow-2xs hover:border-blue-300 transition"
+                          className="p-2.5 sm:p-3 bg-slate-50/90 rounded-xl border border-slate-200/90 space-y-2 animate-scale-in hover:border-blue-300 transition"
                         >
-                          {/* Row Header: Editable Product Name, Editable Category Switcher, Copy, Delete */}
-                          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+                          {/* Row Header: Title, Category, Qty, Actions */}
+                          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
                             <div className="sm:col-span-5">
-                              <label className="block text-[10px] font-bold text-slate-600 mb-1">
-                                Product Title / Model Name *
+                              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                                Product Model / Name *
                               </label>
                               <input
                                 type="text"
                                 required
-                                placeholder="e.g. Samsung Galaxy A15, Nokia 105, 20W Charger"
+                                placeholder="e.g. Galaxy A15, Nokia 105..."
                                 value={item.name}
                                 onChange={e => handleItemChange(idx, 'name', e.target.value)}
-                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-600"
+                                className="compact-mobile-input w-full px-2.5 h-8.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-600"
                               />
                             </div>
 
                             <div className="sm:col-span-4">
-                              <label className="block text-[10px] font-bold text-slate-600 mb-1">
-                                Category (Switches Entry System) *
+                              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                                Category *
                               </label>
                               {(() => {
                                 const rowCategories =
@@ -2445,7 +2339,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                                   <select
                                     value={item.category}
                                     onChange={e => handleItemChange(idx, 'category', e.target.value)}
-                                    className="w-full px-2.5 py-2 bg-white border border-blue-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-600"
+                                    className="compact-mobile-input w-full px-2 h-8.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-600"
                                   >
                                     {rowCategories.map(cat => (
                                       <option key={cat} value={cat}>
@@ -2458,8 +2352,8 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                             </div>
 
                             <div className="sm:col-span-2">
-                              <label className="block text-[10px] font-bold text-slate-600 mb-1">
-                                Inward Qty *
+                              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                                Qty *
                               </label>
                               <input
                                 type="number"
@@ -2468,293 +2362,291 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                                 placeholder="Qty"
                                 value={item.qty}
                                 onChange={e => handleItemQtyChange(idx, e.target.value)}
-                                className="allow-spinner w-full px-2.5 py-2 bg-white border border-blue-400 rounded-xl text-xs tabular-nums font-extrabold text-blue-700 text-center focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500 shadow-2xs"
+                                className="compact-mobile-input allow-spinner w-full px-2 h-8.5 bg-white border border-blue-400 rounded-lg text-xs tabular-nums font-extrabold text-blue-700 text-center focus:outline-none focus:border-blue-600"
                               />
                             </div>
 
-                            <div className="sm:col-span-1 flex items-center justify-end gap-1">
+                            <div className="sm:col-span-1 flex items-center justify-end gap-0.5">
                               <button
                                 type="button"
                                 onClick={() => handleDuplicateItemRow(idx)}
-                                className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition cursor-pointer"
-                                title="Copy row to add another color/variant with same specs"
+                                className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer"
+                                title="Duplicate row"
                               >
-                                <Copy className="w-4 h-4" />
+                                <Copy className="w-3.5 h-3.5" />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleRemoveItemRow(idx)}
-                                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
-                                title="Remove from inward bill"
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                                title="Remove item"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
                           </div>
 
-                          {/* Category-Specific Entry System: Android vs Keypad vs Other */}
+                          {/* Category-Specific Specs (Compact) */}
                           {isAndroid && (
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-white p-3 rounded-xl border border-blue-100">
+                            <div className="grid grid-cols-3 gap-2 bg-white p-2 rounded-lg border border-blue-100">
                               <div>
-                                <label className="text-[10px] font-bold text-slate-600 mb-1 flex items-center gap-1">
-                                  <Cpu className="w-3 h-3 text-blue-600" /> RAM Memory
-                                </label>
-                                <div className="flex flex-wrap gap-1 mb-1">
-                                  {['4GB', '6GB', '8GB', '12GB'].map(ramOpt => (
-                                    <button
-                                      key={ramOpt}
-                                      type="button"
-                                      onClick={() => handleItemChange(idx, 'ram', ramOpt)}
-                                      className={`px-2 py-0.5 rounded text-[10px] tabular-nums font-bold transition cursor-pointer ${
-                                        item.ram === ramOpt
-                                          ? 'bg-blue-600 text-white'
-                                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                                      }`}
-                                    >
-                                      {ramOpt}
-                                    </button>
-                                  ))}
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-[10px] font-bold text-slate-600 flex items-center gap-1">
+                                    <Cpu className="w-3 h-3 text-blue-600" /> RAM
+                                  </span>
+                                  <div className="hidden sm:flex gap-0.5">
+                                    {['4GB', '6GB', '8GB', '12GB'].map(ramOpt => (
+                                      <button
+                                        key={ramOpt}
+                                        type="button"
+                                        onClick={() => handleItemChange(idx, 'ram', ramOpt)}
+                                        className={`px-1 py-0.2 rounded text-[9px] tabular-nums font-bold cursor-pointer ${
+                                          item.ram === ramOpt
+                                            ? 'bg-blue-600 text-white'
+                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                        }`}
+                                      >
+                                        {ramOpt.replace('GB', '')}
+                                      </button>
+                                    ))}
+                                  </div>
                                 </div>
                                 <input
                                   type="text"
-                                  placeholder="e.g. 8GB"
+                                  placeholder="8GB"
                                   value={item.ram || ''}
                                   onChange={e => handleItemChange(idx, 'ram', e.target.value)}
-                                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs tabular-nums font-semibold focus:outline-none focus:border-blue-500"
+                                  className="compact-mobile-input w-full px-2 h-7.5 bg-slate-50 border border-slate-200 rounded-md text-xs tabular-nums font-semibold focus:outline-none focus:border-blue-500"
                                 />
                               </div>
 
                               <div>
-                                <label className="text-[10px] font-bold text-slate-600 mb-1 flex items-center gap-1">
-                                  <HardDrive className="w-3 h-3 text-indigo-600" /> Storage (ROM)
-                                </label>
-                                <div className="flex flex-wrap gap-1 mb-1">
-                                  {['64GB', '128GB', '256GB', '512GB'].map(romOpt => (
-                                    <button
-                                      key={romOpt}
-                                      type="button"
-                                      onClick={() => handleItemChange(idx, 'storage', romOpt)}
-                                      className={`px-2 py-0.5 rounded text-[10px] tabular-nums font-bold transition cursor-pointer ${
-                                        item.storage === romOpt
-                                          ? 'bg-indigo-600 text-white'
-                                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                                      }`}
-                                    >
-                                      {romOpt}
-                                    </button>
-                                  ))}
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-[10px] font-bold text-slate-600 flex items-center gap-1">
+                                    <HardDrive className="w-3 h-3 text-indigo-600" /> ROM
+                                  </span>
+                                  <div className="hidden sm:flex gap-0.5">
+                                    {['64GB', '128GB', '256GB'].map(romOpt => (
+                                      <button
+                                        key={romOpt}
+                                        type="button"
+                                        onClick={() => handleItemChange(idx, 'storage', romOpt)}
+                                        className={`px-1 py-0.2 rounded text-[9px] tabular-nums font-bold cursor-pointer ${
+                                          item.storage === romOpt
+                                            ? 'bg-indigo-600 text-white'
+                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                        }`}
+                                      >
+                                        {romOpt.replace('GB', '')}
+                                      </button>
+                                    ))}
+                                  </div>
                                 </div>
                                 <input
                                   type="text"
-                                  placeholder="e.g. 128GB"
+                                  placeholder="128GB"
                                   value={item.storage || ''}
                                   onChange={e => handleItemChange(idx, 'storage', e.target.value)}
-                                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs tabular-nums font-semibold focus:outline-none focus:border-indigo-500"
+                                  className="compact-mobile-input w-full px-2 h-7.5 bg-slate-50 border border-slate-200 rounded-md text-xs tabular-nums font-semibold focus:outline-none focus:border-indigo-500"
                                 />
                               </div>
 
                               <div>
-                                <label className="text-[10px] font-bold text-slate-600 mb-1 flex items-center gap-1">
+                                <span className="text-[10px] font-bold text-slate-600 flex items-center gap-1 mb-1">
                                   <Palette className="w-3 h-3 text-purple-600" /> Color
-                                </label>
+                                </span>
                                 <input
                                   type="text"
-                                  placeholder="e.g. Black, Blue, Gold"
+                                  placeholder="Black, Blue..."
                                   value={item.color || ''}
                                   onChange={e => handleItemChange(idx, 'color', e.target.value)}
-                                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-purple-500 mt-5"
+                                  className="compact-mobile-input w-full px-2 h-7.5 bg-slate-50 border border-slate-200 rounded-md text-xs font-semibold focus:outline-none focus:border-purple-500"
                                 />
                               </div>
                             </div>
                           )}
 
                           {isKeypad && (
-                            <div className="bg-purple-50/70 p-2.5 rounded-xl border border-purple-200/80">
-                              <label className="text-[10px] font-bold text-purple-900 mb-1 flex items-center gap-1">
-                                <Palette className="w-3.5 h-3.5 text-purple-600" /> Keypad Phone Color
-                              </label>
+                            <div className="bg-purple-50/70 p-2 rounded-lg border border-purple-200/80 flex items-center gap-2">
+                              <span className="text-[10px] font-bold text-purple-900 flex items-center gap-1 shrink-0">
+                                <Palette className="w-3 h-3 text-purple-600" /> Color
+                              </span>
                               <input
                                 type="text"
-                                placeholder="e.g. Black, Blue, Red, Gold"
+                                placeholder="e.g. Black, Blue, Gold"
                                 value={item.color || ''}
                                 onChange={e => handleItemChange(idx, 'color', e.target.value)}
-                                className="w-full px-3 py-1.5 bg-white border border-purple-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-purple-600"
+                                className="compact-mobile-input flex-1 px-2 h-7.5 bg-white border border-purple-200 rounded-md text-xs font-semibold focus:outline-none focus:border-purple-600"
                               />
                             </div>
                           )}
 
-                          {/* Pricing Row (Cost, Wholesale, Retail) with Auto-Highlight on Matching Name + RAM + Storage */}
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                          {/* Pricing Row (Strictly User-Entered Only — Never Auto-Filled) + Note */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             <div>
-                              <label className="flex items-center justify-between gap-1 text-[10px] font-bold text-slate-600 mb-0.5">
-                                <span>Cost Price ({currency}) *</span>
-                                {isAutoCostHint && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleItemChange(idx, 'costPrice', Number(suggCost))}
-                                    className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300 text-[9px] font-extrabold cursor-pointer"
-                                    title="Auto-matched from same Name + RAM/Storage"
-                                  >
-                                    Auto
-                                  </button>
-                                )}
+                              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                                Cost ({currency}) *
                               </label>
                               <input
                                 type="number"
                                 min="0"
-                                placeholder={isAutoCostHint ? String(suggCost) : 'Enter cost price'}
+                                placeholder="Cost price"
                                 value={item.costPrice}
-                                onChange={e => handleItemChange(idx, 'costPrice', e.target.value === '' ? '' : Number(e.target.value))}
-                                className={`w-full px-2.5 py-1.5 border rounded-xl text-xs font-bold tabular-nums focus:outline-none shadow-2xs transition ${
-                                  isAutoCostHint
-                                    ? 'bg-amber-50/70 border-amber-400 ring-1 ring-amber-300/70 placeholder:text-amber-700/70 placeholder:font-extrabold text-slate-900 focus:border-amber-500'
-                                    : 'bg-white border-slate-200 text-blue-700 focus:border-blue-500'
-                                }`}
+                                onChange={e =>
+                                  handleItemChange(idx, 'costPrice', e.target.value === '' ? '' : Number(e.target.value))
+                                }
+                                className="compact-mobile-input w-full px-2 h-8 bg-white border border-slate-200 rounded-lg text-xs font-bold tabular-nums text-blue-700 focus:outline-none focus:border-blue-500"
                               />
                             </div>
 
                             <div>
-                              <label className="flex items-center justify-between gap-1 text-[10px] font-bold text-purple-900 mb-0.5">
-                                <span>Wholesale Price ({currency})</span>
-                                {isAutoWholesaleHint && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleItemChange(idx, 'wholesalePrice', Number(suggWholesale))}
-                                    className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300 text-[9px] font-extrabold cursor-pointer"
-                                    title="Auto-matched from same Name + RAM/Storage"
-                                  >
-                                    Auto
-                                  </button>
-                                )}
+                              <label className="block text-[10px] font-bold text-purple-900 mb-0.5">
+                                Wholesale ({currency})
                               </label>
                               <input
                                 type="number"
                                 min="0"
-                                placeholder={isAutoWholesaleHint ? String(suggWholesale) : 'Optional'}
+                                placeholder="Leave blank if unset"
                                 value={item.wholesalePrice ?? ''}
-                                onChange={e => handleItemChange(idx, 'wholesalePrice', e.target.value === '' ? '' : Number(e.target.value))}
-                                className={`w-full px-2.5 py-1.5 border rounded-xl text-xs font-bold tabular-nums focus:outline-none shadow-2xs transition ${
-                                  isAutoWholesaleHint
-                                    ? 'bg-amber-50/70 border-amber-400 ring-1 ring-amber-300/70 placeholder:text-amber-700/70 placeholder:font-extrabold text-purple-950 focus:border-amber-500'
-                                    : 'bg-purple-50/40 border-purple-200 text-purple-800 focus:border-purple-500'
-                                }`}
+                                onChange={e =>
+                                  handleItemChange(idx, 'wholesalePrice', e.target.value === '' ? '' : Number(e.target.value))
+                                }
+                                className="compact-mobile-input w-full px-2 h-8 bg-purple-50/40 border border-purple-200 rounded-lg text-xs font-bold tabular-nums text-purple-800 focus:outline-none focus:border-purple-500"
                               />
                             </div>
 
                             <div>
-                              <label className="flex items-center justify-between gap-1 text-[10px] font-bold text-slate-600 mb-0.5">
-                                <span>Retail Sale Price ({currency})</span>
-                                {isAutoSaleHint && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleItemChange(idx, 'salePrice', Number(suggSale))}
-                                    className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300 text-[9px] font-extrabold cursor-pointer"
-                                    title="Auto-matched from same Name + RAM/Storage"
-                                  >
-                                    Auto
-                                  </button>
-                                )}
+                              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                                Sale ({currency})
                               </label>
                               <input
                                 type="number"
                                 min="0"
-                                placeholder={isAutoSaleHint ? String(suggSale) : 'Enter retail price'}
+                                placeholder="Leave blank if unset"
                                 value={item.salePrice}
-                                onChange={e => handleItemChange(idx, 'salePrice', e.target.value === '' ? '' : Number(e.target.value))}
-                                className={`w-full px-2.5 py-1.5 border rounded-xl text-xs font-semibold tabular-nums focus:outline-none shadow-2xs transition ${
-                                  isAutoSaleHint
-                                    ? 'bg-amber-50/70 border-amber-400 ring-1 ring-amber-300/70 placeholder:text-amber-700/70 placeholder:font-extrabold text-slate-900 focus:border-amber-500'
-                                    : 'bg-white border-slate-200 text-emerald-700 focus:border-blue-500'
-                                }`}
+                                onChange={e =>
+                                  handleItemChange(idx, 'salePrice', e.target.value === '' ? '' : Number(e.target.value))
+                                }
+                                className="compact-mobile-input w-full px-2 h-8 bg-white border border-slate-200 rounded-lg text-xs font-semibold tabular-nums text-emerald-700 focus:outline-none focus:border-blue-500"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                                Note (Optional)
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="PTA, box pack..."
+                                value={item.note || ''}
+                                onChange={e => handleItemChange(idx, 'note', e.target.value)}
+                                className="compact-mobile-input w-full px-2 h-8 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-500"
                               />
                             </div>
                           </div>
 
-                          {/* Item / Variant Note Box (just like Add Product) */}
-                          <div>
-                            <label className="text-[10px] font-bold text-slate-600 mb-0.5 flex items-center gap-1">
-                              <FileText className="w-3 h-3 text-amber-600" />
-                              Note (Optional)
-                            </label>
-                            <input
-                              type="text"
-                              placeholder="e.g. Box pack, PTA approved, minor scratch, battery 92%..."
-                              value={item.note || ''}
-                              onChange={e => handleItemChange(idx, 'note', e.target.value)}
-                              className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-500 shadow-2xs"
-                            />
-                          </div>
-
-                          {/* Dynamic IMEI Boxes for Android/Keypad OR Barcode for Other Categories */}
+                          {/* Dynamic IMEI Boxes OR Barcode */}
                           {isMobile ? (
-                            <div className="p-2.5 bg-blue-50/70 border border-blue-200 rounded-xl space-y-2">
-                              <div className="flex items-center justify-between text-[11px] font-bold">
-                                <span className="flex items-center gap-1.5 text-blue-800">
+                            <div className="p-2 bg-blue-50/70 border border-blue-200 rounded-lg space-y-1.5">
+                              <div className="flex items-center justify-between text-[10.5px] font-bold">
+                                <span className="flex items-center gap-1 text-blue-800">
                                   <Smartphone className="w-3.5 h-3.5 text-blue-600" />
-                                  {isAndroid ? 'Android' : 'Keypad'} IMEI Numbers ({itemImeis.length} {itemImeis.length === 1 ? 'Box' : 'Boxes'} for {Number(item.qty) || 0} units)
+                                  {isAndroid ? 'Android' : 'Keypad'} IMEIs ({itemImeis.length})
                                 </span>
-                                <span className="text-[10px] font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
-                                  1 Box = 1 IMEI Only
-                                </span>
+                                <span className="text-[10px] text-blue-700">1 Box = 1 IMEI</span>
                               </div>
 
                               {itemImeis.length === 0 ? (
-                                <p className="text-[11px] text-blue-700/80 py-1">
-                                  Enter Inward Qty above to add IMEI number boxes.
+                                <p className="text-[10.5px] text-blue-700/80">
+                                  Enter Qty above to open IMEI boxes.
                                 </p>
                               ) : (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1.5 max-h-40 overflow-y-auto pr-1">
-                                  {itemImeis.map((imVal, imIdx) => (
-                                    <div
-                                      key={imIdx}
-                                      className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-2xs focus-within:border-blue-500 transition"
-                                    >
-                                      <span className="tabular-nums text-[10px] font-bold text-slate-500 w-7 shrink-0">
-                                        #{imIdx + 1}
-                                      </span>
-                                      <input
-                                        id={`purchase-item-imei-${idx}-${imIdx}`}
-                                        type="text"
-                                        maxLength={MAX_SINGLE_IMEI_LENGTH}
-                                        value={imVal}
-                                        onChange={e => handleItemImeiChange(idx, imIdx, e.target.value)}
-                                        onKeyDown={e => handleItemImeiKeyDown(e, idx, imIdx)}
-                                        onPaste={e => handleItemImeiPaste(e, idx, imIdx)}
-                                        placeholder="1 IMEI (15 digits)"
-                                        className="w-full text-[11px] tabular-nums font-medium px-1 py-0.5 bg-transparent focus:outline-none"
-                                        autoComplete="off"
-                                      />
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setScannerTarget({ itemIdx: idx, imeiIdx: imIdx });
-                                          setIsScannerModalOpen(true);
-                                        }}
-                                        className="p-1 text-blue-600 hover:bg-blue-50 rounded transition cursor-pointer shrink-0"
-                                        title="Scan IMEI with Camera"
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1.5 max-h-28 overflow-y-auto pr-0.5">
+                                  {itemImeis.map((imVal, imIdx) => {
+                                    const cleanImLower = (imVal || '').trim().toLowerCase();
+                                    const soldRec =
+                                      editingPurchaseId && cleanImLower
+                                        ? imeiRecords.find(
+                                            r => r.imei?.trim().toLowerCase() === cleanImLower && r.status === 'SOLD'
+                                          )
+                                        : undefined;
+                                    const isSoldInThisEdit = Boolean(soldRec);
+                                    return (
+                                      <div
+                                        key={imIdx}
+                                        className={`flex items-center gap-1 px-2 h-7.5 rounded-lg border ${
+                                          isSoldInThisEdit
+                                            ? 'bg-amber-50/90 border-amber-300'
+                                            : 'bg-white border-slate-200 focus-within:border-blue-500'
+                                        }`}
                                       >
-                                        <Camera className="w-3.5 h-3.5" />
-                                      </button>
-                                    </div>
-                                  ))}
+                                        <span className="tabular-nums text-[10px] font-bold text-slate-400 w-5 shrink-0">
+                                          #{imIdx + 1}
+                                        </span>
+                                        <input
+                                          id={`purchase-item-imei-${idx}-${imIdx}`}
+                                          type="text"
+                                          maxLength={MAX_SINGLE_IMEI_LENGTH}
+                                          value={imVal}
+                                          readOnly={isSoldInThisEdit}
+                                          onChange={e => handleItemImeiChange(idx, imIdx, e.target.value)}
+                                          onKeyDown={e => handleItemImeiKeyDown(e, idx, imIdx)}
+                                          onPaste={e => handleItemImeiPaste(e, idx, imIdx)}
+                                          placeholder="15-digit IMEI"
+                                          className={`w-full text-[11px] tabular-nums font-medium bg-transparent focus:outline-none ${
+                                            isSoldInThisEdit ? 'text-amber-900 cursor-not-allowed' : ''
+                                          }`}
+                                          autoComplete="off"
+                                        />
+                                        {isSoldInThisEdit ? (
+                                          <span
+                                            className="text-[9px] font-extrabold text-amber-800 shrink-0"
+                                            title={`Sold on ${soldRec?.invoiceNo || 'Invoice'}`}
+                                          >
+                                            Sold
+                                          </span>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setScannerTarget({ itemIdx: idx, imeiIdx: imIdx });
+                                              setIsScannerModalOpen(true);
+                                            }}
+                                            className="p-0.5 text-blue-600 hover:bg-blue-50 rounded transition cursor-pointer shrink-0"
+                                            title="Scan IMEI with Camera"
+                                          >
+                                            <Camera className="w-3.5 h-3.5" />
+                                          </button>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               )}
 
+                              {editingPurchaseId &&
+                                itemImeis.some(im => {
+                                  const low = (im || '').trim().toLowerCase();
+                                  return low && imeiRecords.some(r => r.imei?.trim().toLowerCase() === low && r.status === 'SOLD');
+                                }) && (
+                                  <p className="text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-0.5">
+                                    Sold IMEIs are locked; remaining units &amp; prices can be updated freely.
+                                  </p>
+                                )}
+
                               {isAdmin && (
-                                <div className="flex items-center justify-end pt-1 border-t border-blue-100">
-                                  <span className="text-xs font-black text-slate-900 tabular-nums">
-                                    Subtotal: {currency} {rowTotal.toLocaleString()}
-                                  </span>
+                                <div className="flex items-center justify-end text-[11px] font-extrabold text-slate-800 tabular-nums">
+                                  Subtotal: {currency} {rowTotal.toLocaleString()}
                                 </div>
                               )}
                             </div>
                           ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-slate-200/60 text-[11px] items-center">
-                              <div className="flex items-center gap-1.5">
+                            <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-200/60 text-xs">
+                              <div className="flex items-center gap-1.5 flex-1">
                                 <Barcode className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                                 <input
                                   type="text"
-                                  placeholder="Barcode / Item Code (Scan or enter)"
+                                  placeholder="Barcode / Item Code"
                                   value={item.barcode}
                                   onChange={e => {
                                     const sanitized = e.target.value.replace(/[\r\n\t]/g, '');
@@ -2767,17 +2659,15 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                                       showToast(`Barcode for item #${idx + 1} captured`, 'info');
                                     }
                                   }}
-                                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs tabular-nums focus:outline-none focus:border-blue-500"
+                                  className="compact-mobile-input w-full px-2 h-7.5 bg-white border border-slate-200 rounded-lg text-xs tabular-nums focus:outline-none focus:border-blue-500"
                                   autoComplete="off"
                                 />
                               </div>
 
                               {isAdmin && (
-                                <div className="text-right">
-                                  <span className="text-xs font-black text-slate-900 tabular-nums">
-                                    Subtotal: {currency} {rowTotal.toLocaleString()}
-                                  </span>
-                                </div>
+                                <span className="text-xs font-extrabold text-slate-900 tabular-nums shrink-0">
+                                  {currency} {rowTotal.toLocaleString()}
+                                </span>
                               )}
                             </div>
                           )}
@@ -2788,68 +2678,64 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                 </div>
               </div>
 
-              {/* Row 3: Payment Breakdown (Admin Only) & Inventory Sync */}
-              <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-200/80 space-y-3">
+              {/* Row 3: Compact Payment & Inventory Sync Bar */}
+              <div className="bg-blue-50/50 p-2.5 sm:p-3 rounded-xl border border-blue-200/80 space-y-2">
                 {isAdmin && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-3 gap-2">
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        Cash Paid Now ({currency})
+                      <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                        Cash Paid ({currency})
                       </label>
                       <input
                         type="number"
                         min="0"
-                        placeholder="Enter cash paid amount"
+                        placeholder="Paid amount"
                         value={paidAmount}
                         onChange={e => setPaidAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-emerald-700 focus:outline-none focus:border-blue-500"
+                        className="compact-mobile-input w-full px-2.5 h-8 bg-white border border-slate-200 rounded-lg text-xs font-bold text-emerald-700 focus:outline-none focus:border-blue-500"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        Balance Due / Payable ({currency})
+                      <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                        Balance Due
                       </label>
-                      <div className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs font-black tabular-nums text-rose-600">
+                      <div className="w-full px-2.5 h-8 flex items-center bg-white/80 border border-slate-200 rounded-lg text-xs font-extrabold tabular-nums text-rose-600">
                         {currency} {balanceDue.toLocaleString()}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                        Bill Total
+                      </label>
+                      <div className="w-full px-2.5 h-8 flex items-center bg-white border border-blue-200 rounded-lg text-xs font-black tabular-nums text-slate-900">
+                        {currency} {totalBillAmount.toLocaleString()}
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* Auto Inventory Sync Toggle */}
-                <div className={`${isAdmin ? 'pt-2 border-t border-blue-100' : ''} flex items-center justify-between gap-3`}>
-                  <label className="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={autoAddToInventory}
-                      onChange={e => setAutoAddToInventory(e.target.checked)}
-                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
-                    />
-                    <span>Automatically inject & update stock quantities in Inventory</span>
-                  </label>
-
-                  {isAdmin && (
-                    <div className="text-right">
-                      <span className="text-[10px] text-slate-500 block uppercase font-bold">Grand Total</span>
-                      <span className="text-base font-black text-slate-900">
-                        {currency} {totalBillAmount.toLocaleString()}
-                      </span>
-                    </div>
-                  )}
-                </div>
+                <label className="flex items-center gap-2 text-[11px] font-bold text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={autoAddToInventory}
+                    onChange={e => setAutoAddToInventory(e.target.checked)}
+                    className="w-3.5 h-3.5 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                  />
+                  <span>Sync stock quantities &amp; IMEIs automatically with Inventory</span>
+                </label>
               </div>
-
             </form>
 
-            {/* Pinned Bottom Action Bar */}
-            <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 sm:px-5 sm:py-3 border-t border-slate-200/80 bg-white/85 dark:bg-black/80 backdrop-blur-xs shrink-0">
+            {/* Compact Pinned Footer */}
+            <div className="flex items-center justify-between gap-2 px-3.5 py-2 sm:px-4 sm:py-2.5 border-t border-slate-200/80 bg-white/85 dark:bg-black/80 shrink-0">
               <button
                 type="button"
                 onClick={clearDraft}
-                className="px-3 py-2 text-slate-500 hover:text-rose-600 text-xs font-bold transition cursor-pointer"
+                className="px-2.5 py-1.5 text-slate-500 hover:text-rose-600 text-xs font-bold transition cursor-pointer"
               >
-                Clear Form
+                Clear
               </button>
 
               <div className="flex items-center gap-2">
@@ -2859,7 +2745,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                     setIsAddModalOpen(false);
                     setEditingPurchaseId(null);
                   }}
-                  className="px-4 py-2 border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 text-xs font-bold rounded-xl transition cursor-pointer"
+                  className="px-3.5 py-1.5 border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 text-xs font-bold rounded-xl transition cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -2867,9 +2753,9 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                 <button
                   type="submit"
                   form="stock-inward-form"
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold rounded-xl shadow-md shadow-blue-600/20 transition cursor-pointer"
+                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold rounded-xl shadow-sm transition cursor-pointer"
                 >
-                  {editingPurchaseId ? 'Update Inward Bill' : 'Save Inward Bill'}
+                  {editingPurchaseId ? 'Update Bill' : 'Save Inward Bill'}
                 </button>
               </div>
             </div>
@@ -3343,12 +3229,12 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                     ram: v.ram || '',
                     storage: v.storage || '',
                     color: v.color || '',
-                    costPrice: v.costPrice !== '' && v.costPrice !== undefined ? Number(v.costPrice) : (it.costPrice || 0),
-                    salePrice: v.salePrice !== '' && v.salePrice !== undefined ? Number(v.salePrice) : (it.salePrice || 0),
+                    costPrice: v.costPrice !== '' && v.costPrice !== undefined ? Number(v.costPrice) : (it.costPrice ? Number(it.costPrice) : ''),
+                    salePrice: v.salePrice !== '' && v.salePrice !== undefined ? Number(v.salePrice) : (it.salePrice ? Number(it.salePrice) : ''),
                     wholesalePrice:
                       v.wholesalePrice !== undefined && v.wholesalePrice !== ''
                         ? Number(v.wholesalePrice)
-                        : it.wholesalePrice !== undefined
+                        : it.wholesalePrice
                         ? Number(it.wholesalePrice)
                         : '',
                     imeis: finalImeis,
@@ -3374,9 +3260,9 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                   ram: it.ram || '',
                   storage: it.storage || '',
                   color: it.color || '',
-                  costPrice: it.costPrice || 0,
-                  salePrice: it.salePrice || 0,
-                  wholesalePrice: it.wholesalePrice !== undefined ? Number(it.wholesalePrice) : '',
+                  costPrice: it.costPrice ? Number(it.costPrice) : '',
+                  salePrice: it.salePrice ? Number(it.salePrice) : '',
+                  wholesalePrice: it.wholesalePrice ? Number(it.wholesalePrice) : '',
                   imeis: finalImeis,
                   imei: finalImeis.filter(Boolean).join(', '),
                   barcode: it.barcode || '',

@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import {
-  Camera,
   X,
   RefreshCw,
   Volume2,
@@ -13,7 +12,7 @@ import {
   Check,
   ZoomIn,
   Image as ImageIcon,
-  Zap,
+  ScanLine,
   Smartphone,
   Layers,
   Focus,
@@ -62,8 +61,8 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   isOpen,
   onClose,
   onScan,
-  title = 'Fast Barcode & IMEI Scanner',
-  placeholder = 'Scan product barcode or IMEI label...',
+  title = 'Smart Barcode & IMEI Scanner',
+  placeholder = 'Type barcode or 15-digit IMEI...',
 }) => {
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
@@ -85,6 +84,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const [torchSupported, setTorchSupported] = useState(false);
   const [scannedHistory, setScannedHistory] = useState<string[]>([]);
   const [detectedFlash, setDetectedFlash] = useState<string | null>(null);
+  const [lockingCode, setLockingCode] = useState<string | null>(null);
   const [focusTapPos, setFocusTapPos] = useState<{ x: number; y: number } | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -95,6 +95,14 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const html5QrRef = useRef<Html5Qrcode | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const lastScanRef = useRef<{ code: string; time: number }>({ code: '', time: 0 });
+  const scanReadyAtRef = useRef<number>(0);
+  const pendingLockRef = useRef<{
+    code: string;
+    count: number;
+    firstTs: number;
+    lastTs: number;
+  }>({ code: '', count: 0, firstTs: 0, lastTs: 0 });
+  const lockResetTimerRef = useRef<number | null>(null);
   const isMountedRef = useRef(true);
   const scanModeRef = useRef<ScanMode>(scanMode);
   const continuousRef = useRef<boolean>(continuousMode);
@@ -118,7 +126,9 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
       setScanMode(title.toLowerCase().includes('imei') ? 'imei' : 'auto');
       setScannedHistory([]);
       setDetectedFlash(null);
+      setLockingCode(null);
       lastScanRef.current = { code: '', time: 0 };
+      pendingLockRef.current = { code: '', count: 0, firstTs: 0, lastTs: 0 };
     }
   }, [isOpen, title]);
 
@@ -161,6 +171,13 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
       }
 
       lastScanRef.current = { code: candidate, time: now };
+      pendingLockRef.current = { code: '', count: 0, firstTs: 0, lastTs: 0 };
+      if (lockResetTimerRef.current !== null) {
+        window.clearTimeout(lockResetTimerRef.current);
+        lockResetTimerRef.current = null;
+      }
+      setLockingCode(null);
+
       playBeep();
       setDetectedFlash(candidate);
       setScannedHistory(prev => [candidate, ...prev.filter(c => c !== candidate)].slice(0, 6));
@@ -169,7 +186,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
       if (!continuousRef.current) {
         setTimeout(() => {
           if (isMountedRef.current) onClose();
-        }, 90);
+        }, 110);
       } else {
         setTimeout(() => {
           if (isMountedRef.current) setDetectedFlash(null);
@@ -179,11 +196,65 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     [onScan, onClose, playBeep]
   );
 
+  // Require steady positioning inside reticle (~220ms + 2 consistent reads) before locking live stream reads
+  const handleLiveCameraDetection = useCallback(
+    (rawText: string) => {
+      const now = Date.now();
+      if (now < scanReadyAtRef.current) return;
+
+      const candidate = extractCandidateByMode(rawText, scanModeRef.current);
+      if (!candidate) return;
+
+      if (
+        lastScanRef.current.code === candidate &&
+        now - lastScanRef.current.time < 1300
+      ) {
+        return;
+      }
+
+      const pending = pendingLockRef.current;
+      const isSamePending = pending.code === candidate && now - pending.lastTs <= 650;
+
+      if (!isSamePending) {
+        pendingLockRef.current = {
+          code: candidate,
+          count: 1,
+          firstTs: now,
+          lastTs: now,
+        };
+        if (isMountedRef.current) setLockingCode(candidate);
+      } else {
+        pending.count += 1;
+        pending.lastTs = now;
+        const holdElapsed = now - pending.firstTs;
+        if (pending.count >= 2 && holdElapsed >= 200) {
+          emitScanResult(candidate);
+          return;
+        }
+      }
+
+      if (lockResetTimerRef.current !== null) {
+        window.clearTimeout(lockResetTimerRef.current);
+      }
+      lockResetTimerRef.current = window.setTimeout(() => {
+        pendingLockRef.current = { code: '', count: 0, firstTs: 0, lastTs: 0 };
+        if (isMountedRef.current) setLockingCode(null);
+      }, 650);
+    },
+    [emitScanResult]
+  );
+
   const stopAllEngines = useCallback(async () => {
     if (rafRef.current !== null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
+
+    if (lockResetTimerRef.current !== null) {
+      window.clearTimeout(lockResetTimerRef.current);
+      lockResetTimerRef.current = null;
+    }
+    pendingLockRef.current = { code: '', count: 0, firstTs: 0, lastTs: 0 };
 
     if (streamRef.current) {
       try {
@@ -216,6 +287,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
     if (isMountedRef.current) {
       setIsScanning(false);
+      setLockingCode(null);
       setTorchOn(false);
       setTorchSupported(false);
       setHasHardwareZoom(false);
@@ -293,6 +365,8 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
       video.srcObject = stream;
       await video.play();
 
+      // Warmup delay so stray motion on modal open never triggers a false scan
+      scanReadyAtRef.current = Date.now() + 450;
       setEngineType('turbo');
       setIsScanning(true);
 
@@ -303,7 +377,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         if (!isMountedRef.current || !streamRef.current) return;
         rafRef.current = requestAnimationFrame(scanFrame);
 
-        if (busy || ts - lastFrameTs < 40) return;
+        if (busy || ts - lastFrameTs < 65) return;
         if (video.readyState < 2 || video.videoWidth === 0) return;
 
         lastFrameTs = ts;
@@ -311,36 +385,48 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         try {
           const z = zoomRef.current;
           let targetSource: any = video;
+          let srcW = video.videoWidth;
+          let srcH = video.videoHeight;
 
-          // If software zoom > 1x and hardware zoom isn't active, crop center ROI into crisp offscreen canvas
-          if (z > 1.05 && !hasHardwareZoom) {
-            if (!offscreenCanvasRef.current) {
-              offscreenCanvasRef.current = document.createElement('canvas');
-            }
-            const canvas = offscreenCanvasRef.current;
-            const sw = Math.floor(video.videoWidth / z);
-            const sh = Math.floor(video.videoHeight / z);
-            const sx = Math.floor((video.videoWidth - sw) / 2);
-            const sy = Math.floor((video.videoHeight - sh) / 2);
-            canvas.width = Math.min(1280, Math.max(640, sw));
-            canvas.height = Math.min(720, Math.max(360, sh));
-            const ctx = canvas.getContext('2d', { willReadFrequently: false });
-            if (ctx) {
-              ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-              targetSource = canvas;
-            }
+          // Crop center reticle ROI (plus software zoom) into offscreen canvas so only aimed barcodes inside the frame are read
+          if (!offscreenCanvasRef.current) {
+            offscreenCanvasRef.current = document.createElement('canvas');
+          }
+          const canvas = offscreenCanvasRef.current;
+          const effZoom = !hasHardwareZoom && z > 1.05 ? z : 1;
+          const roiW = Math.floor((video.videoWidth * 0.86) / effZoom);
+          const roiH = Math.floor((video.videoHeight * 0.56) / effZoom);
+          const sx = Math.floor((video.videoWidth - roiW) / 2);
+          const sy = Math.floor((video.videoHeight - roiH) / 2);
+          canvas.width = Math.min(1280, Math.max(480, roiW));
+          canvas.height = Math.min(720, Math.max(270, roiH));
+          const ctx = canvas.getContext('2d', { willReadFrequently: false });
+          if (ctx) {
+            ctx.drawImage(video, sx, sy, roiW, roiH, 0, 0, canvas.width, canvas.height);
+            targetSource = canvas;
+            srcW = canvas.width;
+            srcH = canvas.height;
           }
 
           const barcodes = await detectorRef.current.detect(targetSource);
           if (barcodes && barcodes.length > 0) {
             for (const b of barcodes) {
               const rawVal = b?.rawValue;
-              if (rawVal) {
-                const candidate = extractCandidateByMode(rawVal, scanModeRef.current);
-                if (candidate) {
-                  emitScanResult(rawVal);
-                  break;
+              if (!rawVal) continue;
+
+              // Ensure barcode center sits comfortably inside active aiming zone
+              if (b.boundingBox && srcW > 0 && srcH > 0) {
+                const cx = (b.boundingBox.x + b.boundingBox.width / 2) / srcW;
+                const cy = (b.boundingBox.y + b.boundingBox.height / 2) / srcH;
+                if (cx < 0.06 || cx > 0.94 || cy < 0.08 || cy > 0.92) {
+                  continue;
                 }
+              }
+
+              const candidate = extractCandidateByMode(rawVal, scanModeRef.current);
+              if (candidate) {
+                handleLiveCameraDetection(rawVal);
+                break;
               }
             }
           }
@@ -383,13 +469,15 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
       const cameraConfig = selectedDeviceId ? selectedDeviceId : { facingMode };
 
+      scanReadyAtRef.current = Date.now() + 500;
+
       await html5QrCode.start(
         cameraConfig,
         {
-          fps: 30,
+          fps: 18,
           qrbox: (vw: number, vh: number) => ({
-            width: Math.min(Math.floor(vw * 0.9), 380),
-            height: Math.min(Math.floor(vh * 0.52), 180),
+            width: Math.min(Math.floor(vw * 0.78), 300),
+            height: Math.min(Math.floor(vh * 0.36), 140),
           }),
           aspectRatio: 1.333334,
           videoConstraints: {
@@ -398,7 +486,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
             height: { ideal: 720 },
           },
         } as any,
-        (decodedText) => emitScanResult(decodedText),
+        (decodedText) => handleLiveCameraDetection(decodedText),
         () => {}
       );
 
@@ -447,7 +535,6 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     }
   }, [isOpen, facingMode, selectedDeviceId]);
 
-  // Apply hardware zoom when zoomLevel changes
   useEffect(() => {
     const track = streamRef.current?.getVideoTracks()?.[0];
     if (!track || !hasHardwareZoom) return;
@@ -544,7 +631,6 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         }
       }
 
-      // Fallback using Html5Qrcode.scanFile
       const tempScanner = new Html5Qrcode('barcode-image-temp-reader', { verbose: false });
       const text = await tempScanner.scanFile(file, false);
       tempScanner.clear();
@@ -582,50 +668,55 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const activeCameraLabel = selectedDeviceId
     ? cameras.find(c => c.deviceId === selectedDeviceId)?.label || 'Camera'
     : facingMode === 'environment'
-    ? 'Back Cam'
+    ? 'Rear Cam'
     : 'Front Cam';
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center p-2.5 sm:p-4 bg-slate-950/65 backdrop-blur-sm overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl sm:rounded-3xl max-w-md w-full overflow-hidden shadow-2xl flex flex-col text-white my-auto animate-modal-pop max-h-[85dvh]">
-        {/* Hidden div for image file fallback decoding */}
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-[80] flex items-center justify-center p-2.5 sm:p-4 bg-slate-950/55 overflow-y-auto"
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        className="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-md w-full overflow-hidden shadow-2xl flex flex-col text-white my-auto animate-modal-pop max-h-[84dvh]"
+      >
         <div id="barcode-image-temp-reader" className="hidden" />
 
-        {/* Header */}
-        <div className="px-3.5 py-2.5 border-b border-slate-800 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30">
-              <Zap className="w-4 h-4" />
+        {/* Sleek Top Header */}
+        <div className="px-3.5 py-2.5 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-blue-600/20 text-blue-400 flex items-center justify-center shrink-0 border border-blue-500/30">
+              <ScanLine className="w-4 h-4" />
             </div>
             <div className="min-w-0">
-              <span className="font-extrabold text-xs sm:text-sm text-slate-100 truncate block leading-tight">
+              <h3 className="font-bold text-xs sm:text-sm text-white truncate leading-tight">
                 {title}
-              </span>
-              <span className="text-[10px] font-semibold text-emerald-400 flex items-center gap-1">
-                <span>{engineType === 'turbo' ? 'Turbo Hardware Engine' : 'Universal HD Engine'}</span>
-                <span className="text-slate-500">·</span>
-                <span className="text-slate-400 truncate max-w-[120px]">{activeCameraLabel}</span>
-              </span>
+              </h3>
+              <p className="text-[10px] font-medium text-slate-400 truncate">
+                {engineType === 'turbo' ? 'Optical Aim' : 'Universal Cam'} · {activeCameraLabel}
+              </p>
             </div>
           </div>
+
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-white w-9 h-9 rounded-xl hover:bg-slate-800 transition cursor-pointer flex items-center justify-center shrink-0"
+            className="text-slate-400 hover:text-white w-8 h-8 rounded-lg hover:bg-slate-800 transition cursor-pointer flex items-center justify-center shrink-0"
+            aria-label="Close scanner"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Scan Mode Bar: Auto vs IMEI Lock + Multi-Scan Toggle */}
-        <div className="px-3 py-2 bg-slate-950/90 border-b border-slate-800 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-xl border border-slate-800">
+        {/* Mode & Multi-Scan Switch Strip */}
+        <div className="px-3 py-2 bg-slate-900 border-b border-slate-800 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1 bg-slate-950 p-0.5 rounded-xl border border-slate-800">
             <button
               type="button"
               onClick={() => setScanMode('auto')}
               className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer flex items-center gap-1 ${
                 scanMode === 'auto'
-                  ? 'bg-blue-600 text-white shadow-xs'
+                  ? 'bg-blue-600 text-white'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -637,7 +728,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
               onClick={() => setScanMode('imei')}
               className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer flex items-center gap-1 ${
                 scanMode === 'imei'
-                  ? 'bg-emerald-600 text-white shadow-xs'
+                  ? 'bg-emerald-600 text-white'
                   : 'text-slate-400 hover:text-white'
               }`}
               title="Ignore promo QR URLs & lock onto 15-digit IMEI barcodes only"
@@ -653,21 +744,20 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
             className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer flex items-center gap-1 shrink-0 ${
               continuousMode
                 ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
-                : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
+                : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
             }`}
-            title="Keep scanner open to scan multiple devices back-to-back"
+            title="Keep scanner open to scan multiple barcodes"
           >
             <Layers className="w-3 h-3" />
             <span>{continuousMode ? 'Multi: ON' : 'Single'}</span>
           </button>
         </div>
 
-        {/* Live Camera Scanner Viewport */}
+        {/* Optical Camera Viewport with Crisp Aiming Reticle */}
         <div
           onClick={handleViewportTapFocus}
-          className="relative bg-black h-[240px] sm:h-[280px] flex items-center justify-center overflow-hidden cursor-crosshair select-none"
+          className="relative bg-black h-[225px] sm:h-[260px] flex items-center justify-center overflow-hidden cursor-crosshair select-none"
         >
-          {/* Engine 1: Native Hardware Video */}
           <video
             ref={videoRef}
             playsInline
@@ -683,59 +773,76 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
             }`}
           />
 
-          {/* Engine 2: Html5Qrcode Universal Fallback */}
           <div
             id={fallbackRegionId}
             className={`w-full h-full overflow-hidden ${engineType === 'universal' ? 'block' : 'hidden'}`}
           />
 
-          {/* Targeting Reticle & Live Detection Flash */}
+          {/* Clean Viewfinder Mask + Corner Reticle */}
           {isScanning && !errorMsg && (
             <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-4">
               <div
-                className={`w-[88%] max-w-[310px] h-[130px] rounded-2xl relative transition-all duration-150 border-2 ${
+                className={`w-[82%] max-w-[295px] h-[118px] rounded-xl relative transition-all duration-150 ${
                   detectedFlash
-                    ? 'border-emerald-400 bg-emerald-500/20 shadow-[0_0_28px_rgba(16,185,129,0.65)] scale-[1.02]'
-                    : 'border-emerald-400/75 bg-emerald-500/5 shadow-[0_0_18px_rgba(16,185,129,0.2)]'
+                    ? 'border-2 border-emerald-400 bg-emerald-500/20 shadow-[0_0_0_9999px_rgba(2,6,23,0.48)] scale-[1.01]'
+                    : lockingCode
+                    ? 'border-2 border-amber-400 bg-amber-400/10 shadow-[0_0_0_9999px_rgba(2,6,23,0.48)]'
+                    : 'border border-white/35 bg-transparent shadow-[0_0_0_9999px_rgba(2,6,23,0.45)]'
                 }`}
               >
-                <div className="absolute left-2 right-2 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_8px_#34d399] animate-pulse top-1/2 -translate-y-1/2" />
-                <div className="absolute -top-1 -left-1 w-4 h-4 border-t-2 border-l-2 border-white rounded-tl" />
-                <div className="absolute -top-1 -right-1 w-4 h-4 border-t-2 border-r-2 border-white rounded-tr" />
-                <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-2 border-l-2 border-white rounded-bl" />
-                <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-2 border-r-2 border-white rounded-br" />
+                {/* Crisp horizontal laser aim guide */}
+                <div
+                  className={`absolute left-3 right-3 h-[2px] top-1/2 -translate-y-1/2 transition-colors ${
+                    detectedFlash
+                      ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]'
+                      : lockingCode
+                      ? 'bg-amber-400 shadow-[0_0_8px_#fbbf24]'
+                      : 'bg-gradient-to-r from-transparent via-cyan-400/90 to-transparent'
+                  }`}
+                />
+
+                {/* L-Corner Optical Brackets */}
+                <div className="absolute -top-0.5 -left-0.5 w-4 h-4 border-t-2 border-l-2 border-cyan-300 rounded-tl" />
+                <div className="absolute -top-0.5 -right-0.5 w-4 h-4 border-t-2 border-r-2 border-cyan-300 rounded-tr" />
+                <div className="absolute -bottom-0.5 -left-0.5 w-4 h-4 border-b-2 border-l-2 border-cyan-300 rounded-bl" />
+                <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 border-b-2 border-r-2 border-cyan-300 rounded-br" />
               </div>
 
               {detectedFlash ? (
-                <div className="mt-2.5 px-3 py-1 rounded-lg bg-emerald-600 text-white text-[11px] font-black tabular-nums shadow-lg flex items-center gap-1.5">
+                <div className="mt-2.5 px-3 py-1 rounded-lg bg-emerald-600 text-white text-[11px] font-bold tabular-nums shadow-md flex items-center gap-1.5">
                   <Check className="w-3.5 h-3.5" />
-                  <span>Captured: {detectedFlash}</span>
+                  <span>Scanned: {detectedFlash}</span>
                 </div>
-              ) : (
-                <p className="text-[10px] tabular-nums text-emerald-300 font-bold bg-slate-950/75 px-2.5 py-1 rounded-lg border border-emerald-500/30 mt-2.5 flex items-center gap-1.5">
+              ) : lockingCode ? (
+                <p className="mt-2.5 px-2.5 py-1 rounded-lg bg-amber-500/90 text-slate-950 text-[10px] font-extrabold tabular-nums flex items-center gap-1.5">
                   <Focus className="w-3 h-3" />
+                  <span>Hold steady to confirm...</span>
+                </p>
+              ) : (
+                <p className="mt-2.5 px-2.5 py-1 rounded-lg bg-slate-950/75 border border-white/10 text-[10px] text-slate-200 font-medium flex items-center gap-1.5">
+                  <Focus className="w-3 h-3 text-cyan-400" />
                   <span>
                     {scanMode === 'imei'
-                      ? 'IMEI Lock Active — Tap frame to refocus'
-                      : 'Align barcode / QR — Tap frame to refocus'}
+                      ? 'Center 15-digit IMEI inside frame'
+                      : 'Center barcode inside frame to scan'}
                   </span>
                 </p>
               )}
             </div>
           )}
 
-          {/* Tap-to-focus Ring Feedback */}
+          {/* Tap-to-focus Ring */}
           {focusTapPos && (
             <div
-              style={{ left: focusTapPos.x - 20, top: focusTapPos.y - 20 }}
-              className="absolute w-10 h-10 rounded-full border-2 border-amber-400 pointer-events-none animate-ping"
+              style={{ left: focusTapPos.x - 18, top: focusTapPos.y - 18 }}
+              className="absolute w-9 h-9 rounded-full border-2 border-cyan-400 pointer-events-none animate-ping"
             />
           )}
 
           {/* Error Overlay */}
           {errorMsg && (
-            <div className="absolute inset-0 bg-slate-950/90 p-5 flex flex-col items-center justify-center text-center space-y-3 z-10">
-              <AlertCircle className="w-9 h-9 text-amber-400" />
+            <div className="absolute inset-0 bg-slate-950/95 p-5 flex flex-col items-center justify-center text-center space-y-3 z-10">
+              <AlertCircle className="w-8 h-8 text-amber-400" />
               <p className="text-xs text-slate-300 leading-relaxed max-w-xs">{errorMsg}</p>
               <div className="flex items-center gap-2">
                 <button
@@ -750,19 +857,18 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                   onClick={() => fileInputRef.current?.click()}
                   className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition cursor-pointer inline-flex items-center gap-1.5"
                 >
-                  <ImageIcon className="w-3.5 h-3.5" /> Scan Photo
+                  <ImageIcon className="w-3.5 h-3.5" /> Photo
                 </button>
               </div>
             </div>
           )}
         </div>
 
-        {/* Zoom + Hardware Toolbar Controls */}
+        {/* Optical Controls: Zoom + Hardware Actions */}
         <div className="px-3 py-2 bg-slate-950 border-t border-slate-800 space-y-2 text-xs">
-          {/* Quick Zoom Presets for Tiny IMEI Labels */}
           <div className="flex items-center justify-between gap-2">
             <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1 shrink-0">
-              <ZoomIn className="w-3.5 h-3.5 text-blue-400" />
+              <ZoomIn className="w-3.5 h-3.5 text-cyan-400" />
               <span>Zoom</span>
             </span>
             <div className="flex items-center gap-1 flex-1 justify-end">
@@ -771,7 +877,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                   key={z}
                   type="button"
                   onClick={() => setZoomLevel(z)}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold tabular-nums transition cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold tabular-nums transition cursor-pointer ${
                     zoomLevel === z
                       ? 'bg-blue-600 text-white'
                       : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
@@ -783,30 +889,29 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
             </div>
           </div>
 
-          {/* Camera / Torch / Photo / Sound Row */}
-          <div className="flex items-center justify-between gap-1.5">
+          <div className="grid grid-cols-4 gap-1.5">
             <button
               type="button"
               onClick={handleCycleCamera}
-              className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl transition cursor-pointer flex items-center gap-1.5 text-[11px] font-bold"
-              title="Switch Camera / Back Lens"
+              className="px-2 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl transition cursor-pointer flex items-center justify-center gap-1 text-[11px] font-bold"
+              title="Switch Camera / Lens"
             >
-              <RefreshCw className="w-3.5 h-3.5 text-blue-400" />
-              <span>{cameras.length > 2 ? 'Switch Lens' : 'Flip'}</span>
+              <RefreshCw className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+              <span className="truncate">{cameras.length > 2 ? 'Lens' : 'Flip'}</span>
             </button>
 
             <button
               type="button"
               onClick={toggleTorch}
               disabled={!torchSupported && engineType === 'turbo'}
-              className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer flex items-center gap-1 text-[11px] font-bold disabled:opacity-40 ${
+              className={`px-2 py-1.5 rounded-xl transition cursor-pointer flex items-center justify-center gap-1 text-[11px] font-bold disabled:opacity-40 ${
                 torchOn
-                  ? 'bg-amber-500 text-black font-extrabold'
+                  ? 'bg-amber-500 text-slate-950 font-extrabold'
                   : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
               }`}
-              title="Toggle Flashlight / Torch"
+              title="Toggle Flashlight"
             >
-              {torchOn ? <Flashlight className="w-3.5 h-3.5" /> : <FlashlightOff className="w-3.5 h-3.5" />}
+              {torchOn ? <Flashlight className="w-3.5 h-3.5 shrink-0" /> : <FlashlightOff className="w-3.5 h-3.5 shrink-0" />}
               <span>Torch</span>
             </button>
 
@@ -820,29 +925,30 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl transition cursor-pointer flex items-center gap-1 text-[11px] font-bold"
-              title="Scan Barcode or IMEI from Gallery Photo"
+              className="px-2 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl transition cursor-pointer flex items-center justify-center gap-1 text-[11px] font-bold"
+              title="Scan from Gallery Photo"
             >
-              <ImageIcon className="w-3.5 h-3.5 text-emerald-400" />
+              <ImageIcon className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
               <span>Photo</span>
             </button>
 
             <button
               type="button"
               onClick={() => setSoundEnabled(prev => !prev)}
-              className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl transition cursor-pointer flex items-center gap-1 text-[11px] font-bold"
+              className="px-2 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl transition cursor-pointer flex items-center justify-center gap-1 text-[11px] font-bold"
               title={soundEnabled ? 'Mute Beep' : 'Enable Beep'}
             >
               {soundEnabled ? (
-                <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+                <Volume2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
               ) : (
-                <VolumeX className="w-3.5 h-3.5 text-slate-400" />
+                <VolumeX className="w-3.5 h-3.5 text-slate-400 shrink-0" />
               )}
+              <span>{soundEnabled ? 'Sound' : 'Muted'}</span>
             </button>
           </div>
         </div>
 
-        {/* Continuous Mode Scanned History Strip */}
+        {/* Continuous Mode Scanned Strip */}
         {continuousMode && scannedHistory.length > 0 && (
           <div className="px-3 py-2 bg-slate-900 border-t border-slate-800 flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 overflow-x-auto min-w-0">
@@ -866,11 +972,8 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           </div>
         )}
 
-        {/* Manual Barcode / IMEI Input Fallback Form */}
-        <form onSubmit={handleManualSubmit} className="p-3 border-t border-slate-800 bg-slate-900/95 space-y-1.5">
-          <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-            Manual Entry / USB Gun Input
-          </label>
+        {/* Compact Manual Entry / USB Gun Input */}
+        <form onSubmit={handleManualSubmit} className="p-3 border-t border-slate-800 bg-slate-900 space-y-1.5">
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
               <Barcode className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
@@ -885,9 +988,9 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
             <button
               type="submit"
               disabled={!manualCode.trim()}
-              className="px-3.5 h-9 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white font-extrabold text-xs rounded-xl transition cursor-pointer flex items-center gap-1 shrink-0"
+              className="px-3.5 h-9 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1 shrink-0"
             >
-              <Check className="w-4 h-4" />
+              <Check className="w-3.5 h-3.5" />
               <span>Use</span>
             </button>
           </div>
@@ -896,4 +999,3 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     </div>
   );
 };
-

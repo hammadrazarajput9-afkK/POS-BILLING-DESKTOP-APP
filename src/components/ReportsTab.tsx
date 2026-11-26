@@ -1,9 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { AppData, SaleRecord, InventoryItem, ExpenseItem, KhataCustomer } from '../types';
+import { AppData, SaleRecord } from '../types';
 import {
   TrendingUp,
-  TrendingDown,
-  DollarSign,
   Package,
   BookOpen,
   PieChart,
@@ -12,24 +10,17 @@ import {
   Layers,
   Receipt,
   Share2,
-  Download,
   X,
-  CheckCircle2,
   AlertTriangle,
   ArrowUpRight,
-  ArrowDownLeft,
   ShoppingBag,
   Calculator,
-  Eye,
-  FileSpreadsheet,
   RotateCcw,
   Edit,
   Trash2,
   Store,
-  Building2,
-  Tag,
   Users,
-  Check
+  BarChart3,
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { getEffectiveSaleFigures } from '../utils/profitCalculator';
@@ -56,6 +47,16 @@ export type ReportType =
 
 export type DateFilterMode = 'all' | 'today' | 'week' | 'month' | '6month' | 'year' | 'custom';
 
+const DATE_FILTER_OPTIONS: { id: DateFilterMode; label: string }[] = [
+  { id: 'today', label: 'Today' },
+  { id: 'week', label: 'Week' },
+  { id: 'month', label: 'Month' },
+  { id: '6month', label: '6 Months' },
+  { id: 'year', label: 'Year' },
+  { id: 'custom', label: 'Custom' },
+  { id: 'all', label: 'All Time' },
+];
+
 const ReportsTabComponent: React.FC<ReportsTabProps> = ({
   data,
   onViewReceipt,
@@ -66,6 +67,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
   const { showToast } = useToast();
   const currency = data.settings.currency;
   const shopName = data.settings.shopName;
+  const isSalesman = data.currentRole === 'salesman';
 
   const [activeReportModal, setActiveReportModal] = useState<ReportType | null>(null);
   const [deleteSaleModal, setDeleteSaleModal] = useState<SaleRecord | null>(null);
@@ -91,6 +93,21 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
     window.addEventListener('pos-hardware-back', handleHardwareBack);
     return () => window.removeEventListener('pos-hardware-back', handleHardwareBack);
   }, [deleteSaleModal, activeReportModal]);
+
+  const activeFilterLabel = useMemo(() => {
+    if (dateFilterMode === 'today') return 'Today';
+    if (dateFilterMode === 'week') return 'Last 7 Days';
+    if (dateFilterMode === 'month') return 'This Month';
+    if (dateFilterMode === '6month') return 'Last 6 Months';
+    if (dateFilterMode === 'year') return 'This Year';
+    if (dateFilterMode === 'custom') {
+      if (customStartDate || customEndDate) {
+        return `${customStartDate || 'Start'} → ${customEndDate || 'Today'}`;
+      }
+      return 'Custom Range';
+    }
+    return 'All Time';
+  }, [dateFilterMode, customStartDate, customEndDate]);
 
   // Date In Range Checker
   const isDateInRange = (dateStr?: string) => {
@@ -140,6 +157,10 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
   // Filtered Core Collections
   const filteredSales = useMemo(() => {
     return data.sales.filter(s => s.status !== 'CANCELLED' && isDateInRange(s.date));
+  }, [data.sales, dateFilterMode, customStartDate, customEndDate]);
+
+  const auditTableSales = useMemo(() => {
+    return [...data.sales].filter(s => isDateInRange(s.date)).reverse().slice(0, 20);
   }, [data.sales, dateFilterMode, customStartDate, customEndDate]);
 
   const filteredExpenses = useMemo(() => {
@@ -205,7 +226,6 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
     return data.khata.reduce((acc, k) => acc + k.balance, 0);
   }, [data.khata]);
 
-  const totalKhataCustomers = data.khata.length;
   const debtorCustomersCount = data.khata.filter(k => k.balance > 0).length;
 
   // 5. Purchases Total
@@ -322,6 +342,14 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
     return Object.values(map).sort((a, b) => b.totalPurchased - a.totalPurchased);
   }, [wholesaleSales]);
 
+  const openReport = (type: ReportType) => {
+    if (type === 'pnl' && isSalesman) {
+      showToast('Restricted: Net Profit P&L Statement is restricted to Administrators', 'warning');
+      return;
+    }
+    setActiveReportModal(type);
+  };
+
   // Handle PDF Print of Active Report
   const handlePrintCurrentReport = () => {
     window.print();
@@ -363,7 +391,9 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
       if (retailerStats.length > 0) {
         lines.push(`\n*TOP RETAILERS BREAKDOWN:*`);
         retailerStats.slice(0, 5).forEach((r, idx) => {
-          lines.push(`${idx + 1}. ${r.name} (${r.shopName !== '-' ? r.shopName : r.city}) - Total: ${currency} ${r.totalPurchased.toLocaleString()} | Profit: ${currency} ${r.totalProfit.toLocaleString()} | Discount: ${currency} ${r.totalDiscounts.toLocaleString()}`);
+          lines.push(
+            `${idx + 1}. ${r.name} (${r.shopName !== '-' ? r.shopName : r.city}) - Total: ${currency} ${r.totalPurchased.toLocaleString()} | Profit: ${currency} ${r.totalProfit.toLocaleString()} | Discount: ${currency} ${r.totalDiscounts.toLocaleString()}`
+          );
         });
       }
     } else if (type === 'sales') {
@@ -410,6 +440,10 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
       topSellingList.slice(0, 5).forEach((p, idx) => {
         lines.push(`${idx + 1}. ${p.name} - ${p.unitsSold} units (${currency} ${p.totalRevenue.toLocaleString()})`);
       });
+    } else if (type === 'returns') {
+      lines.push(`🔄 *SALES RETURNS & REFUNDS REPORT*`);
+      lines.push(`• Return Records: ${filteredReturns.length}`);
+      lines.push(`• Total Refunds Paid: ${currency} ${totalRefundsAmount.toLocaleString()}`);
     }
 
     lines.push(`----------------------------------------`);
@@ -419,88 +453,204 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
     window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
   };
 
+  const reportModules: {
+    id: ReportType;
+    title: string;
+    subtitle: string;
+    metric: string;
+    icon: React.ReactNode;
+    iconBg: string;
+    accentText: string;
+    hoverBorder: string;
+  }[] = [
+    {
+      id: 'wholesale',
+      title: 'Wholesale B2B',
+      subtitle: 'Retailer volume & discounts',
+      metric: `${wholesaleSales.length} Invoices`,
+      icon: <Store className="w-4 h-4" />,
+      iconBg: 'bg-purple-50 text-purple-600',
+      accentText: 'text-purple-600',
+      hoverBorder: 'hover:border-purple-400',
+    },
+    {
+      id: 'sales',
+      title: 'Sales Ledger',
+      subtitle: 'Itemized invoices & revenue',
+      metric: `${filteredSales.length} Invoices`,
+      icon: <ShoppingBag className="w-4 h-4" />,
+      iconBg: 'bg-blue-50 text-blue-600',
+      accentText: 'text-blue-600',
+      hoverBorder: 'hover:border-blue-400',
+    },
+    {
+      id: 'pnl',
+      title: 'Profit & Loss',
+      subtitle: 'COGS, gross & net margin',
+      metric: isSalesman ? 'Admin Only' : `${netMarginPercent}% Margin`,
+      icon: <TrendingUp className="w-4 h-4" />,
+      iconBg: 'bg-emerald-50 text-emerald-600',
+      accentText: 'text-emerald-600',
+      hoverBorder: 'hover:border-emerald-400',
+    },
+    {
+      id: 'expenses',
+      title: 'Daily Expenses',
+      subtitle: 'Spend log by category',
+      metric: `${filteredExpenses.length} Entries`,
+      icon: <Receipt className="w-4 h-4" />,
+      iconBg: 'bg-rose-50 text-rose-600',
+      accentText: 'text-rose-600',
+      hoverBorder: 'hover:border-rose-400',
+    },
+    {
+      id: 'inventory',
+      title: 'Inventory Value',
+      subtitle: 'Stock cost vs retail value',
+      metric: `${totalStockUnits.toLocaleString()} Units`,
+      icon: <Package className="w-4 h-4" />,
+      iconBg: 'bg-indigo-50 text-indigo-600',
+      accentText: 'text-indigo-600',
+      hoverBorder: 'hover:border-indigo-400',
+    },
+    {
+      id: 'khata',
+      title: 'Customer Khata',
+      subtitle: 'Pending credit receivables',
+      metric: `${debtorCustomersCount} Accounts`,
+      icon: <BookOpen className="w-4 h-4" />,
+      iconBg: 'bg-purple-50 text-purple-600',
+      accentText: 'text-purple-600',
+      hoverBorder: 'hover:border-purple-400',
+    },
+    {
+      id: 'closings',
+      title: 'Daily Closings',
+      subtitle: 'Drawer cash & digital sync',
+      metric: `${closingsHistory.length} Records`,
+      icon: <Calculator className="w-4 h-4" />,
+      iconBg: 'bg-teal-50 text-teal-600',
+      accentText: 'text-teal-600',
+      hoverBorder: 'hover:border-teal-400',
+    },
+    {
+      id: 'purchases',
+      title: 'Stock Inward',
+      subtitle: 'Supplier bills & stock cost',
+      metric: `${filteredPurchases.length} Records`,
+      icon: <Layers className="w-4 h-4" />,
+      iconBg: 'bg-amber-50 text-amber-600',
+      accentText: 'text-amber-600',
+      hoverBorder: 'hover:border-amber-400',
+    },
+    {
+      id: 'top_products',
+      title: 'Top Products',
+      subtitle: 'Fastest selling devices',
+      metric: `${topSellingList.length} Models`,
+      icon: <BarChart3 className="w-4 h-4" />,
+      iconBg: 'bg-orange-50 text-orange-600',
+      accentText: 'text-orange-600',
+      hoverBorder: 'hover:border-orange-400',
+    },
+    {
+      id: 'returns',
+      title: 'Returns & Refunds',
+      subtitle: 'Restored IMEIs & refunds',
+      metric: `${filteredReturns.length} Returns`,
+      icon: <RotateCcw className="w-4 h-4" />,
+      iconBg: 'bg-amber-50 text-amber-600',
+      accentText: 'text-amber-600',
+      hoverBorder: 'hover:border-amber-400',
+    },
+  ];
+
   return (
-    <div className="space-y-3.5 sm:space-y-5">
-      {/* Top Header */}
-      <div className="border-b border-slate-200 dark:border-neutral-800 pb-2.5 sm:pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-        <div>
-          <h2 className="text-base sm:text-xl font-extrabold text-slate-900 dark:text-white tracking-tight flex items-center gap-1.5 sm:gap-2">
-            <PieChart className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" /> Business Reports
-          </h2>
-        </div>
-
-        <div className="text-left sm:text-right">
-          <span className="text-[10px] font-bold px-2.5 py-0.5 bg-blue-50 dark:bg-neutral-800 text-blue-700 dark:text-blue-400 rounded-full border border-blue-200 dark:border-neutral-700">
-            Created by HAMMAD RAZA DEVELOPMENT
-          </span>
-        </div>
-      </div>
-
-      {/* UNIVERSAL DATE RANGE FILTER TOOLBAR */}
-      <div className="bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-xl sm:rounded-2xl p-2.5 sm:p-3.5 shadow-xs space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5">
-            <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-blue-50 dark:bg-neutral-800 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-              <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+    <div className="space-y-4 sm:space-y-5">
+      {/* EXECUTIVE FINANCIAL HEADER + INTEGRATED PERIOD FILTER */}
+      <div className="animate-card-in bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-4 shadow-2xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+              <PieChart className="w-4.5 h-4.5" />
             </div>
-            <span className="font-extrabold text-[11px] sm:text-xs text-slate-900 dark:text-white uppercase tracking-wide">
-              Date Range
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight">
+                  Business Reports
+                </h2>
+                <span className="text-[11px] font-semibold text-slate-400 truncate">
+                  · {activeFilterLabel}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 truncate">
+                {shopName} financial statements, wholesale margins &amp; invoice audit
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => openReport('sales')}
+              className="h-8.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold inline-flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>Export Statement</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Period Filter Strip */}
+        <div className="pt-2.5 border-t border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-2">
+          <div className="no-scrollbar flex items-center gap-1 bg-slate-50 border border-slate-200/80 p-1 rounded-xl overflow-x-auto max-w-full">
+            {DATE_FILTER_OPTIONS.map(opt => {
+              const isActive = dateFilterMode === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setDateFilterMode(opt.id)}
+                  className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition cursor-pointer shrink-0 whitespace-nowrap ${
+                    isActive
+                      ? 'bg-blue-600 text-white shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] text-slate-500 tabular-nums shrink-0">
+            <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+            <span>
+              <strong className="text-slate-800">{filteredSales.length}</strong> sales ·{' '}
+              <strong className="text-slate-800">{filteredExpenses.length}</strong> expenses ·{' '}
+              <strong className="text-slate-800">{filteredReturns.length}</strong> returns
             </span>
           </div>
-          <span className="text-[10px] sm:text-[11px] font-bold px-2 py-0.5 bg-blue-50 dark:bg-neutral-800 text-blue-700 dark:text-blue-300 rounded-lg border border-blue-200 dark:border-neutral-700">
-            Active: {dateFilterMode === 'today' && 'Today'}
-            {dateFilterMode === 'week' && 'This Week'}
-            {dateFilterMode === 'month' && 'This Month'}
-            {dateFilterMode === '6month' && 'Last 6 Months'}
-            {dateFilterMode === 'year' && 'This Year'}
-            {dateFilterMode === 'custom' && 'Custom Date'}
-            {dateFilterMode === 'all' && 'All Time'}
-          </span>
-        </div>
-
-        <div className="no-scrollbar flex items-center gap-1.5 text-xs overflow-x-auto max-w-full">
-          {[
-            { id: 'today', label: 'Today' },
-            { id: 'week', label: 'Week' },
-            { id: 'month', label: 'Month' },
-            { id: '6month', label: '6 Months' },
-            { id: 'year', label: 'Year' },
-            { id: 'custom', label: 'Custom' },
-            { id: 'all', label: 'All Time' },
-          ].map(opt => (
-            <button
-              key={opt.id}
-              type="button"
-              onClick={() => setDateFilterMode(opt.id as DateFilterMode)}
-              className={`px-2.5 py-1 rounded-lg sm:rounded-xl font-bold text-[11px] sm:text-xs transition cursor-pointer shrink-0 whitespace-nowrap ${
-                dateFilterMode === opt.id
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-neutral-300 hover:bg-slate-200 dark:hover:bg-neutral-700'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
         </div>
 
         {dateFilterMode === 'custom' && (
-          <div className="pt-2 border-t border-slate-100 dark:border-neutral-800 flex flex-wrap items-center gap-2 text-xs animate-in fade-in">
+          <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-2 text-xs animate-scale-in">
             <div className="flex items-center gap-1.5">
-              <span className="font-bold text-slate-600 dark:text-neutral-400 text-[11px]">From:</span>
+              <span className="font-bold text-slate-500 text-[11px]">From</span>
               <input
                 type="date"
                 value={customStartDate}
                 onChange={e => setCustomStartDate(e.target.value)}
-                className="compact-mobile-input bg-slate-50 dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 text-slate-900 dark:text-white rounded-lg px-2 py-1 text-[11px] font-semibold outline-none focus:border-blue-600 cursor-pointer h-7.5"
+                className="compact-mobile-input bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-2.5 h-8 text-[11px] font-semibold outline-none focus:border-blue-600 cursor-pointer"
               />
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="font-bold text-slate-600 dark:text-neutral-400 text-[11px]">To:</span>
+              <span className="font-bold text-slate-500 text-[11px]">To</span>
               <input
                 type="date"
                 value={customEndDate}
                 onChange={e => setCustomEndDate(e.target.value)}
-                className="compact-mobile-input bg-slate-50 dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 text-slate-900 dark:text-white rounded-lg px-2 py-1 text-[11px] font-semibold outline-none focus:border-blue-600 cursor-pointer h-7.5"
+                className="compact-mobile-input bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-2.5 h-8 text-[11px] font-semibold outline-none focus:border-blue-600 cursor-pointer"
               />
             </div>
             {(customStartDate || customEndDate) && (
@@ -510,384 +660,190 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                   setCustomStartDate('');
                   setCustomEndDate('');
                 }}
-                className="text-[11px] text-rose-600 hover:underline font-bold cursor-pointer"
+                className="text-[11px] text-rose-600 hover:underline font-bold cursor-pointer px-1"
               >
-                Clear
+                Reset
               </button>
             )}
           </div>
         )}
       </div>
 
-      {/* Top 5 Quick Summary KPI Cards */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 sm:gap-3.5">
+      {/* 5-METRIC FINANCIAL KPI STRIP */}
+      <div className="animate-card-in animate-stagger-1 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3">
         {/* Sales Revenue */}
-        <div
-          onClick={() => setActiveReportModal('sales')}
-          className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl sm:rounded-2xl p-2 sm:p-3.5 shadow-xs cursor-pointer hover:border-blue-500 hover:shadow-md transition flex flex-col justify-between"
+        <button
+          type="button"
+          onClick={() => openReport('sales')}
+          className="text-left bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-3.5 shadow-2xs hover:border-blue-400 hover:shadow-sm transition cursor-pointer flex flex-col justify-between group"
         >
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 line-clamp-1">
+          <div className="flex items-center justify-between gap-1 w-full">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 truncate">
               Sales Revenue
             </span>
-            <Eye className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+            <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 transition shrink-0" />
           </div>
-          <h3 className="text-sm sm:text-xl font-extrabold text-slate-900 dark:text-white tabular-nums mt-0.5 truncate">
+          <p className="text-base sm:text-xl font-extrabold text-slate-900 tabular-nums mt-1.5 truncate">
             {currency} {totalSalesRevenue.toLocaleString()}
-          </h3>
-          <p className="text-[10px] sm:text-xs text-slate-400 truncate">{filteredSales.length} Invoices</p>
-        </div>
+          </p>
+          <p className="text-[11px] text-slate-400 mt-0.5 truncate tabular-nums">
+            {filteredSales.length} invoices
+          </p>
+        </button>
 
-        {/* Wholesale B2B Sales */}
-        <div
-          onClick={() => setActiveReportModal('wholesale')}
-          className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl sm:rounded-2xl p-2 sm:p-3.5 shadow-xs cursor-pointer hover:border-purple-500 hover:shadow-md transition flex flex-col justify-between"
+        {/* Wholesale B2B */}
+        <button
+          type="button"
+          onClick={() => openReport('wholesale')}
+          className="text-left bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-3.5 shadow-2xs hover:border-purple-400 hover:shadow-sm transition cursor-pointer flex flex-col justify-between group"
         >
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400 line-clamp-1">
+          <div className="flex items-center justify-between gap-1 w-full">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600 truncate">
               Wholesale B2B
             </span>
-            <Store className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+            <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-purple-600 transition shrink-0" />
           </div>
-          <h3 className="text-sm sm:text-xl font-extrabold text-purple-700 dark:text-purple-400 tabular-nums mt-0.5 truncate">
+          <p className="text-base sm:text-xl font-extrabold text-purple-700 tabular-nums mt-1.5 truncate">
             {currency} {totalWholesaleRevenue.toLocaleString()}
-          </h3>
-          <p className="text-[10px] sm:text-xs text-slate-400 truncate">{wholesaleSales.length} Invoices</p>
-        </div>
+          </p>
+          <p className="text-[11px] text-slate-400 mt-0.5 truncate tabular-nums">
+            {wholesaleSales.length} bills · {totalWholesaleUnits} pcs
+          </p>
+        </button>
 
         {/* Net Profit */}
-        <div
-          onClick={() => {
-            if (data.currentRole === 'salesman') {
-              showToast('Restricted: Net Profit P&L Statement is restricted to Administrators', 'warning');
-              return;
-            }
-            setActiveReportModal('pnl');
-          }}
-          className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl sm:rounded-2xl p-2 sm:p-3.5 shadow-xs cursor-pointer hover:border-emerald-500 hover:shadow-md transition flex flex-col justify-between"
+        <button
+          type="button"
+          onClick={() => openReport('pnl')}
+          className="text-left bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-3.5 shadow-2xs hover:border-emerald-400 hover:shadow-sm transition cursor-pointer flex flex-col justify-between group"
         >
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 line-clamp-1">
+          <div className="flex items-center justify-between gap-1 w-full">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 truncate">
               Net Profit
             </span>
-            <Eye className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-600 transition shrink-0" />
           </div>
-          {data.currentRole === 'salesman' ? (
-            <span className="text-[10px] sm:text-xs font-bold text-slate-400 block mt-0.5">Restricted</span>
+          {isSalesman ? (
+            <>
+              <p className="text-sm font-bold text-slate-400 mt-1.5">Restricted</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">Admin access only</p>
+            </>
           ) : (
             <>
-              <h3
-                className={`text-sm sm:text-xl font-extrabold tabular-nums mt-0.5 truncate ${
-                  netProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600'
+              <p
+                className={`text-base sm:text-xl font-extrabold tabular-nums mt-1.5 truncate ${
+                  netProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'
                 }`}
               >
                 {currency} {netProfit.toLocaleString()}
-              </h3>
-              <p className="text-[10px] sm:text-xs text-slate-400 truncate">Margin: {netMarginPercent}%</p>
+              </p>
+              <p className="text-[11px] text-slate-400 mt-0.5 truncate tabular-nums">
+                {netMarginPercent}% net margin
+              </p>
             </>
           )}
-        </div>
+        </button>
 
         {/* Expenses */}
-        <div
-          onClick={() => setActiveReportModal('expenses')}
-          className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl sm:rounded-2xl p-2 sm:p-3.5 shadow-xs cursor-pointer hover:border-rose-500 hover:shadow-md transition flex flex-col justify-between"
+        <button
+          type="button"
+          onClick={() => openReport('expenses')}
+          className="text-left bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-3.5 shadow-2xs hover:border-rose-400 hover:shadow-sm transition cursor-pointer flex flex-col justify-between group"
         >
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 line-clamp-1">
-              Total Expenses
+          <div className="flex items-center justify-between gap-1 w-full">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 truncate">
+              Expenses
             </span>
-            <Eye className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+            <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-rose-600 transition shrink-0" />
           </div>
-          <h3 className="text-sm sm:text-xl font-extrabold text-rose-600 dark:text-rose-400 tabular-nums mt-0.5 truncate">
+          <p className="text-base sm:text-xl font-extrabold text-rose-600 tabular-nums mt-1.5 truncate">
             {currency} {totalExpenses.toLocaleString()}
-          </h3>
-          <p className="text-[10px] sm:text-xs text-slate-400 truncate">{filteredExpenses.length} Records</p>
-        </div>
+          </p>
+          <p className="text-[11px] text-slate-400 mt-0.5 truncate tabular-nums">
+            {filteredExpenses.length} entries
+          </p>
+        </button>
 
-        {/* Stock Valuation */}
-        <div
-          onClick={() => setActiveReportModal('inventory')}
-          className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl sm:rounded-2xl p-2 sm:p-3.5 shadow-xs cursor-pointer hover:border-indigo-500 hover:shadow-md transition flex flex-col justify-between col-span-2 sm:col-span-1"
+        {/* Stock Value */}
+        <button
+          type="button"
+          onClick={() => openReport('inventory')}
+          className="col-span-2 sm:col-span-1 text-left bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-3.5 shadow-2xs hover:border-indigo-400 hover:shadow-sm transition cursor-pointer flex flex-col justify-between group"
         >
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 line-clamp-1">
+          <div className="flex items-center justify-between gap-1 w-full">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 truncate">
               Stock Value
             </span>
-            <Eye className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+            <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition shrink-0" />
           </div>
-          <h3 className="text-sm sm:text-xl font-extrabold text-slate-900 dark:text-white tabular-nums mt-0.5 truncate">
+          <p className="text-base sm:text-xl font-extrabold text-slate-900 tabular-nums mt-1.5 truncate">
             {currency} {stockValuationCost.toLocaleString()}
+          </p>
+          <p className="text-[11px] text-slate-400 mt-0.5 truncate tabular-nums">
+            {totalStockUnits.toLocaleString()} units on hand
+          </p>
+        </button>
+      </div>
+
+      {/* REPORT SUITE DIRECTORY (ALL 10 MODULES) */}
+      <div className="animate-card-in animate-stagger-2 space-y-2">
+        <div className="flex items-center justify-between px-0.5">
+          <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">
+            Financial Statements &amp; Ledgers
           </h3>
-          <p className="text-[10px] sm:text-xs text-slate-400 truncate">{totalStockUnits} Units in stock</p>
+          <span className="text-[11px] text-slate-400 font-medium">
+            Tap any report to inspect, print PDF or share
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-2.5">
+          {reportModules.map(mod => (
+            <button
+              key={mod.id}
+              type="button"
+              onClick={() => openReport(mod.id)}
+              className={`text-left bg-white border border-slate-200/90 rounded-xl p-2.5 sm:p-3 shadow-2xs transition cursor-pointer flex flex-col justify-between group ${mod.hoverBorder}`}
+            >
+              <div className="space-y-2 w-full">
+                <div className="flex items-center justify-between gap-2">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${mod.iconBg}`}>
+                    {mod.icon}
+                  </div>
+                  <ArrowUpRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-600 transition shrink-0" />
+                </div>
+                <div className="min-w-0">
+                  <h4 className="font-bold text-slate-900 text-xs leading-tight truncate">
+                    {mod.title}
+                  </h4>
+                  <p className="text-[10.5px] text-slate-500 mt-0.5 leading-snug line-clamp-1">
+                    {mod.subtitle}
+                  </p>
+                </div>
+              </div>
+
+              <div className={`mt-2 pt-1.5 border-t border-slate-100 text-[10.5px] font-bold tabular-nums w-full truncate ${mod.accentText}`}>
+                {mod.metric}
+              </div>
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* ALL DETAIL REPORT CARDS SUITE */}
-      <div>
-        <h3 className="text-[11px] sm:text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-1.5 sm:mb-2">
-          Available Detail Reports
-        </h3>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1.5 sm:gap-2">
-          {/* WHOLESALE & RETAILER B2B REPORT CARD */}
-          <div
-            onClick={() => setActiveReportModal('wholesale')}
-            className="bg-white dark:bg-neutral-900 border border-purple-300 dark:border-purple-800 rounded-xl p-2 sm:p-2.5 shadow-xs hover:border-purple-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between relative overflow-hidden"
-          >
-            <div className="space-y-1">
-              <div className="flex items-center justify-between gap-1">
-                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-purple-50 dark:bg-purple-950 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
-                  <Store className="w-3.5 h-3.5" />
-                </div>
-                <span className="text-[9px] font-extrabold px-1.5 py-0.2 bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 rounded">
-                  B2B
-                </span>
-              </div>
-              <div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-[11px] sm:text-xs leading-tight line-clamp-1">
-                  Wholesale B2B
-                </h4>
-                <p className="text-[9.5px] sm:text-[10px] text-slate-500 dark:text-neutral-400 mt-0.5 leading-snug line-clamp-1">
-                  Retailer sales, cost, profit
-                </p>
-              </div>
-            </div>
-            <div className="mt-1.5 pt-1 border-t border-purple-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-purple-600 dark:text-purple-400">
-              <span className="truncate">{wholesaleSales.length} Invoices</span>
-              <ArrowUpRight className="w-3 h-3 shrink-0" />
-            </div>
-          </div>
-
-          {/* 1. Sales Report Card */}
-          <div
-            onClick={() => setActiveReportModal('sales')}
-            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2 sm:p-2.5 shadow-xs hover:border-blue-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
-          >
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5">
-                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-                  <ShoppingBag className="w-3.5 h-3.5" />
-                </div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-[11px] sm:text-xs leading-tight line-clamp-1">
-                  Sales & Invoices
-                </h4>
-              </div>
-              <p className="text-[9.5px] sm:text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-1">
-                Itemized sales & invoices
-              </p>
-            </div>
-            <div className="mt-1.5 pt-1 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-blue-600 dark:text-blue-400">
-              <span>View Report</span>
-              <ArrowUpRight className="w-3 h-3 shrink-0" />
-            </div>
-          </div>
-
-          {/* 2. Daily Expenses Report Card */}
-          <div
-            onClick={() => setActiveReportModal('expenses')}
-            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2 sm:p-2.5 shadow-xs hover:border-rose-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
-          >
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5">
-                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
-                  <Receipt className="w-3.5 h-3.5" />
-                </div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-[11px] sm:text-xs leading-tight line-clamp-1">
-                  Daily Expenses
-                </h4>
-              </div>
-              <p className="text-[9.5px] sm:text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-1">
-                Expenditure log by category
-              </p>
-            </div>
-            <div className="mt-1.5 pt-1 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-rose-600 dark:text-rose-400">
-              <span>View Report</span>
-              <ArrowUpRight className="w-3 h-3 shrink-0" />
-            </div>
-          </div>
-
-          {/* 3. Inventory Stock Valuation Card */}
-          <div
-            onClick={() => setActiveReportModal('inventory')}
-            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2 sm:p-2.5 shadow-xs hover:border-indigo-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
-          >
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5">
-                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-                  <Package className="w-3.5 h-3.5" />
-                </div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-[11px] sm:text-xs leading-tight line-clamp-1">
-                  Inventory Value
-                </h4>
-              </div>
-              <p className="text-[9.5px] sm:text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-1">
-                Stock levels, cost & retail
-              </p>
-            </div>
-            <div className="mt-1.5 pt-1 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
-              <span>View Report</span>
-              <ArrowUpRight className="w-3 h-3 shrink-0" />
-            </div>
-          </div>
-
-          {/* 4. Customer Credit / Khata Report Card */}
-          <div
-            onClick={() => setActiveReportModal('khata')}
-            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2 sm:p-2.5 shadow-xs hover:border-purple-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
-          >
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5">
-                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
-                  <BookOpen className="w-3.5 h-3.5" />
-                </div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-[11px] sm:text-xs leading-tight line-clamp-1">
-                  Customer Khata
-                </h4>
-              </div>
-              <p className="text-[9.5px] sm:text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-1">
-                Credit accounts & recoveries
-              </p>
-            </div>
-            <div className="mt-1.5 pt-1 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-purple-600 dark:text-purple-400">
-              <span>View Report</span>
-              <ArrowUpRight className="w-3 h-3 shrink-0" />
-            </div>
-          </div>
-
-          {/* 5. Profit & Loss Statement Card */}
-          <div
-            onClick={() => setActiveReportModal('pnl')}
-            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2 sm:p-2.5 shadow-xs hover:border-emerald-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
-          >
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5">
-                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-                  <TrendingUp className="w-3.5 h-3.5" />
-                </div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-[11px] sm:text-xs leading-tight line-clamp-1">
-                  Profit & Loss
-                </h4>
-              </div>
-              <p className="text-[9.5px] sm:text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-1">
-                Revenue, COGS & net margin
-              </p>
-            </div>
-            <div className="mt-1.5 pt-1 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-              <span>View Report</span>
-              <ArrowUpRight className="w-3 h-3 shrink-0" />
-            </div>
-          </div>
-
-          {/* 6. Daily Closing Report Card */}
-          <div
-            onClick={() => setActiveReportModal('closings')}
-            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2 sm:p-2.5 shadow-xs hover:border-teal-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
-          >
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5">
-                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0">
-                  <Calculator className="w-3.5 h-3.5" />
-                </div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-[11px] sm:text-xs leading-tight line-clamp-1">
-                  Daily Closing
-                </h4>
-              </div>
-              <p className="text-[9.5px] sm:text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-1">
-                Cash counts & digital sync
-              </p>
-            </div>
-            <div className="mt-1.5 pt-1 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-teal-600 dark:text-teal-400">
-              <span>View Report</span>
-              <ArrowUpRight className="w-3 h-3 shrink-0" />
-            </div>
-          </div>
-
-          {/* 7. Purchases & Stock Inward Card */}
-          <div
-            onClick={() => setActiveReportModal('purchases')}
-            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2 sm:p-2.5 shadow-xs hover:border-amber-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
-          >
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5">
-                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                  <Layers className="w-3.5 h-3.5" />
-                </div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-[11px] sm:text-xs leading-tight line-clamp-1">
-                  Purchases Ledger
-                </h4>
-              </div>
-              <p className="text-[9.5px] sm:text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-1">
-                Stock inward & purchase cost
-              </p>
-            </div>
-            <div className="mt-1.5 pt-1 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-amber-600 dark:text-amber-400">
-              <span>View Report</span>
-              <ArrowUpRight className="w-3 h-3 shrink-0" />
-            </div>
-          </div>
-
-          {/* 8. Top Selling Products Card */}
-          <div
-            onClick={() => setActiveReportModal('top_products')}
-            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2 sm:p-2.5 shadow-xs hover:border-orange-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
-          >
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5">
-                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-orange-50 dark:bg-orange-950/60 text-orange-600 dark:text-orange-400 flex items-center justify-center shrink-0">
-                  <TrendingUp className="w-3.5 h-3.5" />
-                </div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-[11px] sm:text-xs leading-tight line-clamp-1">
-                  Top Products
-                </h4>
-              </div>
-              <p className="text-[9.5px] sm:text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-1">
-                Best sellers by units & profit
-              </p>
-            </div>
-            <div className="mt-1.5 pt-1 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-orange-600 dark:text-orange-400">
-              <span>View Report</span>
-              <ArrowUpRight className="w-3 h-3 shrink-0" />
-            </div>
-          </div>
-
-          {/* 9. Returns & Refunds Report Card */}
-          <div
-            onClick={() => setActiveReportModal('returns')}
-            className="bg-white dark:bg-neutral-900 border border-slate-200/90 dark:border-neutral-800 rounded-xl p-2 sm:p-2.5 shadow-xs hover:border-amber-500 hover:shadow-sm transition cursor-pointer flex flex-col justify-between"
-          >
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5">
-                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                  <RotateCcw className="w-3.5 h-3.5" />
-                </div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-[11px] sm:text-xs leading-tight line-clamp-1">
-                  Returns & Refunds
-                </h4>
-              </div>
-              <p className="text-[9.5px] sm:text-[10px] text-slate-500 dark:text-neutral-400 leading-snug line-clamp-1">
-                Restored IMEIs & refunds
-              </p>
-            </div>
-            <div className="mt-1.5 pt-1 border-t border-slate-100 dark:border-neutral-800 flex items-center justify-between text-[10px] font-bold text-amber-600 dark:text-amber-400">
-              <span className="truncate">{(data.salesReturns || []).length} Returns</span>
-              <ArrowUpRight className="w-3 h-3 shrink-0" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Sales Invoices Audit Table */}
-      <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 space-y-2.5 sm:space-y-4 shadow-xs">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-2 sm:pb-3 gap-2">
+      {/* COMPLETED SALES HISTORY AUDIT TABLE */}
+      <div className="animate-card-in animate-stagger-3 bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-4 space-y-3 shadow-2xs">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 gap-2">
           <div>
-            <h4 className="font-bold text-slate-900 text-xs sm:text-sm">Completed Sales History</h4>
-            <p className="text-[10.5px] sm:text-xs text-slate-500 mt-0.5">Audit trail of processed invoices</p>
+            <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm">
+              Completed Sales History
+            </h4>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Recent processed invoices ({auditTableSales.length} shown · {activeFilterLabel})
+            </p>
           </div>
           <button
             type="button"
-            onClick={() => setActiveReportModal('sales')}
-            className="text-[11px] sm:text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-0.5 shrink-0"
+            onClick={() => openReport('sales')}
+            className="text-xs font-bold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1 shrink-0 cursor-pointer"
           >
             <span>Full Report</span>
             <ArrowUpRight className="w-3.5 h-3.5" />
@@ -897,132 +853,127 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
         <div className="border border-slate-200/80 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
-              <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
+              <thead className="bg-slate-50 text-[10.5px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
                 <tr>
-                  <th className="p-3">Invoice #</th>
-                  <th className="p-3">Type</th>
-                  <th className="p-3">Date</th>
-                  <th className="p-3">Customer</th>
-                  <th className="p-3">Items Sold</th>
-                  <th className="p-3">Payment</th>
-                  <th className="p-3 text-right">Grand Total</th>
-                  <th className="p-3 text-right">Net Profit</th>
-                  <th className="p-3 text-center">Receipt</th>
+                  <th className="py-2.5 px-3">Invoice #</th>
+                  <th className="py-2.5 px-3">Date</th>
+                  <th className="py-2.5 px-3">Customer</th>
+                  <th className="py-2.5 px-3">Items</th>
+                  <th className="py-2.5 px-3">Payment</th>
+                  <th className="py-2.5 px-3 text-right">Total</th>
+                  <th className="py-2.5 px-3 text-right">Profit</th>
+                  <th className="py-2.5 px-3 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {data.sales.length === 0 ? (
+                {auditTableSales.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="text-center py-10 text-slate-400">
-                      No sales recorded yet. Process a transaction in POS.
+                    <td colSpan={8} className="text-center py-10 text-slate-400">
+                      No invoices matched this date range.
                     </td>
                   </tr>
                 ) : (
-                  [...data.sales].reverse().slice(0, 15).map(sale => (
-                    <tr key={sale.invNo} className="hover:bg-slate-50/60 transition">
-                      <td className="p-3 tabular-nums font-bold text-blue-600">
-                        #{sale.invNo}
-                      </td>
-                      <td className="p-3">
-                        <div className="flex flex-col gap-1 items-start">
-                          <span
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                              sale.invoiceType === 'credit'
-                                ? 'bg-purple-100 text-purple-800'
-                                : 'bg-emerald-100 text-emerald-800'
-                            }`}
-                          >
-                            {sale.invoiceType === 'credit' ? 'Credit' : 'Cash'}
+                  auditTableSales.map(sale => {
+                    const eff = getEffectiveSaleFigures(sale);
+                    const totalUnits = sale.items.reduce((acc, i) => acc + i.qty, 0);
+                    return (
+                      <tr key={sale.invNo} className="table-row-hover">
+                        <td className="py-2.5 px-3 tabular-nums font-bold text-blue-600 whitespace-nowrap">
+                          #{sale.invNo}
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-500 tabular-nums text-[11px] whitespace-nowrap">
+                          {new Date(sale.date).toLocaleDateString()}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className="font-semibold text-slate-900 block truncate max-w-[160px]">
+                            {sale.custName || 'Walk-in'}
                           </span>
-                          {sale.returnStatus === 'FULL' && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.2 bg-rose-100 text-rose-800 rounded">
-                              RETURNED
-                            </span>
-                          )}
-                          {sale.returnStatus === 'PARTIAL' && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded">
-                              PARTIAL RET
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-3 text-slate-500 tabular-nums text-[11px]">
-                        {new Date(sale.date).toLocaleDateString()}
-                      </td>
-                      <td className="p-3 font-semibold text-slate-900">
-                        {sale.custName || 'Walk-in'}
-                      </td>
-                      <td className="p-3 text-slate-600">
-                        {sale.items.length} {sale.items.length === 1 ? 'item' : 'items'} (
-                        {sale.items.reduce((acc, i) => acc + i.qty, 0)} units)
-                      </td>
-                      <td className="p-3">
-                        <span className="px-2 py-0.5 bg-slate-100 rounded text-[11px] font-semibold text-slate-700">
+                          <span className="text-[10.5px] text-slate-400">
+                            {sale.invoiceType === 'credit' ? 'Credit' : 'Cash'}
+                            {sale.status === 'CANCELLED' && (
+                              <span className="text-rose-600 font-bold"> · Void</span>
+                            )}
+                            {sale.returnStatus === 'FULL' && (
+                              <span className="text-rose-600 font-bold"> · Returned</span>
+                            )}
+                            {sale.returnStatus === 'PARTIAL' && (
+                              <span className="text-amber-600 font-bold"> · Partial Ret</span>
+                            )}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600 tabular-nums whitespace-nowrap">
+                          {sale.items.length} item{sale.items.length === 1 ? '' : 's'} ({totalUnits}u)
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-700 font-medium whitespace-nowrap">
                           {sale.paymentMethod}
-                        </span>
-                      </td>
-                      <td className="p-3 text-right tabular-nums font-bold text-slate-900">
-                        {sale.returnStatus === 'FULL' ? (
-                          <span className="text-rose-600">{currency} 0</span>
-                        ) : (
-                          `${currency} ${getEffectiveSaleFigures(sale).revenue.toLocaleString()}`
-                        )}
-                      </td>
-                      <td className={`p-3 text-right tabular-nums font-bold ${sale.returnStatus === 'FULL' ? 'text-slate-400' : 'text-emerald-600'}`}>
-                        {data.currentRole === 'salesman'
-                          ? '••••'
-                          : sale.returnStatus === 'FULL'
-                          ? `${currency} 0 (Ret)`
-                          : `+${currency} ${getEffectiveSaleFigures(sale).profit.toLocaleString()}`}
-                      </td>
-                      <td className="p-3 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => onViewReceipt(sale)}
-                            className="p-1 text-slate-500 hover:text-blue-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
-                            title="Print Receipt"
-                          >
-                            <Printer className="w-3.5 h-3.5" />
-                          </button>
-                          {onEditSale && sale.status !== 'CANCELLED' && (
+                        </td>
+                        <td className="py-2.5 px-3 text-right tabular-nums font-bold text-slate-900 whitespace-nowrap">
+                          {sale.returnStatus === 'FULL' ? (
+                            <span className="text-rose-600">{currency} 0</span>
+                          ) : (
+                            `${currency} ${eff.revenue.toLocaleString()}`
+                          )}
+                        </td>
+                        <td
+                          className={`py-2.5 px-3 text-right tabular-nums font-bold whitespace-nowrap ${
+                            sale.returnStatus === 'FULL' ? 'text-slate-400' : 'text-emerald-600'
+                          }`}
+                        >
+                          {isSalesman
+                            ? '••••'
+                            : sale.returnStatus === 'FULL'
+                            ? `${currency} 0`
+                            : `+${currency} ${eff.profit.toLocaleString()}`}
+                        </td>
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-1">
                             <button
                               type="button"
-                              onClick={() => onEditSale(sale)}
-                              className="p-1 text-slate-500 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition cursor-pointer"
-                              title="Edit Invoice"
+                              onClick={() => onViewReceipt(sale)}
+                              className="p-1.5 text-slate-500 hover:text-blue-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                              title="Print Receipt"
                             >
-                              <Edit className="w-3.5 h-3.5" />
+                              <Printer className="w-3.5 h-3.5" />
                             </button>
-                          )}
-                          {onDeleteSale && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setDeleteSaleModal(sale);
-                                setDeleteMode(sale.status === 'CANCELLED' ? 'permanent' : 'cancel');
-                                setCancelReason('Customer request / cancelled');
-                              }}
-                              className="p-1 text-slate-500 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
-                              title={sale.status === 'CANCELLED' ? 'Delete Permanently' : 'Delete / Void Invoice'}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          {onOpenSalesReturn && sale.returnStatus !== 'FULL' && (
-                            <button
-                              type="button"
-                              onClick={() => onOpenSalesReturn(sale)}
-                              className="p-1 text-slate-500 hover:text-amber-600 rounded-lg hover:bg-amber-50 transition cursor-pointer"
-                              title="Process Sales Return & Refund"
-                            >
-                              <RotateCcw className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                            {onEditSale && sale.status !== 'CANCELLED' && (
+                              <button
+                                type="button"
+                                onClick={() => onEditSale(sale)}
+                                className="p-1.5 text-slate-500 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition cursor-pointer"
+                                title="Edit Invoice"
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {onDeleteSale && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDeleteSaleModal(sale);
+                                  setDeleteMode(sale.status === 'CANCELLED' ? 'permanent' : 'cancel');
+                                  setCancelReason('Customer request / cancelled');
+                                }}
+                                className="p-1.5 text-slate-500 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                                title={sale.status === 'CANCELLED' ? 'Delete Permanently' : 'Delete / Void Invoice'}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {onOpenSalesReturn && sale.returnStatus !== 'FULL' && sale.status !== 'CANCELLED' && (
+                              <button
+                                type="button"
+                                onClick={() => onOpenSalesReturn(sale)}
+                                className="p-1.5 text-slate-500 hover:text-amber-600 rounded-lg hover:bg-amber-50 transition cursor-pointer"
+                                title="Process Sales Return & Refund"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -1033,16 +984,16 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
       {/* DETAIL REPORT MODAL & PRINTABLE PDF AREA */}
       {activeReportModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
-          <div className="glass-modal-panel animate-modal-pop rounded-2xl sm:rounded-3xl max-w-4xl w-full max-w-full overflow-x-hidden p-3 sm:p-5 space-y-4 max-h-[84dvh] flex flex-col my-auto overflow-hidden">
+          <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-4xl w-full max-h-[84dvh] flex flex-col overflow-hidden">
             {/* Modal Header */}
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 items-stretch sm:items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-2 items-stretch sm:items-center justify-between border-b border-slate-200/70 px-4 py-3 shrink-0">
               <div className="flex items-center justify-between sm:justify-start gap-2.5 min-w-0">
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-                    <PieChart className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <div className="w-8 h-8 shrink-0 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                    <PieChart className="w-4 h-4" />
                   </div>
                   <div className="min-w-0">
-                    <h3 className="font-extrabold text-slate-900 dark:text-white text-xs sm:text-sm uppercase tracking-wide truncate">
+                    <h3 className="font-extrabold text-slate-900 text-xs sm:text-sm tracking-tight truncate">
                       {activeReportModal === 'wholesale' && 'Wholesale & Retailer B2B Report'}
                       {activeReportModal === 'sales' && 'Sales & Revenue Report'}
                       {activeReportModal === 'expenses' && 'Daily Expenses Report'}
@@ -1054,8 +1005,8 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                       {activeReportModal === 'top_products' && 'Top Selling Products Report'}
                       {activeReportModal === 'returns' && 'Sales Returns & Refunds Report'}
                     </h3>
-                    <p className="text-[10px] sm:text-[11px] text-slate-400 truncate">
-                      Detailed audit report • {shopName}
+                    <p className="text-[11px] text-slate-500 truncate">
+                      {shopName} · {activeFilterLabel}
                     </p>
                   </div>
                 </div>
@@ -1063,64 +1014,58 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                 <button
                   type="button"
                   onClick={() => setActiveReportModal(null)}
-                  className="sm:hidden text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-neutral-800 transition cursor-pointer shrink-0 ml-1"
+                  className="sm:hidden text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer shrink-0"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
-              <div className="flex flex-wrap items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5 shrink-0">
                 <button
                   type="button"
                   onClick={() => handleShareWhatsAppReport(activeReportModal)}
-                  className="h-8 px-2.5 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 font-bold text-[11px] rounded-lg sm:rounded-xl flex items-center justify-center gap-1 transition cursor-pointer"
+                  className="h-8 px-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[11px] rounded-lg inline-flex items-center gap-1 transition cursor-pointer"
                 >
-                  <Share2 className="w-3.5 h-3.5 shrink-0" /> <span>WhatsApp</span>
+                  <Share2 className="w-3.5 h-3.5 shrink-0" />
+                  <span>WhatsApp</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={handlePrintCurrentReport}
-                  className="h-8 px-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] rounded-lg sm:rounded-xl flex items-center justify-center gap-1 shadow-md shadow-blue-500/20 transition cursor-pointer"
+                  className="h-8 px-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] rounded-lg inline-flex items-center gap-1 shadow-xs transition cursor-pointer"
                 >
-                  <Printer className="w-3.5 h-3.5 shrink-0" /> <span>Print PDF</span>
+                  <Printer className="w-3.5 h-3.5 shrink-0" />
+                  <span>Print PDF</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setActiveReportModal(null)}
-                  className="hidden sm:flex text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-neutral-800 transition cursor-pointer items-center justify-center"
+                  className="hidden sm:flex text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer items-center justify-center"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
 
-            {/* In-Modal Quick Date Range Filter */}
-            <div className="bg-slate-50 dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-xl p-2 space-y-1.5">
-              <div className="flex flex-wrap items-center justify-between gap-1.5">
-                <div className="flex items-center gap-1 font-bold text-[11px] text-slate-700 dark:text-neutral-300">
+            {/* In-Modal Date Range Filter */}
+            <div className="bg-slate-50/80 border-b border-slate-200/70 px-4 py-2 space-y-1.5 shrink-0">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 font-bold text-[11px] text-slate-700">
                   <Calendar className="w-3.5 h-3.5 text-blue-600" />
-                  <span>Filter:</span>
+                  <span>Period</span>
                 </div>
                 <div className="no-scrollbar flex items-center gap-1 text-[10.5px] overflow-x-auto max-w-full">
-                  {[
-                    { id: 'today', label: 'Today' },
-                    { id: 'week', label: 'Week' },
-                    { id: 'month', label: 'Month' },
-                    { id: '6month', label: '6 Months' },
-                    { id: 'year', label: 'Year' },
-                    { id: 'custom', label: 'Custom' },
-                    { id: 'all', label: 'All Time' },
-                  ].map(opt => (
+                  {DATE_FILTER_OPTIONS.map(opt => (
                     <button
                       key={opt.id}
                       type="button"
-                      onClick={() => setDateFilterMode(opt.id as DateFilterMode)}
+                      onClick={() => setDateFilterMode(opt.id)}
                       className={`px-2 py-0.5 rounded-md font-bold transition cursor-pointer shrink-0 whitespace-nowrap ${
                         dateFilterMode === opt.id
                           ? 'bg-blue-600 text-white shadow-2xs'
-                          : 'bg-white dark:bg-neutral-800 text-slate-600 dark:text-neutral-300 border border-slate-200 dark:border-neutral-700 hover:bg-slate-100 dark:hover:bg-neutral-700'
+                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
                       }`}
                     >
                       {opt.label}
@@ -1130,117 +1075,124 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
               </div>
 
               {dateFilterMode === 'custom' && (
-                <div className="pt-1.5 border-t border-slate-200 dark:border-neutral-800 flex flex-wrap items-center gap-2 text-xs">
-                  <span className="font-semibold text-slate-500 dark:text-neutral-400 text-[11px]">From:</span>
+                <div className="pt-1.5 border-t border-slate-200/70 flex flex-wrap items-center gap-2 text-xs">
+                  <span className="font-semibold text-slate-500 text-[11px]">From:</span>
                   <input
                     type="date"
                     value={customStartDate}
                     onChange={e => setCustomStartDate(e.target.value)}
-                    className="compact-mobile-input bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 text-slate-900 dark:text-white px-2 py-0.5 rounded-lg text-[11px]"
+                    className="compact-mobile-input bg-white border border-slate-200 text-slate-900 px-2 h-7 rounded-lg text-[11px]"
                   />
-                  <span className="font-semibold text-slate-500 dark:text-neutral-400 text-[11px]">To:</span>
+                  <span className="font-semibold text-slate-500 text-[11px]">To:</span>
                   <input
                     type="date"
                     value={customEndDate}
                     onChange={e => setCustomEndDate(e.target.value)}
-                    className="compact-mobile-input bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 text-slate-900 dark:text-white px-2 py-0.5 rounded-lg text-[11px]"
+                    className="compact-mobile-input bg-white border border-slate-200 text-slate-900 px-2 h-7 rounded-lg text-[11px]"
                   />
                 </div>
               )}
             </div>
 
             {/* Scrollable Report Content Area */}
-            <div className="flex-1 overflow-y-auto pr-1 space-y-4 text-xs">
-              {/* Report Header Information */}
-              <div className="bg-slate-50 dark:bg-neutral-900 p-3 sm:p-3.5 rounded-2xl border border-slate-200/80 dark:border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3.5 space-y-4 text-xs">
+              {/* Shop Meta Strip */}
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
-                  <h4 className="font-extrabold text-slate-900 dark:text-white text-xs sm:text-sm">{shopName}</h4>
-                  <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-neutral-400">{data.settings.address} • Ph: {data.settings.phone}</p>
+                  <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm">{shopName}</h4>
+                  <p className="text-[11px] text-slate-500">
+                    {data.settings.address} · Ph: {data.settings.phone}
+                  </p>
                 </div>
-                <div className="text-left sm:text-right">
-                  <p className="text-[10px] sm:text-[11px] font-bold text-slate-700 dark:text-neutral-300">Date Generated:</p>
-                  <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-neutral-400 tabular-nums">{new Date().toLocaleString()}</p>
+                <div className="text-left sm:text-right tabular-nums">
+                  <p className="text-[10.5px] font-bold text-slate-600">Generated</p>
+                  <p className="text-[11px] text-slate-500">{new Date().toLocaleString()}</p>
                 </div>
               </div>
 
-              {/* REPORT: WHOLESALE & RETAILER B2B REPORT */}
+              {/* REPORT: WHOLESALE & RETAILER B2B */}
               {activeReportModal === 'wholesale' && (
                 <div className="space-y-4">
-                  {/* Top 4 Wholesale KPI metrics */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
-                    <div className="p-3 bg-purple-50 dark:bg-neutral-900 rounded-xl border border-purple-200 dark:border-purple-900/60">
-                      <span className="text-[10px] font-bold text-purple-700 dark:text-purple-400 uppercase">Wholesale Sales</span>
-                      <p className="text-base sm:text-lg font-bold tabular-nums text-purple-900 dark:text-purple-300 mt-0.5 truncate">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    <div className="p-3 bg-purple-50 rounded-xl border border-purple-200">
+                      <span className="text-[10px] font-bold text-purple-700 uppercase">Wholesale Sales</span>
+                      <p className="text-base sm:text-lg font-extrabold tabular-nums text-purple-900 mt-0.5 truncate">
                         {currency} {totalWholesaleRevenue.toLocaleString()}
                       </p>
-                      <p className="text-[10px] text-purple-600 dark:text-purple-400 mt-0.5">{wholesaleSales.length} Invoices • {totalWholesaleUnits} units</p>
+                      <p className="text-[10px] text-purple-600 mt-0.5">
+                        {wholesaleSales.length} Invoices · {totalWholesaleUnits} units
+                      </p>
                     </div>
 
-                    <div className="p-3 bg-slate-100 dark:bg-neutral-900 rounded-xl border border-slate-200 dark:border-neutral-800">
-                      <span className="text-[10px] font-bold text-slate-600 dark:text-neutral-400 uppercase">Wholesale Cost (COGS)</span>
-                      <p className="text-base sm:text-lg font-bold tabular-nums text-slate-900 dark:text-neutral-200 mt-0.5 truncate">
+                    <div className="p-3 bg-slate-100 rounded-xl border border-slate-200">
+                      <span className="text-[10px] font-bold text-slate-600 uppercase">Wholesale Cost</span>
+                      <p className="text-base sm:text-lg font-extrabold tabular-nums text-slate-900 mt-0.5 truncate">
                         {currency} {totalWholesaleCost.toLocaleString()}
                       </p>
-                      <p className="text-[10px] text-slate-500 mt-0.5">Purchased Cost</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">Purchased COGS</p>
                     </div>
 
-                    <div className="p-3 bg-emerald-50 dark:bg-neutral-900 rounded-xl border border-emerald-200 dark:border-emerald-900/60">
-                      <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase">Wholesale Net Profit/Loss</span>
-                      <p className={`text-base sm:text-lg font-bold tabular-nums mt-0.5 truncate ${totalWholesaleProfit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600'}`}>
-                        {totalWholesaleProfit >= 0 ? '+' : ''}{currency} {totalWholesaleProfit.toLocaleString()}
+                    <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200">
+                      <span className="text-[10px] font-bold text-emerald-700 uppercase">Net Profit</span>
+                      <p
+                        className={`text-base sm:text-lg font-extrabold tabular-nums mt-0.5 truncate ${
+                          totalWholesaleProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'
+                        }`}
+                      >
+                        {totalWholesaleProfit >= 0 ? '+' : ''}
+                        {currency} {totalWholesaleProfit.toLocaleString()}
                       </p>
                     </div>
 
-                    <div className="p-3 bg-amber-50 dark:bg-neutral-900 rounded-xl border border-amber-200 dark:border-amber-900/60">
-                      <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase">Retailer Discounts Given</span>
-                      <p className="text-base sm:text-lg font-bold tabular-nums text-amber-900 dark:text-amber-300 mt-0.5 truncate">
+                    <div className="p-3 bg-amber-50 rounded-xl border border-amber-200">
+                      <span className="text-[10px] font-bold text-amber-700 uppercase">Discounts Given</span>
+                      <p className="text-base sm:text-lg font-extrabold tabular-nums text-amber-900 mt-0.5 truncate">
                         {currency} {totalWholesaleDiscountsGiven.toLocaleString()}
                       </p>
                     </div>
                   </div>
 
-                  {/* Section 1: Retailers Summary */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <h4 className="font-extrabold text-slate-900 dark:text-white text-xs uppercase tracking-wide flex items-center gap-1.5">
+                      <h4 className="font-extrabold text-slate-900 text-xs uppercase tracking-wide flex items-center gap-1.5">
                         <Users className="w-3.5 h-3.5 text-purple-600" />
                         Retailer Breakdown
                       </h4>
-                      <span className="text-[11px] text-slate-500 dark:text-neutral-400 font-semibold">
-                        {retailerStats.length} Registered Retailers
+                      <span className="text-[11px] text-slate-500 font-semibold tabular-nums">
+                        {retailerStats.length} Retailers
                       </span>
                     </div>
 
-                    <div className="w-full overflow-x-auto border border-slate-200 dark:border-neutral-800 rounded-xl">
+                    <div className="w-full overflow-x-auto border border-slate-200 rounded-xl">
                       <table className="w-full min-w-[620px] text-left border-collapse text-xs">
-                        <thead className="bg-slate-100 dark:bg-neutral-800 font-bold text-[10px] uppercase text-slate-600 dark:text-neutral-400">
+                        <thead className="bg-slate-100 font-bold text-[10px] uppercase text-slate-600">
                           <tr>
-                            <th className="p-2.5">Retailer / Shopkeeper</th>
-                            <th className="p-2.5">Shop Name & City</th>
-                            <th className="p-2.5">Contact Phone</th>
-                            <th className="p-2.5 text-center">Invoices</th>
-                            <th className="p-2.5 text-right">Total Purchases</th>
+                            <th className="p-2.5">Retailer</th>
+                            <th className="p-2.5">Shop &amp; City</th>
+                            <th className="p-2.5">Phone</th>
+                            <th className="p-2.5 text-center">Bills</th>
+                            <th className="p-2.5 text-right">Purchases</th>
                             <th className="p-2.5 text-right">Net Profit</th>
-                            <th className="p-2.5 text-right">Discount / Savings</th>
+                            <th className="p-2.5 text-right">Discounts</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-neutral-800">
+                        <tbody className="divide-y divide-slate-100">
                           {retailerStats.length === 0 ? (
                             <tr>
                               <td colSpan={7} className="text-center py-6 text-slate-400">
-                                No wholesale transactions recorded for this timeframe.
+                                No wholesale transactions recorded for this period.
                               </td>
                             </tr>
                           ) : (
                             retailerStats.map((r, idx) => (
-                              <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-neutral-850">
-                                <td className="p-2.5 font-bold text-slate-900 dark:text-white">{r.name}</td>
-                                <td className="p-2.5 text-slate-600 dark:text-neutral-300">
+                              <tr key={idx} className="table-row-hover">
+                                <td className="p-2.5 font-bold text-slate-900">{r.name}</td>
+                                <td className="p-2.5 text-slate-600">
                                   {r.shopName !== '-' ? r.shopName : ''} {r.city !== '-' ? `(${r.city})` : '-'}
                                 </td>
-                                <td className="p-2.5 tabular-nums text-[11px] text-slate-500 dark:text-neutral-400">{r.phone}</td>
+                                <td className="p-2.5 tabular-nums text-[11px] text-slate-500">{r.phone}</td>
                                 <td className="p-2.5 text-center tabular-nums font-bold">{r.invoicesCount}</td>
-                                <td className="p-2.5 text-right tabular-nums font-bold text-slate-900 dark:text-white">
+                                <td className="p-2.5 text-right tabular-nums font-bold text-slate-900">
                                   {currency} {r.totalPurchased.toLocaleString()}
                                 </td>
                                 <td className="p-2.5 text-right tabular-nums font-bold text-emerald-600">
@@ -1257,16 +1209,15 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                     </div>
                   </div>
 
-                  {/* Section 2: Detailed Wholesale Invoices Table */}
                   <div className="space-y-2">
-                    <h4 className="font-extrabold text-slate-900 dark:text-white text-xs uppercase tracking-wide flex items-center gap-1.5">
+                    <h4 className="font-extrabold text-slate-900 text-xs uppercase tracking-wide flex items-center gap-1.5">
                       <Receipt className="w-3.5 h-3.5 text-blue-600" />
-                      Detailed Wholesale Invoices
+                      Wholesale Invoices
                     </h4>
 
-                    <div className="w-full overflow-x-auto border border-slate-200 dark:border-neutral-800 rounded-xl">
+                    <div className="w-full overflow-x-auto border border-slate-200 rounded-xl">
                       <table className="w-full min-w-[700px] text-left border-collapse text-xs">
-                        <thead className="bg-slate-100 dark:bg-neutral-800 font-bold text-[10px] uppercase text-slate-600 dark:text-neutral-400">
+                        <thead className="bg-slate-100 font-bold text-[10px] uppercase text-slate-600">
                           <tr>
                             <th className="p-2.5">Inv #</th>
                             <th className="p-2.5">Date</th>
@@ -1279,7 +1230,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                             <th className="p-2.5 text-center">Receipt</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-neutral-800">
+                        <tbody className="divide-y divide-slate-100">
                           {wholesaleSales.length === 0 ? (
                             <tr>
                               <td colSpan={9} className="text-center py-8 text-slate-400">
@@ -1288,36 +1239,37 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                             </tr>
                           ) : (
                             wholesaleSales.map(s => (
-                              <tr key={s.invNo} className="hover:bg-slate-50 dark:hover:bg-neutral-850">
+                              <tr key={s.invNo} className="table-row-hover">
                                 <td className="p-2.5 tabular-nums font-bold text-purple-600">#{s.invNo}</td>
                                 <td className="p-2.5 text-slate-500 tabular-nums text-[11px]">
                                   {new Date(s.date).toLocaleDateString()}
                                 </td>
-                                <td className="p-2.5 font-semibold text-slate-900 dark:text-white">
+                                <td className="p-2.5 font-semibold text-slate-900">
                                   {s.custName}
                                   {s.retailerShopName && (
                                     <span className="block text-[10px] text-slate-400">{s.retailerShopName}</span>
                                   )}
                                 </td>
-                                <td className="p-2.5 text-slate-700 dark:text-neutral-300">
+                                <td className="p-2.5 text-slate-700">
                                   {s.items.map((i, idx) => (
                                     <span key={idx} className="block text-[11px]">
-                                      • {i.name} (x{i.qty}) @ {currency} {(i.wholesalePrice || i.salePrice).toLocaleString()}
+                                      • {i.name} (x{i.qty}) @ {currency}{' '}
+                                      {(i.wholesalePrice || i.salePrice).toLocaleString()}
                                     </span>
                                   ))}
                                 </td>
-                                <td className="p-2.5">
-                                  <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-neutral-800 text-[10px] font-semibold">
-                                    {s.paymentMethod}
-                                  </span>
-                                </td>
+                                <td className="p-2.5 font-medium text-slate-700">{s.paymentMethod}</td>
                                 <td className="p-2.5 text-right tabular-nums font-bold text-amber-600">
                                   {currency} {((s.wholesaleSavings || 0) + (s.discount || 0)).toLocaleString()}
                                 </td>
-                                <td className="p-2.5 text-right tabular-nums font-bold text-slate-900 dark:text-white">
+                                <td className="p-2.5 text-right tabular-nums font-bold text-slate-900">
                                   {currency} {getEffectiveSaleFigures(s).revenue.toLocaleString()}
                                 </td>
-                                <td className={`p-2.5 text-right tabular-nums font-bold ${s.returnStatus === 'FULL' ? 'text-slate-400' : 'text-emerald-600'}`}>
+                                <td
+                                  className={`p-2.5 text-right tabular-nums font-bold ${
+                                    s.returnStatus === 'FULL' ? 'text-slate-400' : 'text-emerald-600'
+                                  }`}
+                                >
                                   {s.returnStatus === 'FULL'
                                     ? `${currency} 0 (Ret)`
                                     : `+${currency} ${getEffectiveSaleFigures(s).profit.toLocaleString()}`}
@@ -1345,28 +1297,34 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
               {/* REPORT 1: SALES & REVENUE */}
               {activeReportModal === 'sales' && (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
-                    <div className="p-2.5 sm:p-3 bg-blue-50 dark:bg-neutral-900 rounded-xl border border-blue-200 dark:border-blue-900/60">
-                      <span className="text-[10px] font-bold text-blue-700 dark:text-blue-400 uppercase">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                    <div className="p-3 bg-blue-50 rounded-xl border border-blue-200">
+                      <span className="text-[10px] font-bold text-blue-700 uppercase">
                         {totalRefundsAmount > 0 ? 'Net Revenue (Post-Returns)' : 'Gross Revenue'}
                       </span>
-                      <p className="text-base sm:text-lg font-bold tabular-nums text-blue-900 dark:text-blue-300 mt-0.5 truncate">{currency} {netSalesRevenue.toLocaleString()}</p>
+                      <p className="text-base sm:text-lg font-extrabold tabular-nums text-blue-900 mt-0.5 truncate">
+                        {currency} {netSalesRevenue.toLocaleString()}
+                      </p>
                     </div>
-                    <div className="p-2.5 sm:p-3 bg-slate-100 dark:bg-neutral-900 rounded-xl border border-slate-200 dark:border-neutral-800">
-                      <span className="text-[10px] font-bold text-slate-600 dark:text-neutral-400 uppercase">
+                    <div className="p-3 bg-slate-100 rounded-xl border border-slate-200">
+                      <span className="text-[10px] font-bold text-slate-600 uppercase">
                         {totalCostReversed > 0 ? 'Net COGS (Post-Returns)' : 'Total COGS'}
                       </span>
-                      <p className="text-base sm:text-lg font-bold tabular-nums text-slate-900 dark:text-neutral-200 mt-0.5 truncate">{currency} {netCOGS.toLocaleString()}</p>
+                      <p className="text-base sm:text-lg font-extrabold tabular-nums text-slate-900 mt-0.5 truncate">
+                        {currency} {netCOGS.toLocaleString()}
+                      </p>
                     </div>
-                    <div className="col-span-2 sm:col-span-1 p-2.5 sm:p-3 bg-emerald-50 dark:bg-neutral-900 rounded-xl border border-emerald-200 dark:border-emerald-900/60">
-                      <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase">Total Profit</span>
-                      <p className="text-base sm:text-lg font-bold tabular-nums text-emerald-900 dark:text-emerald-300 mt-0.5 truncate">+{currency} {netProfit.toLocaleString()}</p>
+                    <div className="col-span-2 sm:col-span-1 p-3 bg-emerald-50 rounded-xl border border-emerald-200">
+                      <span className="text-[10px] font-bold text-emerald-700 uppercase">Net Profit</span>
+                      <p className="text-base sm:text-lg font-extrabold tabular-nums text-emerald-900 mt-0.5 truncate">
+                        {isSalesman ? 'Restricted' : `+${currency} ${netProfit.toLocaleString()}`}
+                      </p>
                     </div>
                   </div>
 
-                  <div className="w-full overflow-x-auto border border-slate-200 dark:border-neutral-800 rounded-xl">
+                  <div className="w-full overflow-x-auto border border-slate-200 rounded-xl">
                     <table className="w-full min-w-[580px] text-left border-collapse">
-                      <thead className="bg-slate-100 dark:bg-neutral-800 font-bold text-[10px] uppercase text-slate-600 dark:text-neutral-400">
+                      <thead className="bg-slate-100 font-bold text-[10px] uppercase text-slate-600">
                         <tr>
                           <th className="p-2.5">Inv #</th>
                           <th className="p-2.5">Type</th>
@@ -1377,31 +1335,51 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                           <th className="p-2.5 text-right">Profit</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-neutral-800 text-xs">
-                        {filteredSales.map(s => {
-                          const eff = getEffectiveSaleFigures(s);
-                          return (
-                            <tr key={s.invNo} className="hover:bg-slate-50 dark:hover:bg-neutral-850">
-                              <td className="p-2.5 tabular-nums font-bold text-blue-600">
-                                #{s.invNo}
-                                {eff.isFullReturn && (
-                                  <span className="ml-1 text-[9px] px-1 py-0.2 rounded bg-rose-100 text-rose-700">RET</span>
-                                )}
-                                {eff.isPartialReturn && (
-                                  <span className="ml-1 text-[9px] px-1 py-0.2 rounded bg-amber-100 text-amber-800">PART</span>
-                                )}
-                              </td>
-                              <td className="p-2.5 font-semibold capitalize">{s.invoiceType || 'Cash'}</td>
-                              <td className="p-2.5 text-slate-500 tabular-nums text-[11px]">{new Date(s.date).toLocaleDateString()}</td>
-                              <td className="p-2.5 font-bold text-slate-800 dark:text-white">{s.custName}</td>
-                              <td className="p-2.5">{s.paymentMethod}</td>
-                              <td className="p-2.5 text-right tabular-nums font-bold">{currency} {eff.revenue.toLocaleString()}</td>
-                              <td className={`p-2.5 text-right tabular-nums font-bold ${eff.isFullReturn ? 'text-slate-400' : 'text-emerald-600'}`}>
-                                {eff.isFullReturn ? `${currency} 0` : `+${currency} ${eff.profit.toLocaleString()}`}
-                              </td>
-                            </tr>
-                          );
-                        })}
+                      <tbody className="divide-y divide-slate-100 text-xs">
+                        {filteredSales.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="text-center py-8 text-slate-400">
+                              No sales found in selected period.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredSales.map(s => {
+                            const eff = getEffectiveSaleFigures(s);
+                            return (
+                              <tr key={s.invNo} className="table-row-hover">
+                                <td className="p-2.5 tabular-nums font-bold text-blue-600">
+                                  #{s.invNo}
+                                  {eff.isFullReturn && (
+                                    <span className="ml-1.5 text-[10px] font-bold text-rose-600">· Ret</span>
+                                  )}
+                                  {eff.isPartialReturn && (
+                                    <span className="ml-1.5 text-[10px] font-bold text-amber-600">· Part</span>
+                                  )}
+                                </td>
+                                <td className="p-2.5 font-semibold capitalize">{s.invoiceType || 'Cash'}</td>
+                                <td className="p-2.5 text-slate-500 tabular-nums text-[11px]">
+                                  {new Date(s.date).toLocaleDateString()}
+                                </td>
+                                <td className="p-2.5 font-bold text-slate-800">{s.custName}</td>
+                                <td className="p-2.5">{s.paymentMethod}</td>
+                                <td className="p-2.5 text-right tabular-nums font-bold">
+                                  {currency} {eff.revenue.toLocaleString()}
+                                </td>
+                                <td
+                                  className={`p-2.5 text-right tabular-nums font-bold ${
+                                    eff.isFullReturn ? 'text-slate-400' : 'text-emerald-600'
+                                  }`}
+                                >
+                                  {isSalesman
+                                    ? '••••'
+                                    : eff.isFullReturn
+                                    ? `${currency} 0`
+                                    : `+${currency} ${eff.profit.toLocaleString()}`}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -1413,11 +1391,15 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                 <div className="space-y-4">
                   <div className="p-3 sm:p-3.5 bg-rose-50 rounded-xl border border-rose-200 flex justify-between items-center gap-2">
                     <div>
-                      <span className="text-[10px] font-bold text-rose-700 uppercase">Total Recorded Expenses</span>
-                      <p className="text-lg sm:text-xl font-bold tabular-nums text-rose-900">{currency} {totalExpenses.toLocaleString()}</p>
+                      <span className="text-[10px] font-bold text-rose-700 uppercase">
+                        Total Recorded Expenses ({activeFilterLabel})
+                      </span>
+                      <p className="text-lg sm:text-xl font-extrabold tabular-nums text-rose-900">
+                        {currency} {totalExpenses.toLocaleString()}
+                      </p>
                     </div>
-                    <span className="text-xs font-bold text-rose-700 bg-white px-3 py-1 rounded-xl shadow-2xs border border-rose-100 shrink-0">
-                      {data.expenses.length} Records
+                    <span className="text-xs font-bold text-rose-700 bg-white px-3 py-1 rounded-xl border border-rose-100 shrink-0 tabular-nums">
+                      {filteredExpenses.length} Records
                     </span>
                   </div>
 
@@ -1428,20 +1410,32 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                           <th className="p-2.5">Date</th>
                           <th className="p-2.5">Description</th>
                           <th className="p-2.5">Category</th>
-                          <th className="p-2.5">Payment Method</th>
+                          <th className="p-2.5">Method</th>
                           <th className="p-2.5 text-right">Amount</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-xs">
-                        {data.expenses.map(e => (
-                          <tr key={e.id} className="hover:bg-slate-50">
-                            <td className="p-2.5 text-slate-500 tabular-nums text-[11px]">{new Date(e.date).toLocaleDateString()}</td>
-                            <td className="p-2.5 font-semibold text-slate-900">{e.description}</td>
-                            <td className="p-2.5"><span className="px-2 py-0.5 bg-slate-100 rounded text-[11px]">{e.category}</span></td>
-                            <td className="p-2.5">{e.paymentMethod || 'Cash'}</td>
-                            <td className="p-2.5 text-right tabular-nums font-bold text-rose-600">{currency} {e.amount.toLocaleString()}</td>
+                        {filteredExpenses.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="text-center py-8 text-slate-400">
+                              No expenses recorded in this period.
+                            </td>
                           </tr>
-                        ))}
+                        ) : (
+                          filteredExpenses.map(e => (
+                            <tr key={e.id} className="table-row-hover">
+                              <td className="p-2.5 text-slate-500 tabular-nums text-[11px]">
+                                {new Date(e.date).toLocaleDateString()}
+                              </td>
+                              <td className="p-2.5 font-semibold text-slate-900">{e.description}</td>
+                              <td className="p-2.5 text-slate-600">{e.category}</td>
+                              <td className="p-2.5">{e.paymentMethod || 'Cash'}</td>
+                              <td className="p-2.5 text-right tabular-nums font-bold text-rose-600">
+                                {currency} {e.amount.toLocaleString()}
+                              </td>
+                            </tr>
+                          ))
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -1451,18 +1445,24 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
               {/* REPORT 3: INVENTORY VALUATION */}
               {activeReportModal === 'inventory' && (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
-                    <div className="p-2.5 sm:p-3 bg-indigo-50 rounded-xl border border-indigo-200">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                    <div className="p-3 bg-indigo-50 rounded-xl border border-indigo-200">
                       <span className="text-[10px] font-bold text-indigo-700 uppercase">Cost Value</span>
-                      <p className="text-base sm:text-lg font-bold tabular-nums text-indigo-900 mt-0.5 truncate">{currency} {stockValuationCost.toLocaleString()}</p>
+                      <p className="text-base sm:text-lg font-extrabold tabular-nums text-indigo-900 mt-0.5 truncate">
+                        {currency} {stockValuationCost.toLocaleString()}
+                      </p>
                     </div>
-                    <div className="p-2.5 sm:p-3 bg-blue-50 rounded-xl border border-blue-200">
+                    <div className="p-3 bg-blue-50 rounded-xl border border-blue-200">
                       <span className="text-[10px] font-bold text-blue-700 uppercase">Retail Value</span>
-                      <p className="text-base sm:text-lg font-bold tabular-nums text-blue-900 mt-0.5 truncate">{currency} {stockValuationRetail.toLocaleString()}</p>
+                      <p className="text-base sm:text-lg font-extrabold tabular-nums text-blue-900 mt-0.5 truncate">
+                        {currency} {stockValuationRetail.toLocaleString()}
+                      </p>
                     </div>
-                    <div className="col-span-2 sm:col-span-1 p-2.5 sm:p-3 bg-emerald-50 rounded-xl border border-emerald-200">
+                    <div className="col-span-2 sm:col-span-1 p-3 bg-emerald-50 rounded-xl border border-emerald-200">
                       <span className="text-[10px] font-bold text-emerald-700 uppercase">Expected Profit</span>
-                      <p className="text-base sm:text-lg font-bold tabular-nums text-emerald-900 mt-0.5 truncate">+{currency} {(stockValuationRetail - stockValuationCost).toLocaleString()}</p>
+                      <p className="text-base sm:text-lg font-extrabold tabular-nums text-emerald-900 mt-0.5 truncate">
+                        +{currency} {(stockValuationRetail - stockValuationCost).toLocaleString()}
+                      </p>
                     </div>
                   </div>
 
@@ -1480,14 +1480,18 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-xs">
                         {data.inventory.map(item => (
-                          <tr key={item.id} className="hover:bg-slate-50">
+                          <tr key={item.id} className="table-row-hover">
                             <td className="p-2.5 font-bold text-slate-900">{item.name}</td>
                             <td className="p-2.5 text-slate-500">{item.category}</td>
                             <td className="p-2.5 text-center tabular-nums font-bold">
                               <span className={item.qty <= 1 ? 'text-rose-600 font-bold' : ''}>{item.qty}</span>
                             </td>
-                            <td className="p-2.5 text-right tabular-nums">{currency} {item.costPrice.toLocaleString()}</td>
-                            <td className="p-2.5 text-right tabular-nums font-bold">{currency} {item.salePrice.toLocaleString()}</td>
+                            <td className="p-2.5 text-right tabular-nums">
+                              {currency} {item.costPrice.toLocaleString()}
+                            </td>
+                            <td className="p-2.5 text-right tabular-nums font-bold">
+                              {currency} {item.salePrice.toLocaleString()}
+                            </td>
                             <td className="p-2.5 text-right tabular-nums font-extrabold text-indigo-700">
                               {currency} {(item.costPrice * item.qty).toLocaleString()}
                             </td>
@@ -1504,10 +1508,14 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                 <div className="space-y-4">
                   <div className="p-3 sm:p-3.5 bg-purple-50 rounded-xl border border-purple-200 flex justify-between items-center gap-2">
                     <div>
-                      <span className="text-[10px] font-bold text-purple-700 uppercase">Total Pending Receivables</span>
-                      <p className="text-lg sm:text-xl font-bold tabular-nums text-purple-900">{currency} {totalUdhar.toLocaleString()}</p>
+                      <span className="text-[10px] font-bold text-purple-700 uppercase">
+                        Total Pending Receivables
+                      </span>
+                      <p className="text-lg sm:text-xl font-extrabold tabular-nums text-purple-900">
+                        {currency} {totalUdhar.toLocaleString()}
+                      </p>
                     </div>
-                    <span className="text-xs font-bold text-purple-700 bg-white px-3 py-1 rounded-xl shrink-0 border border-purple-100">
+                    <span className="text-xs font-bold text-purple-700 bg-white px-3 py-1 rounded-xl shrink-0 border border-purple-100 tabular-nums">
                       {debtorCustomersCount} Customers with Balance
                     </span>
                   </div>
@@ -1518,19 +1526,21 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                         <tr>
                           <th className="p-2.5">Customer Name</th>
                           <th className="p-2.5">Primary Phone</th>
-                          <th className="p-2.5">Location / Address</th>
-                          <th className="p-2.5 text-center">Tx Count</th>
+                          <th className="p-2.5">Location</th>
+                          <th className="p-2.5 text-center">Entries</th>
                           <th className="p-2.5 text-right">Outstanding Balance</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-xs">
                         {data.khata.map(c => (
-                          <tr key={c.id} className="hover:bg-slate-50">
+                          <tr key={c.id} className="table-row-hover">
                             <td className="p-2.5 font-bold text-slate-900">{c.name}</td>
                             <td className="p-2.5 tabular-nums">{c.phone}</td>
                             <td className="p-2.5 text-slate-500">{c.address || '-'}</td>
-                            <td className="p-2.5 text-center">{c.history.length}</td>
-                            <td className="p-2.5 text-right tabular-nums font-bold text-purple-700">{currency} {c.balance.toLocaleString()}</td>
+                            <td className="p-2.5 text-center tabular-nums">{c.history.length}</td>
+                            <td className="p-2.5 text-right tabular-nums font-bold text-purple-700">
+                              {currency} {c.balance.toLocaleString()}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -1541,40 +1551,57 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
 
               {/* REPORT 5: PROFIT & LOSS STATEMENT */}
               {activeReportModal === 'pnl' && (
-                <div className="space-y-4 bg-white p-3 sm:p-4 rounded-2xl border border-slate-200">
-                  <h4 className="font-extrabold text-xs sm:text-sm border-b pb-2 uppercase tracking-wide text-slate-800">
-                    Comprehensive Financial Statement
+                <div className="space-y-4 bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200">
+                  <h4 className="font-extrabold text-xs sm:text-sm border-b border-slate-200 pb-2 uppercase tracking-wide text-slate-800">
+                    Comprehensive Financial Statement ({activeFilterLabel})
                   </h4>
 
                   <div className="space-y-2 text-xs">
                     <div className="flex justify-between py-1.5 border-b border-slate-100">
                       <span className="font-semibold text-slate-700">Gross Sales Revenue:</span>
-                      <span className="tabular-nums font-bold text-slate-900">{currency} {totalSalesRevenue.toLocaleString()}</span>
+                      <span className="tabular-nums font-bold text-slate-900">
+                        {currency} {totalSalesRevenue.toLocaleString()}
+                      </span>
                     </div>
+
+                    {totalRefundsAmount > 0 && (
+                      <div className="flex justify-between py-1.5 border-b border-slate-100 text-amber-700">
+                        <span>Less: Sales Returns &amp; Refunds:</span>
+                        <span className="tabular-nums font-bold">
+                          -{currency} {totalRefundsAmount.toLocaleString()}
+                        </span>
+                      </div>
+                    )}
 
                     <div className="flex justify-between py-1.5 border-b border-slate-100 text-slate-600">
-                      <span>Less: Cost of Goods Sold (COGS):</span>
-                      <span className="tabular-nums font-bold text-slate-700">-{currency} {totalCOGS.toLocaleString()}</span>
+                      <span>Less: Cost of Goods Sold (Net COGS):</span>
+                      <span className="tabular-nums font-bold text-slate-700">
+                        -{currency} {netCOGS.toLocaleString()}
+                      </span>
                     </div>
 
-                    <div className="flex justify-between py-2 border-b border-slate-200 font-bold bg-slate-50 px-2 rounded-lg">
+                    <div className="flex justify-between py-2 border-b border-slate-200 font-bold bg-slate-50 px-2.5 rounded-lg">
                       <span className="text-slate-900">Gross Operating Profit:</span>
-                      <span className="tabular-nums text-emerald-700">{currency} {grossProfit.toLocaleString()}</span>
+                      <span className="tabular-nums text-emerald-700">
+                        {currency} {grossProfit.toLocaleString()}
+                      </span>
                     </div>
 
                     <div className="flex justify-between py-1.5 border-b border-slate-100 text-rose-600">
                       <span>Less: Operational Shop Expenses:</span>
-                      <span className="tabular-nums font-bold">-{currency} {totalExpenses.toLocaleString()}</span>
+                      <span className="tabular-nums font-bold">
+                        -{currency} {totalExpenses.toLocaleString()}
+                      </span>
                     </div>
 
                     <div className="flex justify-between py-3 border-t-2 border-slate-900 font-extrabold text-xs sm:text-sm">
-                      <span className="text-slate-900">Net Business Profit (kat peet kar):</span>
+                      <span className="text-slate-900">Net Business Profit:</span>
                       <span className={`tabular-nums ${netProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                         {currency} {netProfit.toLocaleString()}
                       </span>
                     </div>
 
-                    <div className="flex justify-between py-1 text-slate-500 text-[11px]">
+                    <div className="flex justify-between py-1 text-slate-500 text-[11px] tabular-nums">
                       <span>Net Profit Margin:</span>
                       <span className="font-bold">{netMarginPercent}%</span>
                     </div>
@@ -1589,7 +1616,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                     <table className="w-full min-w-[580px] text-left border-collapse">
                       <thead className="bg-slate-100 font-bold text-[10px] uppercase text-slate-600">
                         <tr>
-                          <th className="p-2.5">Date & Time</th>
+                          <th className="p-2.5">Date &amp; Time</th>
                           <th className="p-2.5">Cashier</th>
                           <th className="p-2.5 text-right">Physical Cash</th>
                           <th className="p-2.5 text-right">Digital Accounts</th>
@@ -1598,18 +1625,36 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-xs">
-                        {closingsHistory.map(rec => (
-                          <tr key={rec.id} className="hover:bg-slate-50">
-                            <td className="p-2.5 tabular-nums font-bold">{rec.date} ({rec.time})</td>
-                            <td className="p-2.5">{rec.closedBy}</td>
-                            <td className="p-2.5 text-right tabular-nums font-bold text-emerald-600">{currency} {rec.totalCash.toLocaleString()}</td>
-                            <td className="p-2.5 text-right tabular-nums font-bold text-blue-600">{currency} {rec.totalOnline.toLocaleString()}</td>
-                            <td className="p-2.5 text-right tabular-nums font-extrabold text-slate-900">{currency} {rec.grandTotal.toLocaleString()}</td>
-                            <td className="p-2.5 text-right tabular-nums font-bold">
-                              {rec.difference === 0 ? 'Matched' : `${rec.difference! > 0 ? '+' : ''}${currency} ${rec.difference?.toLocaleString()}`}
+                        {closingsHistory.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="text-center py-8 text-slate-400">
+                              No daily closing records in selected period.
                             </td>
                           </tr>
-                        ))}
+                        ) : (
+                          closingsHistory.map(rec => (
+                            <tr key={rec.id} className="table-row-hover">
+                              <td className="p-2.5 tabular-nums font-bold">
+                                {rec.date} ({rec.time})
+                              </td>
+                              <td className="p-2.5">{rec.closedBy}</td>
+                              <td className="p-2.5 text-right tabular-nums font-bold text-emerald-600">
+                                {currency} {rec.totalCash.toLocaleString()}
+                              </td>
+                              <td className="p-2.5 text-right tabular-nums font-bold text-blue-600">
+                                {currency} {rec.totalOnline.toLocaleString()}
+                              </td>
+                              <td className="p-2.5 text-right tabular-nums font-extrabold text-slate-900">
+                                {currency} {rec.grandTotal.toLocaleString()}
+                              </td>
+                              <td className="p-2.5 text-right tabular-nums font-bold">
+                                {rec.difference === 0
+                                  ? 'Matched'
+                                  : `${(rec.difference || 0) > 0 ? '+' : ''}${currency} ${(rec.difference || 0).toLocaleString()}`}
+                              </td>
+                            </tr>
+                          ))
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -1631,15 +1676,29 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-xs">
-                        {data.purchasesLedger.map(p => (
-                          <tr key={p.id} className="hover:bg-slate-50">
-                            <td className="p-2.5 text-slate-500 tabular-nums text-[11px]">{new Date(p.date).toLocaleDateString()}</td>
-                            <td className="p-2.5 font-bold text-slate-900">{p.itemTitle}</td>
-                            <td className="p-2.5 text-center tabular-nums font-bold">{p.qty}</td>
-                            <td className="p-2.5 text-right tabular-nums">{currency} {p.costPrice.toLocaleString()}</td>
-                            <td className="p-2.5 text-right tabular-nums font-bold text-amber-700">{currency} {p.total.toLocaleString()}</td>
+                        {filteredPurchases.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="text-center py-8 text-slate-400">
+                              No purchases recorded in this period.
+                            </td>
                           </tr>
-                        ))}
+                        ) : (
+                          filteredPurchases.map(p => (
+                            <tr key={p.id} className="table-row-hover">
+                              <td className="p-2.5 text-slate-500 tabular-nums text-[11px]">
+                                {new Date(p.date).toLocaleDateString()}
+                              </td>
+                              <td className="p-2.5 font-bold text-slate-900">{p.itemTitle}</td>
+                              <td className="p-2.5 text-center tabular-nums font-bold">{p.qty}</td>
+                              <td className="p-2.5 text-right tabular-nums">
+                                {currency} {p.costPrice.toLocaleString()}
+                              </td>
+                              <td className="p-2.5 text-right tabular-nums font-bold text-amber-700">
+                                {currency} {p.total.toLocaleString()}
+                              </td>
+                            </tr>
+                          ))
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -1661,15 +1720,27 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-xs">
-                        {topSellingList.map((p, idx) => (
-                          <tr key={p.id} className="hover:bg-slate-50">
-                            <td className="p-2.5 font-bold text-slate-400">#{idx + 1}</td>
-                            <td className="p-2.5 font-bold text-slate-900">{p.name}</td>
-                            <td className="p-2.5 text-slate-500">{p.category}</td>
-                            <td className="p-2.5 text-center tabular-nums font-bold text-blue-600">{p.unitsSold}</td>
-                            <td className="p-2.5 text-right tabular-nums font-extrabold text-slate-900">{currency} {p.totalRevenue.toLocaleString()}</td>
+                        {topSellingList.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="text-center py-8 text-slate-400">
+                              No product sales recorded in this period.
+                            </td>
                           </tr>
-                        ))}
+                        ) : (
+                          topSellingList.map((p, idx) => (
+                            <tr key={p.id} className="table-row-hover">
+                              <td className="p-2.5 font-bold text-slate-400 tabular-nums">#{idx + 1}</td>
+                              <td className="p-2.5 font-bold text-slate-900">{p.name}</td>
+                              <td className="p-2.5 text-slate-500">{p.category}</td>
+                              <td className="p-2.5 text-center tabular-nums font-bold text-blue-600">
+                                {p.unitsSold}
+                              </td>
+                              <td className="p-2.5 text-right tabular-nums font-extrabold text-slate-900">
+                                {currency} {p.totalRevenue.toLocaleString()}
+                              </td>
+                            </tr>
+                          ))
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -1681,17 +1752,21 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                 <div className="space-y-4">
                   <div className="p-3 sm:p-3.5 bg-amber-50 rounded-xl border border-amber-200 flex justify-between items-center gap-2">
                     <div>
-                      <span className="text-[10px] font-bold text-amber-700 uppercase">Total Customer Refunds Paid</span>
-                      <p className="text-lg sm:text-xl font-bold tabular-nums text-amber-900">{currency} {totalRefundsAmount.toLocaleString()}</p>
+                      <span className="text-[10px] font-bold text-amber-700 uppercase">
+                        Total Customer Refunds Paid
+                      </span>
+                      <p className="text-lg sm:text-xl font-extrabold tabular-nums text-amber-900">
+                        {currency} {totalRefundsAmount.toLocaleString()}
+                      </p>
                     </div>
-                    <span className="text-xs font-bold text-amber-800 bg-white px-3 py-1 rounded-xl shadow-2xs border border-amber-200 shrink-0">
-                      {(data.salesReturns || []).length} Return Records
+                    <span className="text-xs font-bold text-amber-800 bg-white px-3 py-1 rounded-xl border border-amber-200 shrink-0 tabular-nums">
+                      {filteredReturns.length} Return Records
                     </span>
                   </div>
 
-                  {(!data.salesReturns || data.salesReturns.length === 0) ? (
+                  {filteredReturns.length === 0 ? (
                     <div className="text-center py-12 text-slate-400 text-xs">
-                      No sales returns recorded yet.
+                      No sales returns recorded in this period.
                     </div>
                   ) : (
                     <div className="w-full overflow-x-auto border border-slate-200 rounded-xl">
@@ -1702,23 +1777,29 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                             <th className="p-2.5">Date</th>
                             <th className="p-2.5">Inv #</th>
                             <th className="p-2.5">Customer</th>
-                            <th className="p-2.5">Returned Items & IMEIs</th>
+                            <th className="p-2.5">Returned Items &amp; IMEIs</th>
                             <th className="p-2.5">Reason</th>
                             <th className="p-2.5">Method</th>
                             <th className="p-2.5 text-right">Refund Amount</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {data.salesReturns.map(ret => (
-                            <tr key={ret.id} className="hover:bg-slate-50">
+                          {filteredReturns.map(ret => (
+                            <tr key={ret.id} className="table-row-hover">
                               <td className="p-2.5 tabular-nums font-bold text-amber-700">#{ret.returnNo}</td>
-                              <td className="p-2.5 text-slate-500 tabular-nums text-[11px]">{new Date(ret.returnDate).toLocaleDateString()}</td>
-                              <td className="p-2.5 tabular-nums font-semibold text-blue-600">#{ret.originalInvNo}</td>
+                              <td className="p-2.5 text-slate-500 tabular-nums text-[11px]">
+                                {new Date(ret.returnDate).toLocaleDateString()}
+                              </td>
+                              <td className="p-2.5 tabular-nums font-semibold text-blue-600">
+                                #{ret.originalInvNo}
+                              </td>
                               <td className="p-2.5 font-bold text-slate-900">{ret.customerName}</td>
                               <td className="p-2.5">
                                 {ret.items.map((i, idx) => (
                                   <div key={idx} className="text-[11px]">
-                                    <span className="font-semibold text-slate-800">{i.name} (x{i.qty})</span>
+                                    <span className="font-semibold text-slate-800">
+                                      {i.name} (x{i.qty})
+                                    </span>
                                     {i.imeis && i.imeis.length > 0 && (
                                       <div className="text-[10px] tabular-nums text-purple-700">
                                         IMEI: {i.imeis.join(', ')}
@@ -1746,23 +1827,23 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                 </div>
               )}
 
-              {/* Watermark & Mandatory Footer */}
-              <div className="pt-4 border-t border-slate-200 text-center space-y-1">
-                <p className="font-extrabold text-slate-800 text-xs tracking-wider">
+              {/* Footer Attribution inside Modal */}
+              <div className="pt-3 border-t border-slate-200/70 text-center space-y-0.5">
+                <p className="font-extrabold text-slate-800 text-[11px] tracking-wider">
                   Created by HAMMAD RAZA DEVELOPMENT
                 </p>
                 <p className="text-[10px] text-slate-400">
-                  {shopName} • Management Information System
+                  {shopName} · Financial Reporting Suite
                 </p>
               </div>
             </div>
 
             {/* Modal Footer */}
-            <div className="pt-2 border-t border-slate-100 flex justify-end gap-2">
+            <div className="px-4 py-2.5 border-t border-slate-200/70 bg-white/85 flex justify-end gap-2 shrink-0">
               <button
                 type="button"
                 onClick={() => setActiveReportModal(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer"
+                className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer transition"
               >
                 Close Report
               </button>
@@ -1776,7 +1857,9 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
         <div id="printable-report-area" className="hidden print:block font-sans text-xs">
           <div style={{ textAlign: 'center', borderBottom: '2px solid #000', paddingBottom: '12px', marginBottom: '16px' }}>
             <h1 style={{ fontSize: '18px', fontWeight: 'bold', margin: '0 0 4px 0' }}>{shopName}</h1>
-            <p style={{ margin: '2px 0', fontSize: '11px' }}>{data.settings.address} | Ph: {data.settings.phone}</p>
+            <p style={{ margin: '2px 0', fontSize: '11px' }}>
+              {data.settings.address} | Ph: {data.settings.phone}
+            </p>
             <h2 style={{ fontSize: '14px', fontWeight: 'bold', margin: '8px 0 0 0', textTransform: 'uppercase' }}>
               {activeReportModal === 'wholesale' && 'WHOLESALE & RETAILER B2B REPORT'}
               {activeReportModal === 'sales' && 'SALES & REVENUE REPORT'}
@@ -1789,7 +1872,9 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
               {activeReportModal === 'top_products' && 'TOP SELLING PRODUCTS REPORT'}
               {activeReportModal === 'returns' && 'SALES RETURNS & REFUNDS REPORT'}
             </h2>
-            <p style={{ fontSize: '10px', color: '#666', margin: '4px 0 0 0' }}>Generated on: {new Date().toLocaleString()}</p>
+            <p style={{ fontSize: '10px', color: '#666', margin: '4px 0 0 0' }}>
+              Period: {activeFilterLabel} | Generated on: {new Date().toLocaleString()}
+            </p>
           </div>
 
           <div style={{ marginBottom: '16px' }}>
@@ -1803,34 +1888,76 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
               <tbody>
                 {activeReportModal === 'pnl' ? (
                   <>
-                    <tr><td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>Net Sales Revenue (Post-Returns)</td><td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>{currency} {netSalesRevenue.toLocaleString()}</td></tr>
-                    <tr><td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>Net Cost of Goods Sold (COGS)</td><td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>-{currency} {netCOGS.toLocaleString()}</td></tr>
-                    <tr><td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>Gross Profit</td><td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>{currency} {grossProfit.toLocaleString()}</td></tr>
-                    <tr><td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>Total Operational Expenses</td><td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>-{currency} {totalExpenses.toLocaleString()}</td></tr>
-                    <tr style={{ fontWeight: 'bold', fontSize: '12px' }}><td style={{ padding: '8px', borderTop: '2px solid #000' }}>Net Profit</td><td style={{ padding: '8px', borderTop: '2px solid #000', textAlign: 'right' }}>{currency} {netProfit.toLocaleString()}</td></tr>
+                    <tr>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>
+                        Net Sales Revenue (Post-Returns)
+                      </td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>
+                        {currency} {netSalesRevenue.toLocaleString()}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>
+                        Net Cost of Goods Sold (COGS)
+                      </td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>
+                        -{currency} {netCOGS.toLocaleString()}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>Gross Profit</td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>
+                        {currency} {grossProfit.toLocaleString()}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>
+                        Total Operational Expenses
+                      </td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>
+                        -{currency} {totalExpenses.toLocaleString()}
+                      </td>
+                    </tr>
+                    <tr style={{ fontWeight: 'bold', fontSize: '12px' }}>
+                      <td style={{ padding: '8px', borderTop: '2px solid #000' }}>Net Profit</td>
+                      <td style={{ padding: '8px', borderTop: '2px solid #000', textAlign: 'right' }}>
+                        {currency} {netProfit.toLocaleString()}
+                      </td>
+                    </tr>
                   </>
                 ) : activeReportModal === 'wholesale' ? (
                   <>
                     <tr style={{ background: '#f8fafc', fontWeight: 'bold' }}>
                       <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>Total Wholesale Revenue</td>
-                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right' }}>{currency} {totalWholesaleRevenue.toLocaleString()}</td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right' }}>
+                        {currency} {totalWholesaleRevenue.toLocaleString()}
+                      </td>
                     </tr>
                     <tr>
                       <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>Wholesale Cost (COGS)</td>
-                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right' }}>-{currency} {totalWholesaleCost.toLocaleString()}</td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right' }}>
+                        -{currency} {totalWholesaleCost.toLocaleString()}
+                      </td>
                     </tr>
                     <tr style={{ fontWeight: 'bold' }}>
                       <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>Wholesale Net Profit</td>
-                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', color: '#16a34a' }}>{currency} {totalWholesaleProfit.toLocaleString()}</td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', color: '#16a34a' }}>
+                        {currency} {totalWholesaleProfit.toLocaleString()}
+                      </td>
                     </tr>
                     <tr>
-                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>Total Retailer Discounts Given</td>
-                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right' }}>{currency} {totalWholesaleDiscountsGiven.toLocaleString()}</td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>
+                        Total Retailer Discounts Given
+                      </td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right' }}>
+                        {currency} {totalWholesaleDiscountsGiven.toLocaleString()}
+                      </td>
                     </tr>
                     {wholesaleSales.map(s => (
                       <tr key={s.invNo}>
                         <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>
-                          Invoice #{s.invNo} - {s.custName} {s.retailerShopName ? `(${s.retailerShopName})` : ''} ({new Date(s.date).toLocaleDateString()})
+                          Invoice #{s.invNo} - {s.custName} {s.retailerShopName ? `(${s.retailerShopName})` : ''} (
+                          {new Date(s.date).toLocaleDateString()})
                         </td>
                         <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>
                           {currency} {getEffectiveSaleFigures(s).revenue.toLocaleString()}
@@ -1841,41 +1968,109 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                 ) : activeReportModal === 'sales' ? (
                   filteredSales.map(s => (
                     <tr key={s.invNo}>
-                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>Invoice #{s.invNo} - {s.custName} ({new Date(s.date).toLocaleDateString()})</td>
-                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>{currency} {getEffectiveSaleFigures(s).revenue.toLocaleString()}</td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>
+                        Invoice #{s.invNo} - {s.custName} ({new Date(s.date).toLocaleDateString()})
+                      </td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>
+                        {currency} {getEffectiveSaleFigures(s).revenue.toLocaleString()}
+                      </td>
                     </tr>
                   ))
                 ) : activeReportModal === 'expenses' ? (
                   filteredExpenses.map(e => (
                     <tr key={e.id}>
-                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>{e.description} [{e.category}] ({new Date(e.date).toLocaleDateString()})</td>
-                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>{currency} {e.amount.toLocaleString()}</td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>
+                        {e.description} [{e.category}] ({new Date(e.date).toLocaleDateString()})
+                      </td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>
+                        {currency} {e.amount.toLocaleString()}
+                      </td>
                     </tr>
                   ))
                 ) : activeReportModal === 'inventory' ? (
                   data.inventory.map(i => (
                     <tr key={i.id}>
-                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>{i.name} ({i.category}) - Qty: {i.qty}</td>
-                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>{currency} {(i.costPrice * i.qty).toLocaleString()}</td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>
+                        {i.name} ({i.category}) - Qty: {i.qty}
+                      </td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>
+                        {currency} {(i.costPrice * i.qty).toLocaleString()}
+                      </td>
                     </tr>
                   ))
                 ) : activeReportModal === 'khata' ? (
                   data.khata.map(c => (
                     <tr key={c.id}>
-                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>{c.name} ({c.phone})</td>
-                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>{currency} {c.balance.toLocaleString()}</td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>
+                        {c.name} ({c.phone})
+                      </td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>
+                        {currency} {c.balance.toLocaleString()}
+                      </td>
+                    </tr>
+                  ))
+                ) : activeReportModal === 'closings' ? (
+                  closingsHistory.map(rec => (
+                    <tr key={rec.id}>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>
+                        {rec.date} ({rec.time}) - {rec.closedBy}
+                      </td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>
+                        {currency} {rec.grandTotal.toLocaleString()}
+                      </td>
+                    </tr>
+                  ))
+                ) : activeReportModal === 'purchases' ? (
+                  filteredPurchases.map(p => (
+                    <tr key={p.id}>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>
+                        {p.itemTitle} (x{p.qty}) ({new Date(p.date).toLocaleDateString()})
+                      </td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>
+                        {currency} {p.total.toLocaleString()}
+                      </td>
+                    </tr>
+                  ))
+                ) : activeReportModal === 'top_products' ? (
+                  topSellingList.map((p, idx) => (
+                    <tr key={p.id}>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>
+                        #{idx + 1} {p.name} ({p.unitsSold} units)
+                      </td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>
+                        {currency} {p.totalRevenue.toLocaleString()}
+                      </td>
+                    </tr>
+                  ))
+                ) : activeReportModal === 'returns' ? (
+                  filteredReturns.map(r => (
+                    <tr key={r.id}>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd' }}>
+                        Return #{r.returnNo} - Inv #{r.originalInvNo} ({r.customerName})
+                      </td>
+                      <td style={{ padding: '6px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 'bold' }}>
+                        -{currency} {r.totalRefundAmount.toLocaleString()}
+                      </td>
                     </tr>
                   ))
                 ) : (
-                  <tr><td colSpan={2} style={{ padding: '10px', textAlign: 'center' }}>Audit Record Processed</td></tr>
+                  <tr>
+                    <td colSpan={2} style={{ padding: '10px', textAlign: 'center' }}>
+                      Audit Record Processed
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>
           </div>
 
           <div style={{ textAlign: 'center', borderTop: '2px solid #000', paddingTop: '12px', marginTop: '20px' }}>
-            <p style={{ fontWeight: 'bold', fontSize: '11px', margin: '0' }}>Created by HAMMAD RAZA DEVELOPMENT</p>
-            <p style={{ fontSize: '9px', color: '#666', margin: '4px 0 0 0' }}>Software Developed by HAMMAD RAZA DEVELOPMENT</p>
+            <p style={{ fontWeight: 'bold', fontSize: '11px', margin: '0' }}>
+              Created by HAMMAD RAZA DEVELOPMENT
+            </p>
+            <p style={{ fontSize: '9px', color: '#666', margin: '4px 0 0 0' }}>
+              Software Developed by HAMMAD RAZA DEVELOPMENT
+            </p>
           </div>
         </div>
       )}
@@ -1884,7 +2079,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
       {deleteSaleModal && (
         <div className="fixed inset-0 z-[55] flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
           <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-md w-full p-4 sm:p-5 space-y-4 max-h-[82dvh] overflow-y-auto">
-            <div className="flex items-start justify-between pb-3 border-b border-slate-100">
+            <div className="flex items-start justify-between pb-3 border-b border-slate-200/70">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
                   <Trash2 className="w-5 h-5" />
@@ -1894,7 +2089,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                     {deleteSaleModal.status === 'CANCELLED' ? 'Delete Cancelled Invoice' : 'Delete / Void Invoice'}
                   </h3>
                   <p className="text-xs text-slate-500 tabular-nums">
-                    Invoice #{deleteSaleModal.invNo} • {new Date(deleteSaleModal.date).toLocaleDateString()}
+                    Invoice #{deleteSaleModal.invNo} · {new Date(deleteSaleModal.date).toLocaleDateString()}
                   </p>
                 </div>
               </div>
@@ -1909,11 +2104,11 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
 
             <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 text-xs space-y-1.5">
               <div className="flex justify-between text-slate-600">
-                <span>Customer:</span>
+                <span>Customer</span>
                 <span className="font-bold text-slate-800">{deleteSaleModal.custName || 'Walk-in'}</span>
               </div>
-              <div className="flex justify-between items-center pt-1 border-t border-slate-200">
-                <span className="font-bold text-slate-700">Total:</span>
+              <div className="flex justify-between items-center pt-1.5 border-t border-slate-200">
+                <span className="font-bold text-slate-700">Total</span>
                 <span className="tabular-nums font-black text-sm text-slate-900">
                   {currency} {deleteSaleModal.grandTotal.toLocaleString()}
                 </span>
@@ -1926,13 +2121,15 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                   onClick={() => setDeleteMode('cancel')}
                   className={`p-3 rounded-xl border text-left cursor-pointer transition ${
                     deleteMode === 'cancel'
-                      ? 'border-rose-400 bg-rose-50/50 shadow-xs'
+                      ? 'border-rose-400 bg-rose-50/50 shadow-2xs'
                       : 'border-slate-200 hover:border-slate-300'
                   }`}
                 >
                   <div className="flex items-center gap-2">
                     <RotateCcw className="w-4 h-4 text-rose-600" />
-                    <span className="font-bold text-xs text-slate-900">Void & Cancel (Safe - Stock Restored)</span>
+                    <span className="font-bold text-xs text-slate-900">
+                      Void &amp; Cancel (Safe - Stock Restored)
+                    </span>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-1">
                     Restores inventory stock, marks IMEIs as available, reverses credit balance.
@@ -1943,12 +2140,12 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                   onClick={() => setDeleteMode('permanent')}
                   className={`p-3 rounded-xl border text-left cursor-pointer transition ${
                     deleteMode === 'permanent'
-                      ? 'border-rose-400 bg-rose-50/50 shadow-xs'
+                      ? 'border-rose-400 bg-rose-50/50 shadow-2xs'
                       : 'border-slate-200 hover:border-slate-300'
                   }`}
                 >
                   <div className="flex items-center gap-2">
-                    <Trash2 className="w-4 h-4 text-rose-600" />
+                    <AlertTriangle className="w-4 h-4 text-rose-600" />
                     <span className="font-bold text-xs text-rose-700">Permanently Delete</span>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-1">
@@ -1962,11 +2159,11 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
               </p>
             )}
 
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200/70">
               <button
                 type="button"
                 onClick={() => setDeleteSaleModal(null)}
-                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold"
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer"
               >
                 Cancel
               </button>
@@ -1978,7 +2175,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
                   }
                   setDeleteSaleModal(null);
                 }}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold shadow-sm"
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold shadow-xs cursor-pointer"
               >
                 {deleteMode === 'permanent' || deleteSaleModal.status === 'CANCELLED'
                   ? 'Permanently Delete'

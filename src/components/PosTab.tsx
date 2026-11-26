@@ -130,6 +130,11 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   const [variantPickerItem, setVariantPickerItem] = useState<InventoryItem | null>(null);
   const [copiedImei, setCopiedImei] = useState<string | null>(null);
   const [duplicateScanAlert, setDuplicateScanAlert] = useState<{ title: string; detail: string } | null>(null);
+  const [unadjustedPriceAlert, setUnadjustedPriceAlert] = useState<{
+    itemName: string;
+    variantLabel?: string;
+    reason: string;
+  } | null>(null);
   const duplicateAlertTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [lastScannedItem, setLastScannedItem] = useState<{
     itemId: string;
@@ -137,17 +142,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
     variantLabel?: string;
   } | null>(null);
 
-  const triggerDuplicateAlert = (title: string, detail: string) => {
-    setDuplicateScanAlert({ title, detail });
-    if (duplicateAlertTimerRef.current) {
-      clearTimeout(duplicateAlertTimerRef.current);
-    }
-    duplicateAlertTimerRef.current = setTimeout(() => {
-      setDuplicateScanAlert(null);
-    }, 5500);
-
-    showToast(`⚠️ ${title} — ${detail}`, 'error');
-
+  const playAlertTone = () => {
     try {
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (AudioCtx) {
@@ -170,6 +165,26 @@ const PosTabComponent: React.FC<PosTabProps> = ({
     } catch {
       // Ignore audio errors if blocked by browser autoplay policy
     }
+  };
+
+  const triggerDuplicateAlert = (title: string, detail: string) => {
+    setDuplicateScanAlert({ title, detail });
+    if (duplicateAlertTimerRef.current) {
+      clearTimeout(duplicateAlertTimerRef.current);
+    }
+    duplicateAlertTimerRef.current = setTimeout(() => {
+      setDuplicateScanAlert(null);
+    }, 5500);
+
+    showToast(`⚠️ ${title} — ${detail}`, 'error');
+    playAlertTone();
+  };
+
+  const triggerUnadjustedPriceAlert = (itemName: string, variantLabel?: string, reason?: string) => {
+    const msg = reason || 'Price not adjusted! This is in new stock. Please set Sale Price and Wholesale Price first.';
+    setUnadjustedPriceAlert({ itemName, variantLabel, reason: msg });
+    showToast(`⚠️ Price not adjusted — ${itemName}${variantLabel ? ` (${variantLabel})` : ''} is in new stock!`, 'warning');
+    playAlertTone();
   };
 
   const handleCopyImei = (imei: string) => {
@@ -217,6 +232,11 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   // Intercept hardware Back to close topmost POS modal/drawer before tab navigation
   React.useEffect(() => {
     const handleHardwareBack = (e: Event) => {
+      if (unadjustedPriceAlert) {
+        e.preventDefault();
+        setUnadjustedPriceAlert(null);
+        return;
+      }
       if (shareModalSale || isCameraScannerOpen) return;
       if (variantPickerItem) {
         e.preventDefault();
@@ -862,15 +882,21 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   };
 
   const getVariantPricing = (item: InventoryItem, v?: MobileVariant) => {
-    const costPrice =
-      v && v.costPrice !== '' && Number(v.costPrice) > 0 ? Number(v.costPrice) : item.costPrice;
-    const salePrice =
-      v && v.salePrice !== '' && Number(v.salePrice) > 0 ? Number(v.salePrice) : item.salePrice;
-    const wholesalePrice =
-      v && v.wholesalePrice !== undefined && v.wholesalePrice !== '' && Number(v.wholesalePrice) > 0
-        ? Number(v.wholesalePrice)
-        : item.wholesalePrice;
+    const hasExplicitCost = v && v.costPrice !== undefined && v.costPrice !== '' && Number(v.costPrice) > 0;
+    const hasExplicitSale = v && v.salePrice !== undefined && v.salePrice !== '';
+    const hasExplicitWholesale = v && v.wholesalePrice !== undefined && v.wholesalePrice !== '';
+    const costPrice = hasExplicitCost ? Number(v!.costPrice) : item.costPrice;
+    const salePrice = hasExplicitSale ? Number(v!.salePrice) : item.salePrice;
+    const wholesalePrice = hasExplicitWholesale ? Number(v!.wholesalePrice) : item.wholesalePrice;
     return { costPrice, salePrice, wholesalePrice };
+  };
+
+  const isPriceUnadjusted = (pricing: { salePrice?: number; wholesalePrice?: number }): boolean => {
+    const sale = Number(pricing.salePrice || 0);
+    const wholesale = pricing.wholesalePrice !== undefined ? Number(pricing.wholesalePrice) : 0;
+    if (sale <= 0) return true;
+    if (saleMode === 'wholesale' && wholesale <= 0) return true;
+    return false;
   };
 
   const isImeiAlreadyInCart = (imei: string): boolean => {
@@ -916,6 +942,18 @@ const PosTabComponent: React.FC<PosTabProps> = ({
         if (item.variants.length === 1) {
           effectiveVariant = item.variants[0];
         } else {
+          const availableVars = item.variants.filter(v => getEffectiveVariantQty(item, v) > 0);
+          if (
+            availableVars.length > 0 &&
+            availableVars.every(v => isPriceUnadjusted(getVariantPricing(item, v)))
+          ) {
+            triggerUnadjustedPriceAlert(
+              item.name,
+              undefined,
+              'Price not adjusted! This is in new stock. Please set Sale Price and Wholesale Price first before selling.'
+            );
+            return false;
+          }
           setVariantPickerItem(item);
           return false;
         }
@@ -946,6 +984,16 @@ const PosTabComponent: React.FC<PosTabProps> = ({
     }
 
     const { costPrice, salePrice, wholesalePrice } = getVariantPricing(item, effectiveVariant);
+    if (isPriceUnadjusted({ salePrice, wholesalePrice })) {
+      triggerUnadjustedPriceAlert(
+        item.name,
+        variantLabel,
+        Number(salePrice || 0) <= 0
+          ? 'Price not adjusted! This is in new stock. Please set Sale Price and Wholesale Price before adding to cart.'
+          : 'Wholesale price not adjusted! This is in new stock. Please set Wholesale Price before wholesale billing.'
+      );
+      return false;
+    }
 
     setCart(prev => {
       const existing = prev.find(
@@ -1072,6 +1120,19 @@ const PosTabComponent: React.FC<PosTabProps> = ({
         return false;
       }
       if (exact.matchType === 'barcode' && exact.item.variants && exact.item.variants.length > 1) {
+        const availableVars = exact.item.variants.filter(v => getEffectiveVariantQty(exact.item, v) > 0);
+        if (
+          availableVars.length > 0 &&
+          availableVars.every(v => isPriceUnadjusted(getVariantPricing(exact.item, v)))
+        ) {
+          triggerUnadjustedPriceAlert(
+            exact.item.name,
+            undefined,
+            'Price not adjusted! This is in new stock. Please set Sale Price and Wholesale Price first before selling.'
+          );
+          clearAndFocusSearch();
+          return true;
+        }
         setVariantPickerItem(exact.item);
         clearAndFocusSearch();
         return true;
@@ -2309,29 +2370,56 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
                           {/* Price & Add CTA */}
                           <div className="mt-2 pt-2 border-t border-slate-200/60 flex items-center justify-between gap-1.5 min-w-0">
-                            <span
-                              className={`tabular-nums font-black text-xs sm:text-[13px] truncate ${
-                                saleMode === 'wholesale' ? 'text-purple-700' : 'text-blue-700'
-                              }`}
-                            >
-                              {(() => {
-                                const variants = item.variants || [];
-                                if (variants.length > 1) {
-                                  const varPrices = variants
-                                    .map(v => getItemUnitPrice(getVariantPricing(item, v)))
-                                    .filter(p => !isNaN(p) && p > 0);
-                                  if (varPrices.length > 0) {
-                                    const minP = Math.min(...varPrices);
-                                    const maxP = Math.max(...varPrices);
-                                    if (minP !== maxP) {
-                                      return `${currency} ${minP.toLocaleString()}+`;
-                                    }
-                                    return `${currency} ${minP.toLocaleString()}`;
-                                  }
+                            {(() => {
+                              const variants = item.variants || [];
+                              if (variants.length > 1) {
+                                const availVars = variants.filter(v => getEffectiveVariantQty(item, v) > 0);
+                                const pricedVars = (availVars.length > 0 ? availVars : variants)
+                                  .map(v => getVariantPricing(item, v))
+                                  .filter(p => !isPriceUnadjusted(p));
+                                if (pricedVars.length === 0) {
+                                  return (
+                                    <span className="text-[10px] font-black text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md truncate">
+                                      Price Not Set
+                                    </span>
+                                  );
                                 }
-                                return `${currency} ${getItemUnitPrice(item).toLocaleString()}`;
-                              })()}
-                            </span>
+                                const varPrices = pricedVars
+                                  .map(p => getItemUnitPrice(p))
+                                  .filter(p => !isNaN(p) && p > 0);
+                                const minP = Math.min(...varPrices);
+                                const maxP = Math.max(...varPrices);
+                                return (
+                                  <span
+                                    className={`tabular-nums font-black text-xs sm:text-[13px] truncate ${
+                                      saleMode === 'wholesale' ? 'text-purple-700' : 'text-blue-700'
+                                    }`}
+                                  >
+                                    {minP !== maxP
+                                      ? `${currency} ${minP.toLocaleString()}+`
+                                      : `${currency} ${minP.toLocaleString()}`}
+                                  </span>
+                                );
+                              }
+                              const singleVar = variants.length === 1 ? variants[0] : undefined;
+                              const singlePricing = getVariantPricing(item, singleVar);
+                              if (isPriceUnadjusted(singlePricing)) {
+                                return (
+                                  <span className="text-[10px] font-black text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md truncate">
+                                    Price Not Set
+                                  </span>
+                                );
+                              }
+                              return (
+                                <span
+                                  className={`tabular-nums font-black text-xs sm:text-[13px] truncate ${
+                                    saleMode === 'wholesale' ? 'text-purple-700' : 'text-blue-700'
+                                  }`}
+                                >
+                                  {currency} {getItemUnitPrice(singlePricing).toLocaleString()}
+                                </span>
+                              );
+                            })()}
 
                             <div onClick={e => e.stopPropagation()} className="shrink-0">
                               <button
@@ -3160,6 +3248,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                     const vRem = Math.max(0, vTotal - vInCart);
                     const vPrices = getVariantPricing(selectedProductDetails, v);
                     const vUnitPrice = getItemUnitPrice(vPrices);
+                    const vUnadjusted = isPriceUnadjusted(vPrices);
                     return (
                       <div key={v.id || vIdx} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 shadow-2xs">
                         <div className="flex items-center justify-between gap-2">
@@ -3170,9 +3259,15 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                               </span>
                               <span className="truncate">{getVariantLabel(v)}</span>
                             </span>
-                            <span className="text-[10px] font-bold text-blue-600 tabular-nums ml-6.5 block">
-                              {currency} {vUnitPrice.toLocaleString()}
-                            </span>
+                            {vUnadjusted ? (
+                              <span className="text-[10px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 ml-6.5 inline-block mt-0.5">
+                                Price Not Adjusted (New Stock)
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold text-blue-600 tabular-nums ml-6.5 block">
+                                {currency} {vUnitPrice.toLocaleString()}
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center gap-1.5 shrink-0">
                             <span className={`tabular-nums text-[11px] font-bold px-2 py-0.5 rounded-full ${
@@ -3354,6 +3449,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                 const vRemaining = Math.max(0, vTotal - vInCart);
                 const vPricing = getVariantPricing(variantPickerItem, v);
                 const vPrice = getItemUnitPrice(vPricing);
+                const vUnadjusted = isPriceUnadjusted(vPricing);
                 const imeiCount = Array.isArray(v.imeis) ? v.imeis.filter(Boolean).length : 0;
 
                 return (
@@ -3362,13 +3458,17 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                     type="button"
                     disabled={vRemaining <= 0}
                     onClick={() => {
-                      addToCart(variantPickerItem, undefined, v);
-                      setVariantPickerItem(null);
-                      setSelectedProductDetails(null);
+                      const added = addToCart(variantPickerItem, undefined, v);
+                      if (added) {
+                        setVariantPickerItem(null);
+                        setSelectedProductDetails(null);
+                      }
                     }}
                     className={`w-full text-left p-3 rounded-2xl border transition flex items-center justify-between gap-3 ${
                       vRemaining <= 0
                         ? 'bg-slate-50 border-slate-200 opacity-55 cursor-not-allowed'
+                        : vUnadjusted
+                        ? 'bg-amber-50/70 border-amber-300 hover:border-amber-500 cursor-pointer shadow-2xs active:scale-[0.99]'
                         : 'bg-white border-slate-200 hover:border-blue-500 hover:bg-blue-50/40 cursor-pointer shadow-2xs active:scale-[0.99]'
                     }`}
                   >
@@ -3407,24 +3507,32 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                     </div>
 
                     <div className="text-right shrink-0 space-y-1">
-                      <div
-                        className={`tabular-nums font-black text-xs sm:text-sm ${
-                          saleMode === 'wholesale' ? 'text-purple-700' : 'text-blue-600'
-                        }`}
-                      >
-                        {currency} {vPrice.toLocaleString()}
-                      </div>
+                      {vUnadjusted ? (
+                        <div className="text-[10px] font-black text-amber-700 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-md">
+                          Price Not Set
+                        </div>
+                      ) : (
+                        <div
+                          className={`tabular-nums font-black text-xs sm:text-sm ${
+                            saleMode === 'wholesale' ? 'text-purple-700' : 'text-blue-600'
+                          }`}
+                        >
+                          {currency} {vPrice.toLocaleString()}
+                        </div>
+                      )}
                       <span
                         className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold ${
                           vRemaining <= 0
                             ? 'bg-slate-200 text-slate-500'
+                            : vUnadjusted
+                            ? 'bg-amber-500 text-white'
                             : saleMode === 'wholesale'
                             ? 'bg-purple-600 text-white'
                             : 'bg-blue-600 text-white'
                         }`}
                       >
                         <Plus className="w-3 h-3" />
-                        Add
+                        {vUnadjusted ? 'Not Ready' : 'Add'}
                       </span>
                     </div>
                   </button>
@@ -3475,6 +3583,55 @@ const PosTabComponent: React.FC<PosTabProps> = ({
           isOpen={!!shareModalSale}
           onClose={() => setShareModalSale(null)}
         />
+      )}
+
+      {/* Pre-Cart Unadjusted New Stock Price Alert Modal */}
+      {unadjustedPriceAlert && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center p-4 glass-modal-backdrop"
+          onClick={() => setUnadjustedPriceAlert(null)}
+        >
+          <div
+            className="glass-modal-panel animate-modal-pop rounded-3xl max-w-sm w-full p-5 space-y-4 border border-amber-300/80"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 shadow-xs">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-black text-slate-900 text-base leading-tight">
+                  Price Not Adjusted
+                </h3>
+                <p className="text-xs font-bold text-amber-700 mt-0.5 truncate">
+                  {unadjustedPriceAlert.itemName}
+                  {unadjustedPriceAlert.variantLabel ? ` (${unadjustedPriceAlert.variantLabel})` : ''}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setUnadjustedPriceAlert(null)}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition cursor-pointer shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-amber-50/90 border border-amber-200 rounded-2xl text-xs font-semibold text-amber-950 leading-relaxed">
+              {unadjustedPriceAlert.reason}
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setUnadjustedPriceAlert(null)}
+                className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-black text-xs rounded-xl shadow-md transition cursor-pointer active:scale-[0.98]"
+              >
+                OK, Price Set Karein Pehle
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

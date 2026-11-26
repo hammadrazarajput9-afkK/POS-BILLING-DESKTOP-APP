@@ -19,6 +19,23 @@ console.error = (...args: unknown[]) => {
   }
 };
 
+// Prevent mouse wheel from accidentally changing <input type="number"> values across the entire app
+if (typeof window !== 'undefined') {
+  window.addEventListener(
+    'wheel',
+    (e: WheelEvent) => {
+      const active = document.activeElement;
+      if (active instanceof HTMLInputElement && active.type === 'number') {
+        const target = e.target as Node | null;
+        if (target === active || (target && active.contains(target))) {
+          active.blur();
+        }
+      }
+    },
+    { passive: true, capture: true }
+  );
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

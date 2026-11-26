@@ -53,7 +53,13 @@ import {
   CollectionDeltaEvent,
   DEFAULT_STORE_ID,
 } from './utils/storage';
-import { recordImeisReversed, recordImeisAvailable, diffChangedImeiRecords } from './utils/imeiManager';
+import {
+  recordImeisReversed,
+  recordImeisAvailable,
+  diffChangedImeiRecords,
+  isUsedAndroidCategory,
+  extractItemImeis,
+} from './utils/imeiManager';
 import { generateEntityId } from './utils/id';
 import { ToastProvider, useToast } from './components/Toast';
 import { FormDraftProvider } from './context/FormDraftContext';
@@ -1295,21 +1301,40 @@ function AppContent() {
     const pNote = (purchaseItem.note || '').trim();
     const pCost = Number(purchaseItem.costPrice) || 0;
     const pSaleInput = purchaseItem.salePrice && Number(purchaseItem.salePrice) > 0 ? Number(purchaseItem.salePrice) : undefined;
-    const pWholesale = purchaseItem.wholesalePrice !== undefined ? Number(purchaseItem.wholesalePrice) : undefined;
+    const pWholesale =
+      purchaseItem.wholesalePrice !== undefined && Number(purchaseItem.wholesalePrice) > 0
+        ? Number(purchaseItem.wholesalePrice)
+        : undefined;
 
     if (matchIndex >= 0) {
       const existing = list[matchIndex];
       const existingImeis = splitImeis(existing.imeis, existing.imei);
       const combinedImeis = Array.from(new Set([...existingImeis, ...newImeis]));
-      const resolvedSale = pSaleInput ?? existing.salePrice;
+
+      const targetCategory = purchaseItem.category || existing.category;
+      const shouldSyncOldPrices = !isUsedAndroidCategory(targetCategory);
+      const hasNewSale = pSaleInput !== undefined;
+      const hasNewWholesale = pWholesale !== undefined;
+
+      // For new incoming batches, do NOT inherit old sale/wholesale price if user intentionally left them unadjusted (0)
+      const resolvedBatchSale = hasNewSale ? pSaleInput! : 0;
+      const resolvedBatchWholesale = hasNewWholesale
+        ? pWholesale!
+        : existing.wholesalePrice !== undefined && Number(existing.wholesalePrice) > 0
+        ? 0
+        : undefined;
 
       const hasExistingVariants = Boolean(existing.variants && existing.variants.length > 0);
       const existingWholesaleNum = existing.wholesalePrice !== undefined ? Number(existing.wholesalePrice) : undefined;
 
       const priceDiffersFromExisting =
         (pCost > 0 && pCost !== Number(existing.costPrice || 0)) ||
-        (pSaleInput !== undefined && Math.round(pSaleInput) !== Math.round(Number(existing.salePrice || 0))) ||
-        (pWholesale !== undefined && pWholesale !== existingWholesaleNum);
+        (hasNewSale
+          ? Math.round(pSaleInput!) !== Math.round(Number(existing.salePrice || 0))
+          : Number(existing.salePrice || 0) > 0) ||
+        (hasNewWholesale
+          ? pWholesale !== existingWholesaleNum
+          : Boolean(existingWholesaleNum && existingWholesaleNum > 0));
       const specsDifferFromExisting =
         norm(purchaseItem.ram) !== norm(existing.ram) ||
         norm(purchaseItem.storage) !== norm(existing.storage) ||
@@ -1344,6 +1369,31 @@ function AppContent() {
         ];
       }
 
+      // Automatically sync old stock's Sale & Wholesale prices to new stock's prices (for all categories EXCEPT Used Android)
+      if (updatedVariants && shouldSyncOldPrices && (hasNewSale || hasNewWholesale)) {
+        const incomingRam = norm(purchaseItem.ram);
+        const incomingStorage = norm(purchaseItem.storage);
+        const hasIncomingMemSpec = Boolean(incomingRam || incomingStorage);
+
+        updatedVariants = updatedVariants.map(v => {
+          const vRam = norm(v.ram);
+          const vSto = norm(v.storage);
+          const specMatches =
+            !hasIncomingMemSpec ||
+            (!vRam && !vSto) ||
+            (vRam === incomingRam && vSto === incomingStorage);
+          if (!specMatches) return v;
+
+          return {
+            ...v,
+            salePrice: hasNewSale ? pSaleInput! : v.salePrice,
+            wholesalePrice: hasNewWholesale ? pWholesale! : v.wholesalePrice,
+            autoSalePrice: hasNewSale ? false : v.autoSalePrice,
+            autoWholesalePrice: hasNewWholesale ? false : v.autoWholesalePrice,
+          };
+        });
+      }
+
       if (updatedVariants) {
         const vIdx = updatedVariants.findIndex(v => {
           const specsMatch =
@@ -1360,11 +1410,11 @@ function AppContent() {
               : existing.wholesalePrice;
 
           const costMatches = pCost <= 0 || Number(vCost) === pCost;
-          const saleMatches = pSaleInput === undefined || Math.round(Number(vSale)) === Math.round(pSaleInput);
+          const saleMatches = Math.round(Number(vSale || 0)) === Math.round(resolvedBatchSale);
           const wholesaleMatches =
-            pWholesale === undefined
-              ? vWholesale === existing.wholesalePrice || v.wholesalePrice === '' || v.wholesalePrice === undefined
-              : vWholesale !== undefined && Number(vWholesale) === pWholesale;
+            resolvedBatchWholesale === undefined
+              ? vWholesale === undefined || Number(vWholesale) === 0
+              : vWholesale !== undefined && Number(vWholesale) === resolvedBatchWholesale;
           const noteMatches = norm(v.note) === norm(pNote);
 
           return costMatches && saleMatches && wholesaleMatches && noteMatches;
@@ -1385,8 +1435,8 @@ function AppContent() {
             storage: purchaseItem.storage || '',
             color: purchaseItem.color || '',
             costPrice: pCost > 0 ? pCost : existing.costPrice,
-            salePrice: resolvedSale,
-            wholesalePrice: pWholesale !== undefined ? pWholesale : existing.wholesalePrice,
+            salePrice: resolvedBatchSale,
+            wholesalePrice: resolvedBatchWholesale,
             qty: purchaseItem.qty,
             imeis: newImeis,
             note: pNote || undefined,
@@ -1394,19 +1444,25 @@ function AppContent() {
         }
       }
 
-      // Only update top-level item prices if the product previously had 0 stock (empty restock)
       const shouldKeepExistingTopPrices = existing.qty > 0;
+      const nextTopSale = !shouldKeepExistingTopPrices
+        ? resolvedBatchSale
+        : shouldSyncOldPrices && hasNewSale
+        ? pSaleInput!
+        : existing.salePrice;
+      const nextTopWholesale = !shouldKeepExistingTopPrices
+        ? pWholesale
+        : shouldSyncOldPrices && hasNewWholesale
+        ? pWholesale!
+        : existing.wholesalePrice;
+
       const updatedItem: InventoryItem = {
         ...existing,
         category: purchaseItem.category || existing.category,
         qty: existing.qty + purchaseItem.qty,
         costPrice: shouldKeepExistingTopPrices ? existing.costPrice : pCost > 0 ? pCost : existing.costPrice,
-        salePrice: shouldKeepExistingTopPrices ? existing.salePrice : resolvedSale,
-        wholesalePrice: shouldKeepExistingTopPrices
-          ? existing.wholesalePrice
-          : pWholesale !== undefined
-          ? pWholesale
-          : existing.wholesalePrice,
+        salePrice: nextTopSale,
+        wholesalePrice: nextTopWholesale,
         ram: shouldKeepExistingTopPrices ? existing.ram || purchaseItem.ram : purchaseItem.ram || existing.ram,
         storage: shouldKeepExistingTopPrices ? existing.storage || purchaseItem.storage : purchaseItem.storage || existing.storage,
         color: shouldKeepExistingTopPrices ? existing.color || purchaseItem.color : purchaseItem.color || existing.color,
@@ -1434,7 +1490,7 @@ function AppContent() {
     }
 
     const newItemId = generateEntityId('STK');
-    const resolvedNewSale = pSaleInput ?? Math.round(pCost * 1.15);
+    const resolvedNewSale = pSaleInput ?? 0;
     const hasMobileSpecs = Boolean(purchaseItem.ram || purchaseItem.storage || purchaseItem.color || newImeis.length > 0);
     const newItem: InventoryItem = {
       id: newItemId,
@@ -1722,33 +1778,122 @@ function AppContent() {
 
     const changedInventoryMap = new Map<string, InventoryItem>();
     let updatedInventory = [...data.inventory];
-    const oldAllImeis: string[] = [];
+    const unsoldOldImeisAll: string[] = [];
 
-    // 1. Roll back previous purchase items & IMEIs from inventory (variant-aware)
-    oldPurchase.items.forEach(oldItem => {
-      const rb = rollbackPurchaseItemFromInventory(updatedInventory, oldItem, now);
-      updatedInventory = rb.nextList;
-      oldAllImeis.push(...rb.oldItemImeis);
-      if (rb.changedItem) {
-        changedInventoryMap.set(rb.changedItem.id, rb.changedItem);
+    // Identify IMEIs from this bill that have ALREADY been sold (so editing prices NEVER resurrects sold units/IMEIs)
+    const soldImeiSet = new Set<string>();
+    const imeiRecordStatusMap = new Map<string, string>();
+    (data.imeiRecords || []).forEach(r => {
+      if (r.imei) {
+        const lower = r.imei.trim().toLowerCase();
+        imeiRecordStatusMap.set(lower, r.status);
+        if (r.status === 'SOLD') soldImeiSet.add(lower);
+      }
+    });
+    const returnedImeisSet = new Set<string>();
+    (data.salesReturns || []).forEach(ret => {
+      (ret.items || []).forEach(ri => {
+        extractItemImeis(ri).forEach(im => returnedImeisSet.add(im.toLowerCase()));
+      });
+    });
+    (data.sales || []).forEach(s => {
+      if (s.status === 'CANCELLED') return;
+      (s.items || []).forEach(si => {
+        extractItemImeis(si).forEach(im => {
+          const lower = im.toLowerCase();
+          if (!imeiRecordStatusMap.has(lower) && !returnedImeisSet.has(lower)) {
+            soldImeiSet.add(lower);
+          }
+        });
+      });
+    });
+
+    const soldDeductionByLineIdx = new Map<number, number>();
+
+    // 1. Roll back ONLY unsold purchase units & IMEIs from inventory (variant-aware)
+    oldPurchase.items.forEach((oldItem, idx) => {
+      const oldImeis = extractItemImeis(oldItem);
+      if (oldImeis.length > 0) {
+        const soldOld = oldImeis.filter(im => soldImeiSet.has(im.toLowerCase()));
+        const unsoldOld = oldImeis.filter(im => !soldImeiSet.has(im.toLowerCase()));
+        const soldCount = soldOld.length;
+        soldDeductionByLineIdx.set(idx, soldCount);
+        const unsoldQty = Math.max(0, oldItem.qty - soldCount);
+        unsoldOldImeisAll.push(...unsoldOld);
+
+        if (unsoldQty > 0 || unsoldOld.length > 0) {
+          const rb = rollbackPurchaseItemFromInventory(
+            updatedInventory,
+            {
+              ...oldItem,
+              qty: unsoldQty,
+              imeis: unsoldOld.length > 0 ? unsoldOld : undefined,
+              imei: unsoldOld.length > 0 ? unsoldOld.join(', ') : undefined,
+            },
+            now
+          );
+          updatedInventory = rb.nextList;
+          if (rb.changedItem) {
+            changedInventoryMap.set(rb.changedItem.id, rb.changedItem);
+          }
+        }
+      } else {
+        const matchIdx = findPurchaseInventoryMatchIndex(updatedInventory, oldItem);
+        const availInInv = matchIdx >= 0 ? Math.max(0, Number(updatedInventory[matchIdx].qty) || 0) : 0;
+        const actualRollbackQty = Math.min(oldItem.qty, availInInv);
+        const missingSoldQty = Math.max(0, oldItem.qty - actualRollbackQty);
+        soldDeductionByLineIdx.set(idx, missingSoldQty);
+
+        if (actualRollbackQty > 0) {
+          const rb = rollbackPurchaseItemFromInventory(
+            updatedInventory,
+            { ...oldItem, qty: actualRollbackQty },
+            now
+          );
+          updatedInventory = rb.nextList;
+          if (rb.changedItem) {
+            changedInventoryMap.set(rb.changedItem.id, rb.changedItem);
+          }
+        }
       }
     });
 
-    let nextImeiRecords = recordImeisReversed({
+    const nextImeiRecords = recordImeisReversed({
       purchaseBillNo: oldPurchase.billNo,
-      reversedImeis: oldAllImeis,
+      reversedImeis: unsoldOldImeisAll,
       existingImeiRecords: data.imeiRecords || [],
+      preserveSoldRecords: true,
     });
 
     const itemsToRegisterImeis: { id: string; name: string; category?: string; imei?: string; imeis?: string[] }[] = [];
     const defaultCat = data.categories?.[0] || 'Android Mobile';
 
     if (autoAddToInventory) {
-      updatedPurchase.items.forEach(purchaseItem => {
-        const res = applyPurchaseItemToInventory(updatedInventory, purchaseItem, now, defaultCat);
-        updatedInventory = res.nextList;
-        changedInventoryMap.set(res.changedItem.id, res.changedItem);
-        itemsToRegisterImeis.push(res.imeiEntry);
+      updatedPurchase.items.forEach((purchaseItem, idx) => {
+        const pImeis = extractItemImeis(purchaseItem);
+        const unsoldNewImeis = pImeis.filter(im => !soldImeiSet.has(im.toLowerCase()));
+        const soldCountInLine =
+          pImeis.length > 0
+            ? pImeis.length - unsoldNewImeis.length
+            : soldDeductionByLineIdx.get(idx) || 0;
+        const reapplyQty = Math.max(0, purchaseItem.qty - soldCountInLine);
+
+        if (reapplyQty > 0 || unsoldNewImeis.length > 0) {
+          const res = applyPurchaseItemToInventory(
+            updatedInventory,
+            {
+              ...purchaseItem,
+              qty: reapplyQty,
+              imeis: unsoldNewImeis.length > 0 ? unsoldNewImeis : undefined,
+              imei: unsoldNewImeis.length > 0 ? unsoldNewImeis.join(', ') : undefined,
+            },
+            now,
+            defaultCat
+          );
+          updatedInventory = res.nextList;
+          changedInventoryMap.set(res.changedItem.id, res.changedItem);
+          itemsToRegisterImeis.push(res.imeiEntry);
+        }
       });
     }
 

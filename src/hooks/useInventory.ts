@@ -6,7 +6,7 @@ import {
   StockAdjustmentReason,
   ActivityLog,
 } from '../types';
-import { recordImeisAvailable, diffChangedImeiRecords } from '../utils/imeiManager';
+import { recordImeisAvailable, diffChangedImeiRecords, isUsedAndroidCategory } from '../utils/imeiManager';
 import {
   saveInventoryItemToFirestore,
   deleteInventoryItemFromFirestore,
@@ -281,6 +281,72 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
         total: item.costPrice * item.qty,
       }));
 
+      // Sync salePrice & wholesalePrice to any existing matching active inventory (all categories except Used Android)
+      const normKey = (s?: string) => (s || '').trim().toLowerCase();
+      const updatedExistingDocs: InventoryItem[] = [];
+      const syncOldStockIfNeeded = (list: InventoryItem[]): InventoryItem[] => {
+        return list.map(existing => {
+          if (existing.status === 'ARCHIVED') return existing;
+          const matchingNew = newItems.find(ni => {
+            if (isUsedAndroidCategory(ni.category || existing.category)) return false;
+            return (
+              normKey(ni.name) === normKey(existing.name) &&
+              normKey(ni.category) === normKey(existing.category)
+            );
+          });
+          if (!matchingNew) return existing;
+
+          const newSale = Number(matchingNew.salePrice) > 0 ? Number(matchingNew.salePrice) : undefined;
+          const newWholesale =
+            matchingNew.wholesalePrice !== undefined && Number(matchingNew.wholesalePrice) > 0
+              ? Number(matchingNew.wholesalePrice)
+              : undefined;
+          if (newSale === undefined && newWholesale === undefined) return existing;
+
+          const updatedVariants = existing.variants?.map(v => {
+            if (matchingNew.variants && matchingNew.variants.length > 0) {
+              const matchedSpecVar = matchingNew.variants.find(
+                nv =>
+                  normKey(nv.ram) === normKey(v.ram) &&
+                  normKey(nv.storage) === normKey(v.storage)
+              );
+              const srcVar = matchedSpecVar || (!normKey(v.ram) && !normKey(v.storage) ? matchingNew.variants[0] : undefined);
+              if (!srcVar) return v;
+              const varSale = srcVar.salePrice !== '' && Number(srcVar.salePrice) > 0 ? Number(srcVar.salePrice) : newSale;
+              const varWs =
+                srcVar.wholesalePrice !== undefined && srcVar.wholesalePrice !== '' && Number(srcVar.wholesalePrice) > 0
+                  ? Number(srcVar.wholesalePrice)
+                  : newWholesale;
+              return {
+                ...v,
+                salePrice: varSale !== undefined ? varSale : v.salePrice,
+                wholesalePrice: varWs !== undefined ? varWs : v.wholesalePrice,
+                autoSalePrice: varSale !== undefined ? false : v.autoSalePrice,
+                autoWholesalePrice: varWs !== undefined ? false : v.autoWholesalePrice,
+              };
+            }
+            return {
+              ...v,
+              salePrice: newSale !== undefined ? newSale : v.salePrice,
+              wholesalePrice: newWholesale !== undefined ? newWholesale : v.wholesalePrice,
+              autoSalePrice: newSale !== undefined ? false : v.autoSalePrice,
+              autoWholesalePrice: newWholesale !== undefined ? false : v.autoWholesalePrice,
+            };
+          });
+
+          const updated: InventoryItem = {
+            ...existing,
+            salePrice: newSale !== undefined ? newSale : existing.salePrice,
+            wholesalePrice: newWholesale !== undefined ? newWholesale : existing.wholesalePrice,
+            variants: updatedVariants,
+            updatedAt: now,
+          };
+          updatedExistingDocs.push(updated);
+          return updated;
+        });
+      };
+
+      const preSyncedExisting = syncOldStockIfNeeded(data.inventory);
       const syncedImeis = recordImeisAvailable({
         items: newItems,
         existingImeiRecords: data.imeiRecords || [],
@@ -292,21 +358,30 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
           existingImeiRecords: prev.imeiRecords || [],
         });
 
+        const nextPrevInv = prev.inventory.map(existing => {
+          const found = updatedExistingDocs.find(u => u.id === existing.id);
+          return found || existing;
+        });
+
         return {
           ...prev,
           lastModified: now,
-          inventory: [...newItems, ...prev.inventory],
+          inventory: [...newItems, ...nextPrevInv],
           purchasesLedger: [...newPurchases, ...(prev.purchasesLedger || [])],
           imeiRecords: updatedImeiRecords,
         };
       });
 
-      // Sync new items to Firestore sub-collection
+      // Sync new & price-updated items to Firestore sub-collection
       for (const newItem of newItems) {
         saveInventoryItemToFirestore(newItem).catch(err => {
           console.warn('Firestore new item save warning:', err);
         });
       }
+      for (const updatedOld of updatedExistingDocs) {
+        saveInventoryItemToFirestore(updatedOld).catch(() => {});
+      }
+      void preSyncedExisting;
       savePurchasesLedgerBatchToFirestore(newPurchases).catch(() => {});
       const changedNewImeis = diffChangedImeiRecords(data.imeiRecords || [], syncedImeis);
       if (changedNewImeis.length > 0) {
