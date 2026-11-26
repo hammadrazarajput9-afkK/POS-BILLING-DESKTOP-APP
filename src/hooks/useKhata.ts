@@ -272,16 +272,17 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
     paymentMethod?: string,
     accountId?: string,
     note?: string,
-    receiptImage?: string
+    receiptImage?: string,
+    customDate?: string
   ) => {
     const existingCust = data.khata.find(c => c.id === customerId);
     if (!existingCust) return;
 
     const now = new Date().toISOString();
-    const newBal = type === 'credit' ? existingCust.balance + amount : existingCust.balance - amount;
+    const txDate = customDate || now;
     const newTx = {
       id: generateEntityId('TX'),
-      date: now,
+      date: txDate,
       type,
       amount,
       paymentMethod,
@@ -290,12 +291,17 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
       receiptImage: receiptImage || undefined,
     };
 
+    const nextHistory = [newTx, ...existingCust.history];
+    const recalculatedBalance = nextHistory.reduce((acc, t) => {
+      return t.type === 'credit' ? acc + t.amount : acc - t.amount;
+    }, 0);
+
     const updatedCustomer: KhataCustomer = {
       ...existingCust,
-      balance: newBal,
+      balance: recalculatedBalance,
       lastUpdated: now,
       updatedAt: now,
-      history: [newTx, ...existingCust.history],
+      history: nextHistory,
     };
 
     setData(prev => ({
@@ -315,6 +321,77 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
       'payment',
       customerId
     );
+  };
+
+  /**
+   * Edit an existing ledger transaction and recalculate customer balance
+   */
+  const handleEditKhataTransaction = (
+    customerId: string,
+    txId: string,
+    updates: {
+      type: 'credit' | 'payment';
+      amount: number;
+      note?: string;
+      date?: string;
+      receiptImage?: string;
+    }
+  ) => {
+    if (!hasPermission(data.currentRole || 'admin', 'canManageKhata')) {
+      showToast('Permission Denied: Editing ledger entries is restricted to Administrators', 'error');
+      return;
+    }
+
+    const existingCust = data.khata.find(c => c.id === customerId);
+    if (!existingCust) return;
+    const target = existingCust.history.find(t => t.id === txId);
+    if (!target) return;
+
+    const now = new Date().toISOString();
+    const nextHistory = existingCust.history.map(t =>
+      t.id === txId
+        ? {
+            ...t,
+            type: updates.type,
+            amount: updates.amount,
+            paymentMethod: updates.type === 'payment' ? t.paymentMethod || 'Cash' : undefined,
+            note: updates.note !== undefined ? updates.note : t.note,
+            date: updates.date || t.date,
+            receiptImage: updates.receiptImage !== undefined ? updates.receiptImage : t.receiptImage,
+          }
+        : t
+    );
+
+    const recalculatedBalance = nextHistory.reduce((acc, t) => {
+      return t.type === 'credit' ? acc + t.amount : acc - t.amount;
+    }, 0);
+
+    const updatedCustomer: KhataCustomer = {
+      ...existingCust,
+      balance: recalculatedBalance,
+      lastUpdated: now,
+      updatedAt: now,
+      history: nextHistory,
+    };
+
+    setData(prev => ({
+      ...prev,
+      lastModified: now,
+      khata: prev.khata.map(c => (c.id === customerId ? updatedCustomer : c)),
+    }));
+
+    saveKhataCustomerToFirestore(updatedCustomer).catch(err => {
+      console.warn('Firestore Khata tx edit warning:', err);
+    });
+
+    logActivity(
+      'Khata',
+      `Edited Ledger Entry: ${updatedCustomer.name}`,
+      `${updates.type === 'credit' ? 'You Gave' : 'You Got'}: ${data.settings.currency} ${updates.amount.toLocaleString()}${updates.note ? ` | Note: ${updates.note}` : ''}`,
+      'update',
+      customerId
+    );
+    showToast('Ledger entry updated successfully', 'success');
   };
 
   /**
@@ -427,6 +504,7 @@ export function useKhata({ data, setData, logActivity, showToast }: UseKhataProp
     handleSaveKhataCustomer,
     handleSettleKhataBalance,
     handleUpdateKhataBalance,
+    handleEditKhataTransaction,
     handleDeleteKhataTransaction,
     handleDeleteKhataCustomer,
     addKhataModalOpen,

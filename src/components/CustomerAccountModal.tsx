@@ -6,19 +6,14 @@ import {
   Phone,
   MapPin,
   MessageSquare,
-  DollarSign,
-  CreditCard,
   Printer,
   Calendar,
-  ArrowUpRight,
-  ArrowDownLeft,
   ArrowLeft,
+  ArrowLeftRight,
   FileText,
   Navigation,
-  ExternalLink,
   Search,
   Edit3,
-  ShieldCheck,
   Download,
   Camera,
   Upload,
@@ -26,19 +21,25 @@ import {
   CheckCircle2,
   AlertTriangle,
   ShoppingBag,
-  Copy,
   Save,
   Image as ImageIcon,
   RotateCcw,
+  MoreVertical,
+  Bell,
+  CloudCheck,
+  Pencil,
+  ChevronRight,
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useToast } from './Toast';
 import { CustomerLocationPicker, CustomerLocationValue } from './CustomerLocationPicker';
 import { CameraCaptureModal } from './CameraCaptureModal';
+import { LedgerCalculatorEntry, LedgerCalculatorEntryInitial } from './LedgerCalculatorEntry';
 import { buildGoogleMapsTrackUrl, buildGoogleMapsViewUrl } from '../utils/mapsConfig';
 import { compressImage } from '../utils/imageCompressor';
 import { smartMatch } from '../utils/smartSearch';
+import { cleanWhatsAppPhone, formatLedgerTimestamp, getInitials } from '../utils/ledgerFormatters';
 
 export interface CustomerAccountUpdatePayload {
   id: string;
@@ -78,13 +79,27 @@ interface CustomerAccountModalProps {
     paymentMethod?: string,
     accountId?: string,
     note?: string,
-    receiptImage?: string
+    receiptImage?: string,
+    customDate?: string
+  ) => void;
+  onEditTransaction?: (
+    customerId: string,
+    txId: string,
+    updates: {
+      type: 'credit' | 'payment';
+      amount: number;
+      note?: string;
+      date?: string;
+      receiptImage?: string;
+    }
   ) => void;
   onUpdateCustomer?: (updated: CustomerAccountUpdatePayload) => void;
   onDeleteTransaction?: (customerId: string, txId: string) => void;
+  initialTxId?: string | null;
+  onClearInitialTxId?: () => void;
 }
 
-type AccountWorkspaceTab = 'ledger' | 'location' | 'invoices' | 'profile';
+type SettingsSubTab = 'profile' | 'location' | 'invoices';
 
 export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   customer,
@@ -95,30 +110,37 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   salesReturns = [],
   isAdmin = true,
   onAddTransaction,
+  onEditTransaction,
   onUpdateCustomer,
   onDeleteTransaction,
+  initialTxId,
+  onClearInitialTxId,
 }) => {
   const { showToast } = useToast();
   const profileFileInputRef = useRef<HTMLInputElement>(null);
-  const txReceiptFileInputRef = useRef<HTMLInputElement>(null);
 
-  const [activeTab, setActiveTab] = useState<AccountWorkspaceTab>('ledger');
-  const [showTransactor, setShowTransactor] = useState<'payment' | 'credit' | null>(null);
-  const [amount, setAmount] = useState<number | ''>('');
-  const [note, setNote] = useState('');
-  const [txReceiptImage, setTxReceiptImage] = useState<string>('');
-  const [isTxCameraOpen, setIsTxCameraOpen] = useState(false);
-  const [viewingImageModal, setViewingImageModal] = useState<string | null>(null);
+  // Navigation inside Customer Account
+  const [workspaceView, setWorkspaceView] = useState<'ledger' | 'settings'>('ledger');
+  const [settingsSubTab, setSettingsSubTab] = useState<SettingsSubTab>('profile');
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
 
-  // Ledger search & filtering
-  const [ledgerSearch, setLedgerSearch] = useState('');
-  const [ledgerFilter, setLedgerFilter] = useState<'all' | 'credit' | 'payment'>('all');
+  // Entry Detail & Calculator Screens
+  const [selectedTxId, setSelectedTxId] = useState<string | null>(null);
+  const [calculatorConfig, setCalculatorConfig] = useState<LedgerCalculatorEntryInitial | null>(null);
   const [confirmDeleteTxId, setConfirmDeleteTxId] = useState<string | null>(null);
 
+  // Due Date Quick Modal
+  const [isSetDateOpen, setIsSetDateOpen] = useState(false);
+  const [quickDueDate, setQuickDueDate] = useState('');
+
+  // Image Lightbox
+  const [viewingImageModal, setViewingImageModal] = useState<string | null>(null);
+
+  // Ledger Search
+  const [ledgerSearch, setLedgerSearch] = useState('');
+
   // Location Draft State
-  const [locationDraft, setLocationDraft] = useState<CustomerLocationValue>({
-    address: '',
-  });
+  const [locationDraft, setLocationDraft] = useState<CustomerLocationValue>({ address: '' });
   const [locationDirty, setLocationDirty] = useState(false);
 
   // Profile Edit State
@@ -152,36 +174,49 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     setProfileName(customer.name || '');
     setProfilePhone(customer.phone || '');
     setProfilePhone2(customer.phone2 || '');
-    setProfileType(customer.customerType === 'retailer' || customer.customerType === 'wholesaler' ? 'retailer' : 'retail');
+    setProfileType(
+      customer.customerType === 'retailer' || customer.customerType === 'wholesaler'
+        ? 'retailer'
+        : 'retail'
+    );
     setProfileShopName(customer.shopName || '');
     setProfileCity(customer.city || '');
     setProfileNtn(customer.ntnNumber || '');
     setProfileCnic(customer.cnic || '');
     setProfileCreditLimit(customer.creditLimit ? String(customer.creditLimit) : '');
     setProfileDueDate(customer.dueDate || '');
+    setQuickDueDate(customer.dueDate || '');
     setProfileGuarantorName(customer.guarantorName || '');
     setProfileGuarantorPhone(customer.guarantorPhone || '');
     setProfileNotes(customer.notes || '');
     setProfileImage(customer.image || '');
     setConfirmDeleteTxId(null);
-    setTxReceiptImage('');
+    setShowMoreMenu(false);
   }, [customer, isOpen]);
+
+  useEffect(() => {
+    if (isOpen && initialTxId) {
+      setSelectedTxId(initialTxId);
+      setWorkspaceView('ledger');
+    } else if (!isOpen) {
+      setSelectedTxId(null);
+      setCalculatorConfig(null);
+      setWorkspaceView('ledger');
+    }
+  }, [isOpen, initialTxId]);
 
   const history = customer?.history || [];
 
-  const totalCreditGiven = useMemo(() => {
-    return history
-      .filter(t => t.type === 'credit')
-      .reduce((acc, t) => acc + t.amount, 0);
-  }, [history]);
+  const totalCreditGiven = useMemo(
+    () => history.filter(t => t.type === 'credit').reduce((acc, t) => acc + t.amount, 0),
+    [history]
+  );
 
-  const totalPaymentReceived = useMemo(() => {
-    return history
-      .filter(t => t.type === 'payment')
-      .reduce((acc, t) => acc + t.amount, 0);
-  }, [history]);
+  const totalPaymentReceived = useMemo(
+    () => history.filter(t => t.type !== 'credit').reduce((acc, t) => acc + t.amount, 0),
+    [history]
+  );
 
-  // Helper to resolve matching POS invoice for a ledger transaction
   const findLinkedSaleForTx = (
     tx: KhataCustomer['history'][number],
     pool: SaleRecord[]
@@ -221,7 +256,9 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     pool: SalesReturnRecord[]
   ): SalesReturnRecord | undefined => {
     if (tx.returnNo) {
-      const byRetNo = pool.find(r => r.returnNo.trim().toLowerCase() === tx.returnNo!.trim().toLowerCase());
+      const byRetNo = pool.find(
+        r => r.returnNo.trim().toLowerCase() === tx.returnNo!.trim().toLowerCase()
+      );
       if (byRetNo) return byRetNo;
     }
     const noteStr = tx.note || '';
@@ -344,12 +381,13 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
 
   const filteredLedger = useMemo(() => {
     const q = ledgerSearch.trim();
+    if (!q) return runningLedger;
     return runningLedger.filter(tx => {
-      if (ledgerFilter === 'credit' && tx.type !== 'credit') return false;
-      if (ledgerFilter === 'payment' && tx.type === 'credit') return false;
-      if (!q) return true;
       const itemsText = (tx.linkedSale?.items || [])
-        .map(it => `${it.name} ${it.variantLabel || ''} ${it.imei || ''} ${(it.imeis || []).join(' ')} ${it.returnReason || ''}`)
+        .map(
+          it =>
+            `${it.name} ${it.variantLabel || ''} ${it.imei || ''} ${(it.imeis || []).join(' ')}`
+        )
         .join(' ');
       const returnItemsText = (tx.returnedItemsSummary || tx.linkedReturn?.items || [])
         .map(ri => `${ri.name} ${ri.variantLabel || ''} ${(ri.imeis || []).join(' ')}`)
@@ -368,7 +406,12 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
         [itemsText, returnItemsText]
       );
     });
-  }, [runningLedger, ledgerSearch, ledgerFilter]);
+  }, [runningLedger, ledgerSearch]);
+
+  const selectedEntry = useMemo(
+    () => (selectedTxId ? runningLedger.find(t => t.id === selectedTxId) || null : null),
+    [selectedTxId, runningLedger]
+  );
 
   const customerSales = useMemo(() => {
     if (!customer) return [];
@@ -393,18 +436,15 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     const due = new Date(customer.dueDate);
     due.setHours(0, 0, 0, 0);
     const diffDays = Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    if (diffDays < 0) {
-      return { label: `${Math.abs(diffDays)} din overdue hai!`, tone: 'overdue' as const };
-    }
-    if (diffDays === 0) {
-      return { label: 'Aaj due date hai', tone: 'today' as const };
-    }
-    return { label: `${diffDays} din mein due hai`, tone: 'upcoming' as const };
+    if (diffDays < 0) return { label: `${Math.abs(diffDays)}d overdue`, tone: 'overdue' as const };
+    if (diffDays === 0) return { label: 'Due today', tone: 'today' as const };
+    return { label: `Due in ${diffDays}d`, tone: 'upcoming' as const };
   }, [customer?.dueDate, customer?.balance]);
 
   if (!isOpen || !customer) return null;
 
-  const currency = settings.currency;
+  const currency = settings.currency || 'Rs';
+  const waPhone = cleanWhatsAppPhone(customer.phone);
   const hasGpsPin =
     typeof customer.lat === 'number' &&
     typeof customer.lng === 'number' &&
@@ -425,55 +465,35 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     address: customer.address,
   });
 
-  const creditUsagePct =
-    customer.creditLimit && customer.creditLimit > 0
-      ? Math.min(100, Math.max(0, Math.round((customer.balance / customer.creditLimit) * 100)))
-      : null;
-  const isOverLimit =
-    customer.creditLimit && customer.creditLimit > 0 && customer.balance > customer.creditLimit;
-
-  const cleanPhoneForWhatsApp = (() => {
-    const phone = customer.phone.replace(/[^0-9]/g, '');
-    return phone.startsWith('0') ? '92' + phone.substring(1) : phone;
-  })();
-
-  // WhatsApp Message in Clean Roman English / Roman Urdu
-  const whatsAppUrl = (() => {
-    const recentLines = customer.history
-      .slice(0, 5)
-      .map(
-        t =>
-          `- ${new Date(t.date).toLocaleDateString()}: ${t.type === 'credit' ? 'Credit (+)' : 'Payment (-)'} ${currency} ${t.amount.toLocaleString()} ${t.note ? `(${t.note})` : ''}`
-      )
-      .join('\n');
-
-    const dueLine = customer.dueDate ? `\nPromise Due Date: ${new Date(customer.dueDate).toLocaleDateString()}` : '';
-
-    const message = encodeURIComponent(
-      `Salam ${customer.name}!\n\n` +
-        `Yeh reminder *${settings.shopName}* ki taraf se hai. Aap ka total pending Khata balance *${currency} ${customer.balance.toLocaleString()}* hai.${dueLine}\n\n` +
-        `*Aakhri Transactions:*\n${recentLines || 'Koi transaction nahi hai'}\n\n` +
-        `Baraye meharbani apna balance time par clear karein. Shukriya!\n` +
-        `Contact: ${settings.phone} | ${settings.address}`
+  const reminderMessageText = (() => {
+    const dueLine = customer.dueDate
+      ? `\nDue Date: ${new Date(customer.dueDate).toLocaleDateString()}`
+      : '';
+    return (
+      `Assalam-o-Alaikum ${customer.name},\n` +
+      `Reminder from ${settings.shopName}: Your pending ledger balance is ${currency} ${Math.abs(customer.balance).toLocaleString()}${dueLine}.\n` +
+      `Contact: ${settings.phone}`
     );
-    return `https://wa.me/${cleanPhoneForWhatsApp}?text=${message}`;
   })();
+
+  const whatsAppReminderUrl = `https://wa.me/${waPhone}?text=${encodeURIComponent(reminderMessageText)}`;
+  const smsReminderUrl = `sms:${customer.phone.replace(/[^0-9+]/g, '')}?body=${encodeURIComponent(reminderMessageText)}`;
 
   const handleDownloadPdfStatement = () => {
     try {
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      doc.setFillColor(30, 27, 75);
+      doc.setFillColor(5, 150, 105);
       doc.rect(0, 0, 210, 32, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(16);
       doc.setFont('helvetica', 'bold');
-      doc.text(settings.shopName || 'FMZ Friends Mobile Zone', 14, 14);
+      doc.text(settings.shopName || 'Customer Ledger Statement', 14, 14);
       doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
       doc.text(`${settings.address || ''}  |  Ph: ${settings.phone || ''}`, 14, 21);
       doc.setFontSize(11);
       doc.setFont('helvetica', 'bold');
-      doc.text('CUSTOMER ACCOUNT STATEMENT', 196, 15, { align: 'right' });
+      doc.text('PARTY LEDGER STATEMENT', 196, 15, { align: 'right' });
       doc.setFontSize(8.5);
       doc.setFont('helvetica', 'normal');
       doc.text(`Generated: ${new Date().toLocaleString()}`, 196, 22, { align: 'right' });
@@ -481,318 +501,144 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
       doc.setTextColor(15, 23, 42);
       doc.setFontSize(10);
       doc.setFont('helvetica', 'bold');
-      doc.text(`Customer: ${customer.name}`, 14, 42);
+      doc.text(`Party: ${customer.name}`, 14, 42);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
-      doc.text(`Account ID: ${customer.id}`, 14, 48);
-      doc.text(`Phone: ${customer.phone}${customer.phone2 ? ` / ${customer.phone2}` : ''}`, 14, 54);
-      if (customer.cnic) doc.text(`CNIC: ${customer.cnic}`, 14, 60);
-      if (customer.address) doc.text(`Address: ${customer.address}`, 14, customer.cnic ? 66 : 60, { maxWidth: 115 });
+      doc.text(`Phone: ${customer.phone}${customer.phone2 ? ` / ${customer.phone2}` : ''}`, 14, 48);
+      if (customer.cnic) doc.text(`CNIC: ${customer.cnic}`, 14, 54);
+      if (customer.address) doc.text(`Address: ${customer.address}`, 14, customer.cnic ? 60 : 54, { maxWidth: 115 });
 
       doc.setFillColor(248, 250, 252);
       doc.setDrawColor(226, 232, 240);
       doc.roundedRect(132, 38, 64, 30, 2, 2, 'FD');
       doc.setFontSize(8);
       doc.setTextColor(100, 116, 139);
-      doc.text('PENDING BALANCE', 136, 44);
+      doc.text(customer.balance >= 0 ? 'YOU WILL GET' : 'YOU WILL GIVE', 136, 44);
       doc.setFontSize(13);
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(customer.balance > 0 ? 185 : 21, customer.balance > 0 ? 28 : 128, customer.balance > 0 ? 28 : 61);
-      doc.text(`${currency} ${customer.balance.toLocaleString()}`, 136, 51);
+      doc.setTextColor(customer.balance > 0 ? 185 : 5, customer.balance > 0 ? 28 : 150, customer.balance > 0 ? 28 : 105);
+      doc.text(`${currency} ${Math.abs(customer.balance).toLocaleString()}`, 136, 51);
       doc.setFontSize(8);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(51, 65, 85);
-      doc.text(`Credit Given: ${currency} ${totalCreditGiven.toLocaleString()}`, 136, 58);
-      doc.text(`Recovered: ${currency} ${totalPaymentReceived.toLocaleString()}`, 136, 64);
+      doc.text(`You Gave: ${currency} ${totalCreditGiven.toLocaleString()}`, 136, 58);
+      doc.text(`You Got: ${currency} ${totalPaymentReceived.toLocaleString()}`, 136, 64);
 
-      const formatSaleItemsText = (sale?: SaleRecord): string => {
-        if (!sale || !sale.items || sale.items.length === 0) return '';
-        const lines = sale.items.map(it => {
-          const imeis =
-            Array.isArray(it.imeis) && it.imeis.length > 0 ? it.imeis.join(', ') : it.imei;
-          const retMeta = getSaleItemReturnMeta(sale.invNo, it);
-          const returnSuffix = retMeta.isReturned
-            ? ` [RETURNED${retMeta.returnedQty > 1 ? ` x${retMeta.returnedQty}` : ''}${retMeta.returnReason ? ` - Reason: ${retMeta.returnReason}` : ''}]`
-            : '';
-          return `${it.name}${it.variantLabel ? ` (${it.variantLabel})` : ''} x${it.qty} @ ${currency} ${it.salePrice.toLocaleString()}${imeis ? ` [IMEI: ${imeis}]` : ''}${returnSuffix}`;
-        });
-        const meta: string[] = [`Bill: ${currency} ${sale.grandTotal.toLocaleString()}`];
-        if ((sale.amountPaid || 0) > 0) {
-          meta.push(`Paid Now: ${currency} ${(sale.amountPaid || 0).toLocaleString()}`);
-        }
-        if ((sale.discount || 0) > 0) {
-          meta.push(`Disc: ${currency} ${(sale.discount || 0).toLocaleString()}`);
-        }
-        if (sale.notes) {
-          meta.push(`Note: ${sale.notes}`);
-        }
-        return `${lines.join('\n')}\n(${meta.join(' | ')})`;
-      };
-
-      const tableRows = runningLedger.map(tx => {
-        const retSummary =
-          tx.returnedItemsSummary && tx.returnedItemsSummary.length > 0
-            ? tx.returnedItemsSummary
-                .map(
-                  ri =>
-                    `${ri.name}${ri.variantLabel ? ` (${ri.variantLabel})` : ''} x${ri.qty}${ri.imeis && ri.imeis.length > 0 ? ` [IMEI: ${ri.imeis.join(', ')}]` : ''} - Returned (Reason: ${ri.reason})`
-                )
-                .join('\n')
-            : tx.linkedReturn && tx.linkedReturn.items.length > 0
-            ? tx.linkedReturn.items
-                .map(
-                  ri =>
-                    `${ri.name}${ri.variantLabel ? ` (${ri.variantLabel})` : ''} x${ri.qty}${ri.imeis && ri.imeis.length > 0 ? ` [IMEI: ${ri.imeis.join(', ')}]` : ''} - Returned (Reason: ${tx.returnReason || tx.linkedReturn?.reason || 'Returned'})`
-                )
-                .join('\n')
-            : '';
-
-        const itemsText = tx.isSalesReturn ? retSummary : formatSaleItemsText(tx.linkedSale);
-        const detailCell = itemsText
-          ? `${tx.note || (tx.isSalesReturn ? `Return #${tx.returnNo || ''}` : `Invoice #${tx.linkedSale?.invNo}`)}\n${itemsText}`
-          : tx.note || '--';
-        return [
-          new Date(tx.date).toLocaleDateString(),
-          tx.type === 'credit'
-            ? 'Credit (+)'
-            : tx.isSalesReturn
-            ? 'Returned (-)'
-            : `Paid (${tx.paymentMethod || 'Cash'})`,
-          detailCell,
-          `${currency} ${tx.prevBalance.toLocaleString()}`,
-          `${tx.type === 'credit' ? '+' : '-'} ${currency} ${tx.amount.toLocaleString()}`,
-          `${currency} ${tx.runningBalance.toLocaleString()}`,
-        ];
-      });
+      const tableRows = runningLedger.map(tx => [
+        new Date(tx.date).toLocaleDateString(),
+        tx.note || (tx.type === 'credit' ? 'You Gave' : 'You Got'),
+        tx.type === 'credit' ? `${currency} ${tx.amount.toLocaleString()}` : '-',
+        tx.type !== 'credit' ? `${currency} ${tx.amount.toLocaleString()}` : '-',
+        `${currency} ${tx.runningBalance.toLocaleString()}`,
+      ]);
 
       autoTable(doc, {
         startY: 74,
-        head: [['Date', 'Type', 'Itemized Details / Remarks', 'Prev Bal', 'Entry', 'New Bal']],
-        body: tableRows.length > 0 ? tableRows : [['--', '--', 'No transactions recorded', '--', '--', '--']],
-        styles: { fontSize: 8, cellPadding: 2.5, overflow: 'linebreak' },
-        headStyles: { fillColor: [88, 28, 135], textColor: 255, fontStyle: 'bold' },
+        head: [['Date', 'Details / Remarks', 'You Gave', 'You Got', 'Balance']],
+        body: tableRows.length > 0 ? tableRows : [['--', 'No entries recorded', '--', '--', '--']],
+        styles: { fontSize: 8.5, cellPadding: 2.5, overflow: 'linebreak' },
+        headStyles: { fillColor: [5, 150, 105], textColor: 255, fontStyle: 'bold' },
         columnStyles: {
-          2: { cellWidth: 74 },
+          1: { cellWidth: 74 },
+          2: { halign: 'right' },
           3: { halign: 'right' },
           4: { halign: 'right', fontStyle: 'bold' },
-          5: { halign: 'right', fontStyle: 'bold' },
         },
       });
 
-      const finalY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY || 120;
-      doc.setFontSize(8);
-      doc.setTextColor(100, 116, 139);
-      doc.text('Created by HAMMAD RAZA DEVELOPMENT', 105, Math.min(285, finalY + 14), { align: 'center' });
-
       const safeName = customer.name.replace(/[^a-zA-Z0-9_-]/g, '_');
-      doc.save(`Khata_Statement_${safeName}.pdf`);
-      showToast('PDF Account Statement downloaded', 'success');
+      doc.save(`Ledger_${safeName}.pdf`);
+      showToast('Ledger PDF report downloaded', 'success');
     } catch (err) {
-      console.error('PDF statement error:', err);
-      showToast('Could not generate PDF statement', 'error');
+      console.error('PDF error:', err);
+      showToast('Could not generate PDF report', 'error');
     }
   };
 
   const handlePrintStatement = () => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
-      showToast('Popup blocked. Please allow popups to print statement.', 'error');
+      showToast('Popup blocked. Please allow popups to print.', 'warning');
       return;
     }
 
     const rows = runningLedger
-      .map(tx => {
-        const retItemsHtml = tx.isSalesReturn
-          ? (() => {
-              const rItems =
-                tx.returnedItemsSummary && tx.returnedItemsSummary.length > 0
-                  ? tx.returnedItemsSummary
-                  : (tx.linkedReturn?.items || []).map(ri => ({
-                      name: ri.name,
-                      variantLabel: ri.variantLabel,
-                      qty: ri.qty,
-                      imeis: ri.imeis,
-                      reason: tx.returnReason || tx.linkedReturn?.reason || 'Returned',
-                      refundAmount: ri.qty * ri.salePrice,
-                    }));
-              if (rItems.length === 0) return '';
-              return `<div style="margin-top: 4px; padding: 5px 7px; background: #fffbeb; border-left: 2px solid #d97706; font-size: 11px;">
-                ${rItems
-                  .map(
-                    ri => `<div style="margin-bottom: 2px;">
-                      <strong>${ri.name}</strong>${ri.variantLabel ? ` (${ri.variantLabel})` : ''} &times; ${ri.qty}
-                      <span style="color: #b45309; font-weight: bold;"> [Returned - Reason: ${ri.reason}]</span>
-                      ${ri.imeis && ri.imeis.length > 0 ? `<div style="font-size: 10px; color: #475569;">IMEI: ${ri.imeis.join(', ')}</div>` : ''}
-                    </div>`
-                  )
-                  .join('')}
-              </div>`;
-            })()
-          : '';
-
-        const itemsHtml =
-          !tx.isSalesReturn && tx.linkedSale && tx.linkedSale.items.length > 0
-            ? `<div style="margin-top: 4px; padding: 5px 7px; background: #f8fafc; border-left: 2px solid #7e22ce; font-size: 11px;">
-                ${tx.linkedSale.items
-                  .map(it => {
-                    const imeis =
-                      Array.isArray(it.imeis) && it.imeis.length > 0
-                        ? it.imeis.join(', ')
-                        : it.imei;
-                    const retMeta = getSaleItemReturnMeta(tx.linkedSale?.invNo, it);
-                    return `<div style="margin-bottom: 2px;">
-                      <strong>${it.name}</strong>${it.variantLabel ? ` (${it.variantLabel})` : ''} &times; ${it.qty} @ ${currency} ${it.salePrice.toLocaleString()} = <strong>${currency} ${(it.salePrice * it.qty).toLocaleString()}</strong>
-                      ${retMeta.isReturned ? `<span style="margin-left: 6px; padding: 1px 5px; background: #fef3c7; color: #b45309; border-radius: 4px; font-size: 10px; font-weight: bold;">Returned${retMeta.returnReason ? ` (${retMeta.returnReason})` : ''}</span>` : ''}
-                      ${imeis ? `<div style="font-size: 10px; color: #475569;">IMEI: ${imeis}</div>` : ''}
-                    </div>`;
-                  })
-                  .join('')}
-                <div style="font-size: 10px; color: #475569; margin-top: 3px; border-top: 1px dashed #cbd5e1; padding-top: 2px;">
-                  Bill: ${currency} ${tx.linkedSale.grandTotal.toLocaleString()} | Paid Now: ${currency} ${(tx.linkedSale.amountPaid || 0).toLocaleString()} | Credit Due: ${currency} ${(tx.linkedSale.amountDue || 0).toLocaleString()}
-                  ${tx.linkedSale.notes ? `<br/>Note: ${tx.linkedSale.notes}` : ''}
-                </div>
-              </div>`
-            : '';
-
-        return `
+      .map(
+        tx => `
         <tr>
-          <td style="padding: 8px; border-bottom: 1px solid #eee; vertical-align: top;">${new Date(tx.date).toLocaleDateString()}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; font-weight: bold; color: ${tx.type === 'credit' ? '#b91c1c' : tx.isSalesReturn ? '#b45309' : '#15803d'};">
-            ${tx.type === 'credit' ? 'Credit (+)' : tx.isSalesReturn ? 'Returned (-)' : `Paid (${tx.paymentMethod || 'Cash'})`}
+          <td style="padding:8px;border-bottom:1px solid #eee;">${formatLedgerTimestamp(tx.date)}</td>
+          <td style="padding:8px;border-bottom:1px solid #eee;">${tx.note || '-'}</td>
+          <td style="padding:8px;border-bottom:1px solid #eee;text-align:right;color:#dc2626;font-weight:700;">
+            ${tx.type === 'credit' ? tx.amount.toLocaleString() : ''}
           </td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee; vertical-align: top;">
-            <div>${tx.note || '-'}</div>
-            ${retItemsHtml || itemsHtml}
+          <td style="padding:8px;border-bottom:1px solid #eee;text-align:right;color:#059669;font-weight:700;">
+            ${tx.type !== 'credit' ? tx.amount.toLocaleString() : ''}
           </td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; text-align: right; font-variant-numeric: tabular-nums; color: #64748b;">
-            ${currency} ${tx.prevBalance.toLocaleString()}
-          </td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; color: ${tx.type === 'credit' ? '#b91c1c' : tx.isSalesReturn ? '#b45309' : '#15803d'};">
-            ${tx.type === 'credit' ? '+' : '-'} ${currency} ${tx.amount.toLocaleString()}
-          </td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; text-align: right; font-variant-numeric: tabular-nums; font-weight: 800;">
+          <td style="padding:8px;border-bottom:1px solid #eee;text-align:right;font-weight:800;">
             ${currency} ${tx.runningBalance.toLocaleString()}
           </td>
-        </tr>
-      `;
-      })
+        </tr>`
+      )
       .join('');
 
     printWindow.document.write(`
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Account Ledger - ${customer.name}</title>
-          <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+          <title>Ledger - ${customer.name}</title>
           <style>
-            body { font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 24px; color: #1e293b; max-width: 780px; margin: 0 auto; font-variant-numeric: tabular-nums; }
-            .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 16px; }
-            .shop-title { font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif; font-size: 20px; font-weight: 800; margin: 0; }
-            .meta { font-size: 11px; color: #64748b; margin-top: 4px; }
-            .balance-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; }
-            table { width: 100%; border-collapse: collapse; font-size: 12px; }
-            th { text-align: left; padding: 8px; background: #f1f5f9; border-bottom: 1px solid #cbd5e1; }
+            body { font-family: 'Plus Jakarta Sans', -apple-system, sans-serif; padding: 24px; color: #0f172a; font-variant-numeric: tabular-nums; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 12px; }
+            th { text-align: left; padding: 8px; background: #ecfdf5; border-bottom: 2px solid #059669; }
           </style>
         </head>
         <body>
-          <div class="header">
-            <h1 class="shop-title">${settings.shopName}</h1>
-            <p class="meta">${settings.address} | Ph: ${settings.phone}</p>
-            <h2 style="font-size: 14px; margin-top: 8px;">Detailed Customer Credit & Itemized Ledger Statement</h2>
-          </div>
-
-          <div style="margin-bottom: 16px; font-size: 12px;">
-            <p style="margin: 2px 0;"><strong>Customer:</strong> ${customer.name} (${customer.id})</p>
-            <p style="margin: 2px 0;"><strong>Phone:</strong> ${customer.phone} ${customer.phone2 ? ` / ${customer.phone2}` : ''}</p>
-            ${customer.cnic ? `<p style="margin: 2px 0;"><strong>CNIC:</strong> ${customer.cnic}</p>` : ''}
-            ${customer.address ? `<p style="margin: 2px 0;"><strong>Address:</strong> ${customer.address}</p>` : ''}
-            ${customer.dueDate ? `<p style="margin: 2px 0;"><strong>Due Date:</strong> ${new Date(customer.dueDate).toLocaleDateString()}</p>` : ''}
-            <p style="margin: 2px 0;"><strong>Generated:</strong> ${new Date().toLocaleString()}</p>
-          </div>
-
-          <div class="balance-box">
-            <div>
-              <span style="font-size: 11px; color: #64748b; text-transform: uppercase;">Pending Balance</span>
-              <div style="font-size: 20px; font-weight: 800; color: #7e22ce;">${currency} ${customer.balance.toLocaleString()}</div>
-            </div>
-            <div style="text-align: right; font-size: 11px;">
-              <div>Credit Given: <strong>${currency} ${totalCreditGiven.toLocaleString()}</strong></div>
-              <div>Total Paid: <strong>${currency} ${totalPaymentReceived.toLocaleString()}</strong></div>
-            </div>
-          </div>
-
+          <h2 style="margin:0;">${settings.shopName}</h2>
+          <p style="margin:2px 0 12px 0;font-size:11px;color:#64748b;">Party: <strong>${customer.name}</strong> (${customer.phone}) | Net Balance: <strong>${currency} ${customer.balance.toLocaleString()}</strong></p>
           <table>
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Type</th>
-                <th>Itemized Details & Remarks</th>
-                <th style="text-align: right;">Prev Bal</th>
-                <th style="text-align: right;">Entry</th>
-                <th style="text-align: right;">Balance</th>
+                <th>Entries</th>
+                <th style="text-align:right;">You Gave</th>
+                <th style="text-align:right;">You Got</th>
+                <th style="text-align:right;">Balance</th>
               </tr>
             </thead>
-            <tbody>
-              ${rows || '<tr><td colspan="6" style="text-align: center; padding: 16px;">No transactions recorded</td></tr>'}
-            </tbody>
+            <tbody>${rows || '<tr><td colspan="5" style="text-align:center;padding:16px;">No entries recorded</td></tr>'}</tbody>
           </table>
-
-          <div style="margin-top: 24px; text-align: center; font-size: 11px; color: #1e293b; border-top: 1px solid #000; padding-top: 12px;">
-            <p style="font-weight: bold; margin: 0 0 4px 0;">Created by HAMMAD RAZA DEVELOPMENT</p>
-            <p style="font-size: 10px; color: #64748b; margin: 0;">${settings.receiptFooter || 'Computer Generated Ledger Statement'}</p>
-          </div>
-
-          <script>
-            window.onload = function() { window.print(); }
-          </script>
+          <script>window.onload = function(){ window.print(); }</script>
         </body>
       </html>
     `);
     printWindow.document.close();
   };
 
-  const handleSaveTransaction = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const amt = Number(amount);
-    if (!amt || amt <= 0) {
-      showToast('Please enter a valid amount', 'warning');
-      return;
-    }
-
-    let optimizedReceiptImg = txReceiptImage;
-    if (optimizedReceiptImg && optimizedReceiptImg.startsWith('data:image')) {
-      try {
-        optimizedReceiptImg = await compressImage(optimizedReceiptImg, 700, 0.7);
-      } catch {
-        // use original if compression fails
-      }
-    }
-
-    onAddTransaction(
-      customer.id,
-      showTransactor!,
-      amt,
-      showTransactor === 'payment' ? 'Cash' : undefined,
-      undefined,
-      note.trim() || undefined,
-      optimizedReceiptImg || undefined
-    );
-    setAmount('');
-    setNote('');
-    setTxReceiptImage('');
-    setShowTransactor(null);
-  };
-
-  const handleTxReceiptFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const compressed = await compressImage(file, 700, 0.7);
-      setTxReceiptImage(compressed);
-      showToast('Receipt picture attached & optimized!', 'success');
-    } catch {
-      showToast('Could not attach receipt image', 'warning');
-    }
+  const handleSaveQuickDueDate = () => {
+    if (!onUpdateCustomer) return;
+    onUpdateCustomer({
+      id: customer.id,
+      name: customer.name,
+      phone: customer.phone,
+      phone2: customer.phone2,
+      address: customer.address,
+      lat: customer.lat,
+      lng: customer.lng,
+      placeId: customer.placeId,
+      mapUrl: customer.mapUrl,
+      image: customer.image,
+      customerType: customer.customerType,
+      shopName: customer.shopName,
+      city: customer.city,
+      ntnNumber: customer.ntnNumber,
+      cnic: customer.cnic,
+      creditLimit: customer.creditLimit,
+      dueDate: quickDueDate.trim() || undefined,
+      guarantorName: customer.guarantorName,
+      guarantorPhone: customer.guarantorPhone,
+      notes: customer.notes,
+    });
+    setIsSetDateOpen(false);
   };
 
   const handleSaveLocationOnly = () => {
@@ -820,6 +666,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
       notes: customer.notes,
     });
     setLocationDirty(false);
+    showToast('Location saved!', 'success');
   };
 
   const handleSaveFullProfile = async (e: React.FormEvent) => {
@@ -861,8 +708,8 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
       notes: profileNotes.trim() || undefined,
     });
     setLocationDirty(false);
-    setActiveTab('ledger');
-    showToast('Customer profile updated successfully', 'success');
+    setWorkspaceView('ledger');
+    showToast('Customer settings updated', 'success');
   };
 
   const handleProfileImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -871,1122 +718,541 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     try {
       const compressed = await compressImage(file, 700, 0.7);
       setProfileImage(compressed);
-      showToast('Profile photo optimized & attached!', 'success');
+      showToast('Profile photo attached!', 'success');
     } catch {
       showToast('Could not process image', 'warning');
     }
   };
 
-  const handleCopyLocationLink = () => {
-    const url = trackLocationUrl || viewLocationUrl;
-    if (!url) return;
-    navigator.clipboard?.writeText(url).then(() => {
-      showToast('Google Maps link copied!', 'success');
-    }).catch(() => {});
+  const handleSaveCalculatorEntry = (payload: {
+    txId?: string;
+    type: 'credit' | 'payment';
+    amount: number;
+    note?: string;
+    date?: string;
+    receiptImage?: string;
+  }) => {
+    if (payload.txId && onEditTransaction) {
+      onEditTransaction(customer.id, payload.txId, {
+        type: payload.type,
+        amount: payload.amount,
+        note: payload.note,
+        date: payload.date,
+        receiptImage: payload.receiptImage,
+      });
+    } else {
+      onAddTransaction(
+        customer.id,
+        payload.type,
+        payload.amount,
+        payload.type === 'payment' ? 'Cash' : undefined,
+        undefined,
+        payload.note,
+        payload.receiptImage,
+        payload.date
+      );
+      showToast(
+        payload.type === 'credit'
+          ? `Recorded You Gave ${currency} ${payload.amount.toLocaleString()}`
+          : `Recorded You Got ${currency} ${payload.amount.toLocaleString()}`,
+        'success'
+      );
+    }
+    setCalculatorConfig(null);
   };
 
-  return (
-    <div className="fixed inset-0 z-50 bg-slate-50 flex flex-col overflow-hidden animate-in fade-in pb-[env(safe-area-inset-bottom,0px)]">
-      <div className="bg-white w-full h-full flex flex-col overflow-hidden">
-        {/* Top Full-Screen Command Header with Prominent Top-Left Back Button */}
-        <div className="app-fullscreen-modal-header bg-gradient-to-r from-slate-900 via-indigo-950 to-purple-950 px-3 sm:px-5 pt-[calc(env(safe-area-inset-top,0px)+0.85rem)] sm:pt-2.5 pb-3 text-white shrink-0">
-          {/* Top Navigation Bar: Back on Left, Track / Pin Location on Right */}
-          <div className="flex items-center justify-between gap-2 pb-2 border-b border-white/15 mb-2.5">
-            <button
-              type="button"
-              onClick={onClose}
-              className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg bg-white/15 hover:bg-white/25 text-white font-bold text-xs transition cursor-pointer shrink-0"
-              aria-label="Back to Customer Ledger"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Back</span>
-            </button>
+  const handleCloseEntryDetail = () => {
+    setSelectedTxId(null);
+    setConfirmDeleteTxId(null);
+    if (onClearInitialTxId) onClearInitialTxId();
+  };
 
-            <span className="text-[11px] font-bold text-slate-300 truncate hidden sm:inline">
-              Customer Khata Account • {customer.name}
-            </span>
+  const handleFlipEntryDirection = () => {
+    if (!selectedEntry || !onEditTransaction) return;
+    const nextType: 'credit' | 'payment' = selectedEntry.type === 'credit' ? 'payment' : 'credit';
+    onEditTransaction(customer.id, selectedEntry.id, {
+      type: nextType,
+      amount: selectedEntry.amount,
+      note: selectedEntry.note,
+      date: selectedEntry.date,
+      receiptImage: selectedEntry.receiptImage,
+    });
+  };
 
-            <div className="flex items-center gap-1.5 shrink-0">
-              {trackLocationUrl ? (
-                <a
-                  href={trackLocationUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="h-8 px-2.5 sm:px-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-[11px] sm:text-xs shadow-sm transition flex items-center gap-1"
-                >
-                  <Navigation className="w-3.5 h-3.5" />
-                  <span className="sm:hidden">Track</span>
-                  <span className="hidden sm:inline">Track Customer Location</span>
-                </a>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('location')}
-                  className="h-8 px-2.5 sm:px-3 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-[11px] sm:text-xs transition flex items-center gap-1 cursor-pointer shadow-sm"
-                >
-                  <MapPin className="w-3.5 h-3.5 text-amber-300" />
-                  <span className="sm:hidden">Pin Map</span>
-                  <span className="hidden sm:inline">Pin Location on Map</span>
-                </button>
-              )}
-            </div>
-          </div>
+  // =========================================================================
+  // VIEW A: ENTRY DETAIL SCREEN (Screenshot 3, Green Theme)
+  // =========================================================================
+  if (selectedEntry) {
+    const isGave = selectedEntry.type === 'credit';
+    const isReturn = selectedEntry.isSalesReturn;
+    const sale = selectedEntry.linkedSale;
+    const retRecord = selectedEntry.linkedReturn;
+    const returnedSummaryItems =
+      selectedEntry.returnedItemsSummary && selectedEntry.returnedItemsSummary.length > 0
+        ? selectedEntry.returnedItemsSummary
+        : (retRecord?.items || []).map(ri => ({
+            name: ri.name,
+            variantLabel: ri.variantLabel,
+            qty: ri.qty,
+            imeis: ri.imeis,
+            reason: selectedEntry.returnReason || retRecord?.reason || 'Returned',
+            refundAmount: ri.qty * ri.salePrice,
+          }));
 
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
-            <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
-              {/* Customer Avatar */}
-              <div className="w-11 h-11 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl border-2 border-white/20 overflow-hidden bg-white/10 flex items-center justify-center shrink-0 shadow-md">
-                {customer.image ? (
-                  <img src={customer.image} alt={customer.name} className="w-full h-full object-cover" />
-                ) : (
-                  <User className="w-5 h-5 sm:w-7 sm:h-7 text-white/80" />
-                )}
-              </div>
+    const entryMessage =
+      `${settings.shopName}\n` +
+      `Party: ${customer.name}\n` +
+      `Entry: ${isGave ? 'You Gave' : isReturn ? 'Returned' : 'You Got'} ${currency} ${selectedEntry.amount.toLocaleString()}\n` +
+      `Date: ${formatLedgerTimestamp(selectedEntry.date)}\n` +
+      `${selectedEntry.note ? `Details: ${selectedEntry.note}\n` : ''}` +
+      `Running Balance: ${currency} ${Math.abs(selectedEntry.runningBalance).toLocaleString()}`;
 
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <h2 className="text-sm sm:text-lg font-extrabold tracking-tight leading-snug truncate">
-                    {customer.name}
-                  </h2>
-                  <span className="text-[10px] font-bold text-purple-200 bg-white/10 px-1.5 py-0.2 rounded border border-white/15">
-                    {customer.customerType === 'retailer' || customer.customerType === 'wholesaler'
-                      ? 'Retailer'
-                      : 'Retail'}
-                  </span>
-                </div>
+    const entryWaUrl = `https://wa.me/${waPhone}?text=${encodeURIComponent(entryMessage)}`;
+    const entrySmsUrl = `sms:${customer.phone.replace(/[^0-9+]/g, '')}?body=${encodeURIComponent(entryMessage)}`;
 
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] sm:text-xs text-slate-200 mt-0.5">
-                  <a
-                    href={`tel:${customer.phone.replace(/[^0-9+]/g, '')}`}
-                    className="flex items-center gap-1 hover:text-white transition font-semibold tabular-nums"
-                  >
-                    <Phone className="w-3 h-3 text-emerald-400" />
-                    {customer.phone}
-                  </a>
-                  {customer.phone2 && (
-                    <a
-                      href={`tel:${customer.phone2.replace(/[^0-9+]/g, '')}`}
-                      className="flex items-center gap-1 text-slate-300 hover:text-white transition tabular-nums"
-                    >
-                      <Phone className="w-2.5 h-2.5" />
-                      {customer.phone2}
-                    </a>
-                  )}
-                  {customer.cnic && (
-                    <span className="text-slate-300 tabular-nums hidden sm:inline">CNIC: {customer.cnic}</span>
-                  )}
-                  {customer.address && (
-                    <span className="flex items-center gap-1 text-slate-300 truncate max-w-[200px] sm:max-w-xs">
-                      <MapPin className={`w-3 h-3 shrink-0 ${hasGpsPin ? 'text-emerald-400' : 'text-purple-300'}`} />
-                      <span className="truncate">{customer.address}</span>
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* 4 Financial KPI Cards - Compact Grid */}
-          <div className="grid grid-cols-4 gap-1.5 sm:gap-2.5 mt-2.5 pt-2.5 border-t border-white/10">
-            <div className="bg-white/10 rounded-lg sm:rounded-xl p-1.5 sm:p-2.5 min-w-0">
-              <div className="flex items-center justify-between gap-1">
-                <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-300 truncate">
-                  Pending
-                </span>
-                {isOverLimit && (
-                  <AlertTriangle className="w-3 h-3 text-rose-300 shrink-0" />
-                )}
-              </div>
-              <p
-                className={`text-[11px] sm:text-base font-extrabold tabular-nums mt-0.5 truncate ${
-                  customer.balance > 0 ? 'text-amber-300' : 'text-emerald-300'
-                }`}
+    return (
+      <>
+        <div className="fixed inset-0 z-[55] bg-slate-50 flex flex-col overflow-hidden animate-in fade-in pb-[env(safe-area-inset-bottom,0px)]">
+          {/* Green Header */}
+          <div className="app-fullscreen-modal-header bg-emerald-600 text-white px-3 sm:px-5 pt-[calc(env(safe-area-inset-top,0px)+0.85rem)] sm:pt-3 pb-3 flex items-center justify-between gap-2 shrink-0 shadow-xs">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <button
+                type="button"
+                onClick={handleCloseEntryDetail}
+                className="w-9 h-9 rounded-full hover:bg-white/15 flex items-center justify-center transition cursor-pointer shrink-0"
+                aria-label="Back to Ledger"
               >
-                {currency} {customer.balance.toLocaleString()}
-              </p>
-              {creditUsagePct !== null && (
-                <div className="mt-1 hidden sm:block space-y-0.5">
-                  <div className="h-1 w-full bg-white/15 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full ${isOverLimit ? 'bg-rose-400' : 'bg-amber-300'}`}
-                      style={{ width: `${creditUsagePct}%` }}
-                    />
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <h2 className="text-base sm:text-lg font-extrabold tracking-tight truncate">
+                Entry Detail
+              </h2>
+            </div>
+
+            {isAdmin && onEditTransaction && !isReturn && (
+              <button
+                type="button"
+                onClick={handleFlipEntryDirection}
+                className="w-9 h-9 rounded-full hover:bg-white/15 flex items-center justify-center transition cursor-pointer shrink-0"
+                title="Switch between You Gave / You Got"
+                aria-label="Switch Entry Type"
+              >
+                <ArrowLeftRight className="w-4.5 h-4.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Main Entry Detail Card Stack */}
+          <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-3 max-w-2xl w-full mx-auto">
+            {/* Primary Card */}
+            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden divide-y divide-slate-100">
+              {/* Top Customer & Amount Row */}
+              <div className="p-3.5 sm:p-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-11 h-11 rounded-full bg-slate-100 text-emerald-700 font-extrabold text-sm flex items-center justify-center overflow-hidden shrink-0">
+                    {customer.image ? (
+                      <img src={customer.image} alt={customer.name} className="w-full h-full object-cover" />
+                    ) : (
+                      getInitials(customer.name)
+                    )}
                   </div>
-                  <p className="text-[9px] text-slate-300 tabular-nums">
-                    Limit: {customer.creditLimit?.toLocaleString()} ({creditUsagePct}%)
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="bg-white/10 rounded-lg sm:rounded-xl p-1.5 sm:p-2.5 min-w-0">
-              <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-300 block truncate">
-                Credit
-              </span>
-              <p className="text-[11px] sm:text-base font-extrabold tabular-nums text-white mt-0.5 truncate">
-                {currency} {totalCreditGiven.toLocaleString()}
-              </p>
-              <p className="text-[9px] text-slate-300 hidden sm:block tabular-nums">
-                {history.filter(t => t.type === 'credit').length} entries
-              </p>
-            </div>
-
-            <div className="bg-white/10 rounded-lg sm:rounded-xl p-1.5 sm:p-2.5 min-w-0">
-              <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-300 block truncate">
-                Paid
-              </span>
-              <p className="text-[11px] sm:text-base font-extrabold tabular-nums text-emerald-300 mt-0.5 truncate">
-                {currency} {totalPaymentReceived.toLocaleString()}
-              </p>
-              <p className="text-[9px] text-slate-300 hidden sm:block tabular-nums">
-                {history.filter(t => t.type === 'payment').length} entries
-              </p>
-            </div>
-
-            <div className="bg-white/10 rounded-lg sm:rounded-xl p-1.5 sm:p-2.5 min-w-0">
-              <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-300 block truncate">
-                Due Date
-              </span>
-              {customer.dueDate ? (
-                <>
-                  <p className="text-[11px] sm:text-sm font-extrabold tabular-nums text-white mt-0.5 truncate">
-                    {new Date(customer.dueDate).toLocaleDateString([], {
-                      month: 'short',
-                      day: 'numeric',
-                    })}
-                  </p>
-                  {dueStatus && (
-                    <p
-                      className={`text-[9px] font-bold truncate ${
-                        dueStatus.tone === 'overdue'
-                          ? 'text-rose-300'
-                          : dueStatus.tone === 'today'
-                          ? 'text-amber-300'
-                          : 'text-emerald-300'
-                      }`}
-                    >
-                      {dueStatus.label}
+                  <div className="min-w-0">
+                    <h3 className="text-sm sm:text-base font-extrabold text-slate-900 truncate">
+                      {customer.name}
+                    </h3>
+                    <p className="text-[11px] text-slate-500 tabular-nums truncate">
+                      {formatLedgerTimestamp(selectedEntry.date)}
                     </p>
-                  )}
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('profile')}
-                  className="mt-0.5 text-[10px] sm:text-xs font-bold text-purple-200 hover:text-white underline cursor-pointer block truncate"
-                >
-                  + Set Date
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Workspace Navigation Tabs + Quick Action Toolbar */}
-        <div className="px-2.5 sm:px-5 py-2 bg-slate-50 border-b border-slate-200 flex flex-col gap-1.5 shrink-0">
-          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
-            <button
-              type="button"
-              onClick={() => setActiveTab('ledger')}
-              className={`h-7 px-2.5 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap ${
-                activeTab === 'ledger'
-                  ? 'bg-slate-900 text-white shadow-2xs'
-                  : 'text-slate-700 bg-white border border-slate-200 hover:bg-slate-100'
-              }`}
-            >
-              <FileText className="w-3 h-3 text-purple-500" />
-              Ledger ({history.length})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('location')}
-              className={`h-7 px-2.5 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap ${
-                activeTab === 'location'
-                  ? 'bg-blue-600 text-white shadow-2xs'
-                  : 'text-slate-700 bg-white border border-slate-200 hover:bg-slate-100'
-              }`}
-            >
-              <MapPin className="w-3 h-3 text-blue-500" />
-              Map
-              {hasGpsPin && <CheckCircle2 className="w-3 h-3 text-emerald-300" />}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('invoices')}
-              className={`h-7 px-2.5 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap ${
-                activeTab === 'invoices'
-                  ? 'bg-slate-900 text-white shadow-2xs'
-                  : 'text-slate-700 bg-white border border-slate-200 hover:bg-slate-100'
-              }`}
-            >
-              <ShoppingBag className="w-3 h-3 text-amber-500" />
-              Invoices ({customerSales.length})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('profile')}
-              className={`h-7 px-2.5 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap ${
-                activeTab === 'profile'
-                  ? 'bg-purple-700 text-white shadow-2xs'
-                  : 'text-slate-700 bg-white border border-slate-200 hover:bg-slate-100'
-              }`}
-            >
-              <Edit3 className="w-3 h-3 text-purple-500" />
-              Edit Profile
-            </button>
-          </div>
-
-          {/* Action Toolbar */}
-          <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-200/70">
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab('ledger');
-                setShowTransactor('credit');
-                setAmount('');
-                setNote('');
-                setTxReceiptImage('');
-              }}
-              className="h-7.5 px-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] rounded-lg shadow-xs transition flex items-center gap-1 cursor-pointer"
-            >
-              <CreditCard className="w-3 h-3" />
-              Add Credit (+)
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab('ledger');
-                setShowTransactor('payment');
-                setAmount('');
-                setNote('');
-                setTxReceiptImage('');
-              }}
-              className="h-7.5 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg shadow-xs transition flex items-center gap-1 cursor-pointer"
-            >
-              <DollarSign className="w-3 h-3" />
-              Receive Payment (-)
-            </button>
-
-            <a
-              href={whatsAppUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="h-7.5 px-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-[11px] rounded-lg transition flex items-center gap-1"
-              title="WhatsApp Roman English Statement"
-            >
-              <MessageSquare className="w-3 h-3 text-emerald-600" />
-              WhatsApp
-            </a>
-
-            <button
-              type="button"
-              onClick={handleDownloadPdfStatement}
-              className="h-7.5 px-2.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold text-[11px] rounded-lg transition flex items-center gap-1 cursor-pointer"
-            >
-              <Download className="w-3 h-3 text-purple-600" />
-              PDF
-            </button>
-
-            <button
-              type="button"
-              onClick={handlePrintStatement}
-              className="h-7.5 px-2.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold text-[11px] rounded-lg transition flex items-center gap-1 cursor-pointer"
-            >
-              <Printer className="w-3 h-3" />
-              Print
-            </button>
-          </div>
-        </div>
-
-        {/* Inline Transaction Entry Drawer with Camera Picture Attachment */}
-        {showTransactor && (
-          <div className="p-2.5 sm:p-4 bg-slate-100 border-b border-slate-200 shrink-0 animate-in slide-in-from-top-2 space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-bold text-xs text-slate-800 flex items-center gap-1 truncate">
-                {showTransactor === 'credit' ? (
-                  <span className="text-rose-600 font-extrabold flex items-center gap-1">
-                    <ArrowUpRight className="w-3.5 h-3.5" /> Add Credit (Udhar)
-                  </span>
-                ) : (
-                  <span className="text-emerald-600 font-extrabold flex items-center gap-1">
-                    <ArrowDownLeft className="w-3.5 h-3.5" /> Receive Payment (Wasooli)
-                  </span>
-                )}
-              </span>
-              <div className="flex items-center gap-2 shrink-0">
-                {showTransactor === 'payment' && customer.balance > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setAmount(customer.balance)}
-                    className="text-[11px] font-bold text-purple-700 hover:underline cursor-pointer"
-                  >
-                    Full ({currency} {customer.balance.toLocaleString()})
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setShowTransactor(null)}
-                  className="text-slate-500 hover:text-slate-700 text-[11px] font-semibold cursor-pointer px-1.5 py-0.5 rounded bg-white border border-slate-200"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-
-            <form onSubmit={handleSaveTransaction} className="space-y-2">
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
-                <input
-                  type="number"
-                  min="1"
-                  required
-                  value={amount}
-                  onChange={e => setAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                  placeholder={`Amount (${currency}) *`}
-                  className="compact-mobile-input md:col-span-3 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs tabular-nums font-bold focus:outline-none focus:border-purple-600"
-                />
-                <input
-                  type="text"
-                  value={note}
-                  onChange={e => setNote(e.target.value)}
-                  placeholder="Remarks (e.g. Mobile model, IMEI, Bill #)"
-                  className="compact-mobile-input md:col-span-5 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-purple-600"
-                />
-
-                {/* Attached Photo Preview / Upload for Transaction */}
-                <div className="md:col-span-4 flex items-center gap-2 bg-white border border-slate-300 rounded-lg px-2 py-1">
-                  <input
-                    ref={txReceiptFileInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleTxReceiptFileChange}
-                    className="hidden"
-                  />
-                  {txReceiptImage ? (
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <img
-                        src={txReceiptImage}
-                        alt="Receipt"
-                        className="w-7 h-7 rounded object-cover border border-slate-200 cursor-pointer"
-                        onClick={() => setViewingImageModal(txReceiptImage)}
-                      />
-                      <span className="text-[10px] font-bold text-emerald-700 truncate">Photo attached</span>
+                    {isAdmin && onEditTransaction && (
                       <button
                         type="button"
-                        onClick={() => setTxReceiptImage('')}
-                        className="text-rose-600 hover:text-rose-700 ml-auto p-0.5 cursor-pointer"
-                        title="Remove photo"
+                        onClick={() =>
+                          setCalculatorConfig({
+                            txId: selectedEntry.id,
+                            type: selectedEntry.type === 'credit' ? 'credit' : 'payment',
+                            amount: selectedEntry.amount,
+                            note: selectedEntry.note,
+                            date: selectedEntry.date,
+                            receiptImage: selectedEntry.receiptImage,
+                          })
+                        }
+                        className="text-[11px] font-bold text-emerald-600 hover:underline mt-0.5 cursor-pointer"
                       >
-                        <X className="w-3.5 h-3.5" />
+                        Change
                       </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between w-full">
-                      <span className="text-[11px] text-slate-400 pl-1">Photo (Opt.)</span>
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => txReceiptFileInputRef.current?.click()}
-                          className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded text-[10px] flex items-center gap-1 cursor-pointer"
-                        >
-                          <Upload className="w-3 h-3 text-purple-600" /> Gallery
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setIsTxCameraOpen(true)}
-                          className="px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded text-[10px] flex items-center gap-1 cursor-pointer"
-                        >
-                          <Camera className="w-3 h-3" /> Camera
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-end gap-2 pt-0.5">
-
-                <button
-                  type="submit"
-                  className={`h-8 px-4 text-white font-bold text-xs rounded-lg shadow-xs transition cursor-pointer ${
-                    showTransactor === 'credit'
-                      ? 'bg-rose-600 hover:bg-rose-700'
-                      : 'bg-emerald-600 hover:bg-emerald-700'
-                  }`}
-                >
-                  {showTransactor === 'credit' ? 'Save Credit Entry' : 'Save Payment'}
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {/* Main Workspace Body */}
-        <div className="flex-1 overflow-y-auto touch-pan-y p-2.5 sm:p-5 bg-white">
-          {/* TAB 1: LEDGER HISTORY */}
-          {activeTab === 'ledger' && (
-            <div className="space-y-2.5 sm:space-y-3">
-              {(customer.guarantorName || customer.notes) && (
-                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/90 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                  {customer.guarantorName && (
-                    <span className="flex items-center gap-1 text-slate-700">
-                      <ShieldCheck className="w-3.5 h-3.5 text-purple-600" />
-                      <strong>Guarantor:</strong> {customer.guarantorName}
-                      {customer.guarantorPhone ? ` (${customer.guarantorPhone})` : ''}
-                    </span>
-                  )}
-                  {customer.notes && (
-                    <span className="text-slate-600">
-                      <strong>Notes:</strong> {customer.notes}
-                    </span>
-                  )}
-                </div>
-              )}
-
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="relative flex-1 max-w-md">
-                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    value={ledgerSearch}
-                    onChange={e => setLedgerSearch(e.target.value)}
-                    placeholder="Search remarks or amount..."
-                    className="compact-mobile-input w-full pl-8 pr-3 h-8 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:border-purple-600 focus:bg-white"
-                  />
-                </div>
-
-                <div className="flex items-center gap-1">
-                  {(['all', 'credit', 'payment'] as const).map(f => (
-                    <button
-                      key={f}
-                      type="button"
-                      onClick={() => setLedgerFilter(f)}
-                      className={`h-7 px-2.5 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
-                        ledgerFilter === f
-                          ? 'bg-slate-900 text-white border-slate-900'
-                          : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      {f === 'all' ? 'All Entries' : f === 'credit' ? 'Credit (+)' : 'Payments (-)'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Detailed Itemized Account Statement Cards (Zero horizontal scroll) */}
-              <div className="space-y-2">
-                {filteredLedger.length === 0 ? (
-                  <div className="text-center py-10 text-slate-400 bg-slate-50 rounded-xl border border-slate-200 text-xs">
-                    No transactions found. Use "Add Credit (+)" or "Receive Payment (-)" above.
+                    )}
                   </div>
-                ) : (
-                  filteredLedger.map((tx, idx) => {
-                    const d = new Date(tx.date);
-                    const isCredit = tx.type === 'credit';
-                    const isReturn = tx.isSalesReturn;
-                    const sale = tx.linkedSale;
-                    const retRecord = tx.linkedReturn;
-                    const returnedSummaryItems =
-                      tx.returnedItemsSummary && tx.returnedItemsSummary.length > 0
-                        ? tx.returnedItemsSummary
-                        : (retRecord?.items || []).map(ri => ({
-                            name: ri.name,
-                            variantLabel: ri.variantLabel,
-                            qty: ri.qty,
-                            imeis: ri.imeis,
-                            reason: tx.returnReason || retRecord?.reason || 'Returned',
-                            refundAmount: ri.qty * ri.salePrice,
-                          }));
-                    const effectiveReturnReason =
-                      tx.returnReason || retRecord?.reason || returnedSummaryItems[0]?.reason || '';
+                </div>
 
-                    return (
-                      <div
-                        key={tx.id || idx}
-                        className={`rounded-xl border p-3 sm:p-3.5 transition ${
-                          isCredit
-                            ? 'bg-rose-50/30 border-rose-200/80 hover:border-rose-300'
-                            : isReturn
-                            ? 'bg-amber-50/40 border-amber-200/90 hover:border-amber-300'
-                            : 'bg-emerald-50/30 border-emerald-200/80 hover:border-emerald-300'
-                        }`}
-                      >
-                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2.5">
-                          {/* Left Metadata + Remarks */}
-                          <div className="space-y-1 min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              {isCredit ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-rose-100 text-rose-800 font-extrabold text-[11px]">
-                                  <ArrowUpRight className="w-3 h-3" /> Credit Added (+)
-                                </span>
-                              ) : isReturn ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-100 text-amber-900 font-extrabold text-[11px] border border-amber-200">
-                                  <RotateCcw className="w-3 h-3 text-amber-700" /> Product Returned (-)
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 font-extrabold text-[11px]">
-                                  <ArrowDownLeft className="w-3 h-3" /> Payment Received (-)
-                                </span>
-                              )}
+                <div className="text-right shrink-0">
+                  <p
+                    className={`text-base sm:text-lg font-extrabold tabular-nums ${
+                      isGave ? 'text-rose-600' : 'text-emerald-600'
+                    }`}
+                  >
+                    {currency} {selectedEntry.amount.toLocaleString()}
+                  </p>
+                  <span className="text-[11px] font-semibold text-slate-400">
+                    {isGave ? 'You Gave' : isReturn ? 'Returned' : 'You Got'}
+                  </span>
+                </div>
+              </div>
 
-                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-white border border-slate-200 text-slate-700">
-                                {isCredit ? 'Udhar / Credit' : tx.paymentMethod || (isReturn ? 'Credit Adjustment' : 'Cash')}
+              {/* Details Row */}
+              <div className="p-3.5 sm:p-4 space-y-2">
+                <span className="block text-[11px] font-semibold text-slate-400">Details</span>
+                <p className="text-sm font-bold text-slate-900 break-words">
+                  {selectedEntry.note || (isGave ? 'Credit Entry' : 'Payment Received')}
+                </p>
+
+                {selectedEntry.receiptImage && (
+                  <button
+                    type="button"
+                    onClick={() => setViewingImageModal(selectedEntry.receiptImage || null)}
+                    className="inline-flex items-center gap-2 p-2 rounded-xl bg-slate-50 border border-slate-200 hover:border-emerald-400 transition cursor-pointer"
+                  >
+                    <img
+                      src={selectedEntry.receiptImage}
+                      alt="Receipt"
+                      className="w-12 h-12 rounded-lg object-cover"
+                    />
+                    <span className="text-xs font-bold text-emerald-700">View Receipt Photo</span>
+                  </button>
+                )}
+
+                {/* Linked POS Invoice Items if present */}
+                {!isReturn && sale && sale.items && sale.items.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-slate-100 space-y-1.5">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">
+                      Invoice {sale.invNo} • Items ({sale.items.length})
+                    </span>
+                    {sale.items.map((it, idx) => {
+                      const imeis =
+                        Array.isArray(it.imeis) && it.imeis.length > 0 ? it.imeis.join(', ') : it.imei;
+                      const retMeta = getSaleItemReturnMeta(sale.invNo, it);
+                      return (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between gap-2 text-xs bg-slate-50 rounded-lg px-2.5 py-1.5"
+                        >
+                          <div className="min-w-0">
+                            <span className="font-bold text-slate-800 block truncate">
+                              {it.name}
+                              {it.variantLabel ? ` (${it.variantLabel})` : ''}
+                            </span>
+                            {imeis && (
+                              <span className="text-[10px] font-mono text-emerald-700 break-all">
+                                IMEI: {imeis}
                               </span>
-
-                              {(tx.returnNo || retRecord?.returnNo) && (
-                                <span className="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-amber-100/80 border border-amber-200 text-amber-900 tabular-nums">
-                                  {tx.returnNo || retRecord?.returnNo}
-                                </span>
-                              )}
-
-                              {sale && (
-                                <span className="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-800 tabular-nums">
-                                  {sale.invNo}
-                                  {sale.saleMode === 'wholesale' ? ' • Wholesale' : ''}
-                                </span>
-                              )}
-
-                              <span className="text-[11px] text-slate-500 tabular-nums">
-                                {d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}{' '}
-                                {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            )}
+                            {retMeta.isReturned && (
+                              <span className="text-[10px] font-bold text-amber-700 block">
+                                Returned ({retMeta.returnedQty})
                               </span>
-                            </div>
-
-                            {(tx.note || tx.receiptImage) && (
-                              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-700 font-medium pt-0.5">
-                                {tx.note && <span className="break-words">{tx.note}</span>}
-                                {tx.receiptImage && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setViewingImageModal(tx.receiptImage || null)}
-                                    className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded border border-purple-200 text-[10px] font-bold cursor-pointer"
-                                  >
-                                    <ImageIcon className="w-3 h-3" /> Photo
-                                  </button>
-                                )}
-                              </div>
                             )}
                           </div>
-
-                          {/* Right Accounting Strip: Prev Bal -> Entry -> New Balance + Delete */}
-                          <div className="flex flex-wrap items-center gap-3 sm:gap-4 shrink-0 bg-white px-3 py-1.5 rounded-xl border border-slate-200/80">
-                            <div className="text-right">
-                              <span className="block text-[9px] font-bold uppercase text-slate-400">Prev Bal</span>
-                              <span className="text-[11px] font-semibold text-slate-600 tabular-nums">
-                                {currency} {tx.prevBalance.toLocaleString()}
-                              </span>
-                            </div>
-                            <div className="text-right">
-                              <span className="block text-[9px] font-bold uppercase text-slate-400">Entry</span>
-                              <span
-                                className={`text-xs font-extrabold tabular-nums ${
-                                  isCredit ? 'text-rose-600' : isReturn ? 'text-amber-700' : 'text-emerald-600'
-                                }`}
-                              >
-                                {isCredit ? '+' : '-'} {currency} {tx.amount.toLocaleString()}
-                              </span>
-                            </div>
-                            <div className="text-right border-l border-slate-200 pl-3">
-                              <span className="block text-[9px] font-bold uppercase text-slate-400">Balance</span>
-                              <span className="text-xs font-black text-slate-900 tabular-nums">
-                                {currency} {tx.runningBalance.toLocaleString()}
-                              </span>
-                            </div>
-
-                            {isAdmin && onDeleteTransaction && (
-                              <div className="pl-1 border-l border-slate-100">
-                                {confirmDeleteTxId === tx.id ? (
-                                  <div className="inline-flex items-center gap-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        onDeleteTransaction(customer.id, tx.id);
-                                        setConfirmDeleteTxId(null);
-                                      }}
-                                      className="px-2 py-0.5 bg-rose-600 text-white rounded text-[10px] font-bold cursor-pointer"
-                                    >
-                                      Confirm
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setConfirmDeleteTxId(null)}
-                                      className="px-2 py-0.5 bg-slate-200 text-slate-700 rounded text-[10px] font-semibold cursor-pointer"
-                                    >
-                                      Cancel
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() => setConfirmDeleteTxId(tx.id)}
-                                    className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 transition cursor-pointer"
-                                    title="Delete Entry"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                          </div>
+                          <span className="font-bold text-slate-700 tabular-nums shrink-0">
+                            {it.qty} × {currency} {it.salePrice.toLocaleString()}
+                          </span>
                         </div>
+                      );
+                    })}
+                  </div>
+                )}
 
-                        {/* Returned Products Breakdown & Reason inside Sales Return Ledger Entry */}
-                        {isReturn && (returnedSummaryItems.length > 0 || effectiveReturnReason) && (
-                          <div className="mt-2.5 pt-2.5 border-t border-amber-200/70 bg-white/95 rounded-xl p-2.5 space-y-1.5">
-                            <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider text-amber-800">
-                              <span className="flex items-center gap-1">
-                                <RotateCcw className="w-3 h-3 text-amber-700" />
-                                Returned Products ({returnedSummaryItems.length || 1})
-                              </span>
-                              {effectiveReturnReason && (
-                                <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-200 normal-case font-extrabold">
-                                  Returned — Reason: {effectiveReturnReason}
-                                </span>
-                              )}
-                            </div>
-
-                            {returnedSummaryItems.length > 0 && (
-                              <div className="divide-y divide-amber-100">
-                                {returnedSummaryItems.map((ri, rIdx) => (
-                                  <div
-                                    key={rIdx}
-                                    className="py-1.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs"
-                                  >
-                                    <div className="min-w-0 flex flex-wrap items-center gap-1.5">
-                                      <span className="font-bold text-slate-900">{ri.name}</span>
-                                      {ri.variantLabel && (
-                                        <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-slate-100 text-slate-700">
-                                          {ri.variantLabel}
-                                        </span>
-                                      )}
-                                      <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-200">
-                                        Returned • {ri.reason || effectiveReturnReason || 'Returned'}
-                                      </span>
-                                      {ri.imeis && ri.imeis.length > 0 && (
-                                        <span className="text-[11px] font-mono text-indigo-700 break-all">
-                                          IMEI: {ri.imeis.join(', ')}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="text-right tabular-nums shrink-0 text-[11px] text-amber-800 font-bold">
-                                      Qty {ri.qty} • -{currency} {(ri.refundAmount || 0).toLocaleString()}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Full Itemized Invoice Product Breakdown inside Ledger */}
-                        {!isReturn && sale && sale.items && sale.items.length > 0 && (
-                          <div className="mt-2.5 pt-2.5 border-t border-slate-200/70 bg-white/90 rounded-xl p-2.5 space-y-1.5">
-                            <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                              <span className="flex items-center gap-1 text-indigo-800">
-                                <ShoppingBag className="w-3 h-3" />
-                                Purchased Items ({sale.items.length})
-                                {sale.returnStatus && (
-                                  <span className="ml-1 px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-200">
-                                    {sale.returnStatus === 'FULL' ? 'Returned' : 'Partial Return'}
-                                  </span>
-                                )}
-                              </span>
-                              <div className="flex flex-wrap items-center gap-2.5 tabular-nums text-slate-600">
-                                <span>Bill: <strong>{currency} {sale.grandTotal.toLocaleString()}</strong></span>
-                                {(sale.discount || 0) > 0 && (
-                                  <span>Disc: <strong className="text-amber-700">{currency} {(sale.discount || 0).toLocaleString()}</strong></span>
-                                )}
-                                <span>Paid: <strong className="text-emerald-700">{currency} {(sale.amountPaid || 0).toLocaleString()}</strong></span>
-                                <span>Khata Due: <strong className="text-rose-600">{currency} {(sale.amountDue || 0).toLocaleString()}</strong></span>
-                              </div>
-                            </div>
-
-                            <div className="divide-y divide-slate-100">
-                              {sale.items.map((item, itemIdx) => {
-                                const imeis =
-                                  Array.isArray(item.imeis) && item.imeis.length > 0
-                                    ? item.imeis.join(', ')
-                                    : item.imei;
-                                const retMeta = getSaleItemReturnMeta(sale.invNo, item);
-                                return (
-                                  <div
-                                    key={itemIdx}
-                                    className={`py-1.5 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs ${
-                                      retMeta.isReturned ? 'bg-amber-50/50 rounded-lg px-2 -mx-1' : ''
-                                    }`}
-                                  >
-                                    <div className="min-w-0">
-                                      <div className="flex flex-wrap items-center gap-1.5">
-                                        <span className={`font-bold ${retMeta.isReturned && retMeta.returnedQty >= item.qty ? 'text-slate-600 line-through' : 'text-slate-900'}`}>
-                                          {item.name}
-                                        </span>
-                                        {item.variantLabel && (
-                                          <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-slate-100 text-slate-700">
-                                            {item.variantLabel}
-                                          </span>
-                                        )}
-                                        {retMeta.isReturned && (
-                                          <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300">
-                                            <RotateCcw className="w-2.5 h-2.5 text-amber-700" />
-                                            Returned{retMeta.returnedQty > 1 || retMeta.returnedQty < item.qty ? ` (x${retMeta.returnedQty})` : ''}
-                                            {retMeta.returnReason ? ` • Reason: ${retMeta.returnReason}` : ''}
-                                          </span>
-                                        )}
-                                      </div>
-                                      {imeis && (
-                                        <span className="block text-[11px] font-mono text-indigo-700 break-all mt-0.5">
-                                          IMEI: {imeis}
-                                        </span>
-                                      )}
-                                      {retMeta.returnedImeis.length > 0 && (
-                                        <span className="block text-[10px] font-mono font-bold text-amber-800 break-all mt-0.5">
-                                          Returned IMEI: {retMeta.returnedImeis.join(', ')}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="text-right tabular-nums shrink-0 text-[11px] text-slate-600">
-                                      <span>{item.qty} × {currency} {item.salePrice.toLocaleString()} = </span>
-                                      <strong className="text-slate-900">
-                                        {currency} {(item.salePrice * item.qty).toLocaleString()}
-                                      </strong>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-
-                            {sale.notes && (
-                              <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200/70 rounded-lg px-2 py-1">
-                                <strong>Bill Note:</strong> {sale.notes}
-                              </p>
-                            )}
-                          </div>
-                        )}
+                {/* Returned Items if present */}
+                {isReturn && returnedSummaryItems.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-slate-100 space-y-1.5">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-700 block">
+                      Returned Products
+                    </span>
+                    {returnedSummaryItems.map((ri, rIdx) => (
+                      <div
+                        key={rIdx}
+                        className="flex items-center justify-between gap-2 text-xs bg-amber-50/70 rounded-lg px-2.5 py-1.5"
+                      >
+                        <div className="min-w-0">
+                          <span className="font-bold text-slate-900 block truncate">{ri.name}</span>
+                          <span className="text-[10px] text-amber-800">{ri.reason}</span>
+                        </div>
+                        <span className="font-bold text-amber-900 tabular-nums shrink-0">
+                          Qty {ri.qty} • -{currency} {(ri.refundAmount || 0).toLocaleString()}
+                        </span>
                       </div>
-                    );
-                  })
+                    ))}
+                  </div>
                 )}
               </div>
-            </div>
-          )}
 
-          {/* TAB 2: GOOGLE MAPS LOCATION & TRACKING */}
-          {activeTab === 'location' && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-              <div className="lg:col-span-4 space-y-3 bg-slate-50 border border-slate-200 rounded-2xl p-4">
-                <div>
-                  <h4 className="font-extrabold text-slate-900 text-sm flex items-center gap-1.5">
-                    <Navigation className="w-4 h-4 text-blue-600" />
-                    Customer Location & Pinning
-                  </h4>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Map ab automatically aap ki local surroundings par center hoga. Search karein ya map par click karke customer ki exact location pin karein.
-                  </p>
-                </div>
-
-                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1.5 text-xs">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    Saved Address
-                  </span>
-                  <p className="font-semibold text-slate-800">
-                    {locationDraft.address || 'Koi address save nahi hai'}
-                  </p>
-                  {typeof locationDraft.lat === 'number' && typeof locationDraft.lng === 'number' ? (
-                    <p className="text-[11px] text-emerald-700 font-bold tabular-nums">
-                      GPS Pinned: {locationDraft.lat.toFixed(5)}, {locationDraft.lng.toFixed(5)}
-                    </p>
-                  ) : (
-                    <p className="text-[11px] text-amber-600 font-semibold">
-                      Map par click karke pin lagayein
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  {onUpdateCustomer && locationDirty && (
-                    <button
-                      type="button"
-                      onClick={handleSaveLocationOnly}
-                      className="w-full py-2.5 px-4 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <Save className="w-4 h-4" />
-                      Save Location to Account
-                    </button>
-                  )}
-
-                  {(() => {
-                    const activeTrackUrl = buildGoogleMapsTrackUrl({
-                      lat: locationDraft.lat,
-                      lng: locationDraft.lng,
-                      placeId: locationDraft.placeId,
-                      address: locationDraft.address,
-                    });
-                    const activeViewUrl = buildGoogleMapsViewUrl({
-                      lat: locationDraft.lat,
-                      lng: locationDraft.lng,
-                      placeId: locationDraft.placeId,
-                      address: locationDraft.address,
-                    });
-                    return (
-                      <>
-                        {activeTrackUrl && (
-                          <a
-                            href={activeTrackUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center justify-center gap-1.5"
-                          >
-                            <Navigation className="w-4 h-4" />
-                            Track Customer Location (Google Maps)
-                          </a>
-                        )}
-                        {activeViewUrl && (
-                          <a
-                            href={activeViewUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="w-full py-2 px-4 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5"
-                          >
-                            <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
-                            View on Google Maps
-                          </a>
-                        )}
-                      </>
-                    );
-                  })()}
-
-                  {(trackLocationUrl || viewLocationUrl) && (
-                    <button
-                      type="button"
-                      onClick={handleCopyLocationLink}
-                      className="w-full py-2 px-4 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <Copy className="w-3.5 h-3.5" />
-                      Copy Link
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="lg:col-span-8">
-                <CustomerLocationPicker
-                  value={locationDraft}
-                  onChange={next => {
-                    setLocationDraft(next);
-                    setLocationDirty(true);
-                  }}
-                  customerName={customer.name}
-                  readOnly={!onUpdateCustomer}
-                  heightClass="h-72 sm:h-96"
-                  showAddressInput={true}
-                  showTrackActions={false}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* TAB 3: LINKED CREDIT INVOICES & ITEMS */}
-          {activeTab === 'invoices' && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5">
-                  <ShoppingBag className="w-4 h-4 text-purple-600" />
-                  Customer Purchase Invoices & IMEI History ({customerSales.length})
-                </h4>
-                <span className="text-[11px] text-slate-500 tabular-nums">
-                  Total Invoiced: {currency}{' '}
-                  {customerSales.reduce((acc, s) => acc + s.grandTotal, 0).toLocaleString()}
+              {/* Running Balance Row */}
+              <div className="p-3.5 sm:p-4 flex items-center justify-between">
+                <span className="text-xs sm:text-sm font-semibold text-slate-700">Running Balance</span>
+                <span
+                  className={`text-sm sm:text-base font-extrabold tabular-nums ${
+                    selectedEntry.runningBalance > 0 ? 'text-rose-600' : 'text-emerald-600'
+                  }`}
+                >
+                  {currency} {Math.abs(selectedEntry.runningBalance).toLocaleString()}
                 </span>
               </div>
 
-              {customerSales.length === 0 ? (
-                <div className="text-center py-12 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-400">
-                  No POS invoices linked to this customer yet.
-                </div>
-              ) : (
-                <div className="space-y-2.5">
-                  {customerSales.map(sale => (
-                    <div
-                      key={sale.invNo}
-                      className="border border-slate-200 rounded-xl p-3 bg-slate-50/40 space-y-2 text-xs"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-200/80">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-extrabold text-slate-900 tabular-nums">{sale.invNo}</span>
-                          <span className="text-[11px] text-slate-500 tabular-nums">
-                            {new Date(sale.date).toLocaleString()}
-                          </span>
-                          <span
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded-lg ${
-                              sale.invoiceType === 'credit'
-                                ? 'bg-rose-100 text-rose-800'
-                                : 'bg-emerald-100 text-emerald-800'
-                            }`}
-                          >
-                            {sale.invoiceType === 'credit' ? 'Credit / Udhar' : sale.paymentMethod}
-                          </span>
-                          {(sale.returnStatus === 'FULL' || sale.returnStatus === 'PARTIAL') && (
-                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-lg bg-amber-100 text-amber-900 border border-amber-300">
-                              {sale.returnStatus === 'FULL' ? 'RETURNED' : 'PARTIAL RETURN'}
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-3 tabular-nums text-[11px]">
-                          <span className="text-slate-600">
-                            Total: <strong className="text-slate-900">{currency} {sale.grandTotal.toLocaleString()}</strong>
-                          </span>
-                          <span className="text-emerald-700 font-semibold">
-                            Paid: {currency} {(sale.amountPaid ?? sale.grandTotal).toLocaleString()}
-                          </span>
-                          <span className="text-rose-600 font-extrabold">
-                            Due: {currency} {(sale.amountDue ?? 0).toLocaleString()}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="space-y-1">
-                        {sale.items.map((item, i) => {
-                          const imeis =
-                            Array.isArray(item.imeis) && item.imeis.length > 0
-                              ? item.imeis.join(', ')
-                              : item.imei;
-                          const retMeta = getSaleItemReturnMeta(sale.invNo, item);
-                          return (
-                            <div
-                              key={i}
-                              className={`flex flex-col sm:flex-row sm:items-center justify-between gap-1 px-2.5 py-1.5 rounded-lg border ${
-                                retMeta.isReturned
-                                  ? 'bg-amber-50/70 border-amber-300'
-                                  : 'bg-white border-slate-200/70'
-                              }`}
-                            >
-                              <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                  <span className={`font-bold ${retMeta.isReturned && retMeta.returnedQty >= item.qty ? 'text-slate-600 line-through' : 'text-slate-800'}`}>
-                                    {item.name}
-                                  </span>
-                                  {item.variantLabel && (
-                                    <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
-                                      {item.variantLabel}
-                                    </span>
-                                  )}
-                                  {retMeta.isReturned && (
-                                    <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300">
-                                      <RotateCcw className="w-2.5 h-2.5 text-amber-700" />
-                                      Returned{retMeta.returnedQty > 1 || retMeta.returnedQty < item.qty ? ` (x${retMeta.returnedQty})` : ''}
-                                      {retMeta.returnReason ? ` • Reason: ${retMeta.returnReason}` : ''}
-                                    </span>
-                                  )}
-                                </div>
-                                {imeis && (
-                                  <span className="block text-[11px] font-mono text-indigo-700 break-all mt-0.5">
-                                    [IMEI: {imeis}]
-                                  </span>
-                                )}
-                                {retMeta.returnedImeis.length > 0 && (
-                                  <span className="block text-[10px] font-mono font-bold text-amber-800 break-all mt-0.5">
-                                    Returned IMEI: {retMeta.returnedImeis.join(', ')}
-                                  </span>
-                                )}
-                              </div>
-                              <span className="text-[11px] font-bold tabular-nums text-slate-700 shrink-0">
-                                {item.qty} × {currency} {item.salePrice.toLocaleString()} = {currency} {(item.salePrice * item.qty).toLocaleString()}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              {/* Edit Entry Button */}
+              {isAdmin && onEditTransaction && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCalculatorConfig({
+                      txId: selectedEntry.id,
+                      type: selectedEntry.type === 'credit' ? 'credit' : 'payment',
+                      amount: selectedEntry.amount,
+                      note: selectedEntry.note,
+                      date: selectedEntry.date,
+                      receiptImage: selectedEntry.receiptImage,
+                    })
+                  }
+                  className="w-full py-3.5 px-4 flex items-center justify-center gap-2 text-xs sm:text-sm font-extrabold text-emerald-700 hover:bg-emerald-50/60 transition cursor-pointer"
+                >
+                  <Pencil className="w-4 h-4" />
+                  <span>EDIT ENTRY</span>
+                </button>
               )}
             </div>
-          )}
 
-          {/* TAB 4: EDIT PROFILE, CREDIT LIMITS & GUARANTOR */}
-          {activeTab === 'profile' && (
-            <form onSubmit={handleSaveFullProfile} className="space-y-4 text-xs">
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                <div className="md:col-span-4 bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-800">Customer Photo</span>
+            {/* Backup Status Card */}
+            <div className="bg-white rounded-2xl border border-slate-200/90 px-4 py-3.5 flex items-center gap-3 text-slate-600 shadow-2xs">
+              <CloudCheck className="w-4.5 h-4.5 text-emerald-600 shrink-0" />
+              <span className="text-xs sm:text-sm font-medium">Entry is backed up</span>
+            </div>
+
+            {/* Delete Entry Card */}
+            {isAdmin && onDeleteTransaction && (
+              <div className="bg-white rounded-2xl border border-slate-200/90 overflow-hidden shadow-2xs">
+                {confirmDeleteTxId === selectedEntry.id ? (
+                  <div className="p-3.5 flex items-center justify-between gap-2 bg-rose-50/60">
+                    <span className="text-xs font-bold text-rose-800">
+                      Delete this entry permanently?
+                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteTxId(null)}
+                        className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-700 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onDeleteTransaction(customer.id, selectedEntry.id);
+                          setConfirmDeleteTxId(null);
+                          handleCloseEntryDetail();
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-extrabold cursor-pointer"
+                      >
+                        Confirm Delete
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteTxId(selectedEntry.id)}
+                    className="w-full px-4 py-3.5 flex items-center gap-3 text-slate-700 hover:text-rose-600 hover:bg-rose-50/40 transition text-left cursor-pointer"
+                  >
+                    <Trash2 className="w-4.5 h-4.5 shrink-0" />
+                    <span className="text-xs sm:text-sm font-bold tracking-wide">DELETE ENTRY</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Bottom Dual Outline Buttons: WHATSAPP & SMS */}
+          <div className="bg-white border-t border-slate-200 px-3 sm:px-5 py-2.5 grid grid-cols-2 gap-2.5 shrink-0 max-w-2xl w-full mx-auto">
+            <a
+              href={entryWaUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="h-11 rounded-full border-2 border-emerald-600 bg-white hover:bg-emerald-50 text-emerald-700 font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 transition"
+            >
+              <MessageSquare className="w-4 h-4" />
+              <span>WHATSAPP</span>
+            </a>
+            <a
+              href={entrySmsUrl}
+              className="h-11 rounded-full border-2 border-emerald-600 bg-white hover:bg-emerald-50 text-emerald-700 font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 transition"
+            >
+              <MessageSquare className="w-4 h-4" />
+              <span>SMS</span>
+            </a>
+          </div>
+        </div>
+
+        {/* Calculator Entry Overlay (for editing this entry) */}
+        {calculatorConfig && (
+          <LedgerCalculatorEntry
+            isOpen={true}
+            onClose={() => setCalculatorConfig(null)}
+            customerName={customer.name}
+            currentBalance={customer.balance}
+            currency={currency}
+            initial={calculatorConfig}
+            onSave={handleSaveCalculatorEntry}
+          />
+        )}
+
+        {viewingImageModal && (
+          <div
+            className="fixed inset-0 z-[70] bg-slate-950/80 flex items-center justify-center p-4"
+            onClick={() => setViewingImageModal(null)}
+          >
+            <div
+              className="relative max-w-lg w-full bg-white rounded-2xl p-3 shadow-2xl space-y-2"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-xs text-slate-800">Attached Photo / Receipt</span>
+                <button
+                  type="button"
+                  onClick={() => setViewingImageModal(null)}
+                  className="text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="rounded-xl overflow-hidden border border-slate-200 bg-slate-900 flex items-center justify-center max-h-[75vh]">
+                <img src={viewingImageModal} alt="Receipt" className="max-w-full max-h-[70vh] object-contain" />
+              </div>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // =========================================================================
+  // VIEW B: PROFILE / MAP LOCATION / INVOICES SETTINGS WORKSPACE
+  // =========================================================================
+  if (workspaceView === 'settings') {
+    return (
+      <>
+        <div className="fixed inset-0 z-50 bg-slate-50 flex flex-col overflow-hidden animate-in fade-in pb-[env(safe-area-inset-bottom,0px)]">
+          {/* Green Header */}
+          <div className="app-fullscreen-modal-header bg-emerald-600 text-white px-3 sm:px-5 pt-[calc(env(safe-area-inset-top,0px)+0.85rem)] sm:pt-3 pb-3 flex items-center justify-between gap-2 shrink-0">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <button
+                type="button"
+                onClick={() => setWorkspaceView('ledger')}
+                className="w-9 h-9 rounded-full hover:bg-white/15 flex items-center justify-center transition cursor-pointer shrink-0"
+                aria-label="Back to Ledger"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <div className="min-w-0">
+                <h2 className="text-sm sm:text-base font-extrabold truncate">{customer.name}</h2>
+                <p className="text-[11px] text-emerald-100 truncate">
+                  Customer Settings, Location &amp; Invoices
+                </p>
+              </div>
+            </div>
+            {trackLocationUrl && (
+              <a
+                href={trackLocationUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="h-8 px-3 rounded-full bg-white/15 hover:bg-white/25 text-white text-xs font-bold flex items-center gap-1 shrink-0"
+              >
+                <Navigation className="w-3.5 h-3.5" />
+                <span>Track</span>
+              </a>
+            )}
+          </div>
+
+          {/* Sub-Tabs Bar */}
+          <div className="bg-white border-b border-slate-200 px-3 sm:px-5 py-2 flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => setSettingsSubTab('profile')}
+              className={`h-8 px-3 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer ${
+                settingsSubTab === 'profile'
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              <Edit3 className="w-3.5 h-3.5" /> Profile &amp; Limits
+            </button>
+            <button
+              type="button"
+              onClick={() => setSettingsSubTab('location')}
+              className={`h-8 px-3 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer ${
+                settingsSubTab === 'location'
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              <MapPin className="w-3.5 h-3.5" /> Map Pin
+              {hasGpsPin && <CheckCircle2 className="w-3 h-3 text-emerald-300" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => setSettingsSubTab('invoices')}
+              className={`h-8 px-3 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer ${
+                settingsSubTab === 'invoices'
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              <ShoppingBag className="w-3.5 h-3.5" /> Invoices ({customerSales.length})
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="flex-1 overflow-y-auto p-3 sm:p-5 max-w-4xl w-full mx-auto">
+            {settingsSubTab === 'profile' && (
+              <form onSubmit={handleSaveFullProfile} className="space-y-4 text-xs bg-white border border-slate-200 rounded-2xl p-4">
+                <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+                  <div className="w-14 h-14 rounded-full border border-slate-200 overflow-hidden bg-slate-100 flex items-center justify-center shrink-0">
+                    {profileImage ? (
+                      <img src={profileImage} alt="Profile" className="w-full h-full object-cover" />
+                    ) : (
+                      <User className="w-6 h-6 text-slate-400" />
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      ref={profileFileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleProfileImageChange}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => profileFileInputRef.current?.click()}
+                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg flex items-center gap-1 cursor-pointer"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-emerald-600" /> Gallery
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsCameraOpen(true)}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg flex items-center gap-1 cursor-pointer"
+                    >
+                      <Camera className="w-3.5 h-3.5" /> Camera
+                    </button>
                     {profileImage && (
                       <button
                         type="button"
                         onClick={() => setProfileImage('')}
-                        className="text-rose-600 text-[11px] font-bold cursor-pointer"
+                        className="px-2.5 py-1.5 text-rose-600 font-bold cursor-pointer"
                       >
                         Remove
                       </button>
                     )}
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="w-16 h-16 rounded-xl border border-slate-200 overflow-hidden bg-white flex items-center justify-center shrink-0">
-                      {profileImage ? (
-                        <img src={profileImage} alt="Profile" className="w-full h-full object-cover" />
-                      ) : (
-                        <User className="w-7 h-7 text-slate-300" />
-                      )}
-                    </div>
-                    <div className="flex flex-col gap-1.5 flex-1">
-                      <input
-                        ref={profileFileInputRef}
-                        type="file"
-                        accept="image/*"
-                        onChange={handleProfileImageChange}
-                        className="hidden"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => profileFileInputRef.current?.click()}
-                        className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-lg border border-slate-200 flex items-center justify-center gap-1 cursor-pointer"
-                      >
-                        <Upload className="w-3 h-3 text-purple-600" /> Gallery
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setIsCameraOpen(true)}
-                        className="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg flex items-center justify-center gap-1 cursor-pointer"
-                      >
-                        <Camera className="w-3 h-3" /> Camera
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="pt-2 border-t border-slate-200">
-                    <label className="block font-bold text-slate-700 mb-1">Account Category</label>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => setProfileType('retail')}
-                        className={`py-1.5 rounded-lg font-bold border cursor-pointer ${
-                          profileType === 'retail'
-                            ? 'bg-slate-900 text-white border-slate-900'
-                            : 'bg-white text-slate-600 border-slate-200'
-                        }`}
-                      >
-                        Retail
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setProfileType('retailer')}
-                        className={`py-1.5 rounded-lg font-bold border cursor-pointer ${
-                          profileType === 'retailer'
-                            ? 'bg-purple-600 text-white border-purple-600'
-                            : 'bg-white text-slate-600 border-slate-200'
-                        }`}
-                      >
-                        Retailer
-                      </button>
-                    </div>
-                  </div>
                 </div>
 
-                <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1">Customer Name *</label>
                     <input
@@ -1994,17 +1260,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                       required
                       value={profileName}
                       onChange={e => setProfileName(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-purple-600 focus:bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">CNIC / ID Number</label>
-                    <input
-                      type="text"
-                      value={profileCnic}
-                      onChange={e => setProfileCnic(e.target.value)}
-                      placeholder="35202-1234567-1"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 tabular-nums focus:outline-none focus:border-purple-600 focus:bg-white"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-600 focus:bg-white"
                     />
                   </div>
                   <div>
@@ -2014,7 +1270,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                       required
                       value={profilePhone}
                       onChange={e => setProfilePhone(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 tabular-nums focus:outline-none focus:border-purple-600 focus:bg-white"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 tabular-nums focus:outline-none focus:border-emerald-600 focus:bg-white"
                     />
                   </div>
                   <div>
@@ -2023,8 +1279,17 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                       type="text"
                       value={profilePhone2}
                       onChange={e => setProfilePhone2(e.target.value)}
-                      placeholder="Optional"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 tabular-nums focus:outline-none focus:border-purple-600 focus:bg-white"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 tabular-nums focus:outline-none focus:border-emerald-600 focus:bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">CNIC / ID Number</label>
+                    <input
+                      type="text"
+                      value={profileCnic}
+                      onChange={e => setProfileCnic(e.target.value)}
+                      placeholder="35202-1234567-1"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 tabular-nums focus:outline-none focus:border-emerald-600 focus:bg-white"
                     />
                   </div>
                   <div>
@@ -2035,7 +1300,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                       value={profileCreditLimit}
                       onChange={e => setProfileCreditLimit(e.target.value)}
                       placeholder="No Limit"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 tabular-nums focus:outline-none focus:border-purple-600 focus:bg-white"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 tabular-nums focus:outline-none focus:border-emerald-600 focus:bg-white"
                     />
                   </div>
                   <div>
@@ -2044,8 +1309,44 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                       type="date"
                       value={profileDueDate}
                       onChange={e => setProfileDueDate(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 tabular-nums focus:outline-none focus:border-purple-600 focus:bg-white"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 tabular-nums focus:outline-none focus:border-emerald-600 focus:bg-white"
                     />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">City / Bazaar</label>
+                    <input
+                      type="text"
+                      value={profileCity}
+                      onChange={e => setProfileCity(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-600 focus:bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Account Category</label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setProfileType('retail')}
+                        className={`py-2 rounded-xl font-bold border cursor-pointer ${
+                          profileType === 'retail'
+                            ? 'bg-emerald-600 text-white border-emerald-600'
+                            : 'bg-slate-50 text-slate-600 border-slate-200'
+                        }`}
+                      >
+                        Retail
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setProfileType('retailer')}
+                        className={`py-2 rounded-xl font-bold border cursor-pointer ${
+                          profileType === 'retailer'
+                            ? 'bg-emerald-600 text-white border-emerald-600'
+                            : 'bg-slate-50 text-slate-600 border-slate-200'
+                        }`}
+                      >
+                        Retailer
+                      </button>
+                    </div>
                   </div>
                   {profileType === 'retailer' && (
                     <>
@@ -2055,7 +1356,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                           type="text"
                           value={profileShopName}
                           onChange={e => setProfileShopName(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-purple-600 focus:bg-white"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-600 focus:bg-white"
                         />
                       </div>
                       <div>
@@ -2064,28 +1365,18 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                           type="text"
                           value={profileNtn}
                           onChange={e => setProfileNtn(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 tabular-nums focus:outline-none focus:border-purple-600 focus:bg-white"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 tabular-nums focus:outline-none focus:border-emerald-600 focus:bg-white"
                         />
                       </div>
                     </>
                   )}
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">City / Bazaar</label>
-                    <input
-                      type="text"
-                      value={profileCity}
-                      onChange={e => setProfileCity(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-purple-600 focus:bg-white"
-                    />
-                  </div>
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1">Guarantor Name</label>
                     <input
                       type="text"
                       value={profileGuarantorName}
                       onChange={e => setProfileGuarantorName(e.target.value)}
-                      placeholder="Witness / Reference"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-purple-600 focus:bg-white"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-600 focus:bg-white"
                     />
                   </div>
                   <div>
@@ -2094,8 +1385,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                       type="text"
                       value={profileGuarantorPhone}
                       onChange={e => setProfileGuarantorPhone(e.target.value)}
-                      placeholder="03XX-XXXXXXX"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 tabular-nums focus:outline-none focus:border-purple-600 focus:bg-white"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 tabular-nums focus:outline-none focus:border-emerald-600 focus:bg-white"
                     />
                   </div>
                   <div className="sm:col-span-2">
@@ -2104,112 +1394,544 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                       type="text"
                       value={profileNotes}
                       onChange={e => setProfileNotes(e.target.value)}
-                      placeholder="Installment agreement notes..."
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-purple-600 focus:bg-white"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-600 focus:bg-white"
                     />
                   </div>
                 </div>
-              </div>
 
-              <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-3">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('location')}
-                  className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1 cursor-pointer"
-                >
-                  <MapPin className="w-3.5 h-3.5" /> Edit Google Maps Pin on Location Tab
-                </button>
-                <div className="flex items-center gap-2">
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
                   <button
                     type="button"
-                    onClick={() => setActiveTab('ledger')}
-                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer"
+                    onClick={() => setWorkspaceView('ledger')}
+                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold shadow-sm flex items-center gap-1.5 cursor-pointer"
+                    className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold flex items-center gap-1.5 cursor-pointer"
                   >
-                    <Save className="w-3.5 h-3.5" />
-                    Save Account Changes
+                    <Save className="w-3.5 h-3.5" /> Save Changes
                   </button>
                 </div>
+              </form>
+            )}
+
+            {settingsSubTab === 'location' && (
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
+                <CustomerLocationPicker
+                  value={locationDraft}
+                  onChange={val => {
+                    setLocationDraft(val);
+                    setLocationDirty(true);
+                  }}
+                  customerName={customer.name}
+                  heightClass="h-64 sm:h-80"
+                  showAddressInput={true}
+                  showTrackActions={true}
+                />
+                {locationDirty && (
+                  <div className="flex justify-end pt-2 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={handleSaveLocationOnly}
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Save className="w-3.5 h-3.5" /> Save Map Pin
+                    </button>
+                  </div>
+                )}
               </div>
-            </form>
+            )}
+
+            {settingsSubTab === 'invoices' && (
+              <div className="space-y-2.5">
+                {customerSales.length === 0 ? (
+                  <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-xs text-slate-400">
+                    No POS invoices linked to this customer yet.
+                  </div>
+                ) : (
+                  customerSales.map(sale => (
+                    <div
+                      key={sale.invNo}
+                      className="bg-white border border-slate-200 rounded-2xl p-3.5 space-y-2 text-xs"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <span className="font-extrabold text-slate-900 tabular-nums">{sale.invNo}</span>
+                          <span className="block text-[11px] text-slate-500">
+                            {formatLedgerTimestamp(sale.date)}
+                          </span>
+                        </div>
+                        <div className="text-right tabular-nums">
+                          <span className="font-extrabold text-slate-900 block">
+                            {currency} {sale.grandTotal.toLocaleString()}
+                          </span>
+                          {(sale.amountDue || 0) > 0 && (
+                            <span className="text-[11px] font-bold text-rose-600">
+                              Due: {currency} {(sale.amountDue || 0).toLocaleString()}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="divide-y divide-slate-100 border-t border-slate-100 pt-1">
+                        {sale.items.map((item, idx) => (
+                          <div key={idx} className="py-1 flex items-center justify-between gap-2">
+                            <span className="font-semibold text-slate-700 truncate">
+                              {item.name} {item.variantLabel ? `(${item.variantLabel})` : ''}
+                            </span>
+                            <span className="tabular-nums text-slate-600 shrink-0">
+                              {item.qty} × {currency} {item.salePrice.toLocaleString()}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <CameraCaptureModal
+          isOpen={isCameraOpen}
+          onClose={() => setIsCameraOpen(false)}
+          title="Capture Customer Photo"
+          onCapture={async dataUrl => {
+            try {
+              const compressed = await compressImage(dataUrl, 700, 0.7);
+              setProfileImage(compressed);
+            } catch {
+              setProfileImage(dataUrl);
+            }
+          }}
+        />
+      </>
+    );
+  }
+
+  // =========================================================================
+  // VIEW C: MAIN PARTY LEDGER SCREEN (Screenshot 2, Green Theme)
+  // =========================================================================
+  return (
+    <>
+      <div className="fixed inset-0 z-50 bg-slate-50 flex flex-col overflow-hidden animate-in fade-in pb-[env(safe-area-inset-bottom,0px)]">
+        {/* Green Header + Overlapping White Balance Card */}
+        <div className="app-fullscreen-modal-header bg-emerald-600 text-white px-3 sm:px-5 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] sm:pt-3 pb-10 shrink-0 relative">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-9 h-9 rounded-full hover:bg-white/15 flex items-center justify-center transition cursor-pointer shrink-0"
+                aria-label="Back to Party List"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSettingsSubTab('profile');
+                  setWorkspaceView('settings');
+                }}
+                className="min-w-0 text-left cursor-pointer group"
+              >
+                <div className="flex items-center gap-1.5">
+                  <h2 className="text-base sm:text-lg font-extrabold tracking-tight truncate">
+                    {customer.name}
+                  </h2>
+                  <span className="px-2 py-0.5 rounded-full bg-white/95 text-emerald-700 text-[10px] font-extrabold shrink-0">
+                    {customer.customerType === 'retailer' || customer.customerType === 'wholesaler'
+                      ? 'Retailer'
+                      : 'Customer'}
+                  </span>
+                </div>
+                <span className="block text-[11px] text-emerald-50/90 group-hover:underline truncate">
+                  Click here to view settings
+                </span>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-1 shrink-0 relative">
+              <a
+                href={`tel:${customer.phone.replace(/[^0-9+]/g, '')}`}
+                className="w-9 h-9 rounded-full hover:bg-white/15 flex items-center justify-center transition"
+                title={`Call ${customer.phone}`}
+                aria-label="Call Customer"
+              >
+                <Phone className="w-4.5 h-4.5" />
+              </a>
+
+              <button
+                type="button"
+                onClick={() => setShowMoreMenu(v => !v)}
+                className="w-9 h-9 rounded-full hover:bg-white/15 flex items-center justify-center transition cursor-pointer"
+                aria-label="More Options"
+              >
+                <MoreVertical className="w-4.5 h-4.5" />
+              </button>
+
+              {showMoreMenu && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setShowMoreMenu(false)}
+                  />
+                  <div className="absolute right-0 top-11 z-50 w-48 bg-white text-slate-800 rounded-2xl shadow-xl border border-slate-200 py-1.5 text-xs font-bold animate-in fade-in zoom-in-95">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMoreMenu(false);
+                        setSettingsSubTab('profile');
+                        setWorkspaceView('settings');
+                      }}
+                      className="w-full px-3.5 py-2.5 hover:bg-slate-50 flex items-center gap-2 text-left cursor-pointer"
+                    >
+                      <Edit3 className="w-3.5 h-3.5 text-emerald-600" /> Edit Profile &amp; Limits
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMoreMenu(false);
+                        setSettingsSubTab('location');
+                        setWorkspaceView('settings');
+                      }}
+                      className="w-full px-3.5 py-2.5 hover:bg-slate-50 flex items-center gap-2 text-left cursor-pointer"
+                    >
+                      <MapPin className="w-3.5 h-3.5 text-blue-600" /> Map Location
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMoreMenu(false);
+                        setSettingsSubTab('invoices');
+                        setWorkspaceView('settings');
+                      }}
+                      className="w-full px-3.5 py-2.5 hover:bg-slate-50 flex items-center gap-2 text-left cursor-pointer"
+                    >
+                      <ShoppingBag className="w-3.5 h-3.5 text-amber-600" /> Linked Invoices ({customerSales.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMoreMenu(false);
+                        handlePrintStatement();
+                      }}
+                      className="w-full px-3.5 py-2.5 hover:bg-slate-50 flex items-center gap-2 text-left cursor-pointer border-t border-slate-100"
+                    >
+                      <Printer className="w-3.5 h-3.5 text-slate-600" /> Print Ledger
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Overlapping White Balance Card */}
+        <div className="px-3 sm:px-5 -mt-7 relative z-10 shrink-0">
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm px-4 py-3 flex items-center justify-between gap-3">
+            <div>
+              <p
+                className={`text-lg sm:text-xl font-extrabold tabular-nums leading-tight ${
+                  customer.balance > 0
+                    ? 'text-rose-600'
+                    : customer.balance < 0
+                    ? 'text-emerald-600'
+                    : 'text-slate-900'
+                }`}
+              >
+                {currency} {Math.abs(customer.balance).toLocaleString()}
+              </p>
+              <span className="text-[11px] font-semibold text-slate-400">
+                {customer.balance > 0
+                  ? 'You will get'
+                  : customer.balance < 0
+                  ? 'You will give'
+                  : 'Settled'}
+              </span>
+            </div>
+
+            <div className="text-right space-y-0.5">
+              {dueStatus && (
+                <span
+                  className={`inline-block text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                    dueStatus.tone === 'overdue'
+                      ? 'bg-rose-50 text-rose-700'
+                      : dueStatus.tone === 'today'
+                      ? 'bg-amber-50 text-amber-700'
+                      : 'bg-emerald-50 text-emerald-700'
+                  }`}
+                >
+                  {dueStatus.label}
+                </span>
+              )}
+              {customer.creditLimit && customer.creditLimit > 0 && (
+                <span className="block text-[10px] text-slate-400 tabular-nums">
+                  Limit: {currency} {customer.creditLimit.toLocaleString()}
+                </span>
+              )}
+              {customer.balance > customer.creditLimit! && customer.creditLimit ? (
+                <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-rose-600">
+                  <AlertTriangle className="w-3 h-3" /> Over Limit
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        {/* 4 Quick Action Cards Row (Report, Set Date, Reminder, SMS) */}
+        <div className="px-3 sm:px-5 pt-2.5 pb-2 grid grid-cols-4 gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={handleDownloadPdfStatement}
+            className="bg-white border border-slate-200/80 hover:border-emerald-300 rounded-xl py-2.5 px-1 flex flex-col items-center justify-center gap-1 shadow-2xs transition cursor-pointer"
+          >
+            <Download className="w-4.5 h-4.5 text-emerald-600" />
+            <span className="text-[11px] font-bold text-slate-700">Report</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setQuickDueDate(customer.dueDate || '');
+              setIsSetDateOpen(true);
+            }}
+            className="bg-white border border-slate-200/80 hover:border-emerald-300 rounded-xl py-2.5 px-1 flex flex-col items-center justify-center gap-1 shadow-2xs transition cursor-pointer"
+          >
+            <Calendar className="w-4.5 h-4.5 text-emerald-600" />
+            <span className="text-[11px] font-bold text-slate-700">Set Date</span>
+          </button>
+
+          <a
+            href={whatsAppReminderUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="bg-white border border-slate-200/80 hover:border-emerald-300 rounded-xl py-2.5 px-1 flex flex-col items-center justify-center gap-1 shadow-2xs transition"
+          >
+            <Bell className="w-4.5 h-4.5 text-emerald-600" />
+            <span className="text-[11px] font-bold text-slate-700">Reminder</span>
+          </a>
+
+          <a
+            href={smsReminderUrl}
+            className="bg-white border border-slate-200/80 hover:border-emerald-300 rounded-xl py-2.5 px-1 flex flex-col items-center justify-center gap-1 shadow-2xs transition"
+          >
+            <MessageSquare className="w-4.5 h-4.5 text-emerald-600" />
+            <span className="text-[11px] font-bold text-slate-700">SMS</span>
+          </a>
+        </div>
+
+        {/* Search Input */}
+        <div className="px-3 sm:px-5 pb-2 shrink-0">
+          <div className="relative bg-white border border-slate-200/90 rounded-xl flex items-center px-3 h-9.5 shadow-2xs">
+            <Search className="w-4 h-4 text-slate-400 shrink-0 mr-2" />
+            <input
+              type="text"
+              value={ledgerSearch}
+              onChange={e => setLedgerSearch(e.target.value)}
+              placeholder="Search"
+              className="compact-mobile-input flex-1 bg-transparent text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none"
+            />
+            {ledgerSearch && (
+              <button
+                type="button"
+                onClick={() => setLedgerSearch('')}
+                className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* 3-Column Ledger Header */}
+        <div className="px-3 sm:px-5 py-1.5 grid grid-cols-12 gap-2 text-[11px] font-bold text-slate-500 border-b border-slate-200 bg-slate-50 shrink-0">
+          <div className="col-span-6">Entries</div>
+          <div className="col-span-3 text-right">You Gave</div>
+          <div className="col-span-3 text-right">You Got</div>
+        </div>
+
+        {/* Scrollable Ledger Entries Rows */}
+        <div className="flex-1 overflow-y-auto touch-pan-y bg-white divide-y divide-slate-100">
+          {filteredLedger.length === 0 ? (
+            <div className="py-12 text-center text-xs text-slate-400 space-y-1.5 px-4">
+              <FileText className="w-8 h-8 mx-auto text-slate-300" />
+              <p className="font-bold text-slate-600">No entries yet</p>
+              <p className="text-[11px]">
+                Tap &ldquo;YOU GAVE Rs&rdquo; or &ldquo;YOU GOT Rs&rdquo; below to record an entry.
+              </p>
+            </div>
+          ) : (
+            filteredLedger.map((tx, idx) => {
+              const isGave = tx.type === 'credit';
+              return (
+                <button
+                  key={tx.id || idx}
+                  type="button"
+                  onClick={() => setSelectedTxId(tx.id)}
+                  className="w-full px-3 sm:px-5 py-2.5 grid grid-cols-12 gap-2 items-center text-left hover:bg-slate-50 active:bg-slate-100/80 transition cursor-pointer"
+                >
+                  {/* Entries Column */}
+                  <div className="col-span-6 min-w-0 pr-2 border-r border-slate-100 space-y-0.5">
+                    <span className="block text-[10px] text-slate-400 font-medium tabular-nums truncate">
+                      {formatLedgerTimestamp(tx.date)}
+                    </span>
+                    <div className="flex items-center gap-1 min-w-0">
+                      <span className="text-xs sm:text-sm font-bold text-slate-900 truncate">
+                        {tx.note || (isGave ? 'Credit Added' : 'Cash Received')}
+                      </span>
+                      {tx.receiptImage && (
+                        <ImageIcon className="w-3 h-3 text-emerald-600 shrink-0" />
+                      )}
+                    </div>
+                    <span className="inline-block text-[10px] font-semibold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded tabular-nums">
+                      Bal. {currency} {tx.runningBalance.toLocaleString()}
+                    </span>
+                  </div>
+
+                  {/* You Gave Column */}
+                  <div className="col-span-3 text-right pr-2 border-r border-slate-100 h-full flex items-center justify-end tabular-nums">
+                    {isGave && (
+                      <span className="text-xs sm:text-sm font-extrabold text-rose-600">
+                        {tx.amount.toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* You Got Column */}
+                  <div className="col-span-3 text-right h-full flex items-center justify-end tabular-nums">
+                    {!isGave && (
+                      <span className="text-xs sm:text-sm font-extrabold text-emerald-600">
+                        {tx.amount.toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })
           )}
         </div>
 
-        {/* Modal Footer */}
-        <div className="px-3 sm:px-5 py-2 border-t border-slate-100 flex items-center justify-between gap-2 shrink-0 bg-slate-50">
-          <span className="text-[10px] sm:text-[11px] text-slate-400 truncate">
-            Updated: {new Date(customer.lastUpdated).toLocaleDateString()}
-          </span>
+        {/* Pinned Bottom Action Bar: YOU GAVE Rs | YOU GOT Rs */}
+        <div className="bg-white border-t border-slate-200 px-3 sm:px-5 py-2.5 grid grid-cols-2 gap-2.5 shrink-0">
           <button
             type="button"
-            onClick={onClose}
-            className="h-8 px-4 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-lg shadow-xs transition cursor-pointer inline-flex items-center gap-1"
+            onClick={() => setCalculatorConfig({ type: 'credit' })}
+            className="h-11 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs sm:text-sm tracking-wide shadow-md shadow-rose-600/20 flex items-center justify-center transition cursor-pointer"
           >
-            <ArrowLeft className="w-3.5 h-3.5" /> Back to Ledgers
+            YOU GAVE {currency}
+          </button>
+          <button
+            type="button"
+            onClick={() => setCalculatorConfig({ type: 'payment' })}
+            className="h-11 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm tracking-wide shadow-md shadow-emerald-600/20 flex items-center justify-center transition cursor-pointer"
+          >
+            YOU GOT {currency}
           </button>
         </div>
       </div>
 
-      {/* Profile Photo Camera Modal */}
-      <CameraCaptureModal
-        isOpen={isCameraOpen}
-        onClose={() => setIsCameraOpen(false)}
-        title="Capture Customer Photo"
-        onCapture={async dataUrl => {
-          try {
-            const compressed = await compressImage(dataUrl, 700, 0.7);
-            setProfileImage(compressed);
-            showToast('Customer photo captured & optimized!', 'success');
-          } catch {
-            setProfileImage(dataUrl);
-          }
-        }}
-      />
-
-      {/* Transaction Receipt Camera Modal */}
-      <CameraCaptureModal
-        isOpen={isTxCameraOpen}
-        onClose={() => setIsTxCameraOpen(false)}
-        title="Capture Receipt / Transaction Photo"
-        onCapture={async dataUrl => {
-          try {
-            const compressed = await compressImage(dataUrl, 700, 0.7);
-            setTxReceiptImage(compressed);
-            showToast('Receipt picture captured & optimized!', 'success');
-          } catch {
-            setTxReceiptImage(dataUrl);
-          }
-        }}
-      />
-
-      {/* Image Lightbox Modal */}
-      {viewingImageModal && (
+      {/* Quick Set Due Date Modal */}
+      {isSetDateOpen && (
         <div
-          className="fixed inset-0 z-60 bg-slate-950/80 flex items-center justify-center p-4"
-          onClick={() => setViewingImageModal(null)}
+          className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setIsSetDateOpen(false)}
         >
-          <div className="relative max-w-lg w-full bg-white rounded-2xl p-3 shadow-2xl space-y-2" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-xs text-slate-800">Attached Transaction Photo / Receipt</span>
+          <div
+            className="bg-white rounded-2xl max-w-sm w-full p-4 space-y-3 shadow-2xl border border-slate-200"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+              <h3 className="text-sm font-extrabold text-slate-900">Set Promise Due Date</h3>
               <button
                 type="button"
-                onClick={() => setViewingImageModal(null)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+                onClick={() => setIsSetDateOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="rounded-xl overflow-hidden border border-slate-200 bg-slate-900 flex items-center justify-center max-h-[75vh]">
-              <img src={viewingImageModal} alt="Receipt Attachment" className="max-w-full max-h-[70vh] object-contain" />
+            <input
+              type="date"
+              value={quickDueDate}
+              onChange={e => setQuickDueDate(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-900 focus:outline-none focus:border-emerald-600"
+            />
+            <div className="flex items-center justify-between gap-2 pt-1">
+              {customer.dueDate ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuickDueDate('');
+                    if (onUpdateCustomer) {
+                      onUpdateCustomer({
+                        id: customer.id,
+                        name: customer.name,
+                        phone: customer.phone,
+                        phone2: customer.phone2,
+                        address: customer.address,
+                        lat: customer.lat,
+                        lng: customer.lng,
+                        placeId: customer.placeId,
+                        mapUrl: customer.mapUrl,
+                        image: customer.image,
+                        customerType: customer.customerType,
+                        shopName: customer.shopName,
+                        city: customer.city,
+                        ntnNumber: customer.ntnNumber,
+                        cnic: customer.cnic,
+                        creditLimit: customer.creditLimit,
+                        dueDate: undefined,
+                        guarantorName: customer.guarantorName,
+                        guarantorPhone: customer.guarantorPhone,
+                        notes: customer.notes,
+                      });
+                    }
+                    setIsSetDateOpen(false);
+                  }}
+                  className="text-xs font-bold text-rose-600 hover:underline cursor-pointer"
+                >
+                  Clear Date
+                </button>
+              ) : (
+                <span />
+              )}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsSetDateOpen(false)}
+                  className="px-3.5 py-2 rounded-xl bg-slate-100 text-xs font-bold text-slate-700 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveQuickDueDate}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold cursor-pointer"
+                >
+                  Save Date
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
-    </div>
+
+      {/* Calculator Entry Screen (Screenshots 5 & 6) */}
+      {calculatorConfig && (
+        <LedgerCalculatorEntry
+          isOpen={true}
+          onClose={() => setCalculatorConfig(null)}
+          customerName={customer.name}
+          currentBalance={customer.balance}
+          currency={currency}
+          initial={calculatorConfig}
+          onSave={handleSaveCalculatorEntry}
+        />
+      )}
+    </>
   );
 };

@@ -198,6 +198,7 @@ function AppContent() {
     handleSaveKhataCustomer,
     handleSettleKhataBalance,
     handleUpdateKhataBalance,
+    handleEditKhataTransaction,
     handleDeleteKhataTransaction,
     handleDeleteKhataCustomer,
     addKhataModalOpen,
@@ -2124,6 +2125,7 @@ function AppContent() {
                 settings={data.settings}
                 sales={data.sales || []}
                 salesReturns={data.salesReturns || []}
+                supplierPurchases={data.supplierPurchases || []}
                 isAdmin={(data.currentRole || 'admin') === 'admin'}
                 onOpenAddModal={() => setAddKhataModalOpen(true)}
                 onOpenSettleModal={cust => {
@@ -2132,11 +2134,16 @@ function AppContent() {
                 }}
                 onDeleteCustomer={handleDeleteKhataCustomer}
                 onAddTransaction={handleUpdateKhataBalance}
+                onEditTransaction={handleEditKhataTransaction}
                 onUpdateCustomer={handleSaveKhataCustomer}
                 onDeleteTransaction={handleDeleteKhataTransaction}
                 selectedCustomerId={selectedKhataCustomerId}
                 onClearSelectedCustomer={() => setSelectedKhataCustomerId(null)}
                 onOpenPdfReport={() => handleOpenPdfReport('khata')}
+                onGoToPurchases={() => setActiveTab('purchases')}
+                onBackToHome={() =>
+                  setActiveTab(typeof window !== 'undefined' && window.innerWidth < 1024 ? 'home' : 'dashboard')
+                }
               />
             )}
 
