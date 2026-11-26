@@ -108,6 +108,17 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
     return undefined;
   }, [selectedSale, khata]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleHardwareBack = (e: Event) => {
+      if (isScannerOpen) return;
+      e.preventDefault();
+      onClose();
+    };
+    window.addEventListener('pos-hardware-back', handleHardwareBack);
+    return () => window.removeEventListener('pos-hardware-back', handleHardwareBack);
+  }, [isOpen, isScannerOpen, onClose]);
+
   const initializeFormForSale = (sale: SaleRecord, scannedCode?: string) => {
     const cleanCode = (scannedCode || '').trim().toLowerCase();
     const initSelected: Record<string, boolean> = {};
@@ -497,8 +508,8 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
 
   return (
     <>
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-3xl w-full p-5 sm:p-6 shadow-2xl space-y-5 border border-slate-100 my-auto animate-in fade-in zoom-in-95 max-h-[92vh] flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
+      <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-2xl lg:max-w-3xl w-full p-4 sm:p-5 space-y-4 my-auto max-h-[82dvh] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
           <div className="flex items-center gap-2.5">

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { SaleRecord, ShopSettings } from '../types';
 import {
   X,
@@ -78,6 +79,16 @@ export const InvoiceShareModal: React.FC<InvoiceShareModalProps> = ({
       cancelled = true;
     };
   }, [isOpen, sale, settings, format, showToast]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleHardwareBack = (e: Event) => {
+      e.preventDefault();
+      onClose();
+    };
+    window.addEventListener('pos-hardware-back', handleHardwareBack);
+    return () => window.removeEventListener('pos-hardware-back', handleHardwareBack);
+  }, [isOpen, onClose]);
 
   if (!isOpen || !sale) return null;
 
@@ -162,11 +173,11 @@ export const InvoiceShareModal: React.FC<InvoiceShareModalProps> = ({
     openWhatsAppChatWithCaption(phoneToOpen);
   };
 
-  return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-2.5 sm:p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in">
-      <div className="bg-white rounded-2xl max-w-md w-full p-3.5 sm:p-5 shadow-2xl border border-slate-200 space-y-3.5 max-h-[92dvh] overflow-y-auto animate-in zoom-in-95">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+  return createPortal(
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
+      <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-md w-full max-h-[82dvh] flex flex-col overflow-hidden">
+        {/* Pinned Header */}
+        <div className="shrink-0 flex items-center justify-between border-b border-slate-200/70 px-3.5 py-2.5">
           <div className="flex items-center gap-2 min-w-0">
             <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
               <Share2 className="w-4 h-4" />
@@ -188,6 +199,9 @@ export const InvoiceShareModal: React.FC<InvoiceShareModalProps> = ({
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {/* Scrollable Body */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-3.5 py-3 space-y-3">
 
         {/* Step 1: Recipient Choice */}
         <div className="space-y-1.5">
@@ -333,8 +347,10 @@ export const InvoiceShareModal: React.FC<InvoiceShareModalProps> = ({
           </div>
         )}
 
-        {/* Action Buttons */}
-        <div className="pt-2 border-t border-slate-100 space-y-2">
+        </div>
+
+        {/* Pinned Action Buttons */}
+        <div className="shrink-0 px-3.5 py-2.5 border-t border-slate-200/70 bg-white/60 space-y-2">
           {format === 'text' ? (
             recipient === 'both' ? (
               <div className="grid grid-cols-2 gap-2">
@@ -422,6 +438,7 @@ export const InvoiceShareModal: React.FC<InvoiceShareModalProps> = ({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

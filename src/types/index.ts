@@ -219,6 +219,7 @@ export interface CartItem extends InventoryItem {
   selectedImeis?: string[];
   selectedVariantId?: string;
   selectedVariantLabel?: string;
+  customWholesalePrice?: number;
 }
 
 export type PaymentMethod =

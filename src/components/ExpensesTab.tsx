@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ExpenseItem } from '../types';
 import {
   Receipt,
@@ -49,6 +49,16 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [hideAmounts, setHideAmounts] = useState(false);
   const [zoomedImage, setZoomedImage] = useState<{ src: string; title: string } | null>(null);
+
+  useEffect(() => {
+    if (!zoomedImage || expenseToDelete) return;
+    const handleHardwareBack = (e: Event) => {
+      e.preventDefault();
+      setZoomedImage(null);
+    };
+    window.addEventListener('pos-hardware-back', handleHardwareBack);
+    return () => window.removeEventListener('pos-hardware-back', handleHardwareBack);
+  }, [zoomedImage, expenseToDelete]);
 
   const todayStr = useMemo(() => new Date().toISOString().substring(0, 10), []);
   const yesterdayStr = useMemo(() => new Date(Date.now() - 86400000).toISOString().substring(0, 10), []);
@@ -499,11 +509,11 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
       {zoomedImage && (
         <div
           onClick={() => setZoomedImage(null)}
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-xs animate-in fade-in"
+          className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop"
         >
           <div
             onClick={e => e.stopPropagation()}
-            className="bg-white rounded-2xl max-w-2xl w-full p-4 space-y-3 shadow-2xl animate-in zoom-in-95"
+            className="glass-modal-panel animate-modal-pop rounded-2xl max-w-2xl w-full p-4 space-y-3 max-h-[82dvh] flex flex-col overflow-hidden"
           >
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <h4 className="font-bold text-slate-900 text-sm truncate">{zoomedImage.title}</h4>

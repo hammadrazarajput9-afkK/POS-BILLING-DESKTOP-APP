@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { KhataCustomer } from '../types';
 import {
   X,
@@ -116,6 +116,17 @@ export const AddKhataModal: React.FC<AddKhataModalProps> = ({
   const [showMapPicker, setShowMapPicker] = useState(true);
   const [showGuarantor, setShowGuarantor] = useState(false);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleHardwareBack = (e: Event) => {
+      if (isCameraOpen) return;
+      e.preventDefault();
+      onClose();
+    };
+    window.addEventListener('pos-hardware-back', handleHardwareBack);
+    return () => window.removeEventListener('pos-hardware-back', handleHardwareBack);
+  }, [isOpen, isCameraOpen, onClose]);
+
   if (!isOpen) return null;
 
   const {
@@ -205,8 +216,8 @@ export const AddKhataModal: React.FC<AddKhataModalProps> = ({
 
   return (
     <>
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/65 backdrop-blur-xs animate-in fade-in overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl border border-slate-200 animate-in zoom-in-95 my-auto max-h-[94vh] flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
+      <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-2xl lg:max-w-3xl w-full my-auto max-h-[84dvh] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5 bg-slate-50/70 shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -638,6 +649,16 @@ export const SettleKhataModal: React.FC<SettleKhataModalProps> = ({
   const [amount, setAmount] = useState<number | ''>('');
   const [note, setNote] = useState('');
 
+  useEffect(() => {
+    if (!isOpen || !customer) return;
+    const handleHardwareBack = (e: Event) => {
+      e.preventDefault();
+      onClose();
+    };
+    window.addEventListener('pos-hardware-back', handleHardwareBack);
+    return () => window.removeEventListener('pos-hardware-back', handleHardwareBack);
+  }, [isOpen, customer, onClose]);
+
   if (!isOpen || !customer) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -668,8 +689,8 @@ export const SettleKhataModal: React.FC<SettleKhataModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-      <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-100 animate-in fade-in zoom-in-95">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
+      <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-md w-full p-5 sm:p-6 space-y-4 max-h-[82dvh] overflow-y-auto">
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
           <div>
             <h3 className="font-bold text-slate-900 text-sm">Update Khata Balance</h3>

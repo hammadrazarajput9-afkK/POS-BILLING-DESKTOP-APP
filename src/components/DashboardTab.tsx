@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { AppData } from '../types';
 import { FinancialChart } from './FinancialChart';
 import {
@@ -118,6 +118,24 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
   // Clickable Metric Box "All Details" Modal
   const [activeMetricDetail, setActiveMetricDetail] = useState<'profit' | 'expenses' | 'outflow' | 'stock' | 'credit' | null>(null);
   const [metricDetailSearch, setMetricDetailSearch] = useState('');
+
+  // Hardware/Navigation Back button interception for Dashboard drilldown & metric modals
+  useEffect(() => {
+    const handleHardwareBack = (e: Event) => {
+      if (is2faModalOpen) return;
+      if (activeMetricDetail) {
+        e.preventDefault();
+        setActiveMetricDetail(null);
+        return;
+      }
+      if (isDrilldownOpen) {
+        e.preventDefault();
+        setIsDrilldownOpen(false);
+      }
+    };
+    window.addEventListener('pos-hardware-back', handleHardwareBack);
+    return () => window.removeEventListener('pos-hardware-back', handleHardwareBack);
+  }, [is2faModalOpen, activeMetricDetail, isDrilldownOpen]);
 
   // Small Eye toggle to show / hide monetary balance values (persisted in localStorage)
   const [showBalance, setShowBalance] = useState<boolean>(() => {
@@ -560,7 +578,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
       <div className="space-y-2.5">
         <div className="flex items-center justify-between px-1">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
+            <span className="w-2 h-2 rounded-full bg-blue-600"></span>
             <h3 className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-slate-700 dark:text-neutral-200">
               Store Performance & Metrics
             </h3>
@@ -734,7 +752,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           >
             <div className="flex items-center justify-between mb-1 sm:mb-2">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 flex items-center gap-1 line-clamp-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse shrink-0"></span>
+                <span className="w-1.5 h-1.5 rounded-full bg-orange-500 shrink-0"></span>
                 <span className="truncate">Credit Issued</span>
               </span>
               <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-orange-50 dark:bg-orange-950/60 text-orange-600 dark:text-orange-400 flex items-center justify-center font-bold shrink-0 group-hover:scale-110 transition-transform duration-300">
@@ -797,7 +815,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
 
           {lowStockItems.length === 0 ? (
             <div className="text-center py-6 text-slate-400 text-xs space-y-1">
-              <CheckCircle2 className="w-8 h-8 mx-auto text-emerald-500 mb-1 animate-float" />
+              <CheckCircle2 className="w-8 h-8 mx-auto text-emerald-500 mb-1" />
               <p className="font-bold text-slate-700 dark:text-neutral-300">Stock Levels Healthy</p>
               <p className="text-[11px] text-slate-400 dark:text-neutral-500">
                 All inventory items have more than {threshold} available units
@@ -830,8 +848,8 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
       {/* INTERACTIVE CASH DRILL-DOWN LEDGER MODAL                  */}
       {/* ======================================================== */}
       {isDrilldownOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
-          <div className="bg-white rounded-2xl max-w-4xl w-full p-5 sm:p-6 shadow-2xl space-y-4 border border-slate-100 my-auto animate-scale-in max-h-[92vh] flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
+          <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-2xl lg:max-w-3xl w-full p-3.5 sm:p-5 space-y-3 my-auto max-h-[78dvh] sm:max-h-[82dvh] flex flex-col overflow-hidden">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
               <div className="flex items-center gap-2.5">
@@ -1097,8 +1115,8 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
         const meta = titleMap[activeMetricDetail];
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
-            <div className="bg-white rounded-2xl max-w-4xl w-full p-4 sm:p-6 shadow-2xl space-y-4 border border-slate-100 my-auto animate-scale-in max-h-[92vh] flex flex-col">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
+            <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-2xl lg:max-w-3xl w-full p-3.5 sm:p-5 space-y-3 my-auto max-h-[78dvh] sm:max-h-[82dvh] flex flex-col overflow-hidden">
               {/* Header */}
               <div className="flex items-start justify-between border-b border-slate-100 pb-3 shrink-0 gap-3">
                 <div>

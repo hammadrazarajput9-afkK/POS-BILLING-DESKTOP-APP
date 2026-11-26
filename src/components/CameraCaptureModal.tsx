@@ -95,6 +95,16 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     };
   }, [isOpen, facingMode]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleHardwareBack = (e: Event) => {
+      e.preventDefault();
+      onClose();
+    };
+    window.addEventListener('pos-hardware-back', handleHardwareBack);
+    return () => window.removeEventListener('pos-hardware-back', handleHardwareBack);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   // Toggle flashlight / torch
@@ -167,8 +177,8 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl flex flex-col text-white">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-2.5 sm:p-4 bg-slate-950/65 backdrop-blur-sm">
+      <div className="bg-slate-900 border border-slate-800 animate-modal-pop rounded-2xl max-w-lg w-full max-h-[85dvh] overflow-hidden shadow-2xl flex flex-col text-white">
         {/* Header */}
         <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">

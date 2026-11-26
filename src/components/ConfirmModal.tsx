@@ -22,11 +22,21 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   cancelText = 'Cancel',
   isDestructive = true,
 }) => {
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const handleHardwareBack = (e: Event) => {
+      e.preventDefault();
+      onClose();
+    };
+    window.addEventListener('pos-hardware-back', handleHardwareBack);
+    return () => window.removeEventListener('pos-hardware-back', handleHardwareBack);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-      <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl space-y-4 border border-slate-100 animate-in zoom-in-95">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 glass-modal-backdrop">
+      <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-sm w-full p-4 sm:p-5 space-y-4">
         <div className="flex items-start gap-3">
           <div
             className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${

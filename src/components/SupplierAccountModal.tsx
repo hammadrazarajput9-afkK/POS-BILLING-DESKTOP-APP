@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { SupplierPurchase } from '../types';
 import {
   ArrowLeft,
@@ -197,6 +197,23 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
       .filter(b => b.status !== 'REVERSED' && (b.balanceDue || 0) > 0)
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }, [bills]);
+
+  useEffect(() => {
+    if (!isOpen || !isSettleAccountOpen) {
+      delete document.body.dataset.supplierSettleOpen;
+      return;
+    }
+    document.body.dataset.supplierSettleOpen = '1';
+    const handleHardwareBack = (e: Event) => {
+      e.preventDefault();
+      setIsSettleAccountOpen(false);
+    };
+    window.addEventListener('pos-hardware-back', handleHardwareBack);
+    return () => {
+      delete document.body.dataset.supplierSettleOpen;
+      window.removeEventListener('pos-hardware-back', handleHardwareBack);
+    };
+  }, [isOpen, isSettleAccountOpen]);
 
   if (!isOpen || !account) return null;
 
@@ -850,8 +867,8 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
 
       {/* Account-Level Pay Supplier Due Modal (Distributes FIFO across oldest unpaid bills) */}
       {isSettleAccountOpen && isAdmin && (
-        <div className="fixed inset-0 z-[55] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-5 shadow-2xl space-y-4 border border-slate-100">
+        <div className="fixed inset-0 z-[55] flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
+          <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-md w-full p-4 sm:p-5 space-y-4 max-h-[82dvh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shrink-0">

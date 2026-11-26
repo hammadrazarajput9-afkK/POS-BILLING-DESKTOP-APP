@@ -567,6 +567,16 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     }
   };
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleHardwareBack = (e: Event) => {
+      e.preventDefault();
+      onClose();
+    };
+    window.addEventListener('pos-hardware-back', handleHardwareBack);
+    return () => window.removeEventListener('pos-hardware-back', handleHardwareBack);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const activeCameraLabel = selectedDeviceId
@@ -576,8 +586,8 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     : 'Front Cam';
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center p-2 sm:p-4 bg-slate-950/90 backdrop-blur-sm animate-in fade-in overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl sm:rounded-3xl max-w-md w-full overflow-hidden shadow-2xl flex flex-col text-white my-auto animate-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-2.5 sm:p-4 bg-slate-950/65 backdrop-blur-sm overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl sm:rounded-3xl max-w-md w-full overflow-hidden shadow-2xl flex flex-col text-white my-auto animate-modal-pop max-h-[85dvh]">
         {/* Hidden div for image file fallback decoding */}
         <div id="barcode-image-temp-reader" className="hidden" />
 

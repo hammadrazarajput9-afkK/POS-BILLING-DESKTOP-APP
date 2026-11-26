@@ -15,6 +15,7 @@ import {
   saveInventoryItemToFirestore,
   saveKhataCustomerToFirestore,
   saveImeiRecordsBatchToFirestore,
+  saveActivityLogToFirestore,
   saveRootConfigToFirestore,
   addTombstonesToMap,
   removeTombstoneFromMap,
@@ -601,6 +602,303 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
     showToast(`Invoice #${saleWithTs.invNo} updated!`, 'info');
   };
 
+  /**
+   * Non-destructive Atomic Invoice Replacement for Edited Bills:
+   * Restores old items/IMEIs/Khata & deducts updated items/IMEIs/Khata in one pass
+   * WITHOUT creating a CANCELLED invoice record if user backs out early.
+   */
+  const handleReplaceEditedSale = async (originalInvNo: string, updatedSale: SaleRecord) => {
+    const origSale = data.sales.find(s => s.invNo === originalInvNo);
+    if (!origSale || origSale.status === 'CANCELLED') {
+      await handleCompleteSale(updatedSale);
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const saleWithTs: SaleRecord = {
+      ...updatedSale,
+      invNo: originalInvNo,
+      date: origSale.date || updatedSale.date || now,
+      status: 'COMPLETED',
+      updatedAt: now,
+    };
+
+    // 1. Compute atomic inventory updates (restore origSale items, then apply updatedSale items)
+    const inventoryUpdates: Array<{
+      id: string;
+      newQty: number;
+      remainingImeis?: string[];
+      variants?: typeof data.inventory[number]['variants'];
+      updatedAt?: string;
+    }> = [];
+
+    const changedInventoryItems: typeof data.inventory = [];
+
+    const updatedInventory = data.inventory.map(invItem => {
+      const origLines = origSale.items.filter(si => si.id === invItem.id || si.name === invItem.name);
+      const newLines = saleWithTs.items.filter(si => si.id === invItem.id || si.name === invItem.name);
+      if (origLines.length === 0 && newLines.length === 0) return invItem;
+
+      const origQty = origLines.reduce((sum, si) => sum + (si.qty || 0), 0);
+      const newQty = newLines.reduce((sum, si) => sum + (si.qty || 0), 0);
+      const origImeis = origLines.flatMap(si => extractItemImeis(si));
+      const newImeis = newLines.flatMap(si => extractItemImeis(si));
+
+      const currentImeis = extractItemImeis(invItem);
+      const withRestoredImeis = Array.from(new Set([...currentImeis, ...origImeis]));
+      const remainingImeis = withRestoredImeis.filter(
+        im => !newImeis.some(nIm => nIm.toLowerCase() === im.toLowerCase())
+      );
+
+      let updatedVariants = invItem.variants;
+      if (invItem.variants && invItem.variants.length > 0) {
+        updatedVariants = invItem.variants.map(v => {
+          const origVLines = origLines.filter(si => si.variantId && v.id && si.variantId === v.id);
+          const newVLines = newLines.filter(si => si.variantId && v.id && si.variantId === v.id);
+          if (origVLines.length === 0 && newVLines.length === 0) return v;
+
+          const vOrigQty = origVLines.reduce((sum, si) => sum + (si.qty || 0), 0);
+          const vNewQty = newVLines.reduce((sum, si) => sum + (si.qty || 0), 0);
+          const vOrigImeis = origVLines.flatMap(si => extractItemImeis(si));
+          const vNewImeis = newVLines.flatMap(si => extractItemImeis(si));
+
+          const curVImeis = Array.isArray(v.imeis) ? v.imeis.filter(Boolean) : [];
+          const restoredVImeis = Array.from(new Set([...curVImeis, ...vOrigImeis]));
+          const nextVImeis = restoredVImeis.filter(
+            im =>
+              !vNewImeis.some(nIm => nIm.toLowerCase() === im.toLowerCase()) &&
+              !newImeis.some(nIm => nIm.toLowerCase() === im.toLowerCase())
+          );
+          const curVQty = v.qty === '' || v.qty === undefined ? curVImeis.length : Number(v.qty) || 0;
+          const nextVQty = Math.max(0, curVQty + vOrigQty - vNewQty);
+
+          return {
+            ...v,
+            qty: nextVQty,
+            imeis: nextVImeis,
+          };
+        });
+      }
+
+      const finalQty = Math.max(0, invItem.qty + origQty - newQty);
+      const nextItem = {
+        ...invItem,
+        qty: finalQty,
+        updatedAt: now,
+        imeis: remainingImeis.length > 0 ? remainingImeis : undefined,
+        imei: remainingImeis.length > 0 ? remainingImeis.join(', ') : undefined,
+        variants: updatedVariants,
+      };
+
+      inventoryUpdates.push({
+        id: invItem.id,
+        newQty: finalQty,
+        remainingImeis,
+        variants: updatedVariants,
+        updatedAt: now,
+      });
+      changedInventoryItems.push(nextItem);
+      return nextItem;
+    });
+
+    // 2. Revert original invoice IMEIs back to AVAILABLE, then mark updated invoice IMEIs SOLD
+    const revertedImeis = (data.imeiRecords || []).map(rec => {
+      const wasInOrigSale = origSale.items.some(si => {
+        const soldImeis = extractItemImeis(si);
+        return soldImeis.some(im => im.toLowerCase() === rec.imei.toLowerCase());
+      });
+      if (wasInOrigSale) {
+        return {
+          ...rec,
+          status: 'AVAILABLE' as const,
+          invoiceNo: undefined,
+          soldDate: undefined,
+          customerName: undefined,
+          customerPhone: undefined,
+          updatedAt: now,
+        };
+      }
+      return rec;
+    });
+
+    const updatedImeiRecords = recordImeisSold({
+      sale: saleWithTs,
+      existingImeiRecords: revertedImeis,
+      inventory: data.inventory,
+    });
+
+    // 3. Reconcile Khata ledger delta cleanly
+    let updatedKhata = [...data.khata];
+    const modifiedKhataIds = new Set<string>();
+    const origDue = origSale.invoiceType === 'credit' ? Math.max(0, origSale.amountDue || 0) : 0;
+    const newDue = saleWithTs.invoiceType === 'credit' ? Math.max(0, saleWithTs.amountDue || 0) : 0;
+
+    const findKhataCustomerIndex = (
+      list: KhataCustomer[],
+      custId?: string,
+      custName?: string,
+      custPhone?: string
+    ): number => {
+      if (custId) {
+        const idx = list.findIndex(c => c.id === custId);
+        if (idx !== -1) return idx;
+      }
+      const normPhone = (custPhone || '').replace(/[^0-9]/g, '');
+      const normName = (custName || '').trim().toLowerCase();
+      return list.findIndex(c => {
+        const cPhone = (c.phone || '').replace(/[^0-9]/g, '');
+        return (
+          (normName && c.name.trim().toLowerCase() === normName) ||
+          (normPhone.length >= 7 && cPhone === normPhone)
+        );
+      });
+    };
+
+    const origCustIdx = origDue > 0
+      ? findKhataCustomerIndex(updatedKhata, origSale.khataCustomerId, origSale.custName, origSale.custPhone)
+      : -1;
+    const newCustIdx = newDue > 0
+      ? findKhataCustomerIndex(updatedKhata, saleWithTs.khataCustomerId, saleWithTs.custName, saleWithTs.custPhone)
+      : -1;
+
+    let resolvedKhataCustomerId = saleWithTs.khataCustomerId;
+    if (origCustIdx !== -1 && origCustIdx === newCustIdx) {
+      const targetCust = updatedKhata[origCustIdx];
+      resolvedKhataCustomerId = targetCust.id;
+      const netDelta = newDue - origDue;
+      if (netDelta !== 0) {
+        const nextBal = Math.max(0, targetCust.balance + netDelta);
+        updatedKhata[origCustIdx] = {
+          ...targetCust,
+          balance: nextBal,
+          lastUpdated: now,
+          updatedAt: now,
+          history: [
+            {
+              id: generateEntityId('TX'),
+              date: now,
+              type: netDelta > 0 ? ('credit' as const) : ('debit' as const),
+              amount: Math.abs(netDelta),
+              note: `Invoice #${originalInvNo} Updated (Edited)`,
+            },
+            ...targetCust.history,
+          ],
+        };
+        modifiedKhataIds.add(targetCust.id);
+      }
+    } else {
+      if (origCustIdx !== -1 && origDue > 0) {
+        const prevCust = updatedKhata[origCustIdx];
+        updatedKhata[origCustIdx] = {
+          ...prevCust,
+          balance: Math.max(0, prevCust.balance - origDue),
+          lastUpdated: now,
+          updatedAt: now,
+          history: [
+            {
+              id: generateEntityId('TX'),
+              date: now,
+              type: 'debit' as const,
+              amount: origDue,
+              note: `Invoice #${originalInvNo} Edited (Reversed from old bill)`,
+            },
+            ...prevCust.history,
+          ],
+        };
+        modifiedKhataIds.add(prevCust.id);
+      }
+
+      if (newDue > 0) {
+        if (newCustIdx !== -1) {
+          const nextCust = updatedKhata[newCustIdx];
+          resolvedKhataCustomerId = nextCust.id;
+          updatedKhata[newCustIdx] = {
+            ...nextCust,
+            balance: nextCust.balance + newDue,
+            lastUpdated: now,
+            updatedAt: now,
+            history: [
+              {
+                id: generateEntityId('TX'),
+                date: now,
+                type: 'credit' as const,
+                amount: newDue,
+                note: `Invoice #${originalInvNo} Updated (${saleWithTs.items.length} items)`,
+              },
+              ...nextCust.history,
+            ],
+          };
+          modifiedKhataIds.add(nextCust.id);
+        } else if (saleWithTs.custName && saleWithTs.custName !== 'Walk-in Customer') {
+          const newCustId = saleWithTs.khataCustomerId || generateEntityId('KHT');
+          resolvedKhataCustomerId = newCustId;
+          const newCust: KhataCustomer = {
+            id: newCustId,
+            name: saleWithTs.custName,
+            phone: saleWithTs.custPhone || 'N/A',
+            balance: newDue,
+            lastUpdated: now,
+            updatedAt: now,
+            history: [
+              {
+                id: generateEntityId('TX'),
+                date: now,
+                type: 'credit',
+                amount: newDue,
+                note: `Invoice #${originalInvNo} Updated`,
+              },
+            ],
+          };
+          updatedKhata = [newCust, ...updatedKhata];
+          modifiedKhataIds.add(newCustId);
+        }
+      }
+    }
+
+    if (resolvedKhataCustomerId && !saleWithTs.khataCustomerId) {
+      saleWithTs.khataCustomerId = resolvedKhataCustomerId;
+    }
+
+    const activityData: ActivityLog = {
+      id: generateEntityId('ACT'),
+      timestamp: now,
+      updatedAt: now,
+      category: 'Sale',
+      title: `Edited Invoice #${originalInvNo}`,
+      details: `Total: ${data.settings.currency} ${saleWithTs.grandTotal.toLocaleString()} | Items: ${saleWithTs.items.length} | Customer: ${saleWithTs.custName || 'Walk-in'}`,
+      type: 'update',
+      user: data.currentRole === 'salesman' ? 'Salesman Terminal' : 'Administrator',
+      userRole: data.currentRole,
+      relatedRecordId: originalInvNo,
+    };
+
+    recordLocalSaleInJournal(saleWithTs, inventoryUpdates);
+
+    setData(prev => ({
+      ...prev,
+      lastModified: now,
+      inventory: updatedInventory,
+      khata: updatedKhata,
+      imeiRecords: updatedImeiRecords,
+      sales: prev.sales.map(s => (s.invNo === originalInvNo ? saleWithTs : s)),
+      activities: [activityData, ...(prev.activities || [])].slice(0, 500),
+    }));
+
+    setActiveReceiptSale(saleWithTs);
+    setReceiptModalOpen(true);
+    showToast(`Invoice #${originalInvNo} updated successfully!`, 'success');
+
+    updateSaleInFirestore(saleWithTs).catch(() => {});
+    changedInventoryItems.forEach(item => saveInventoryItemToFirestore(item).catch(() => {}));
+    modifiedKhataIds.forEach(kId => {
+      const cust = updatedKhata.find(c => c.id === kId);
+      if (cust) saveKhataCustomerToFirestore(cust).catch(() => {});
+    });
+    const changedImeis = diffChangedImeiRecords(data.imeiRecords || [], updatedImeiRecords);
+    if (changedImeis.length > 0) saveImeiRecordsBatchToFirestore(changedImeis).catch(() => {});
+    saveActivityLogToFirestore(activityData).catch(() => {});
+  };
+
   const handleOpenSalesReturn = (sale?: SaleRecord | null) => {
     setSalesReturnInitialSale(sale || null);
     setSalesReturnModalOpen(true);
@@ -904,6 +1202,7 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
     handleDeleteSale,
     handleCancelSale,
     handleUpdateSale,
+    handleReplaceEditedSale,
     handleOpenSalesReturn,
     handleSaveSalesReturn,
     receiptModalOpen,

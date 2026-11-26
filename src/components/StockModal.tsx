@@ -409,6 +409,18 @@ export const StockModal: React.FC<StockModalProps> = ({
     prevEditItemRef.current = editItem;
   }, [isOpen, editItem, categories]);
 
+  // Intercept hardware/navigation Back button while StockModal is topmost
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleHardwareBack = (e: Event) => {
+      if (isCameraOpen || barcodeScannerOpen) return;
+      e.preventDefault();
+      onClose();
+    };
+    window.addEventListener('pos-hardware-back', handleHardwareBack);
+    return () => window.removeEventListener('pos-hardware-back', handleHardwareBack);
+  }, [isOpen, isCameraOpen, barcodeScannerOpen, onClose]);
+
   // Debounced draft save to avoid freezing during high-speed barcode scanning
   const draftTimerRef = useRef<any>(null);
   useEffect(() => {
@@ -1414,10 +1426,10 @@ export const StockModal: React.FC<StockModalProps> = ({
 
   return (
     <>
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-1.5 sm:p-3 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-4xl w-full overflow-x-hidden p-2.5 sm:p-4 shadow-2xl space-y-2 sm:space-y-2.5 border border-slate-100 animate-in fade-in zoom-in-95 max-h-[95dvh] lg:max-h-[96vh] overflow-y-auto flex flex-col my-auto">
-        {/* Compact Header */}
-        <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2 shrink-0">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
+      <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-2xl lg:max-w-3xl w-full max-h-[82dvh] sm:max-h-[84dvh] flex flex-col overflow-hidden">
+        {/* Compact Pinned Header */}
+        <div className="flex items-center justify-between gap-2 border-b border-slate-200/70 px-3.5 py-2.5 sm:px-4 sm:py-3 shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold shadow-2xs shrink-0">
               {isMobile ? <Smartphone className="w-4 h-4 text-blue-600" /> : <Package className="w-4 h-4 text-blue-600" />}
@@ -1454,13 +1466,14 @@ export const StockModal: React.FC<StockModalProps> = ({
         </div>
 
         <form
+          id="stock-modal-form"
           onSubmit={handleSubmit}
           onKeyDown={e => {
             if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'BUTTON' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
               e.preventDefault();
             }
           }}
-          className="space-y-2 sm:space-y-2.5 text-xs"
+          className="flex-1 min-h-0 overflow-y-auto px-3 py-2.5 sm:px-4 sm:py-3 space-y-2.5 text-xs"
         >
           {/* Compact Top Section: Photo + Model Name + Category */}
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:gap-2.5 bg-slate-50/70 p-2 sm:p-2.5 rounded-xl border border-slate-200/80 items-end">
@@ -1673,7 +1686,7 @@ export const StockModal: React.FC<StockModalProps> = ({
               </div>
 
               {/* Variant Cards */}
-              <div className={`space-y-2 ${variants.length > 1 ? 'max-h-[44vh] overflow-y-auto pr-0.5' : ''}`}>
+              <div className="space-y-2">
                 {variants.map((v, vIdx) => {
                   const currentQty = Math.max(1, Number(v.qty) || 1);
                   const suggCost = getVariantPriceSuggestion(vIdx, 'costPrice');
@@ -2055,50 +2068,6 @@ export const StockModal: React.FC<StockModalProps> = ({
                   );
                 })}
               </div>
-
-              {/* Combined Compact Batch Summary & Action Bar */}
-              <div className="bg-slate-900 text-white rounded-xl px-2.5 py-2 sm:px-3 sm:py-2.5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 shadow-sm">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]">
-                  <span className="font-bold text-amber-400 flex items-center gap-1 tabular-nums">
-                    <Sparkles className="w-3.5 h-3.5" />
-                    {totalVariantsCount} {totalVariantsCount === 1 ? 'Var' : 'Vars'} • {totalVariantsQty} Units
-                  </span>
-                  {canSeeCostAndWholesale && (
-                    <span className="text-slate-300 tabular-nums">
-                      Cost: <strong className="text-white">{currency} {totalVariantsCost.toLocaleString()}</strong>
-                    </span>
-                  )}
-                  <span className="text-slate-300 tabular-nums">
-                    Sale: <strong className="text-emerald-400">{currency} {totalVariantsSale.toLocaleString()}</strong>
-                  </span>
-                  {canSeeProfitSummary && (
-                    <span className="text-slate-300 tabular-nums">
-                      Profit: <strong className="text-blue-400">+{currency} {totalVariantsProfit.toLocaleString()}</strong>
-                    </span>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 sm:flex items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={handleExplicitCancel}
-                    className="h-9 px-3.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition cursor-pointer flex items-center justify-center"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSubmit()}
-                    className="h-9 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition cursor-pointer flex items-center justify-center gap-1.5"
-                  >
-                    <Check className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">
-                      {editItem
-                        ? 'Save Changes'
-                        : `Add ${variants.length > 1 ? `${variants.length} Vars` : 'Mobile'}`}
-                    </span>
-                  </button>
-                </div>
-              </div>
             </div>
           ) : (
             /* ========================================================= */
@@ -2321,32 +2290,80 @@ export const StockModal: React.FC<StockModalProps> = ({
                 </div>
               )}
 
-              {/* Compact Footer for Single / Non-Mobile / Edit Mode */}
-              <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 border-t border-slate-100">
-                <div className="text-[10px] sm:text-[11px] text-slate-400 hidden sm:block">
-                  All changes sync automatically with activity logging
-                </div>
-                <div className="grid grid-cols-2 sm:flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleExplicitCancel}
-                    className="h-9 px-4 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-xs transition cursor-pointer flex items-center justify-center"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSubmit()}
-                    className="h-9 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm shadow-blue-500/20 transition cursor-pointer flex items-center justify-center gap-1.5"
-                  >
-                    <Check className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">{editItem ? 'Save Changes' : 'Add to Inventory'}</span>
-                  </button>
-                </div>
-              </div>
             </div>
           )}
         </form>
+
+        {/* Pinned Bottom Summary & Action Bar */}
+        <div className="px-3 py-2.5 sm:px-4 sm:py-3 border-t border-slate-200/80 bg-white/85 dark:bg-black/80 backdrop-blur-xs shrink-0">
+          {showVariantMode ? (
+            <div className="bg-slate-900 text-white rounded-xl px-2.5 py-2 sm:px-3 sm:py-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 shadow-sm">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]">
+                <span className="font-bold text-amber-400 flex items-center gap-1 tabular-nums">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  {totalVariantsCount} {totalVariantsCount === 1 ? 'Var' : 'Vars'} • {totalVariantsQty} Units
+                </span>
+                {canSeeCostAndWholesale && (
+                  <span className="text-slate-300 tabular-nums">
+                    Cost: <strong className="text-white">{currency} {totalVariantsCost.toLocaleString()}</strong>
+                  </span>
+                )}
+                <span className="text-slate-300 tabular-nums">
+                  Sale: <strong className="text-emerald-400">{currency} {totalVariantsSale.toLocaleString()}</strong>
+                </span>
+                {canSeeProfitSummary && (
+                  <span className="text-slate-300 tabular-nums">
+                    Profit: <strong className="text-blue-400">+{currency} {totalVariantsProfit.toLocaleString()}</strong>
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-2 sm:flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleExplicitCancel}
+                  className="h-9 px-3.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition cursor-pointer flex items-center justify-center"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSubmit()}
+                  className="h-9 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <Check className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">
+                    {editItem
+                      ? 'Save Changes'
+                      : `Add ${variants.length > 1 ? `${variants.length} Vars` : 'Mobile'}`}
+                  </span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+              <div className="text-[10px] sm:text-[11px] text-slate-500 hidden sm:block font-medium">
+                All changes sync automatically with activity logging
+              </div>
+              <div className="grid grid-cols-2 sm:flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleExplicitCancel}
+                  className="h-9 px-4 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition cursor-pointer flex items-center justify-center"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSubmit()}
+                  className="h-9 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm shadow-blue-500/20 transition cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <Check className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">{editItem ? 'Save Changes' : 'Add to Inventory'}</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
 

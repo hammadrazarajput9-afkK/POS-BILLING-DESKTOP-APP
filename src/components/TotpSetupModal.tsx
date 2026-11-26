@@ -52,6 +52,16 @@ export const TotpSetupModal: React.FC<TotpSetupModalProps> = ({
     }
   }, [isOpen, existingSecret, adminEmail]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleHardwareBack = (e: Event) => {
+      e.preventDefault();
+      onClose();
+    };
+    window.addEventListener('pos-hardware-back', handleHardwareBack);
+    return () => window.removeEventListener('pos-hardware-back', handleHardwareBack);
+  }, [isOpen, onClose]);
+
   const loadSetupData = async (secretToUse?: string) => {
     setIsGenerating(true);
     try {
@@ -107,8 +117,8 @@ export const TotpSetupModal: React.FC<TotpSetupModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-[65] flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
+      <div className="relative w-full max-w-md glass-modal-panel animate-modal-pop rounded-2xl overflow-hidden flex flex-col max-h-[84dvh]">
         {/* Header */}
         <div className="bg-gradient-to-r from-indigo-700 via-indigo-600 to-violet-700 px-6 py-5 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">

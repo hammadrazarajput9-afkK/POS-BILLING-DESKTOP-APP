@@ -125,6 +125,22 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
   const [historyFilter, setHistoryFilter] = useState<'all' | 'daily' | 'weekly' | 'monthly' | 'yearly'>('all');
   const [filterDate, setFilterDate] = useState<string>('');
 
+  useEffect(() => {
+    if (!isAccountModalOpen && !selectedHistoryRecord) return;
+    const handleHardwareBack = (e: Event) => {
+      if (accountToDelete || closingToDelete) return;
+      if (isAccountModalOpen) {
+        e.preventDefault();
+        setIsAccountModalOpen(false);
+      } else if (selectedHistoryRecord) {
+        e.preventDefault();
+        setSelectedHistoryRecord(null);
+      }
+    };
+    window.addEventListener('pos-hardware-back', handleHardwareBack);
+    return () => window.removeEventListener('pos-hardware-back', handleHardwareBack);
+  }, [isAccountModalOpen, selectedHistoryRecord, accountToDelete, closingToDelete]);
+
   // 1. Existing committed closing check for active business date
   const existingClosingForActiveDate = useMemo(() => {
     return (data.dailyClosings || []).find(r => r.date === activeDate);
@@ -1479,11 +1495,11 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
       {isAccountModalOpen && (
         <div
           onClick={() => setIsAccountModalOpen(false)}
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in"
+          className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop"
         >
           <div
             onClick={e => e.stopPropagation()}
-            className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-100 p-4 sm:p-5 space-y-4 animate-in zoom-in-95"
+            className="glass-modal-panel animate-modal-pop rounded-2xl max-w-md w-full p-4 sm:p-5 space-y-4 max-h-[82dvh] overflow-y-auto"
           >
             <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
               <h3 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
@@ -1581,11 +1597,11 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
       {selectedHistoryRecord && (
         <div
           onClick={() => setSelectedHistoryRecord(null)}
-          className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in overflow-y-auto"
+          className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop"
         >
           <div
             onClick={e => e.stopPropagation()}
-            className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-100 p-4 sm:p-5 space-y-4 max-h-[90vh] overflow-y-auto my-auto"
+            className="glass-modal-panel animate-modal-pop rounded-2xl max-w-2xl w-full p-4 sm:p-5 space-y-4 max-h-[82dvh] overflow-y-auto my-auto"
           >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="min-w-0">

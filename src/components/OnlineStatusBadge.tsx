@@ -76,6 +76,16 @@ export const OnlineStatusBadge: React.FC<OnlineStatusBadgeProps> = ({
     }
   }, [detailsOpen]);
 
+  useEffect(() => {
+    if (!detailsOpen) return;
+    const handleHardwareBack = (e: Event) => {
+      e.preventDefault();
+      setDetailsOpen(false);
+    };
+    window.addEventListener('pos-hardware-back', handleHardwareBack);
+    return () => window.removeEventListener('pos-hardware-back', handleHardwareBack);
+  }, [detailsOpen]);
+
   const handleRetryNow = async () => {
     if (retrying) return;
     setRetrying(true);
@@ -201,11 +211,11 @@ export const OnlineStatusBadge: React.FC<OnlineStatusBadgeProps> = ({
 
       {detailsOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto"
+          className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop"
           onClick={() => setDetailsOpen(false)}
         >
           <div
-            className="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl space-y-4 border border-slate-100 my-auto max-h-[90vh] flex flex-col"
+            className="glass-modal-panel animate-modal-pop rounded-2xl max-w-lg w-full p-4 sm:p-5 space-y-3.5 my-auto max-h-[82dvh] flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">

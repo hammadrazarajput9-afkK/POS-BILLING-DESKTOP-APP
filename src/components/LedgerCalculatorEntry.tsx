@@ -99,6 +99,17 @@ export const LedgerCalculatorEntry: React.FC<LedgerCalculatorEntryProps> = ({
   const computedAmount = useMemo(() => evaluateCalculatorExpression(expression), [expression]);
   const hasOperators = /[+\-×÷*/%]/.test(expression.replace(/^-/, ''));
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleHardwareBack = (e: Event) => {
+      if (isCameraOpen) return;
+      e.preventDefault();
+      onClose();
+    };
+    window.addEventListener('pos-hardware-back', handleHardwareBack);
+    return () => window.removeEventListener('pos-hardware-back', handleHardwareBack);
+  }, [isOpen, isCameraOpen, onClose]);
+
   if (!isOpen) return null;
 
   const isGave = entryType === 'credit';

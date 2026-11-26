@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Menu,
   Plus,
@@ -55,6 +55,16 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [logoError, setLogoError] = useState(false);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const handleHardwareBack = (e: Event) => {
+      e.preventDefault();
+      setMobileMenuOpen(false);
+    };
+    window.addEventListener('pos-hardware-back', handleHardwareBack);
+    return () => window.removeEventListener('pos-hardware-back', handleHardwareBack);
+  }, [mobileMenuOpen]);
 
   const titles: Record<string, { title: string; shortTitle: string; subtitle: string }> = {
     home: { title: 'Quick Menu', shortTitle: 'Home Menu', subtitle: 'Select a module to get started' },

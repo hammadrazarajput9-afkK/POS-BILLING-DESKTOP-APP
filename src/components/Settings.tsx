@@ -179,6 +179,42 @@ export const Settings: React.FC<SettingsProps> = ({
     });
   }, [fullData.users, fullData.currentUser, currentStoreId]);
 
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const handleHardwareBack = (e: Event) => {
+      if (cameraModalConfig.isOpen || isTotpSetupOpen) return;
+      if (userToDelete) {
+        e.preventDefault();
+        setUserToDelete(null);
+        return;
+      }
+      if (showSalesmanPassModal) {
+        e.preventDefault();
+        setShowSalesmanPassModal(false);
+        setSalesmanForPasswordChange(null);
+        return;
+      }
+      if (isRestoreConfirmOpen) {
+        e.preventDefault();
+        setIsRestoreConfirmOpen(false);
+        setPendingRestoreData(null);
+        return;
+      }
+      e.preventDefault();
+      onClose();
+    };
+    window.addEventListener('pos-hardware-back', handleHardwareBack);
+    return () => window.removeEventListener('pos-hardware-back', handleHardwareBack);
+  }, [
+    isOpen,
+    cameraModalConfig.isOpen,
+    isTotpSetupOpen,
+    userToDelete,
+    showSalesmanPassModal,
+    isRestoreConfirmOpen,
+    onClose,
+  ]);
+
   if (!isOpen) return null;
 
   // Handle Logo Upload (Base64 conversion)
@@ -620,8 +656,8 @@ export const Settings: React.FC<SettingsProps> = ({
 
   return (
     <>
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-1.5 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-white rounded-xl sm:rounded-2xl max-w-2xl w-full p-3 sm:p-6 shadow-2xl space-y-3 sm:space-y-4 border border-slate-100 my-auto animate-in fade-in zoom-in-95 max-h-[95dvh] sm:max-h-[92vh] flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
+      <div className="glass-modal-panel animate-modal-pop rounded-xl sm:rounded-2xl max-w-2xl w-full p-3.5 sm:p-5 space-y-3 sm:space-y-4 my-auto max-h-[82dvh] sm:max-h-[85dvh] flex flex-col overflow-hidden">
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-slate-100 pb-2 sm:pb-3 shrink-0">
           <div className="flex items-center gap-2">
@@ -1920,8 +1956,8 @@ export const Settings: React.FC<SettingsProps> = ({
 
       {/* Safe Pre-Restore Verification Modal */}
       {isRestoreConfirmOpen && pendingRestoreData && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-xl w-full p-5 sm:p-6 shadow-2xl space-y-4 border border-slate-100 my-auto animate-in fade-in zoom-in-95 max-h-[92vh] flex flex-col">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
+          <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-xl w-full p-4 sm:p-5 space-y-3.5 my-auto max-h-[82dvh] flex flex-col overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
               <div className="flex items-center gap-2">
                 <div className="p-2 bg-blue-600 text-white rounded-xl shadow-md shadow-blue-500/20">
@@ -2083,8 +2119,8 @@ export const Settings: React.FC<SettingsProps> = ({
 
       {/* Modal: Change Salesman Password */}
       {showSalesmanPassModal && salesmanForPasswordChange && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 my-auto animate-in zoom-in-95">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-4 glass-modal-backdrop">
+          <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-md w-full p-4 sm:p-5 space-y-3.5 my-auto max-h-[82dvh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 bg-amber-50 text-amber-700 border border-amber-200/80 rounded-xl">
@@ -2172,8 +2208,8 @@ export const Settings: React.FC<SettingsProps> = ({
 
       {/* Modal: Confirm Delete User (Iframe Safe) */}
       {userToDelete && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-100 space-y-4 my-auto animate-in zoom-in-95 text-center">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-4 glass-modal-backdrop">
+          <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-sm w-full p-5 space-y-4 my-auto text-center">
             <div className="w-12 h-12 bg-rose-50 border border-rose-200 text-rose-600 rounded-full flex items-center justify-center mx-auto">
               <Trash2 className="w-6 h-6" />
             </div>

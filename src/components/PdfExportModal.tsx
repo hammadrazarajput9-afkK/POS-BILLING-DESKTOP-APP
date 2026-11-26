@@ -66,6 +66,16 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
     }
   }, [isOpen, initialCategory]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleHardwareBack = (e: Event) => {
+      e.preventDefault();
+      onClose();
+    };
+    window.addEventListener('pos-hardware-back', handleHardwareBack);
+    return () => window.removeEventListener('pos-hardware-back', handleHardwareBack);
+  }, [isOpen, onClose]);
+
   const dateFilter: DateFilterRange = useMemo(
     () => ({
       type: filterType,
@@ -301,8 +311,8 @@ export const PdfExportModal: React.FC<PdfExportModalProps> = ({
   const totalStoreUnits = (data.inventory || []).reduce((acc, i) => acc + (Number(i.qty) || 0), 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-lg w-full max-w-full overflow-x-hidden p-3.5 sm:p-6 shadow-2xl space-y-4 sm:space-y-5 border border-slate-100 animate-in zoom-in-95 my-auto max-h-[92vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
+      <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-lg w-full max-w-full overflow-x-hidden p-4 sm:p-5 space-y-3.5 my-auto max-h-[82dvh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { AppData, SaleRecord, InventoryItem, ExpenseItem, KhataCustomer } from '../types';
 import {
   TrendingUp,
@@ -76,6 +76,21 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
   const [dateFilterMode, setDateFilterMode] = useState<DateFilterMode>('all');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
+
+  useEffect(() => {
+    if (!deleteSaleModal && !activeReportModal) return;
+    const handleHardwareBack = (e: Event) => {
+      if (deleteSaleModal) {
+        e.preventDefault();
+        setDeleteSaleModal(null);
+      } else if (activeReportModal) {
+        e.preventDefault();
+        setActiveReportModal(null);
+      }
+    };
+    window.addEventListener('pos-hardware-back', handleHardwareBack);
+    return () => window.removeEventListener('pos-hardware-back', handleHardwareBack);
+  }, [deleteSaleModal, activeReportModal]);
 
   // Date In Range Checker
   const isDateInRange = (dateStr?: string) => {
@@ -1017,8 +1032,8 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
 
       {/* DETAIL REPORT MODAL & PRINTABLE PDF AREA */}
       {activeReportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in overflow-y-auto">
-          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-4xl w-full max-w-full overflow-x-hidden p-3 sm:p-6 shadow-2xl space-y-4 border border-slate-100 animate-in zoom-in-95 max-h-[92dvh] lg:max-h-[92vh] flex flex-col my-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
+          <div className="glass-modal-panel animate-modal-pop rounded-2xl sm:rounded-3xl max-w-4xl w-full max-w-full overflow-x-hidden p-3 sm:p-5 space-y-4 max-h-[84dvh] flex flex-col my-auto overflow-hidden">
             {/* Modal Header */}
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 items-stretch sm:items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center justify-between sm:justify-start gap-2.5 min-w-0">
@@ -1867,8 +1882,8 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
 
       {/* Delete / Void Confirmation Modal */}
       {deleteSaleModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 border border-slate-100 animate-in zoom-in-95">
+        <div className="fixed inset-0 z-[55] flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
+          <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-md w-full p-4 sm:p-5 space-y-4 max-h-[82dvh] overflow-y-auto">
             <div className="flex items-start justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">

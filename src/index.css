@@ -1092,22 +1092,22 @@ body,
 }
 
 .animate-tab-enter {
-  animation: tabEnter 0.2s ease-out;
+  animation: tabEnter 0.16s ease-out;
 }
 
 .animate-card-in {
-  animation: fadeInUp 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: fadeInUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.animate-stagger-1 { animation-delay: 40ms; }
-.animate-stagger-2 { animation-delay: 90ms; }
-.animate-stagger-3 { animation-delay: 140ms; }
-.animate-stagger-4 { animation-delay: 190ms; }
-.animate-stagger-5 { animation-delay: 240ms; }
-.animate-stagger-6 { animation-delay: 290ms; }
+.animate-stagger-1 { animation-delay: 20ms; }
+.animate-stagger-2 { animation-delay: 45ms; }
+.animate-stagger-3 { animation-delay: 70ms; }
+.animate-stagger-4 { animation-delay: 95ms; }
+.animate-stagger-5 { animation-delay: 120ms; }
+.animate-stagger-6 { animation-delay: 145ms; }
 
 .animate-ambient-glow {
-  animation: ambientBreathe 7s ease-in-out infinite;
+  opacity: 0.75;
 }
 
 .dashboard-hero-card {
@@ -1116,19 +1116,15 @@ body,
   box-shadow:
     0 20px 40px -18px rgba(15, 23, 42, 0.45),
     inset 0 1px 0 rgba(255, 255, 255, 0.09);
-  transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .dashboard-hero-card::before {
   content: '';
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 45%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.055), transparent);
+  inset: 0;
+  background: radial-gradient(circle at 18% 0%, rgba(255, 255, 255, 0.06), transparent 55%);
   pointer-events: none;
-  animation: heroSheen 9s ease-in-out infinite;
 }
 
 .theme-active-pill {
@@ -1391,7 +1387,61 @@ button:not(:disabled):active {
 }
 
 .animate-float {
-  animation: floatBounce 2.5s ease-in-out infinite;
+  transform: none;
+}
+
+@keyframes modalPopIn {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-modal-pop {
+  animation: modalPopIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.glass-modal-backdrop {
+  background-color: rgba(15, 23, 42, 0.24);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  overscroll-behavior: contain;
+}
+
+.glass-modal-panel {
+  background-color: rgba(255, 255, 255, 0.90) !important;
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  box-shadow:
+    0 24px 48px -12px rgba(15, 23, 42, 0.16),
+    0 0 0 1px rgba(148, 163, 184, 0.12);
+}
+
+[data-theme="dark"] .glass-modal-backdrop,
+.dark .glass-modal-backdrop {
+  background-color: rgba(0, 0, 0, 0.56);
+}
+
+[data-theme="dark"] .glass-modal-panel,
+.dark .glass-modal-panel {
+  background-color: rgba(12, 12, 14, 0.94) !important;
+  border: 1px solid #26262a !important;
+  box-shadow: none !important;
+}
+
+[data-theme="gold-black"] .glass-modal-backdrop {
+  background-color: rgba(0, 0, 0, 0.56);
+}
+
+[data-theme="gold-black"] .glass-modal-panel {
+  background-color: rgba(18, 18, 23, 0.94) !important;
+  border: 1px solid #3f3319 !important;
 }
 
 .safe-pb {
@@ -1399,38 +1449,18 @@ button:not(:disabled):active {
 }
 
 .mobile-bottom-sheet {
-  @apply fixed inset-x-0 bottom-0 rounded-t-3xl max-h-[90dvh] overflow-y-auto z-50 sm:relative sm:inset-auto sm:rounded-2xl shadow-2xl;
+  @apply fixed inset-x-0 bottom-0 rounded-t-3xl max-h-[82dvh] overflow-y-auto z-50 sm:relative sm:inset-auto sm:rounded-2xl shadow-2xl;
 }
 
 .mobile-glass-dock {
   backdrop-filter: blur(16px);
-  background-color: rgba(255, 255, 255, 0.85);
+  background-color: rgba(255, 255, 255, 0.88);
   border-top: 1px solid rgba(226, 232, 240, 0.8);
 }
 
 .touch-target {
   min-height: 44px;
   min-width: 44px;
-}
-@keyframes tactilePop {
-  0% {
-    transform: scale(1);
-  }
-  40% {
-    transform: scale(0.93);
-  }
-  75% {
-    transform: scale(1.04);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-.animate-pop:active,
-button:active:not(:disabled),
-.interactive-card:active {
-  animation: tactilePop 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
 @media (max-width: 1023px) {
@@ -1442,7 +1472,7 @@ button:active:not(:disabled),
   .compact-mobile-input {
     font-size: 12px !important;
   }
-  [role="dialog"], .mobile-bottom-sheet {
+  [role="dialog"], .mobile-bottom-sheet, .glass-modal-panel {
     overscroll-behavior: contain;
   }
 }

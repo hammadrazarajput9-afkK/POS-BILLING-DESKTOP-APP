@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { SaleRecord, ShopSettings } from '../types';
 import {
   Printer,
@@ -73,6 +74,20 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
       if (existing) existing.remove();
     };
   }, [isOpen, printFormat]);
+
+  useEffect(() => {
+    if (!isOpen || isShareModalOpen) return;
+    const handleHardwareBack = (e: Event) => {
+      e.preventDefault();
+      if (deleteConfirmOpen) {
+        setDeleteConfirmOpen(false);
+      } else {
+        onClose();
+      }
+    };
+    window.addEventListener('pos-hardware-back', handleHardwareBack);
+    return () => window.removeEventListener('pos-hardware-back', handleHardwareBack);
+  }, [isOpen, isShareModalOpen, deleteConfirmOpen, onClose]);
 
   if (!isOpen || !sale) return null;
 
@@ -199,7 +214,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   return (
     <div
       id="invoice-modal-backdrop"
-      className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-start sm:items-center justify-center p-1.5 sm:p-3 overflow-y-auto print:static print:block print:p-0 print:bg-white print:overflow-visible"
+      className="fixed inset-0 z-50 glass-modal-backdrop flex items-start sm:items-center justify-center p-1.5 sm:p-3 overflow-y-auto print:static print:block print:p-0 print:bg-white print:overflow-visible"
     >
       {/* ============================================================== */}
       {/* PRINT-ONLY AREA (True 80mm / 58mm / A4 layout)                 */}
@@ -414,7 +429,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
       {/* SCREEN MODAL (Zero Inner Scroll, Full Clean Screen Layout)     */}
       {/* ============================================================== */}
       <div
-        className={`print:hidden bg-white rounded-2xl w-full p-2.5 sm:p-4 shadow-2xl space-y-2.5 border border-slate-200 my-auto animate-in fade-in zoom-in-95 ${
+        className={`print:hidden glass-modal-panel animate-modal-pop rounded-2xl w-full p-2.5 sm:p-4 space-y-2.5 my-auto ${
           isA4 ? 'max-w-4xl' : 'max-w-2xl'
         }`}
       >
@@ -927,10 +942,11 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
         onClose={() => setIsShareModalOpen(false)}
       />
 
-      {/* Delete / Void confirmation dialog inside InvoiceModal */}
-      {deleteConfirmOpen && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl space-y-4 border border-slate-100 animate-in zoom-in-95">
+      {/* Delete / Void confirmation dialog inside InvoiceModal (Portaled so centered cleanly) */}
+      {deleteConfirmOpen &&
+        createPortal(
+          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 glass-modal-backdrop">
+            <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-sm w-full p-4 sm:p-5 space-y-3.5">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
                 <Trash2 className="w-5 h-5" />
@@ -1006,7 +1022,8 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

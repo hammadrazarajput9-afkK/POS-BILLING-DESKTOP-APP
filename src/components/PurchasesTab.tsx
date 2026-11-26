@@ -204,6 +204,57 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
   const [reversedBy, setReversedBy] = useState<string>('Admin');
   const [zoomImage, setZoomImage] = useState<string | null>(null);
 
+  // Intercept hardware/navigation Back button for topmost PurchasesTab modals
+  useEffect(() => {
+    const handleHardwareBack = (e: Event) => {
+      if (isSearchScannerOpen || isScannerModalOpen || isStockModalOpen || purchaseToDelete) return;
+      if (document.body.dataset.supplierSettleOpen === '1') return;
+      if (zoomImage) {
+        e.preventDefault();
+        setZoomImage(null);
+        return;
+      }
+      if (purchaseToReverse) {
+        e.preventDefault();
+        setPurchaseToReverse(null);
+        return;
+      }
+      if (selectedPurchaseForSettlement) {
+        e.preventDefault();
+        setSelectedPurchaseForSettlement(null);
+        return;
+      }
+      if (selectedPurchaseForView) {
+        e.preventDefault();
+        setSelectedPurchaseForView(null);
+        return;
+      }
+      if (isAddModalOpen) {
+        e.preventDefault();
+        setIsAddModalOpen(false);
+        setEditingPurchaseId(null);
+        return;
+      }
+      if (activeSupplierKey) {
+        e.preventDefault();
+        setActiveSupplierKey(null);
+      }
+    };
+    window.addEventListener('pos-hardware-back', handleHardwareBack);
+    return () => window.removeEventListener('pos-hardware-back', handleHardwareBack);
+  }, [
+    isSearchScannerOpen,
+    isScannerModalOpen,
+    isStockModalOpen,
+    purchaseToDelete,
+    zoomImage,
+    purchaseToReverse,
+    selectedPurchaseForSettlement,
+    selectedPurchaseForView,
+    isAddModalOpen,
+    activeSupplierKey,
+  ]);
+
   const fallbackPdfData: AppData = useMemo(
     () =>
       appData || {
@@ -1965,16 +2016,16 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
       {/* ADD PURCHASE / STOCK INWARD MODAL */}
       {/* ========================================================= */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-4xl w-full p-3 sm:p-6 shadow-2xl space-y-3.5 sm:space-y-5 border border-slate-100 my-auto animate-in fade-in zoom-in-95 max-h-[94dvh] lg:max-h-[92vh] flex flex-col">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-blue-600 text-white rounded-xl shadow-md">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
+          <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-2xl lg:max-w-3xl w-full max-h-[82dvh] sm:max-h-[85dvh] flex flex-col overflow-hidden">
+            {/* Compact Pinned Header */}
+            <div className="flex items-center justify-between border-b border-slate-200/70 px-3.5 py-2.5 sm:px-5 sm:py-3 shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-2 bg-blue-600 text-white rounded-xl shadow-md shrink-0">
                   <Truck className="w-4 h-4" />
                 </div>
-                <div>
-                  <h3 className="font-extrabold text-slate-900 text-sm sm:text-base">
+                <div className="min-w-0">
+                  <h3 className="font-extrabold text-slate-900 text-xs sm:text-sm truncate">
                     {editingPurchaseId
                       ? isAdmin
                         ? `Edit Purchase / Inward Bill #${billNo}`
@@ -1983,7 +2034,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                       ? 'Record Supplier Purchase / Stock Inward'
                       : 'Record Stock Inward'}
                   </h3>
-                  <p className="text-[11px] text-slate-400">
+                  <p className="text-[10px] sm:text-[11px] text-slate-500 truncate">
                     {editingPurchaseId
                       ? isAdmin
                         ? 'Update party details, items, IMEIs, prices or payment status and sync inventory'
@@ -1995,7 +2046,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 {!editingPurchaseId && hasDraft && (
                   <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-[10px] font-bold">
                     <Sparkles className="w-3 h-3 text-amber-500" />
@@ -2026,15 +2077,16 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                     setIsAddModalOpen(false);
                     setEditingPurchaseId(null);
                   }}
-                  className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                  className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="w-4 h-4 sm:w-5 sm:h-5" />
                 </button>
               </div>
             </div>
 
             {/* Scrollable Form Body */}
             <form
+              id="stock-inward-form"
               onSubmit={handleSubmitPurchase}
               onKeyDown={e => {
                 if (
@@ -2045,7 +2097,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                   e.preventDefault();
                 }
               }}
-              className="overflow-y-auto pr-1 flex-1 space-y-5"
+              className="overflow-y-auto px-3.5 py-3 sm:px-5 sm:py-3.5 flex-1 min-h-0 space-y-3.5"
             >
               {/* Row 1: Supplier & Bill Meta */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 bg-slate-50/70 p-3.5 rounded-xl border border-slate-200">
@@ -2788,37 +2840,39 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex items-center justify-between pt-2">
+            </form>
+
+            {/* Pinned Bottom Action Bar */}
+            <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 sm:px-5 sm:py-3 border-t border-slate-200/80 bg-white/85 dark:bg-black/80 backdrop-blur-xs shrink-0">
+              <button
+                type="button"
+                onClick={clearDraft}
+                className="px-3 py-2 text-slate-500 hover:text-rose-600 text-xs font-bold transition cursor-pointer"
+              >
+                Clear Form
+              </button>
+
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={clearDraft}
-                  className="px-3 py-2 text-slate-400 hover:text-rose-600 text-xs font-bold transition cursor-pointer"
+                  onClick={() => {
+                    setIsAddModalOpen(false);
+                    setEditingPurchaseId(null);
+                  }}
+                  className="px-4 py-2 border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 text-xs font-bold rounded-xl transition cursor-pointer"
                 >
-                  Clear Form
+                  Cancel
                 </button>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsAddModalOpen(false);
-                      setEditingPurchaseId(null);
-                    }}
-                    className="px-4 py-2 border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold rounded-xl transition cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-
-                  <button
-                    type="submit"
-                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold rounded-xl shadow-lg shadow-blue-600/25 transition cursor-pointer"
-                  >
-                    {editingPurchaseId ? 'Update Inward Bill' : 'Save Inward Bill'}
-                  </button>
-                </div>
+                <button
+                  type="submit"
+                  form="stock-inward-form"
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold rounded-xl shadow-md shadow-blue-600/20 transition cursor-pointer"
+                >
+                  {editingPurchaseId ? 'Update Inward Bill' : 'Save Inward Bill'}
+                </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}
@@ -2827,9 +2881,9 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
       {/* VIEW PURCHASE DETAIL MODAL */}
       {/* ========================================================= */}
       {selectedPurchaseForView && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-5 sm:p-6 shadow-2xl space-y-4 border border-slate-100 my-auto animate-in fade-in zoom-in-95 max-h-[90dvh] lg:max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
+          <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-2xl w-full max-h-[82dvh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between border-b border-slate-200/70 px-4 py-3 sm:px-5 shrink-0">
               <div>
                 <span className="text-[10px] font-black uppercase tracking-wider text-blue-600">
                   Supplier Invoice Record
@@ -2841,12 +2895,13 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
               <button
                 type="button"
                 onClick={() => setSelectedPurchaseForView(null)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 cursor-pointer"
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 sm:px-5 space-y-3.5">
             <div className={`grid gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs ${isAdmin ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2'}`}>
               <div>
                 <span className="text-[10px] text-slate-400 block font-bold">Party / Vendor</span>
@@ -2966,7 +3021,9 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
+            </div>
+
+            <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-2.5 sm:px-5 border-t border-slate-200/80 bg-white/85 dark:bg-black/80 shrink-0">
               {selectedPurchaseForView.status !== 'REVERSED' &&
                 onUpdatePurchase &&
                 (isAdmin || canSalesmanEditPurchase(selectedPurchaseForView)) && (
@@ -3059,20 +3116,20 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
       {/* IMAGE ZOOM MODAL */}
       {/* ========================================================= */}
       {zoomImage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
-          <div className="relative max-w-4xl max-h-[90vh] bg-white rounded-2xl p-2 overflow-hidden shadow-2xl flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 glass-modal-backdrop">
+          <div className="relative max-w-3xl max-h-[84dvh] glass-modal-panel animate-modal-pop rounded-2xl p-2 overflow-hidden flex flex-col">
             <button
               type="button"
               onClick={() => setZoomImage(null)}
-              className="absolute top-4 right-4 z-10 p-2 bg-slate-900/70 hover:bg-slate-900 text-white rounded-full transition cursor-pointer"
+              className="absolute top-3.5 right-3.5 z-10 p-2 bg-slate-900/70 hover:bg-slate-900 text-white rounded-full transition cursor-pointer"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
             <div className="overflow-auto flex-1 flex items-center justify-center p-2">
               <img
                 src={zoomImage}
                 alt="Scanned Bill"
-                className="max-h-[82vh] w-auto object-contain rounded-xl"
+                className="max-h-[74dvh] w-auto object-contain rounded-xl"
               />
             </div>
           </div>
@@ -3083,18 +3140,18 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
       {/* REVERSE / CANCEL PURCHASE MODAL */}
       {/* ========================================================= */}
       {purchaseToReverse && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-xl w-full p-5 sm:p-6 shadow-2xl space-y-4 border border-slate-100 my-auto animate-in fade-in zoom-in-95 max-h-[92vh] flex flex-col">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
+          <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-xl w-full max-h-[82dvh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between border-b border-slate-200/70 px-4 py-3 sm:px-5 shrink-0">
               <div className="flex items-center gap-2">
                 <div className="p-2 bg-rose-600 text-white rounded-xl shadow-md shadow-rose-600/20">
-                  <RotateCcw className="w-5 h-5" />
+                  <RotateCcw className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-black text-slate-900 text-base">
+                  <h3 className="font-black text-slate-900 text-sm sm:text-base">
                     Cancel & Reverse Purchase Bill
                   </h3>
-                  <p className="text-[11px] text-slate-400">
+                  <p className="text-[11px] text-slate-500">
                     Safe non-destructive reversal with inventory & financial restoration
                   </p>
                 </div>
@@ -3108,7 +3165,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
               </button>
             </div>
 
-            <div className="space-y-4 overflow-y-auto pr-1">
+            <div className="space-y-3.5 overflow-y-auto flex-1 min-h-0 px-4 py-3 sm:px-5">
               {/* Bill Info Card */}
               <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs space-y-2">
                 <div className="flex justify-between items-center font-bold">
@@ -3210,7 +3267,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
             </div>
 
             {/* Modal Actions */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-3 border-t border-slate-100 shrink-0">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 px-4 py-2.5 sm:px-5 border-t border-slate-200/80 bg-white/85 dark:bg-black/80 shrink-0">
               <button
                 type="button"
                 onClick={() => setPurchaseToReverse(null)}
@@ -3413,8 +3470,8 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
       {/* SETTLE DUE PAYMENT MODAL */}
       {/* ========================================================= */}
       {selectedPurchaseForSettlement && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 shadow-2xl space-y-4 border border-slate-100 animate-in zoom-in-95 my-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 glass-modal-backdrop">
+          <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-md w-full max-h-[82dvh] overflow-y-auto p-4 sm:p-5 space-y-3.5 my-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 font-extrabold shrink-0">

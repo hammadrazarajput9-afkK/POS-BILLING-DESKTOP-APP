@@ -45,6 +45,7 @@ interface PosTabProps {
   posPreferences?: Record<string, any>;
   onOpenPosSettings?: () => void;
   onCompleteSale: (sale: SaleRecord) => void;
+  onCompleteEditedSale?: (originalInvNo: string, updatedSale: SaleRecord) => void;
   onOpenAddStock: () => void;
   onOpenPdfReport?: () => void;
   onOpenSalesReturn?: (sale?: SaleRecord | null) => void;
@@ -105,6 +106,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   settings,
   onOpenPosSettings,
   onCompleteSale,
+  onCompleteEditedSale,
   onOpenAddStock,
   onOpenPdfReport,
   onOpenSalesReturn,
@@ -211,6 +213,34 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       document.body.style.overflow = '';
     };
   }, [isMobileCartOpen]);
+
+  // Intercept hardware Back to close topmost POS modal/drawer before tab navigation
+  React.useEffect(() => {
+    const handleHardwareBack = (e: Event) => {
+      if (shareModalSale || isCameraScannerOpen) return;
+      if (variantPickerItem) {
+        e.preventDefault();
+        setVariantPickerItem(null);
+      } else if (selectedProductDetails) {
+        e.preventDefault();
+        setSelectedProductDetails(null);
+      } else if (editModalSale) {
+        e.preventDefault();
+        setEditModalSale(null);
+      } else if (deleteModalSale) {
+        e.preventDefault();
+        setDeleteModalSale(null);
+      } else if (isMobileCartOpen) {
+        e.preventDefault();
+        setIsMobileCartOpen(false);
+      } else if (posSubTab === 'history') {
+        e.preventDefault();
+        setPosSubTab('billing');
+      }
+    };
+    window.addEventListener('pos-hardware-back', handleHardwareBack);
+    return () => window.removeEventListener('pos-hardware-back', handleHardwareBack);
+  });
 
   // Sub-tab Navigation and Invoice History range filters
   const [posSubTab, setPosSubTab] = useState<'billing' | 'history'>('billing');
@@ -343,23 +373,37 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       return;
     }
 
-    onCancelSale(sale.invNo, 'Re-edited / Loaded back for correction');
+    // Non-destructive load: do NOT cancel/void the original invoice upfront.
+    // Original invoice stays untouched if user backs out or cancels editing.
+    const isWholesaleSale = (sale.saleMode || 'retail') === 'wholesale';
 
     const parsedCart: CartItem[] = sale.items.map(si => {
       const originalProduct = inventory.find(i => i.id === si.id || i.name.toLowerCase() === si.name.toLowerCase());
+      const soldImeis = si.imeis || (si.imei ? si.imei.split(',').map(s => s.trim()).filter(Boolean) : []);
+      const existingAvailImeis = originalProduct ? extractItemImeis(originalProduct) : [];
+      const mergedImeis = Array.from(new Set([...soldImeis, ...existingAvailImeis]));
+      const baseWholesale = originalProduct?.wholesalePrice ?? si.wholesalePrice;
+      const customWsPrice =
+        isWholesaleSale && si.salePrice !== undefined ? si.salePrice : undefined;
+
       return {
         id: si.id,
         name: si.name,
-        category: si.category || 'Android Mobile',
+        category: si.category || originalProduct?.category || 'Android Mobile',
         costPrice: si.costPrice,
-        salePrice: si.salePrice,
+        salePrice: originalProduct?.salePrice || si.salePrice,
+        wholesalePrice: baseWholesale,
+        customWholesalePrice: customWsPrice,
+        boxSize: originalProduct?.boxSize,
         qty: originalProduct ? originalProduct.qty + si.qty : si.qty,
         status: originalProduct?.status || 'ACTIVE',
         selectedVariantId: si.variantId,
         selectedVariantLabel: si.variantLabel,
         cartQty: si.qty,
-        selectedImeis: si.imeis || (si.imei ? [si.imei] : []),
-        imei: si.imei,
+        selectedImeis: soldImeis,
+        imei: soldImeis.length > 0 ? soldImeis.join(', ') : originalProduct?.imei,
+        imeis: mergedImeis.length > 0 ? mergedImeis : undefined,
+        barcode: si.barcode || originalProduct?.barcode,
         createdAt: originalProduct?.createdAt || new Date().toISOString(),
       };
     });
@@ -375,9 +419,9 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       retailerCity: sale.retailerCity || '',
       retailerNtn: sale.retailerNtn || '',
       discount: sale.discount,
-      paymentMethod: 'Cash',
-      accountId: '',
-      amountPaid: sale.amountPaid || '',
+      paymentMethod: sale.paymentMethod || 'Cash',
+      accountId: sale.accountId || '',
+      amountPaid: sale.amountPaid !== undefined ? sale.amountPaid : '',
       billNote: sale.notes || '',
       editingOriginalDate: sale.date,
       editingOriginalInvNo: sale.invNo,
@@ -385,7 +429,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
     setEditModalSale(null);
     setPosSubTab('billing');
-    showToast(`Invoice #${sale.invNo} loaded into cart! Original date (${new Date(sale.date).toLocaleDateString()}) preserved.`, 'success');
+    showToast(`Editing #${sale.invNo} — original invoice stays active until you update.`, 'info');
   };
 
   const handleSaveQuickEdit = () => {
@@ -539,14 +583,88 @@ const PosTabComponent: React.FC<PosTabProps> = ({
   const amountPaid = draft.amountPaid !== undefined ? draft.amountPaid : '';
   const billNote = draft.billNote || '';
 
+  const editingOriginalSale = useMemo(() => {
+    if (!draft.editingOriginalInvNo) return null;
+    return (
+      (sales || []).find(s => s.invNo === draft.editingOriginalInvNo && s.status !== 'CANCELLED') ||
+      null
+    );
+  }, [draft.editingOriginalInvNo, sales]);
+
+  const editingHeldQtyByProduct = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!editingOriginalSale) return map;
+    editingOriginalSale.items.forEach(si => {
+      map.set(si.id, (map.get(si.id) || 0) + (si.qty || 0));
+    });
+    return map;
+  }, [editingOriginalSale]);
+
+  const getEffectiveProductQty = (item: InventoryItem): number =>
+    item.qty + (editingHeldQtyByProduct.get(item.id) || 0);
+
+  const getEffectiveVariantQty = (item: InventoryItem, v: MobileVariant): number => {
+    const base = getVariantStock(v);
+    if (!editingOriginalSale) return base;
+    const vId = v.id || getVariantLabel(v);
+    const held = editingOriginalSale.items
+      .filter(si => si.id === item.id && (si.variantId || '') === vId)
+      .reduce((sum, si) => sum + (si.qty || 0), 0);
+    return base + held;
+  };
+
+  const getEffectiveProductImeis = (item: InventoryItem, v?: MobileVariant): string[] => {
+    const baseImeis =
+      v && Array.isArray(v.imeis) && v.imeis.filter(Boolean).length > 0
+        ? v.imeis.filter(Boolean)
+        : extractItemImeis(item);
+    if (!editingOriginalSale) return baseImeis;
+    const vId = v ? v.id || getVariantLabel(v) : undefined;
+    const heldImeis = editingOriginalSale.items
+      .filter(si => si.id === item.id && (!vId || (si.variantId || '') === vId))
+      .flatMap(si => si.imeis || (si.imei ? si.imei.split(',').map(x => x.trim()).filter(Boolean) : []));
+    return Array.from(new Set([...baseImeis, ...heldImeis]));
+  };
+
   // Helper to get active price per unit based on Mode (Retail vs Custom Wholesale Price)
-  const getItemUnitPrice = (item: { salePrice: number; wholesalePrice?: number }, mode = saleMode) => {
+  const getItemUnitPrice = (
+    item: { salePrice: number; wholesalePrice?: number; customWholesalePrice?: number },
+    mode = saleMode
+  ) => {
     if (mode === 'wholesale') {
+      if (item.customWholesalePrice !== undefined && !isNaN(item.customWholesalePrice)) {
+        return Math.max(0, item.customWholesalePrice);
+      }
       return item.wholesalePrice && item.wholesalePrice > 0
         ? item.wholesalePrice
         : item.salePrice;
     }
     return item.salePrice;
+  };
+
+  const updateCartItemWholesalePrice = (
+    id: string,
+    variantId: string | undefined,
+    rawVal: string
+  ) => {
+    const parsed = rawVal === '' ? 0 : Math.max(0, Number(rawVal) || 0);
+    setCart(prev =>
+      prev.map(c =>
+        c.id === id && (c.selectedVariantId || '') === (variantId || '')
+          ? { ...c, customWholesalePrice: parsed }
+          : c
+      )
+    );
+  };
+
+  const resetCartItemWholesalePrice = (id: string, variantId?: string) => {
+    setCart(prev =>
+      prev.map(c =>
+        c.id === id && (c.selectedVariantId || '') === (variantId || '')
+          ? { ...c, customWholesalePrice: undefined }
+          : c
+      )
+    );
   };
 
   const setCart = (updater: CartItem[] | ((prev: CartItem[]) => CartItem[])) => {
@@ -779,9 +897,10 @@ const PosTabComponent: React.FC<PosTabProps> = ({
     const totalProductInCart = cart
       .filter(c => c.id === item.id)
       .reduce((sum, c) => sum + c.cartQty, 0);
+    const maxProductStock = getEffectiveProductQty(item);
 
-    if (item.qty <= 0 || totalProductInCart >= item.qty) {
-      showToast(item.qty <= 0 ? 'Item is out of stock' : `Only ${item.qty} units available in stock`, 'error');
+    if (maxProductStock <= 0 || totalProductInCart >= maxProductStock) {
+      showToast(maxProductStock <= 0 ? 'Item is out of stock' : `Only ${maxProductStock} units available in stock`, 'error');
       return false;
     }
 
@@ -805,18 +924,13 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
     const variantId = effectiveVariant?.id || (effectiveVariant ? getVariantLabel(effectiveVariant) : undefined);
     const variantLabel = effectiveVariant ? getVariantLabel(effectiveVariant) : undefined;
-    const variantDedicatedImeis =
-      effectiveVariant && Array.isArray(effectiveVariant.imeis)
-        ? effectiveVariant.imeis.filter(Boolean)
-        : [];
-    const itemImeis =
-      variantDedicatedImeis.length > 0 ? variantDedicatedImeis : extractItemImeis(item);
+    const itemImeis = getEffectiveProductImeis(item, effectiveVariant);
 
     if (effectiveVariant) {
       const vStock =
         item.variants && item.variants.length === 1
-          ? Math.max(getVariantStock(effectiveVariant), item.qty)
-          : getVariantStock(effectiveVariant);
+          ? Math.max(getEffectiveVariantQty(item, effectiveVariant), maxProductStock)
+          : getEffectiveVariantQty(item, effectiveVariant);
       const inCartVariantQty = cart
         .filter(c => c.id === item.id && (c.selectedVariantId || '') === (variantId || ''))
         .reduce((sum, c) => sum + c.cartQty, 0);
@@ -841,8 +955,8 @@ const PosTabComponent: React.FC<PosTabProps> = ({
         const totalInPrev = prev
           .filter(c => c.id === item.id)
           .reduce((sum, c) => sum + c.cartQty, 0);
-        if (totalInPrev >= item.qty) {
-          showToast(`Only ${item.qty} units available in stock`, 'warning');
+        if (totalInPrev >= maxProductStock) {
+          showToast(`Only ${maxProductStock} units available in stock`, 'warning');
           return prev;
         }
 
@@ -1013,12 +1127,8 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       variantId && invItem.variants
         ? invItem.variants.find(v => (v.id || getVariantLabel(v)) === variantId)
         : undefined;
-    const variantDedicatedImeis =
-      targetVariant && Array.isArray(targetVariant.imeis)
-        ? targetVariant.imeis.filter(Boolean)
-        : [];
-    const itemImeis =
-      variantDedicatedImeis.length > 0 ? variantDedicatedImeis : extractItemImeis(invItem);
+    const itemImeis = getEffectiveProductImeis(invItem, targetVariant);
+    const maxProductStock = getEffectiveProductQty(invItem);
 
     setCart(prev => {
       const totalProductQty = prev
@@ -1029,15 +1139,15 @@ const PosTabComponent: React.FC<PosTabProps> = ({
         .map(c => {
           if (c.id === id && (c.selectedVariantId || '') === (variantId || '')) {
             const newQty = c.cartQty + delta;
-            if (delta > 0 && totalProductQty + delta > invItem.qty) {
-              showToast(`Stock limit (${invItem.qty}) reached`, 'warning');
+            if (delta > 0 && totalProductQty + delta > maxProductStock) {
+              showToast(`Stock limit (${maxProductStock}) reached`, 'warning');
               return c;
             }
             if (delta > 0 && targetVariant) {
               const vMax =
                 invItem.variants && invItem.variants.length === 1
-                  ? Math.max(getVariantStock(targetVariant), invItem.qty)
-                  : getVariantStock(targetVariant);
+                  ? Math.max(getEffectiveVariantQty(invItem, targetVariant), maxProductStock)
+                  : getEffectiveVariantQty(invItem, targetVariant);
               if (newQty > vMax) {
                 showToast(`Variant stock limit (${vMax}) reached`, 'warning');
                 return c;
@@ -1145,7 +1255,17 @@ const PosTabComponent: React.FC<PosTabProps> = ({
     return null;
   }, [selectedKhataId, custPhone, custName, khataCustomers]);
 
-  const previousKhataBalance = matchedKhataCustomer ? Math.max(0, matchedKhataCustomer.balance || 0) : 0;
+  const rawKhataBalance = matchedKhataCustomer ? Math.max(0, matchedKhataCustomer.balance || 0) : 0;
+  const editingOwnCreditOffset =
+    editingOriginalSale &&
+    editingOriginalSale.invoiceType === 'credit' &&
+    editingOriginalSale.amountDue &&
+    matchedKhataCustomer &&
+    (editingOriginalSale.khataCustomerId === matchedKhataCustomer.id ||
+      editingOriginalSale.custName?.trim().toLowerCase() === matchedKhataCustomer.name.trim().toLowerCase())
+      ? editingOriginalSale.amountDue
+      : 0;
+  const previousKhataBalance = Math.max(0, rawKhataBalance - editingOwnCreditOffset);
   const totalOutstanding = grandTotal + previousKhataBalance;
   const netBalanceAfterPaid = Math.max(0, totalOutstanding - actualPaid);
 
@@ -1163,57 +1283,72 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
   const renderCartContent = (isMobile = false) => (
     <div
-      className={`backdrop-blur-2xl rounded-2xl p-3 sm:p-3.5 flex flex-col ${
+      className={`rounded-2xl flex flex-col ${
         isMobile
-          ? 'bg-transparent space-y-2.5'
-          : 'bg-white/75 border border-white/90 shadow-xl shadow-sky-900/5 gap-2.5'
+          ? 'bg-transparent p-2.5 space-y-2'
+          : 'bg-white/88 backdrop-blur-xl border border-white/90 shadow-xl shadow-sky-900/5 p-3 sm:p-3.5 gap-2.5'
       }`}
     >
       {/* Cart Header */}
-      <div className="flex items-center justify-between border-b border-slate-200/70 pb-2 shrink-0">
+      <div className={`flex items-center justify-between border-b border-slate-200/70 shrink-0 ${isMobile ? 'pb-1.5' : 'pb-2'}`}>
         <div className="flex items-center gap-2 min-w-0">
-          <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 backdrop-blur-md ${
+          <div className={`${isMobile ? 'w-7 h-7' : 'w-8 h-8'} rounded-xl flex items-center justify-center shrink-0 ${
             saleMode === 'wholesale' ? 'bg-purple-500/15 text-purple-700' : 'bg-blue-500/15 text-blue-700'
           }`}>
             <ShoppingCart className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <h3 className="font-extrabold text-slate-900 text-sm leading-tight truncate">
-              Billing Cart ({totalCartItems})
+            <h3 className="font-extrabold text-slate-900 text-xs sm:text-sm leading-tight truncate">
+              {draft.editingOriginalInvNo
+                ? `Editing #${draft.editingOriginalInvNo} (${totalCartItems})`
+                : `Billing Cart (${totalCartItems})`}
             </h3>
-            {hasActiveDraft && cart.length > 0 && (
-              <p className="text-[10.5px] text-amber-700 font-semibold leading-tight">
+            {hasActiveDraft && cart.length > 0 && !draft.editingOriginalInvNo && (
+              <p className="text-[10px] text-amber-700 font-semibold leading-tight">
                 Draft auto-saved
               </p>
             )}
           </div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          {onOpenPdfReport && (
+          {!isMobile && onOpenPdfReport && (
             <button
               type="button"
               onClick={onOpenPdfReport}
-              className="text-[11px] font-bold text-rose-700 bg-rose-50/80 hover:bg-rose-100/90 backdrop-blur-sm border border-rose-200/80 px-2.5 py-1 rounded-xl transition flex items-center gap-1 cursor-pointer min-h-[32px]"
+              className="text-[11px] font-bold text-rose-700 bg-rose-50/90 hover:bg-rose-100 border border-rose-200/80 px-2.5 py-1 rounded-xl transition flex items-center gap-1 cursor-pointer min-h-[30px]"
               title="Export Sales & Invoices PDF Report"
             >
               <FileText className="w-3 h-3 text-rose-600" />
               <span>PDF</span>
             </button>
           )}
-          {cart.length > 0 && (
+          {draft.editingOriginalInvNo ? (
+            <button
+              type="button"
+              onClick={() => {
+                resetDraft();
+                setLastScannedItem(null);
+                if (isMobile) setIsMobileCartOpen(false);
+                showToast('Edit cancelled — original invoice untouched!', 'info');
+              }}
+              className="text-[11px] font-extrabold text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-300 px-2.5 py-1 rounded-xl transition cursor-pointer min-h-[30px]"
+            >
+              Cancel Edit
+            </button>
+          ) : cart.length > 0 ? (
             <button
               type="button"
               onClick={clearCart}
-              className="text-[11px] font-bold text-rose-600 hover:text-rose-700 bg-white/70 hover:bg-rose-50/90 border border-slate-200/70 px-2.5 py-1 rounded-xl transition cursor-pointer min-h-[32px]"
+              className="text-[11px] font-bold text-rose-600 hover:text-rose-700 bg-white/85 hover:bg-rose-50 border border-slate-200/80 px-2.5 py-1 rounded-xl transition cursor-pointer min-h-[30px]"
             >
               Clear
             </button>
-          )}
+          ) : null}
           {isMobile && (
             <button
               type="button"
               onClick={() => setIsMobileCartOpen(false)}
-              className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-slate-800 rounded-xl bg-slate-100/80 hover:bg-slate-200/80 transition cursor-pointer"
+              className="w-7 h-7 flex items-center justify-center text-slate-500 hover:text-slate-800 rounded-xl bg-slate-100 hover:bg-slate-200 transition cursor-pointer"
               aria-label="Close cart"
             >
               <X className="w-4 h-4" />
@@ -1223,14 +1358,13 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       </div>
 
       {/* Cart Body */}
-      <div className="space-y-2.5">
+      <div className={isMobile ? 'space-y-1.5' : 'space-y-2.5'}>
         {draft.editingOriginalDate && (
-          <div className="bg-amber-50/85 backdrop-blur-md border border-amber-200/80 rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-2 text-[11px] text-amber-900">
+          <div className="bg-amber-50/95 border border-amber-200/90 rounded-xl px-2.5 py-1 flex items-center justify-between gap-2 text-[10.5px] text-amber-900">
             <div className="flex items-center gap-1.5 min-w-0 font-bold">
               <Calendar className="w-3.5 h-3.5 text-amber-600 shrink-0" />
               <span className="truncate">
-                Editing #{draft.editingOriginalInvNo || 'Invoice'} ·{' '}
-                {new Date(draft.editingOriginalDate).toLocaleDateString()}
+                #{draft.editingOriginalInvNo} active until Update · {new Date(draft.editingOriginalDate).toLocaleDateString()}
               </span>
             </div>
             <button
@@ -1239,10 +1373,9 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                 setDraft(prev => ({
                   ...prev,
                   editingOriginalDate: undefined,
-                  editingOriginalInvNo: undefined,
                 }))
               }
-              className="text-[10px] font-extrabold text-amber-800 hover:text-amber-950 bg-amber-100/90 hover:bg-amber-200 px-2 py-0.5 rounded-lg transition cursor-pointer shrink-0"
+              className="text-[10px] font-extrabold text-amber-800 hover:text-amber-950 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-lg transition cursor-pointer shrink-0"
               title="Use Today's Date Instead"
             >
               Use Today
@@ -1251,12 +1384,12 @@ const PosTabComponent: React.FC<PosTabProps> = ({
         )}
 
         {/* Customer & Payment Mode Card */}
-        <div className="bg-white/60 backdrop-blur-md p-2.5 rounded-xl border border-white/80 shadow-2xs space-y-2">
-          <div className="grid grid-cols-2 gap-1.5 bg-slate-100/80 p-1 rounded-xl">
+        <div className={`bg-white/75 rounded-xl border border-slate-200/75 shadow-2xs ${isMobile ? 'p-2 space-y-1.5' : 'p-2.5 space-y-2'}`}>
+          <div className="grid grid-cols-2 gap-1 bg-slate-100/90 p-0.5 rounded-xl">
             <button
               type="button"
               onClick={() => setInvoiceType('cash')}
-              className={`py-1.5 px-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer min-h-[34px] ${
+              className={`py-1 px-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${isMobile ? 'min-h-[30px]' : 'min-h-[34px]'} ${
                 invoiceType === 'cash'
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
@@ -1269,7 +1402,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
             <button
               type="button"
               onClick={() => setInvoiceType('credit')}
-              className={`py-1.5 px-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer min-h-[34px] ${
+              className={`py-1 px-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${isMobile ? 'min-h-[30px]' : 'min-h-[34px]'} ${
                 invoiceType === 'credit'
                   ? 'bg-purple-600 text-white shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
@@ -1285,7 +1418,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
               <select
                 value={selectedKhataId || matchedKhataCustomer?.id || ''}
                 onChange={e => handleKhataSelect(e.target.value)}
-                className="flex-1 min-w-0 bg-white/85 backdrop-blur-sm border border-slate-200/80 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-600 min-h-[36px]"
+                className={`compact-mobile-input flex-1 min-w-0 bg-white/90 border border-slate-200/80 rounded-xl px-2.5 py-1 text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-600 ${isMobile ? 'min-h-[32px]' : 'min-h-[36px]'}`}
               >
                 <option value="">
                   {invoiceType === 'credit'
@@ -1302,7 +1435,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                 <button
                   type="button"
                   onClick={() => handleKhataSelect('')}
-                  className="w-9 h-9 rounded-xl bg-white/80 hover:bg-rose-50 border border-slate-200/80 text-slate-400 hover:text-rose-600 flex items-center justify-center shrink-0 transition cursor-pointer"
+                  className={`${isMobile ? 'w-8 h-8' : 'w-9 h-9'} rounded-xl bg-white/85 hover:bg-rose-50 border border-slate-200/80 text-slate-400 hover:text-rose-600 flex items-center justify-center shrink-0 transition cursor-pointer`}
                   title="Clear selected customer"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -1311,16 +1444,16 @@ const PosTabComponent: React.FC<PosTabProps> = ({
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+          <div className={`grid gap-1.5 ${isMobile ? 'grid-cols-2' : 'grid-cols-1 sm:grid-cols-2'}`}>
             <input
               type="text"
               value={custName}
               onChange={e => setCustName(e.target.value)}
-              placeholder={saleMode === 'wholesale' ? 'Retailer / Contact Person *' : 'Customer Name'}
-              className={`border rounded-xl px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:bg-white transition min-h-[36px] backdrop-blur-sm ${
+              placeholder={saleMode === 'wholesale' ? 'Retailer Name *' : 'Customer Name'}
+              className={`compact-mobile-input border rounded-xl px-2.5 py-1 text-xs font-medium focus:outline-none focus:bg-white transition ${isMobile ? 'min-h-[32px]' : 'min-h-[36px]'} ${
                 saleMode === 'wholesale'
-                  ? 'bg-purple-50/70 border-purple-200/80 focus:border-purple-600'
-                  : 'bg-white/80 border-slate-200/80 focus:border-blue-600'
+                  ? 'bg-purple-50/75 border-purple-200/80 focus:border-purple-600'
+                  : 'bg-white/90 border-slate-200/80 focus:border-blue-600'
               }`}
             />
             <input
@@ -1328,23 +1461,20 @@ const PosTabComponent: React.FC<PosTabProps> = ({
               value={custPhone}
               onChange={e => setCustPhone(e.target.value)}
               placeholder="Phone Number"
-              className={`border rounded-xl px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:bg-white transition min-h-[36px] backdrop-blur-sm ${
+              className={`compact-mobile-input border rounded-xl px-2.5 py-1 text-xs font-medium focus:outline-none focus:bg-white transition ${isMobile ? 'min-h-[32px]' : 'min-h-[36px]'} ${
                 saleMode === 'wholesale'
-                  ? 'bg-purple-50/70 border-purple-200/80 focus:border-purple-600'
-                  : 'bg-white/80 border-slate-200/80 focus:border-blue-600'
+                  ? 'bg-purple-50/75 border-purple-200/80 focus:border-purple-600'
+                  : 'bg-white/90 border-slate-200/80 focus:border-blue-600'
               }`}
             />
           </div>
 
           {/* Previous Khata Balance Notification */}
           {previousKhataBalance > 0 && matchedKhataCustomer && (
-            <div className="bg-amber-50/85 backdrop-blur-md border border-amber-200/90 rounded-xl px-2.5 py-2 flex items-center justify-between gap-2">
+            <div className="bg-amber-50/90 border border-amber-200/90 rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-[10.5px] font-bold text-amber-800 leading-tight truncate">
                   Previous Balance · {matchedKhataCustomer.name}
-                </p>
-                <p className="text-[10px] text-amber-700 leading-tight">
-                  Added automatically to invoice total
                 </p>
               </div>
               <span className="tabular-nums font-black text-xs text-rose-700 shrink-0">
@@ -1355,41 +1485,41 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
           {/* Wholesale Retailer Shop Details */}
           {saleMode === 'wholesale' && (
-            <div className="bg-purple-50/75 backdrop-blur-md border border-purple-200/80 rounded-xl p-2 space-y-1.5 animate-in fade-in">
-              <span className="text-[10px] font-black uppercase text-purple-900 tracking-wider flex items-center gap-1">
+            <div className="bg-purple-50/80 border border-purple-200/80 rounded-xl p-1.5 space-y-1">
+              <span className="text-[9.5px] font-black uppercase text-purple-900 tracking-wider flex items-center gap-1">
                 <Package className="w-3 h-3 text-purple-700" /> Retailer / Shop Details
               </span>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+              <div className={`grid gap-1 ${isMobile ? 'grid-cols-3' : 'grid-cols-1 sm:grid-cols-3'}`}>
                 <input
                   type="text"
                   value={retailerShopName}
                   onChange={e => setRetailerShopName(e.target.value)}
-                  placeholder="Shop / Business Name"
-                  className="bg-white/85 border border-purple-200 rounded-lg px-2 py-1 text-xs font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[34px]"
+                  placeholder="Shop Name"
+                  className="compact-mobile-input bg-white/90 border border-purple-200 rounded-lg px-2 py-1 text-xs font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[30px]"
                 />
                 <input
                   type="text"
                   value={retailerCity}
                   onChange={e => setRetailerCity(e.target.value)}
                   placeholder="City"
-                  className="bg-white/85 border border-purple-200 rounded-lg px-2 py-1 text-xs font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[34px]"
+                  className="compact-mobile-input bg-white/90 border border-purple-200 rounded-lg px-2 py-1 text-xs font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[30px]"
                 />
                 <input
                   type="text"
                   value={retailerNtn}
                   onChange={e => setRetailerNtn(e.target.value)}
-                  placeholder="NTN / GST (Opt)"
-                  className="bg-white/85 border border-purple-200 rounded-lg px-2 py-1 text-xs tabular-nums font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[34px]"
+                  placeholder="NTN (Opt)"
+                  className="compact-mobile-input bg-white/90 border border-purple-200 rounded-lg px-2 py-1 text-xs tabular-nums font-semibold text-purple-950 focus:outline-none focus:border-purple-600 min-h-[30px]"
                 />
               </div>
             </div>
           )}
         </div>
 
-        {/* Itemized Cart Cards (Smart Glass List — Clean on both Mobile & Desktop) */}
+        {/* Itemized Cart Cards */}
         <div className="space-y-1.5">
           {cart.length === 0 ? (
-            <div className="bg-white/55 backdrop-blur-md border border-white/80 rounded-xl py-5 px-3 text-center text-slate-400">
+            <div className="bg-white/75 border border-slate-200/75 rounded-xl py-4 px-3 text-center text-slate-400">
               <ShoppingCart className="w-5 h-5 mx-auto text-slate-300 mb-1" />
               <p className="text-xs font-semibold text-slate-500">
                 Cart is empty — Scan IMEI or tap Add
@@ -1404,11 +1534,13 @@ const PosTabComponent: React.FC<PosTabProps> = ({
               return (
                 <div
                   key={`${item.id}::${item.selectedVariantId || 'default'}`}
-                  className="bg-white/75 backdrop-blur-md border border-white/90 shadow-2xs rounded-xl p-2.5 space-y-2 transition hover:bg-white/95"
+                  className={`bg-white/92 border border-slate-200/80 shadow-2xs rounded-xl transition hover:bg-white ${
+                    isMobile ? 'p-2 space-y-1.5' : 'p-2.5 space-y-2'
+                  }`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
-                      <p className="font-bold text-slate-900 text-xs sm:text-[13px] leading-snug line-clamp-2">
+                      <p className="font-bold text-slate-900 text-xs sm:text-[13px] leading-snug line-clamp-1">
                         {item.name}
                       </p>
                       <p className="text-[10.5px] text-slate-500 font-medium mt-0.5 truncate">
@@ -1420,12 +1552,45 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                     <button
                       type="button"
                       onClick={() => removeFromCart(item.id, item.selectedVariantId)}
-                      className="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50/90 flex items-center justify-center transition cursor-pointer shrink-0"
+                      className="w-6 h-6 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition cursor-pointer shrink-0"
                       aria-label={`Remove ${item.name}`}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
+
+                  {saleMode === 'wholesale' && (
+                    <div className="flex items-center justify-between gap-2 bg-purple-50/85 border border-purple-200/80 rounded-lg px-2 py-1">
+                      <span className="text-[10px] font-extrabold text-purple-800 uppercase tracking-wide shrink-0">
+                        W/S Rate ({currency})
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          min="0"
+                          value={item.customWholesalePrice !== undefined ? item.customWholesalePrice : unitPrice}
+                          onChange={e =>
+                            updateCartItemWholesalePrice(
+                              item.id,
+                              item.selectedVariantId,
+                              e.target.value
+                            )
+                          }
+                          className="compact-mobile-input w-24 text-right bg-white border border-purple-300 rounded-md px-2 py-0.5 tabular-nums font-extrabold text-xs text-purple-900 focus:outline-none focus:border-purple-600"
+                        />
+                        {item.customWholesalePrice !== undefined && (
+                          <button
+                            type="button"
+                            onClick={() => resetCartItemWholesalePrice(item.id, item.selectedVariantId)}
+                            className="p-1 rounded-md text-purple-600 hover:bg-purple-100 cursor-pointer"
+                            title="Reset to default wholesale rate"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* IMEI Selector / Barcode */}
                   {hasMultipleImeis ? (
@@ -1473,23 +1638,23 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                   ) : null}
 
                   {/* Stepper & Line Total */}
-                  <div className="flex items-center justify-between pt-1.5 border-t border-slate-100/90">
-                    <div className="inline-flex items-center gap-1 bg-slate-100/85 backdrop-blur-sm rounded-xl p-0.5">
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-100/90">
+                    <div className="inline-flex items-center gap-1 bg-slate-100 rounded-xl p-0.5">
                       <button
                         type="button"
                         onClick={() => updateCartQty(item.id, -1, item.selectedVariantId)}
-                        className="w-7 h-7 bg-white/90 rounded-lg font-bold text-slate-700 hover:bg-white flex items-center justify-center transition cursor-pointer shadow-2xs"
+                        className="w-6.5 h-6.5 bg-white rounded-lg font-bold text-slate-700 hover:bg-slate-50 flex items-center justify-center transition cursor-pointer shadow-2xs"
                         aria-label="Decrease quantity"
                       >
                         <Minus className="w-3 h-3" />
                       </button>
-                      <span className="tabular-nums font-extrabold text-xs px-2 min-w-[24px] text-center text-slate-900">
+                      <span className="tabular-nums font-extrabold text-xs px-2 min-w-[22px] text-center text-slate-900">
                         {item.cartQty}
                       </span>
                       <button
                         type="button"
                         onClick={() => updateCartQty(item.id, 1, item.selectedVariantId)}
-                        className="w-7 h-7 bg-white/90 rounded-lg font-bold text-slate-700 hover:bg-white flex items-center justify-center transition cursor-pointer shadow-2xs"
+                        className="w-6.5 h-6.5 bg-white rounded-lg font-bold text-slate-700 hover:bg-slate-50 flex items-center justify-center transition cursor-pointer shadow-2xs"
                         aria-label="Increase quantity"
                       >
                         <Plus className="w-3 h-3" />
@@ -1507,8 +1672,8 @@ const PosTabComponent: React.FC<PosTabProps> = ({
         </div>
 
         {/* Pricing Totals & Previous Balance Breakdown */}
-        <div className="bg-white/65 backdrop-blur-md border border-white/85 rounded-xl p-2.5 sm:p-3 space-y-1.5 text-xs">
-          <div className="space-y-1.5 text-slate-600">
+        <div className={`bg-white/80 border border-slate-200/75 rounded-xl space-y-1 text-xs ${isMobile ? 'p-2' : 'p-2.5 sm:p-3 space-y-1.5'}`}>
+          <div className="space-y-1 text-slate-600">
             <div className="flex justify-between items-center text-[11px] font-bold text-slate-700">
               <span>
                 Total Quantity ({cart.length} {cart.length === 1 ? 'item' : 'items'}):
@@ -1533,12 +1698,12 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                 value={discount}
                 onChange={e => setDiscount(e.target.value === '' ? '' : Number(e.target.value))}
                 placeholder="0"
-                className="w-24 text-right bg-white/85 border border-slate-200/80 rounded-lg px-2 py-1 tabular-nums font-bold text-xs focus:outline-none focus:border-blue-600 focus:bg-white"
+                className="compact-mobile-input w-24 text-right bg-white border border-slate-200/80 rounded-lg px-2 py-0.5 tabular-nums font-bold text-xs focus:outline-none focus:border-blue-600"
               />
             </div>
 
             {previousKhataBalance > 0 ? (
-              <div className="space-y-1.5 pt-1.5 border-t border-slate-200/70">
+              <div className="space-y-1 pt-1 border-t border-slate-200/70">
                 <div className="flex justify-between items-center font-bold text-slate-800">
                   <span>Current Bill:</span>
                   <span className="tabular-nums font-extrabold text-slate-900">
@@ -1546,25 +1711,25 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                   </span>
                 </div>
 
-                <div className="flex justify-between items-center bg-amber-50/85 border border-amber-200/80 rounded-xl px-2.5 py-1.5 text-amber-900 font-bold">
+                <div className="flex justify-between items-center bg-amber-50/90 border border-amber-200/80 rounded-xl px-2 py-1 text-amber-900 font-bold">
                   <span className="text-[11px]">+ Previous Balance:</span>
                   <span className="tabular-nums font-black text-rose-700">
                     {currency} {previousKhataBalance.toLocaleString()}
                   </span>
                 </div>
 
-                <div className="flex justify-between items-center bg-gradient-to-r from-slate-900/90 via-blue-950/90 to-indigo-950/90 backdrop-blur-md text-white rounded-xl px-3 py-2 shadow-md">
-                  <span className="text-xs font-extrabold">Total Payable (Bill + Prev):</span>
-                  <span className="tabular-nums text-sm sm:text-base font-black text-cyan-300">
+                <div className="flex justify-between items-center bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 text-white rounded-xl px-2.5 py-1.5 shadow-sm">
+                  <span className="text-[11px] font-extrabold">Total Payable (Bill + Prev):</span>
+                  <span className="tabular-nums text-sm font-black text-cyan-300">
                     {currency} {totalOutstanding.toLocaleString()}
                   </span>
                 </div>
               </div>
             ) : (
-              <div className="flex justify-between items-center text-sm sm:text-base font-extrabold text-slate-900 pt-1.5 border-t border-slate-200/70">
+              <div className="flex justify-between items-center text-sm font-extrabold text-slate-900 pt-1 border-t border-slate-200/70">
                 <span>Grand Total:</span>
                 <span
-                  className={`tabular-nums text-base sm:text-lg ${
+                  className={`tabular-nums text-base ${
                     saleMode === 'wholesale' ? 'text-purple-700' : 'text-blue-600'
                   }`}
                 >
@@ -1575,7 +1740,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
             {/* Credit Paid / Balance OR Cash + Prev Balance Summary */}
             {invoiceType === 'credit' ? (
-              <div className="bg-purple-50/80 backdrop-blur-sm p-2.5 rounded-xl border border-purple-200/80 space-y-1.5">
+              <div className="bg-purple-50/85 p-2 rounded-xl border border-purple-200/80 space-y-1">
                 <div className="flex justify-between items-center">
                   <span className="font-bold text-purple-900 text-[11px]">
                     Advance / Paid Now ({currency}):
@@ -1589,7 +1754,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                       setAmountPaid(e.target.value === '' ? '' : Number(e.target.value))
                     }
                     placeholder="0"
-                    className="w-28 text-right bg-white/90 border border-purple-300/80 rounded-lg px-2 py-1 tabular-nums font-bold text-xs focus:outline-none focus:border-purple-600"
+                    className="compact-mobile-input w-24 text-right bg-white border border-purple-300/80 rounded-lg px-2 py-0.5 tabular-nums font-bold text-xs focus:outline-none focus:border-purple-600"
                   />
                 </div>
                 <div className="flex justify-between items-center pt-1 border-t border-purple-200/80 text-purple-900 text-[11px]">
@@ -1605,7 +1770,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
               </div>
             ) : (
               previousKhataBalance > 0 && (
-                <div className="bg-slate-100/75 backdrop-blur-sm px-2.5 py-1.5 rounded-xl border border-slate-200/70 flex justify-between items-center text-[11px]">
+                <div className="bg-slate-100/85 px-2.5 py-1 rounded-xl border border-slate-200/70 flex justify-between items-center text-[11px]">
                   <span className="font-bold text-slate-700">
                     Paid Now (Cash) · Prev Khata Left:
                   </span>
@@ -1618,30 +1783,21 @@ const PosTabComponent: React.FC<PosTabProps> = ({
           </div>
 
           {/* Per-Bill Note Field */}
-          <div className="pt-1.5 border-t border-slate-200/70">
-            <div className="flex items-center justify-between text-[10px] font-bold uppercase text-slate-500 mb-1">
-              <span className="flex items-center gap-1">
-                <FileText className="w-3 h-3 text-blue-500" />
-                Bill Note
-              </span>
-              <span className="text-[9px] font-semibold text-slate-400 normal-case">
-                Urdu / English
-              </span>
-            </div>
+          <div className="pt-1 border-t border-slate-200/70">
             <input
               type="text"
               dir="auto"
               value={billNote}
               onChange={e => setBillNote(e.target.value)}
-              placeholder="Bill ke neeche koi bhi note likhein (optional)..."
-              className="w-full bg-white/80 border border-slate-200/80 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-600 focus:bg-white transition min-h-[36px]"
+              placeholder="Bill note (Urdu / English, optional)..."
+              className={`compact-mobile-input w-full bg-white/90 border border-slate-200/80 rounded-xl px-2.5 py-1 text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-600 focus:bg-white transition ${isMobile ? 'min-h-[32px]' : 'min-h-[36px]'}`}
             />
           </div>
         </div>
       </div>
 
       {/* Checkout Action Button */}
-      <div className="pt-2 border-t border-slate-200/70 shrink-0">
+      <div className={`${isMobile ? 'pt-1.5' : 'pt-2'} border-t border-slate-200/70 shrink-0`}>
         <button
           type="button"
           onClick={() => {
@@ -1649,9 +1805,11 @@ const PosTabComponent: React.FC<PosTabProps> = ({
             if (isMobile) setIsMobileCartOpen(false);
           }}
           disabled={cart.length === 0}
-          className={`w-full py-3 text-white font-extrabold rounded-xl shadow-lg transition text-sm flex items-center justify-center gap-2 cursor-pointer min-h-[46px] ${
+          className={`w-full ${isMobile ? 'py-2.5 min-h-[40px] text-xs' : 'py-3 min-h-[46px] text-sm'} text-white font-extrabold rounded-xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer ${
             cart.length > 0
-              ? invoiceType === 'credit'
+              ? draft.editingOriginalInvNo
+                ? 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 shadow-amber-500/25'
+                : invoiceType === 'credit'
                 ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-purple-500/25'
                 : 'bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 shadow-blue-500/25'
               : 'bg-slate-300/80 text-slate-500 cursor-not-allowed shadow-none'
@@ -1659,7 +1817,9 @@ const PosTabComponent: React.FC<PosTabProps> = ({
         >
           <Printer className="w-4 h-4" />
           <span>
-            {invoiceType === 'credit'
+            {draft.editingOriginalInvNo
+              ? `Update Invoice #${draft.editingOriginalInvNo} & Print`
+              : invoiceType === 'credit'
               ? 'Complete Credit Sale & Print Bill'
               : 'Complete Sale & Print Bill'}
           </span>
@@ -1681,14 +1841,16 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
     const effectivePaymentMethod: PaymentMethod = 'Cash';
 
-    // Preserve original invoice date & date-prefix sequence when re-editing a past-date invoice
+    // Preserve original invoice date & invoice number when editing an active invoice
     const parsedOriginalDate = draft.editingOriginalDate ? new Date(draft.editingOriginalDate) : null;
     const hasValidOriginalDate = Boolean(parsedOriginalDate && !isNaN(parsedOriginalDate.getTime()));
     const effectiveSaleDate = hasValidOriginalDate ? draft.editingOriginalDate! : new Date().toISOString();
     const effectiveDateForInvNo = hasValidOriginalDate ? parsedOriginalDate! : new Date();
 
-    // Generate persistent sequential invoice number: INV-YYYYMMDD-0001, INV-YYYYMMDD-0002...
-    const invNo = generateNextInvoiceNumber(sales, effectiveDateForInvNo);
+    const isReplacingExistingSale = Boolean(draft.editingOriginalInvNo && editingOriginalSale);
+    const invNo = isReplacingExistingSale
+      ? draft.editingOriginalInvNo!
+      : generateNextInvoiceNumber(sales, effectiveDateForInvNo);
 
     const totalCost = cart.reduce((acc, item) => acc + item.costPrice * item.cartQty, 0);
     const netProfit = Math.max(0, grandTotal - totalCost);
@@ -1742,7 +1904,11 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       date: effectiveSaleDate,
     };
 
-    onCompleteSale(saleRecord);
+    if (isReplacingExistingSale && onCompleteEditedSale) {
+      onCompleteEditedSale(draft.editingOriginalInvNo!, saleRecord);
+    } else {
+      onCompleteSale(saleRecord);
+    }
     resetDraft();
     setLastScannedItem(null);
   };
@@ -1773,12 +1939,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
   return (
     <>
-      <div className="relative rounded-2xl sm:rounded-3xl p-1 sm:p-2 bg-gradient-to-br from-sky-100/75 via-slate-50/85 to-indigo-100/75 border border-white/80 flex flex-col lg:flex-1 lg:min-h-0 overflow-hidden">
-        {/* Subtle Ambient Light Orbs for Glassmorphic Transparency Depth */}
-        <div className="pointer-events-none absolute -top-16 -left-16 w-64 h-64 rounded-full bg-sky-300/25 blur-3xl" />
-        <div className="pointer-events-none absolute top-1/3 -right-16 w-64 h-64 rounded-full bg-indigo-300/25 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-16 left-1/4 w-64 h-64 rounded-full bg-cyan-200/25 blur-3xl" />
-
+      <div className="relative rounded-2xl sm:rounded-3xl p-1 sm:p-2 bg-gradient-to-br from-sky-100/75 via-slate-50/90 to-indigo-100/75 border border-white/80 flex flex-col lg:flex-1 lg:min-h-0 overflow-hidden">
         <div className="relative space-y-2.5 sm:space-y-3 flex flex-col lg:flex-1 lg:min-h-0">
         {/* Smart Frosted App Header */}
         <div
@@ -2078,7 +2239,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                       const inCartQtyForItem = cart
                         .filter(c => c.id === item.id)
                         .reduce((sum, c) => sum + c.cartQty, 0);
-                      const remainingStock = item.qty - inCartQtyForItem;
+                      const remainingStock = getEffectiveProductQty(item) - inCartQtyForItem;
                       const isLastScanned = lastScannedItem?.itemId === item.id;
                       const itemSpecs = Array.from(
                         new Set(
@@ -2093,17 +2254,17 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                         <div
                           key={item.id}
                           onClick={() => setSelectedProductDetails(item)}
-                          className={`bg-white/75 hover:bg-white/95 backdrop-blur-lg border rounded-2xl p-2 sm:p-2.5 shadow-sm hover:shadow-md transition-all duration-150 cursor-pointer flex flex-col justify-between group relative min-w-0 ${
+                          className={`bg-white/92 hover:bg-white border rounded-2xl p-2 sm:p-2.5 shadow-sm hover:shadow-md transition-colors duration-150 cursor-pointer flex flex-col justify-between group relative min-w-0 ${
                             isLastScanned
                               ? 'border-emerald-500 ring-2 ring-emerald-400/60'
                               : remainingStock <= 0
                               ? 'opacity-60 border-white/80'
-                              : 'border-white/90 hover:border-blue-400'
+                              : 'border-white/95 hover:border-blue-400'
                           }`}
                         >
                           <div className="min-w-0">
-                            {/* Translucent Image Stage */}
-                            <div className="relative w-full h-24 sm:h-28 rounded-xl overflow-hidden bg-slate-100/65 backdrop-blur-sm border border-white/80 flex items-center justify-center p-1.5 group-hover:scale-[1.015] transition-transform duration-200">
+                            {/* Clean Image Stage (GPU-friendly without per-card blur) */}
+                            <div className="relative w-full h-24 sm:h-28 rounded-xl overflow-hidden bg-slate-100/80 border border-white/90 flex items-center justify-center p-1.5">
                               {item.image ? (
                                 <img
                                   src={item.image}
@@ -2118,18 +2279,18 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                               )}
 
                               {inCartQtyForItem > 0 && (
-                                <span className="absolute top-1.5 left-1.5 text-[9px] font-black px-1.5 py-0.5 rounded-md bg-blue-600/90 backdrop-blur-sm text-white shadow-xs tabular-nums">
+                                <span className="absolute top-1.5 left-1.5 text-[9px] font-black px-1.5 py-0.5 rounded-md bg-blue-600 text-white shadow-xs tabular-nums">
                                   {inCartQtyForItem} in cart
                                 </span>
                               )}
 
                               <span
-                                className={`absolute top-1.5 right-1.5 text-[9.5px] font-extrabold px-1.5 py-0.5 rounded-md tabular-nums backdrop-blur-sm ${
+                                className={`absolute top-1.5 right-1.5 text-[9.5px] font-extrabold px-1.5 py-0.5 rounded-md tabular-nums ${
                                   remainingStock > 2
-                                    ? 'bg-emerald-600/85 text-white'
+                                    ? 'bg-emerald-600 text-white'
                                     : remainingStock > 0
-                                    ? 'bg-amber-500/90 text-white'
-                                    : 'bg-rose-600/90 text-white'
+                                    ? 'bg-amber-500 text-white'
+                                    : 'bg-rose-600 text-white'
                                 }`}
                               >
                                 {remainingStock > 0 ? `${remainingStock} left` : 'Out'}
@@ -2362,12 +2523,12 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                   return (
                     <div
                       key={sale.invNo}
-                      className={`bg-white/75 hover:bg-white/95 backdrop-blur-xl border rounded-2xl p-3 sm:p-4 flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-4 transition shadow-sm ${
+                      className={`bg-white/92 hover:bg-white border rounded-2xl p-3 sm:p-4 flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-4 transition-colors shadow-sm ${
                         isCancelled
                           ? 'border-red-200/80 bg-red-50/40'
                           : sale.invoiceType === 'credit'
                             ? 'border-purple-200/70 hover:border-purple-400'
-                            : 'border-white/90 hover:border-blue-400'
+                            : 'border-white/95 hover:border-blue-400'
                       }`}
                     >
                       <div className="space-y-1.5 min-w-0 flex-1">
@@ -2567,18 +2728,18 @@ const PosTabComponent: React.FC<PosTabProps> = ({
         </div>
       )}
 
-      {/* Mobile Floating Frosted Cart Bottom Sheet Drawer (lg:hidden) */}
+      {/* Mobile Floating Frosted Cart Bottom Sheet Drawer (lg:hidden, Compact Height) */}
       {isMobileCartOpen && (
-        <div className="ios-bottom-sheet-backdrop lg:hidden fixed inset-0 z-50 flex flex-col justify-end animate-in fade-in duration-200">
+        <div className="ios-bottom-sheet-backdrop lg:hidden fixed inset-0 z-50 flex flex-col justify-end">
           <div
             onClick={() => setIsMobileCartOpen(false)}
-            className="fixed inset-0 bg-slate-950/45 backdrop-blur-sm"
+            className="fixed inset-0 glass-modal-backdrop"
           />
 
-          <div className="ios-bottom-sheet-panel relative z-10 bg-white/88 backdrop-blur-2xl rounded-t-3xl max-h-[88dvh] flex flex-col shadow-2xl border-t border-white/85 animate-in slide-in-from-bottom duration-300 overflow-hidden">
-            <div className="w-12 h-1.5 bg-slate-400/50 rounded-full mx-auto mt-2.5 mb-1 shrink-0" />
+          <div className="ios-bottom-sheet-panel glass-modal-panel relative z-10 rounded-t-3xl max-h-[72dvh] flex flex-col animate-modal-pop overflow-hidden">
+            <div className="w-10 h-1 bg-slate-400/50 rounded-full mx-auto mt-2 mb-0.5 shrink-0" />
 
-            <div className="p-3 sm:p-4 overflow-y-auto flex-1">
+            <div className="overflow-y-auto flex-1 min-h-0">
               {renderCartContent(true)}
             </div>
           </div>
@@ -2587,8 +2748,8 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
       {/* INVOICE DELETE / CANCEL MODAL */}
       {deleteModalSale && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 border border-slate-100 animate-in zoom-in-95">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 glass-modal-backdrop">
+          <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-md w-full max-h-[82dvh] overflow-y-auto p-4 sm:p-5 space-y-3.5">
             {/* Header */}
             <div className="flex items-start justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-3">
@@ -2727,8 +2888,8 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
       {/* INVOICE EDIT MODAL */}
       {editModalSale && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl space-y-4 border border-slate-100 animate-in zoom-in-95 max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 glass-modal-backdrop">
+          <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-lg w-full p-4 sm:p-5 space-y-3.5 max-h-[82dvh] flex flex-col overflow-hidden">
             {/* Header */}
             <div className="flex items-start justify-between pb-3 border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-3">
@@ -2791,9 +2952,9 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                       Load Invoice back into POS Cart:
                     </p>
                     <ul className="list-disc list-inside space-y-1 text-slate-700 text-[11px] pl-1">
-                      <li>Previous invoice will be temporarily cancelled to restore active stock.</li>
-                      <li>All items, IMEIs, customer name, discount, and payment type will load directly into the POS checkout.</li>
-                      <li>You can add/remove products, adjust quantities, change prices, and reprint an updated bill.</li>
+                      <li>Original invoice stays active &amp; editable until you tap Update Invoice.</li>
+                      <li>If you cancel editing, your original invoice remains completely safe and untouched.</li>
+                      <li>Add/remove products, change wholesale rates, or adjust quantities &amp; reprint cleanly.</li>
                     </ul>
                   </div>
 
@@ -2885,8 +3046,8 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
       {/* Product Details Modal (Daraz Style Details & IMEIs) */}
       {selectedProductDetails && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-xl w-full p-4 sm:p-6 shadow-2xl space-y-4 border border-slate-100 my-auto animate-in zoom-in-95 duration-200 overflow-y-auto max-h-[90dvh]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 glass-modal-backdrop overflow-y-auto">
+          <div className="glass-modal-panel animate-modal-pop rounded-3xl max-w-xl w-full p-4 sm:p-5 space-y-3.5 my-auto overflow-y-auto max-h-[82dvh]">
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
@@ -2992,7 +3153,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                 {selectedProductDetails.variants && selectedProductDetails.variants.length > 0 ? (
                   selectedProductDetails.variants.map((v: MobileVariant, vIdx: number) => {
                     const vKey = v.id || getVariantLabel(v);
-                    const vTotal = getVariantStock(v);
+                    const vTotal = getEffectiveVariantQty(selectedProductDetails, v);
                     const vInCart = cart
                       .filter(c => c.id === selectedProductDetails.id && (c.selectedVariantId || '') === vKey)
                       .reduce((sum, c) => sum + c.cartQty, 0);
@@ -3116,11 +3277,11 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                   addToCart(selectedProductDetails);
                 }}
                 disabled={
-                  selectedProductDetails.qty <=
+                  getEffectiveProductQty(selectedProductDetails) <=
                   cart.filter(c => c.id === selectedProductDetails.id).reduce((sum, c) => sum + c.cartQty, 0)
                 }
                 className={`w-full sm:flex-1 py-2.5 px-4 font-bold text-xs rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-2 min-h-[42px] ${
-                  selectedProductDetails.qty <=
+                  getEffectiveProductQty(selectedProductDetails) <=
                   cart.filter(c => c.id === selectedProductDetails.id).reduce((sum, c) => sum + c.cartQty, 0)
                     ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
                     : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20 active:scale-[0.98]'
@@ -3158,8 +3319,8 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
       {/* Variant Picker Modal for Multi-Variant Products */}
       {variantPickerItem && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-md w-full p-4 sm:p-5 shadow-2xl space-y-4 border border-slate-100 my-auto animate-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 glass-modal-backdrop overflow-y-auto">
+          <div className="glass-modal-panel animate-modal-pop rounded-3xl max-w-md w-full p-4 sm:p-5 space-y-3.5 my-auto max-h-[82dvh] flex flex-col overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
@@ -3186,7 +3347,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
             <div className="space-y-2 max-h-[60dvh] overflow-y-auto pr-1 scrollbar-thin">
               {(variantPickerItem.variants || []).map((v, vIdx) => {
                 const vKey = v.id || getVariantLabel(v);
-                const vTotal = getVariantStock(v);
+                const vTotal = getEffectiveVariantQty(variantPickerItem, v);
                 const vInCart = cart
                   .filter(c => c.id === variantPickerItem.id && (c.selectedVariantId || '') === vKey)
                   .reduce((sum, c) => sum + c.cartQty, 0);

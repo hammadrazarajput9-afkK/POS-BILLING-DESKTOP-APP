@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { InventoryItem, ItemCategory, StockAdjustment, SaleRecord, MobileVariant, SupplierPurchase, ImeiRecord, ActivityLog } from '../types';
@@ -103,6 +103,38 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
 
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [selectedProductPopup, setSelectedProductPopup] = useState<InventoryItem | null>(null);
+
+  useEffect(() => {
+    const hasOpenModal = Boolean(
+      productToPermanentDelete || productToDelete || isAdjustmentsModalOpen || selectedProductPopup
+    );
+    if (!hasOpenModal) return;
+    const handleHardwareBack = (e: Event) => {
+      if (isCameraScannerOpen || isCategoryModalOpen) return;
+      if (productToPermanentDelete) {
+        e.preventDefault();
+        setProductToPermanentDelete(null);
+      } else if (productToDelete) {
+        e.preventDefault();
+        setProductToDelete(null);
+      } else if (isAdjustmentsModalOpen) {
+        e.preventDefault();
+        setIsAdjustmentsModalOpen(false);
+      } else if (selectedProductPopup) {
+        e.preventDefault();
+        setSelectedProductPopup(null);
+      }
+    };
+    window.addEventListener('pos-hardware-back', handleHardwareBack);
+    return () => window.removeEventListener('pos-hardware-back', handleHardwareBack);
+  }, [
+    isCameraScannerOpen,
+    isCategoryModalOpen,
+    productToPermanentDelete,
+    productToDelete,
+    isAdjustmentsModalOpen,
+    selectedProductPopup,
+  ]);
 
   const selectedProductSupplierInfo = useMemo(() => {
     if (!selectedProductPopup) {
@@ -1321,8 +1353,8 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
 
       {/* Animated Product Details Popup Modal (WhatsApp Share & Product PDF excluding wholesale/cost) */}
       {selectedProductPopup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-xl w-full p-5 sm:p-6 shadow-2xl space-y-5 border border-slate-100 my-auto animate-in zoom-in-95 duration-200 overflow-y-auto max-h-[90dvh]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
+          <div className="glass-modal-panel animate-modal-pop rounded-3xl max-w-xl w-full p-4 sm:p-5 space-y-4 my-auto overflow-y-auto max-h-[82dvh]">
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
@@ -1711,8 +1743,8 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
 
       {/* Inventory Logs, Missing Alerts & Stock Adjustments Modal */}
       {isAdjustmentsModalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-5 sm:p-6 shadow-2xl space-y-4 border border-slate-100 max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
+          <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-2xl w-full p-4 sm:p-5 space-y-3.5 max-h-[82dvh] flex flex-col overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center font-bold">
@@ -1870,8 +1902,8 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
 
       {/* Multi-Option Delete Modal for Active Products */}
       {productToDelete && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 border border-slate-100">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
+          <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-md w-full p-4 sm:p-5 space-y-4 max-h-[82dvh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold">
@@ -1966,8 +1998,8 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
 
       {/* Direct Permanent Delete Confirmation Modal */}
       {productToPermanentDelete && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 border border-rose-100">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
+          <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-md w-full p-4 sm:p-5 space-y-4 border border-rose-200/80 max-h-[82dvh] overflow-y-auto">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center font-bold shrink-0">
                 <AlertTriangle className="w-5 h-5 text-rose-600" />

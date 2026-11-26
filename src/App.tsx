@@ -165,6 +165,7 @@ function AppContent() {
     handleDeleteSale,
     handleCancelSale,
     handleUpdateSale,
+    handleReplaceEditedSale,
     handleOpenSalesReturn,
     handleSaveSalesReturn,
     receiptModalOpen,
@@ -261,6 +262,219 @@ function AppContent() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [activeTab, data.currentRole]);
+
+  // Navigation History Stack & Android/Browser Hardware Back Button Interception
+  const tabHistoryRef = useRef<string[]>([]);
+  const lastBackExitAttemptRef = useRef<number>(0);
+  const allowNativeExitRef = useRef<boolean>(false);
+
+  const getRootTab = useCallback(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) return 'home';
+    return (dataRef.current.currentRole || 'admin') === 'salesman' ? 'pos' : 'dashboard';
+  }, []);
+
+  const handleSelectTab = useCallback((nextTab: string) => {
+    setActiveTab(prev => {
+      if (prev === nextTab) return prev;
+      const rootTab = getRootTab();
+      if (nextTab === rootTab) {
+        tabHistoryRef.current = [];
+      } else {
+        const filtered = tabHistoryRef.current.filter(t => t !== nextTab);
+        tabHistoryRef.current = [...filtered.slice(-24), prev];
+      }
+      lastBackExitAttemptRef.current = 0;
+      return nextTab;
+    });
+  }, [getRootTab]);
+
+  const navGuardRef = useRef({
+    activeTab,
+    isMenuOpen,
+    pdfModalOpen,
+    tabSettingsModalOpen,
+    settingsModalOpen,
+    expenseCategoryModalOpen,
+    expenseModalOpen,
+    salesReturnModalOpen,
+    settleKhataModalOpen,
+    addKhataModalOpen,
+    stockModalOpen,
+    receiptModalOpen,
+    currentRole: data.currentRole || 'admin',
+  });
+  navGuardRef.current = {
+    activeTab,
+    isMenuOpen,
+    pdfModalOpen,
+    tabSettingsModalOpen,
+    settingsModalOpen,
+    expenseCategoryModalOpen,
+    expenseModalOpen,
+    salesReturnModalOpen,
+    settleKhataModalOpen,
+    addKhataModalOpen,
+    stockModalOpen,
+    receiptModalOpen,
+    currentRole: data.currentRole || 'admin',
+  };
+
+  const isAuthenticated = Boolean(data.currentUser);
+
+  useEffect(() => {
+    if (!isAuthenticated || typeof window === 'undefined') return;
+
+    allowNativeExitRef.current = false;
+    try {
+      const currentState = window.history.state;
+      if (!currentState?.posGuard && !currentState?.posGuardRoot) {
+        window.history.replaceState({ posGuardRoot: true }, '');
+        window.history.pushState({ posGuard: true }, '');
+      } else if (currentState?.posGuardRoot) {
+        window.history.pushState({ posGuard: true }, '');
+      }
+    } catch {
+      // Ignore restricted history API contexts
+    }
+
+    const pushGuardSentinel = () => {
+      try {
+        window.history.pushState({ posGuard: true }, '');
+      } catch {
+        // Ignore
+      }
+    };
+
+    const handlePopState = () => {
+      if (allowNativeExitRef.current) {
+        return;
+      }
+
+      // 1. Let active modals / child overlays intercept and close first
+      const backEvent = new CustomEvent('pos-hardware-back', { cancelable: true });
+      window.dispatchEvent(backEvent);
+      if (backEvent.defaultPrevented) {
+        lastBackExitAttemptRef.current = 0;
+        pushGuardSentinel();
+        return;
+      }
+
+      // 2. Close App-owned modals/drawers in strict top-down z-order
+      const s = navGuardRef.current;
+      if (s.pdfModalOpen) {
+        setPdfModalOpen(false);
+        pushGuardSentinel();
+        return;
+      }
+      if (s.tabSettingsModalOpen) {
+        setTabSettingsModalOpen(false);
+        pushGuardSentinel();
+        return;
+      }
+      if (s.settingsModalOpen) {
+        setSettingsModalOpen(false);
+        pushGuardSentinel();
+        return;
+      }
+      if (s.expenseCategoryModalOpen) {
+        setExpenseCategoryModalOpen(false);
+        pushGuardSentinel();
+        return;
+      }
+      if (s.expenseModalOpen) {
+        setExpenseModalOpen(false);
+        pushGuardSentinel();
+        return;
+      }
+      if (s.salesReturnModalOpen) {
+        setSalesReturnModalOpen(false);
+        setSalesReturnInitialSale(null);
+        pushGuardSentinel();
+        return;
+      }
+      if (s.settleKhataModalOpen) {
+        setSettleKhataModalOpen(false);
+        setSettleCustomer(null);
+        pushGuardSentinel();
+        return;
+      }
+      if (s.addKhataModalOpen) {
+        setAddKhataModalOpen(false);
+        pushGuardSentinel();
+        return;
+      }
+      if (s.stockModalOpen) {
+        setStockModalOpen(false);
+        pushGuardSentinel();
+        return;
+      }
+      if (s.receiptModalOpen) {
+        setReceiptModalOpen(false);
+        pushGuardSentinel();
+        return;
+      }
+      if (window.innerWidth < 1024 && s.isMenuOpen) {
+        setIsMenuOpen(false);
+        pushGuardSentinel();
+        return;
+      }
+
+      // 3. Navigate back across tab history or return to Home / Dashboard
+      const rootTab = getRootTab();
+      const restrictedForSalesman = s.currentRole === 'salesman' ? ['dashboard', 'reports', 'activity'] : [];
+      while (tabHistoryRef.current.length > 0) {
+        const prevTab = tabHistoryRef.current.pop()!;
+        if (
+          prevTab &&
+          prevTab !== s.activeTab &&
+          !restrictedForSalesman.includes(prevTab) &&
+          (window.innerWidth < 1024 || prevTab !== 'home')
+        ) {
+          setActiveTab(prevTab);
+          lastBackExitAttemptRef.current = 0;
+          pushGuardSentinel();
+          return;
+        }
+      }
+
+      if (s.activeTab !== rootTab) {
+        setActiveTab(rootTab);
+        lastBackExitAttemptRef.current = 0;
+        pushGuardSentinel();
+        return;
+      }
+
+      // 4. At root tab with nothing open: double-back within 2s to exit cleanly
+      const now = Date.now();
+      if (now - lastBackExitAttemptRef.current < 2000) {
+        allowNativeExitRef.current = true;
+        try {
+          window.history.back();
+        } catch {
+          // Allow natural browser close
+        }
+        return;
+      }
+
+      lastBackExitAttemptRef.current = now;
+      showToast('Press back again to exit app', 'info');
+      pushGuardSentinel();
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [
+    isAuthenticated,
+    getRootTab,
+    showToast,
+    setSalesReturnModalOpen,
+    setSalesReturnInitialSale,
+    setSettleKhataModalOpen,
+    setSettleCustomer,
+    setAddKhataModalOpen,
+    setStockModalOpen,
+    setReceiptModalOpen,
+  ]);
 
   // Apply visual theme to document root & keep system status bar theme-color synced
   useEffect(() => {
@@ -1954,7 +2168,7 @@ function AppContent() {
       {/* Sidebar Navigation */}
       <Sidebar
         activeTab={activeTab}
-        onSelectTab={setActiveTab}
+        onSelectTab={handleSelectTab}
         isOpen={isMenuOpen}
         onClose={() => setIsMenuOpen(false)}
         onOpenSettings={() => setSettingsModalOpen(true)}
@@ -1986,7 +2200,7 @@ function AppContent() {
           activeTab={activeTab}
           isMenuOpen={isMenuOpen}
           onToggleMenu={() => setIsMenuOpen(prev => !prev)}
-          onSwitchTab={setActiveTab}
+          onSwitchTab={handleSelectTab}
           onOpenModal={handleOpenModal}
           onOpenSettings={() => setSettingsModalOpen(true)}
           onOpenTabSettings={() => setTabSettingsModalOpen(true)}
@@ -2028,7 +2242,7 @@ function AppContent() {
                 pendingKhataTotal={homePendingKhataTotal}
                 inventoryCount={(data.inventory || []).length}
                 activityCount={(data.activities || []).length}
-                onSelectTab={setActiveTab}
+                onSelectTab={handleSelectTab}
                 onOpenSettings={() => setSettingsModalOpen(true)}
               />
             )}
@@ -2036,7 +2250,7 @@ function AppContent() {
             {activeTab === 'dashboard' && (data.currentRole || 'admin') === 'admin' && (
               <DashboardTab
                 data={data}
-                onSwitchTab={setActiveTab}
+                onSwitchTab={handleSelectTab}
                 onOpenModal={handleOpenModal}
                 onOpenSettings={() => setTabSettingsModalOpen(true)}
               />
@@ -2054,6 +2268,7 @@ function AppContent() {
                 posPreferences={data.tabPreferences?.pos}
                 onOpenPosSettings={() => setTabSettingsModalOpen(true)}
                 onCompleteSale={handleCompleteSale}
+                onCompleteEditedSale={handleReplaceEditedSale}
                 onOpenAddStock={() => {
                   setEditStockItem(null);
                   setStockModalOpen(true);
@@ -2070,9 +2285,7 @@ function AppContent() {
                 onUpdateOnlineAccount={handleUpdateOnlineAccount}
                 saleToEdit={saleToEdit}
                 onClearSaleToEdit={() => setSaleToEdit(null)}
-                onBackToHome={() =>
-                  setActiveTab(typeof window !== 'undefined' && window.innerWidth < 1024 ? 'home' : 'dashboard')
-                }
+                onBackToHome={() => handleSelectTab(getRootTab())}
               />
             )}
 
@@ -2102,9 +2315,7 @@ function AppContent() {
                 onDeleteCategory={handleDeleteCategory}
                 onRenameCategory={handleRenameCategory}
                 onOpenPdfReport={(cat?: string) => handleOpenPdfReport('inventory', cat)}
-                onBackToHome={() =>
-                  setActiveTab(typeof window !== 'undefined' && window.innerWidth < 1024 ? 'home' : 'dashboard')
-                }
+                onBackToHome={() => handleSelectTab(getRootTab())}
               />
             )}
 
@@ -2131,9 +2342,7 @@ function AppContent() {
                 onRenameCategory={handleRenameCategory}
                 onOpenPdfReport={() => handleOpenPdfReport('purchases')}
                 onRecoverMissingPurchases={handleRecoverMissingPurchases}
-                onBackToHome={() =>
-                  setActiveTab(typeof window !== 'undefined' && window.innerWidth < 1024 ? 'home' : 'dashboard')
-                }
+                onBackToHome={() => handleSelectTab(getRootTab())}
               />
             )}
 
@@ -2162,10 +2371,8 @@ function AppContent() {
                 selectedCustomerId={selectedKhataCustomerId}
                 onClearSelectedCustomer={() => setSelectedKhataCustomerId(null)}
                 onOpenPdfReport={() => handleOpenPdfReport('khata')}
-                onGoToPurchases={() => setActiveTab('purchases')}
-                onBackToHome={() =>
-                  setActiveTab(typeof window !== 'undefined' && window.innerWidth < 1024 ? 'home' : 'dashboard')
-                }
+                onGoToPurchases={() => handleSelectTab('purchases')}
+                onBackToHome={() => handleSelectTab(getRootTab())}
               />
             )}
 
@@ -2179,9 +2386,7 @@ function AppContent() {
                 onDeleteExpense={handleDeleteExpense}
                 onOpenSettings={() => setTabSettingsModalOpen(true)}
                 onOpenPdfReport={() => handleOpenPdfReport('expenses')}
-                onBackToHome={() =>
-                  setActiveTab(typeof window !== 'undefined' && window.innerWidth < 1024 ? 'home' : 'dashboard')
-                }
+                onBackToHome={() => handleSelectTab(getRootTab())}
               />
             )}
 
@@ -2195,9 +2400,7 @@ function AppContent() {
                 onDeleteOnlineAccount={handleDeleteOnlineAccount}
                 onOpenSettings={() => setTabSettingsModalOpen(true)}
                 onOpenPdfReport={() => handleOpenPdfReport('dailyClosing')}
-                onBackToHome={() =>
-                  setActiveTab(typeof window !== 'undefined' && window.innerWidth < 1024 ? 'home' : 'dashboard')
-                }
+                onBackToHome={() => handleSelectTab(getRootTab())}
               />
             )}
 
@@ -2211,7 +2414,7 @@ function AppContent() {
                 onOpenSalesReturn={handleOpenSalesReturn}
                 onEditSale={sale => {
                   setSaleToEdit(sale);
-                  setActiveTab('pos');
+                  handleSelectTab('pos');
                 }}
                 onDeleteSale={handleDeleteSale}
               />
@@ -2414,6 +2617,11 @@ function AppContent() {
         onOpenSalesReturn={sale => {
           setReceiptModalOpen(false);
           handleOpenSalesReturn(sale);
+        }}
+        onEditSale={sale => {
+          setReceiptModalOpen(false);
+          setSaleToEdit(sale);
+          handleSelectTab('pos');
         }}
         onDeleteSale={handleDeleteSale}
       />
