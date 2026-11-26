@@ -269,6 +269,8 @@ export interface SaleRecord {
   amountPaid?: number;
   amountDue?: number;
   khataCustomerId?: string;
+  previousBalance?: number;
+  totalOutstanding?: number;
   items: SaleItem[];
   subtotal: number;
   discount: number;

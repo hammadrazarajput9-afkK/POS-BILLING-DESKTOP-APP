@@ -1102,6 +1102,24 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
   const actualDue = Math.max(0, grandTotal - actualPaid);
 
+  const matchedKhataCustomer = useMemo(() => {
+    if (selectedKhataId) {
+      return khataCustomers.find(k => k.id === selectedKhataId);
+    }
+    if (custPhone.trim()) {
+      const cleanP = custPhone.trim().toLowerCase();
+      return khataCustomers.find(k => (k.phone || '').trim().toLowerCase() === cleanP);
+    }
+    if (custName.trim()) {
+      const cleanN = custName.trim().toLowerCase();
+      return khataCustomers.find(k => (k.name || '').trim().toLowerCase() === cleanN);
+    }
+    return null;
+  }, [selectedKhataId, custPhone, custName, khataCustomers]);
+
+  const previousKhataBalance = matchedKhataCustomer ? (matchedKhataCustomer.balance || 0) : 0;
+  const totalOutstanding = grandTotal + previousKhataBalance;
+
   const handleKhataSelect = (khataId: string) => {
     setSelectedKhataId(khataId);
     if (khataId) {
@@ -1444,12 +1462,33 @@ const PosTabComponent: React.FC<PosTabProps> = ({
               />
             </div>
 
+            {/* PREVIOUS KHATA BALANCE DUE */}
+            {previousKhataBalance > 0 && (
+              <div className="bg-rose-50/90 border border-rose-200/90 backdrop-blur-md rounded-xl p-2 flex items-center justify-between text-rose-900 font-bold">
+                <span className="flex items-center gap-1 text-[11px]">
+                  <span>Previous Khata Balance:</span>
+                </span>
+                <span className="tabular-nums font-black text-rose-700">
+                  {currency} {previousKhataBalance.toLocaleString()}
+                </span>
+              </div>
+            )}
+
             <div className="flex justify-between items-center text-sm sm:text-base font-extrabold text-slate-900 pt-1 border-t border-slate-100">
               <span>Grand Total:</span>
               <span className={`tabular-nums text-base sm:text-lg ${saleMode === 'wholesale' ? 'text-purple-700' : 'text-blue-600'}`}>
                 {currency} {grandTotal.toLocaleString()}
               </span>
             </div>
+
+            {previousKhataBalance > 0 && (
+              <div className="flex justify-between items-center bg-gradient-to-r from-rose-600 to-rose-700 text-white rounded-xl p-2.5 shadow-md shadow-rose-600/20 text-xs font-black">
+                <span>Total Outstanding Balance:</span>
+                <span className="tabular-nums text-sm">
+                  {currency} {totalOutstanding.toLocaleString()}
+                </span>
+              </div>
+            )}
 
             {/* If Credit Sale, show Paid Now vs Due Balance */}
             {invoiceType === 'credit' && (
@@ -1561,7 +1600,9 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       retailerShopName: saleMode === 'wholesale' ? retailerShopName.trim() || undefined : undefined,
       retailerCity: saleMode === 'wholesale' ? retailerCity.trim() || undefined : undefined,
       retailerNtn: saleMode === 'wholesale' ? retailerNtn.trim() || undefined : undefined,
-      khataCustomerId: invoiceType === 'credit' ? selectedKhataId || undefined : undefined,
+      khataCustomerId: selectedKhataId || matchedKhataCustomer?.id || undefined,
+      previousBalance: previousKhataBalance > 0 ? previousKhataBalance : undefined,
+      totalOutstanding: previousKhataBalance > 0 ? totalOutstanding : undefined,
       amountPaid: actualPaid,
       amountDue: actualDue,
       items: cart.map(i => {

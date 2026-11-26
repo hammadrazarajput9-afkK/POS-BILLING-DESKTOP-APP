@@ -334,12 +334,28 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               </span>
             </div>
           )}
+          {sale.previousBalance !== undefined && sale.previousBalance > 0 && (
+            <div className="flex justify-between font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded">
+              <span>Previous Balance Due:</span>
+              <span>
+                {settings.currency} {sale.previousBalance.toLocaleString()}
+              </span>
+            </div>
+          )}
           <div className="flex justify-between font-black text-[13px] pt-1 border-t border-black">
             <span>GRAND TOTAL:</span>
             <span>
               {settings.currency} {grandTotal.toLocaleString()}
             </span>
           </div>
+          {sale.totalOutstanding !== undefined && sale.totalOutstanding > 0 && (
+            <div className="flex justify-between font-black text-white bg-rose-700 px-1.5 py-1 rounded">
+              <span>TOTAL OUTSTANDING:</span>
+              <span>
+                {settings.currency} {sale.totalOutstanding.toLocaleString()}
+              </span>
+            </div>
+          )}
           <div className="flex justify-between">
             <span>Paid ({sale.paymentMethod || 'Cash'}):</span>
             <span className="font-bold">
@@ -695,12 +711,30 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 </div>
               )}
 
+              {sale.previousBalance !== undefined && sale.previousBalance > 0 && (
+                <div className="flex justify-between font-bold text-rose-700 bg-rose-50 px-2 py-1 rounded-lg">
+                  <span>Previous Balance Due:</span>
+                  <span>
+                    {settings.currency} {sale.previousBalance.toLocaleString()}
+                  </span>
+                </div>
+              )}
+
               <div className="flex justify-between items-center font-black text-slate-900 pt-1 border-t border-slate-200">
                 <span className={is58 ? 'text-xs' : 'text-sm'}>GRAND TOTAL:</span>
                 <span className={`${is58 ? 'text-sm' : 'text-base'} text-blue-700`}>
                   {settings.currency} {grandTotal.toLocaleString()}
                 </span>
               </div>
+
+              {sale.totalOutstanding !== undefined && sale.totalOutstanding > 0 && (
+                <div className="flex justify-between font-black text-white bg-rose-600 px-2 py-1.5 rounded-lg text-xs">
+                  <span>TOTAL OUTSTANDING:</span>
+                  <span>
+                    {settings.currency} {sale.totalOutstanding.toLocaleString()}
+                  </span>
+                </div>
+              )}
 
               <div className="flex justify-between text-emerald-700 font-bold pt-1 border-t border-slate-200/70">
                 <span>Paid ({sale.paymentMethod || 'Cash'}):</span>
