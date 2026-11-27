@@ -21,7 +21,11 @@ import {
   Palette,
   AlertTriangle,
   Edit2,
-  FileText
+  FileText,
+  ChevronDown,
+  ShieldCheck,
+  User,
+  Wrench
 } from 'lucide-react';
 import { useToast } from './Toast';
 import { useFormDraft } from '../hooks/useFormDraft';
@@ -59,6 +63,7 @@ export interface StockModalProps {
   ) => void;
   isAdmin?: boolean;
   allowCostEntry?: boolean;
+  initialCategory?: string;
 }
 
 interface StockDraftState {
@@ -76,6 +81,36 @@ interface StockDraftState {
 
 const RAM_OPTIONS = ['3GB', '4GB', '6GB', '8GB', '12GB', '16GB', '24GB'];
 const STORAGE_OPTIONS = ['32GB', '64GB', '128GB', '256GB', '512GB', '1TB'];
+export const CONDITION_OPTIONS = [
+  '10/10',
+  '10/9',
+  '10/8',
+  '10/7',
+  '10/6',
+  '10/5',
+  'Some Part Broke',
+  'Internal Issues',
+  'Repairable',
+] as const;
+
+const isUsedCategoryName = (cat?: string): boolean => {
+  const c = (cat || '').toLowerCase();
+  return c.includes('used') || c.includes('second') || c.includes('pre-owned') || c.includes('refurbished');
+};
+
+const getConditionBadgeStyle = (cond?: string) => {
+  if (!cond) return 'bg-slate-100 text-slate-600 border-slate-200';
+  if (cond === '10/10' || cond === '10/9' || cond === '10/8') {
+    return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  }
+  if (cond === '10/7' || cond === '10/6' || cond === '10/5') {
+    return 'bg-amber-50 text-amber-700 border-amber-200';
+  }
+  if (cond === 'Repairable') {
+    return 'bg-rose-50 text-rose-700 border-rose-300';
+  }
+  return 'bg-orange-50 text-orange-700 border-orange-200';
+};
 
 const createDefaultVariant = (id: string, ram = '4GB', storage = '64GB'): MobileVariant => ({
   id,
@@ -88,6 +123,7 @@ const createDefaultVariant = (id: string, ram = '4GB', storage = '64GB'): Mobile
   qty: '',
   imeis: [''],
   note: '',
+  condition: '',
 });
 
 const initialStockDraft: StockDraftState = {
@@ -208,6 +244,7 @@ export const StockModal: React.FC<StockModalProps> = ({
   onStockAdjustment,
   isAdmin = true,
   allowCostEntry = false,
+  initialCategory,
 }) => {
   const canSeeCostAndWholesale = true;
   const canSeeProfitSummary = isAdmin;
@@ -242,6 +279,10 @@ export const StockModal: React.FC<StockModalProps> = ({
   const [qty, setQty] = useState<number | ''>('');
   const [color, setColor] = useState('');
   const [itemNote, setItemNote] = useState('');
+  const [itemCondition, setItemCondition] = useState('');
+  const [purchasedFrom, setPurchasedFrom] = useState('');
+  const [purchasedPhone, setPurchasedPhone] = useState('');
+  const [openConditionDropdown, setOpenConditionDropdown] = useState<string | null>(null);
   const [imeis, setImeis] = useState<string[]>(['']);
 
   // Stock Adjustment state for edit quantity changes
@@ -295,6 +336,10 @@ export const StockModal: React.FC<StockModalProps> = ({
         setQty(editItem.qty);
         setColor(editItem.color || '');
         setItemNote(editItem.note || '');
+        setItemCondition(editItem.condition || '');
+        setPurchasedFrom(editItem.purchasedFrom || '');
+        setPurchasedPhone(editItem.purchasedPhone || '');
+        setOpenConditionDropdown(null);
 
         const existingImeis = editItem.imeis && editItem.imeis.length > 0
           ? [...editItem.imeis]
@@ -314,6 +359,7 @@ export const StockModal: React.FC<StockModalProps> = ({
             editItem.variants.map(v => ({
               ...v,
               note: v.note || '',
+              condition: v.condition || editItem.condition || '',
               costPrice: v.autoCostPrice ? '' : v.costPrice,
               wholesalePrice: v.autoWholesalePrice
                 ? ''
@@ -334,6 +380,7 @@ export const StockModal: React.FC<StockModalProps> = ({
             storage: editItem.storage || (isKeypadCategory(editItem.category) ? '' : '128GB'),
             color: editItem.color || parenColor || '',
             note: editItem.note || '',
+            condition: editItem.condition || '',
             costPrice: editItem.costPrice,
             wholesalePrice: editItem.wholesalePrice !== undefined ? editItem.wholesalePrice : '',
             salePrice: editItem.salePrice,
@@ -343,15 +390,19 @@ export const StockModal: React.FC<StockModalProps> = ({
         }
       } else {
         isEditingRef.current = false;
-        // Pre-select last chosen category so adding multiple items in the same category is sticky & fast
-        const lastCategory = getLastSelectedCategory(categories);
+        const resolvedInitialCat = initialCategory
+          ? categories.find(c => c.trim().toLowerCase() === initialCategory.trim().toLowerCase()) || initialCategory
+          : getLastSelectedCategory(categories);
+        if (initialCategory && !categories.some(c => c.trim().toLowerCase() === initialCategory.trim().toLowerCase())) {
+          onAddCategory(initialCategory);
+        }
         const hasMeaningfulDraft = Boolean(
           (draftData.name && draftData.name.trim()) ||
           draftData.costPrice !== '' ||
           draftData.salePrice !== ''
         );
         setName(draftData.name || '');
-        setCategory(lastCategory);
+        setCategory(resolvedInitialCat);
         setImage(draftData.image || '');
         setBarcode(draftData.barcode || '');
         setCostPrice(draftData.costPrice !== undefined ? draftData.costPrice : '');
@@ -361,13 +412,18 @@ export const StockModal: React.FC<StockModalProps> = ({
         setQty(hasMeaningfulDraft && draftData.qty !== undefined ? draftData.qty : '');
         setColor('');
         setItemNote(draftData.note || '');
+        setItemCondition('');
+        setPurchasedFrom('');
+        setPurchasedPhone('');
+        setOpenConditionDropdown(null);
         setImeis(draftData.imeis && draftData.imeis.length > 0 ? [...draftData.imeis] : ['']);
 
-        if (hasMeaningfulDraft && draftData.variants && draftData.variants.length > 0 && isAndroidCategory(lastCategory)) {
+        if (hasMeaningfulDraft && draftData.variants && draftData.variants.length > 0 && isAndroidCategory(resolvedInitialCat)) {
           setVariants(
             draftData.variants.map(v => ({
               ...v,
               note: v.note || '',
+              condition: v.condition || '',
               costPrice: v.autoCostPrice ? '' : v.costPrice,
               wholesalePrice: v.autoWholesalePrice ? '' : v.wholesalePrice,
               salePrice: v.autoSalePrice ? '' : v.salePrice,
@@ -375,7 +431,7 @@ export const StockModal: React.FC<StockModalProps> = ({
             }))
           );
         } else {
-          const isAndroidLast = isAndroidCategory(lastCategory);
+          const isAndroidLast = isAndroidCategory(resolvedInitialCat);
           setVariants([createDefaultVariant('var-1', isAndroidLast ? '6GB' : '', isAndroidLast ? '128GB' : '')]);
         }
       }
@@ -384,7 +440,7 @@ export const StockModal: React.FC<StockModalProps> = ({
     }
     prevIsOpenRef.current = isOpen;
     prevEditItemRef.current = editItem;
-  }, [isOpen, editItem, categories]);
+  }, [isOpen, editItem, categories, initialCategory]);
 
   // Intercept hardware/navigation Back button while StockModal is topmost
   useEffect(() => {
@@ -1048,6 +1104,7 @@ export const StockModal: React.FC<StockModalProps> = ({
           qty,
           imeis: nextImeis.slice(0, qty),
           note: v.note?.trim() || undefined,
+          condition: v.condition?.trim() || undefined,
         };
       });
 
@@ -1160,6 +1217,14 @@ export const StockModal: React.FC<StockModalProps> = ({
         });
       }
 
+      const primaryCondition =
+        synchronizedVariants.find(v => v.condition && v.condition.trim())?.condition?.trim() ||
+        itemCondition.trim() ||
+        undefined;
+      const hasRepairable =
+        primaryCondition === 'Repairable' ||
+        synchronizedVariants.some(v => v.condition === 'Repairable');
+
       const singleProduct: Omit<InventoryItem, 'id' | 'createdAt'> = {
         name: name.trim(),
         category,
@@ -1174,16 +1239,28 @@ export const StockModal: React.FC<StockModalProps> = ({
         ram: isAndroid ? synchronizedVariants[0]?.ram : undefined,
         storage: isAndroid ? synchronizedVariants[0]?.storage : undefined,
         color: allColors || undefined,
+        note: itemNote.trim() || synchronizedVariants[0]?.note?.trim() || undefined,
+        condition: primaryCondition,
+        purchasedFrom: purchasedFrom.trim() || undefined,
+        purchasedPhone: purchasedPhone.trim() || undefined,
         variants: synchronizedVariants,
       };
 
       onSave(singleProduct, editItem ? editItem.id : undefined, adjustmentData);
+      if (hasRepairable && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().catch(() => {});
+      }
       showToast(
         editItem
           ? `Product "${singleProduct.name}" updated with ${synchronizedVariants.length} variants!`
           : `Product "${singleProduct.name}" added with ${synchronizedVariants.length} variants!`,
         'success'
       );
+      if (hasRepairable) {
+        setTimeout(() => {
+          showToast(`Repairable Reminder Active: "${singleProduct.name}" — hourly reminder enabled!`, 'warning');
+        }, 450);
+      }
       if (missingAlerts.length > 0) {
         setTimeout(() => {
           showToast(`Missing fields notice: ${missingAlerts.join(' | ')}`, 'warning');
@@ -1296,13 +1373,24 @@ export const StockModal: React.FC<StockModalProps> = ({
           qty: quantity,
           color: color.trim() || undefined,
           note: itemNote.trim() || undefined,
+          condition: itemCondition.trim() || undefined,
+          purchasedFrom: purchasedFrom.trim() || undefined,
+          purchasedPhone: purchasedPhone.trim() || undefined,
           status: editItem?.status || 'ACTIVE',
         },
         editItem ? editItem.id : undefined,
         adjustmentData
       );
 
+      if (itemCondition === 'Repairable' && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().catch(() => {});
+      }
       showToast(editItem ? 'Product updated successfully' : 'Product added to stock', 'success');
+      if (itemCondition === 'Repairable') {
+        setTimeout(() => {
+          showToast(`Repairable Reminder Active: "${formattedTitle}" — hourly reminder enabled!`, 'warning');
+        }, 450);
+      }
       if (singleMissing.length > 0) {
         setTimeout(() => {
           showToast(`Missing fields notice: ${singleMissing.join(', ')}`, 'warning');
@@ -1566,6 +1654,36 @@ export const StockModal: React.FC<StockModalProps> = ({
                 )}
               </div>
             </div>
+
+            {/* Purchased From / Seller Info (shown for Used Categories) */}
+            {isUsedCategoryName(category) && (
+              <div className="sm:col-span-12 grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1.5 border-t border-slate-200/80">
+                <div>
+                  <label className="flex items-center gap-1 font-bold text-slate-700 mb-0.5 text-[10px]">
+                    <User className="w-3 h-3 text-purple-600" /> Purchased From (Seller / Party Name)
+                  </label>
+                  <input
+                    type="text"
+                    value={purchasedFrom}
+                    onChange={e => setPurchasedFrom(e.target.value)}
+                    placeholder="e.g. Ali Raza / Walk-in Seller"
+                    className="compact-mobile-input w-full bg-white border border-purple-200 rounded-lg px-2.5 h-8 text-xs font-semibold focus:outline-none focus:border-purple-600"
+                  />
+                </div>
+                <div>
+                  <label className="flex items-center gap-1 font-bold text-slate-700 mb-0.5 text-[10px]">
+                    <Smartphone className="w-3 h-3 text-purple-600" /> Seller Phone / CNIC Note
+                  </label>
+                  <input
+                    type="text"
+                    value={purchasedPhone}
+                    onChange={e => setPurchasedPhone(e.target.value)}
+                    placeholder="e.g. 0300-1234567"
+                    className="compact-mobile-input w-full bg-white border border-purple-200 rounded-lg px-2.5 h-8 text-xs font-semibold tabular-nums focus:outline-none focus:border-purple-600"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ========================================================= */}
@@ -1835,19 +1953,98 @@ export const StockModal: React.FC<StockModalProps> = ({
                         </div>
                       </div>
 
-                      {/* Variant Note Input */}
-                      <div className="bg-slate-50/70 px-2 py-1.5 rounded-lg border border-slate-200/70">
-                        <label className="flex items-center gap-1 font-bold text-slate-700 mb-0.5 text-[10px]">
-                          <FileText className="w-3 h-3 text-blue-600" />
-                          Variant #{vIdx + 1} Note (Optional)
-                        </label>
-                        <input
-                          type="text"
-                          value={v.note || ''}
-                          onChange={e => handleUpdateVariantField(vIdx, 'note', e.target.value)}
-                          placeholder="e.g. Box Pack, PTA Approved, Official Warranty, Condition note..."
-                          className="compact-mobile-input w-full bg-white border border-slate-200 rounded-lg px-2.5 h-8 text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-600"
-                        />
+                      {/* Condition Selector + Variant Note Input */}
+                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-start">
+                        {/* Clickable Condition Selector */}
+                        <div className="sm:col-span-5 relative bg-slate-50/70 px-2 py-1.5 rounded-lg border border-slate-200/70">
+                          <label className="flex items-center gap-1 font-bold text-slate-700 mb-0.5 text-[10px]">
+                            <ShieldCheck className="w-3 h-3 text-purple-600" />
+                            Device Condition
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setOpenConditionDropdown(
+                                openConditionDropdown === `var-${vIdx}` ? null : `var-${vIdx}`
+                              )
+                            }
+                            className={`w-full h-8 px-2.5 rounded-lg border text-xs font-bold flex items-center justify-between gap-1.5 cursor-pointer transition ${
+                              v.condition
+                                ? getConditionBadgeStyle(v.condition)
+                                : 'bg-white border-slate-200 text-slate-500 hover:border-purple-400'
+                            }`}
+                          >
+                            <span className="truncate flex items-center gap-1.5">
+                              {v.condition === 'Repairable' && <Wrench className="w-3 h-3 shrink-0" />}
+                              {v.condition || 'Select Condition...'}
+                            </span>
+                            <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${openConditionDropdown === `var-${vIdx}` ? 'rotate-180' : ''}`} />
+                          </button>
+
+                          {openConditionDropdown === `var-${vIdx}` && (
+                            <div className="absolute left-0 right-0 top-full mt-1 z-40 bg-white border border-slate-200 rounded-xl shadow-xl p-1.5 space-y-1 max-h-56 overflow-y-auto animate-modal-pop">
+                              <div className="grid grid-cols-3 gap-1">
+                                {CONDITION_OPTIONS.slice(0, 6).map(cond => (
+                                  <button
+                                    key={cond}
+                                    type="button"
+                                    onClick={() => {
+                                      handleUpdateVariantField(vIdx, 'condition', cond);
+                                      setOpenConditionDropdown(null);
+                                    }}
+                                    className={`px-2 py-1.5 rounded-lg text-[11px] font-extrabold border text-center cursor-pointer transition ${
+                                      v.condition === cond
+                                        ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                                        : getConditionBadgeStyle(cond) + ' hover:brightness-95'
+                                    }`}
+                                  >
+                                    {cond}
+                                  </button>
+                                ))}
+                              </div>
+                              <div className="pt-1 border-t border-slate-100 space-y-1">
+                                {CONDITION_OPTIONS.slice(6).map(cond => (
+                                  <button
+                                    key={cond}
+                                    type="button"
+                                    onClick={() => {
+                                      handleUpdateVariantField(vIdx, 'condition', cond);
+                                      setOpenConditionDropdown(null);
+                                    }}
+                                    className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-extrabold border text-left flex items-center justify-between cursor-pointer transition ${
+                                      v.condition === cond
+                                        ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                                        : getConditionBadgeStyle(cond) + ' hover:brightness-95'
+                                    }`}
+                                  >
+                                    <span>{cond}</span>
+                                    {cond === 'Repairable' && <Wrench className="w-3.5 h-3.5 shrink-0" />}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {v.condition === 'Repairable' && (
+                            <p className="text-[10px] font-bold text-rose-600 mt-1 flex items-center gap-1">
+                              <Wrench className="w-3 h-3 shrink-0" /> Hourly repair notification active
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Variant Note Input */}
+                        <div className="sm:col-span-7 bg-slate-50/70 px-2 py-1.5 rounded-lg border border-slate-200/70">
+                          <label className="flex items-center gap-1 font-bold text-slate-700 mb-0.5 text-[10px]">
+                            <FileText className="w-3 h-3 text-blue-600" />
+                            Variant #{vIdx + 1} Note (Optional)
+                          </label>
+                          <input
+                            type="text"
+                            value={v.note || ''}
+                            onChange={e => handleUpdateVariantField(vIdx, 'note', e.target.value)}
+                            placeholder="e.g. Box Pack, PTA Approved, Official Warranty, Condition note..."
+                            className="compact-mobile-input w-full bg-white border border-slate-200 rounded-lg px-2.5 h-8 text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-600"
+                          />
+                        </div>
                       </div>
 
                       {/* STRICT 1-IMEI-PER-BOX DYNAMIC GRID */}
@@ -2020,19 +2217,98 @@ export const StockModal: React.FC<StockModalProps> = ({
                 </div>
               </div>
 
-              {/* Product Note Input (Single Mode) */}
-              <div className="bg-slate-50/70 px-2.5 py-1.5 rounded-xl border border-slate-200/70">
-                <label className="flex items-center gap-1 font-bold text-slate-700 mb-0.5 text-[10px]">
-                  <FileText className="w-3 h-3 text-blue-600" />
-                  Product Note (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={itemNote}
-                  onChange={e => setItemNote(e.target.value)}
-                  placeholder="e.g. Warranty details, supplier info, box condition..."
-                  className="compact-mobile-input w-full bg-white border border-slate-200 rounded-lg px-2.5 h-8.5 text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-600"
-                />
+              {/* Condition Selector + Product Note Input (Single Mode) */}
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-start">
+                {(isMobile || isUsedCategoryName(category)) && (
+                  <div className="sm:col-span-5 relative bg-slate-50/70 px-2.5 py-1.5 rounded-xl border border-slate-200/70">
+                    <label className="flex items-center gap-1 font-bold text-slate-700 mb-0.5 text-[10px]">
+                      <ShieldCheck className="w-3 h-3 text-purple-600" />
+                      Device Condition
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setOpenConditionDropdown(
+                          openConditionDropdown === 'single' ? null : 'single'
+                        )
+                      }
+                      className={`w-full h-8.5 px-2.5 rounded-lg border text-xs font-bold flex items-center justify-between gap-1.5 cursor-pointer transition ${
+                        itemCondition
+                          ? getConditionBadgeStyle(itemCondition)
+                          : 'bg-white border-slate-200 text-slate-500 hover:border-purple-400'
+                      }`}
+                    >
+                      <span className="truncate flex items-center gap-1.5">
+                        {itemCondition === 'Repairable' && <Wrench className="w-3 h-3 shrink-0" />}
+                        {itemCondition || 'Select Condition...'}
+                      </span>
+                      <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${openConditionDropdown === 'single' ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {openConditionDropdown === 'single' && (
+                      <div className="absolute left-0 right-0 top-full mt-1 z-40 bg-white border border-slate-200 rounded-xl shadow-xl p-1.5 space-y-1 max-h-56 overflow-y-auto animate-modal-pop">
+                        <div className="grid grid-cols-3 gap-1">
+                          {CONDITION_OPTIONS.slice(0, 6).map(cond => (
+                            <button
+                              key={cond}
+                              type="button"
+                              onClick={() => {
+                                setItemCondition(cond);
+                                setOpenConditionDropdown(null);
+                              }}
+                              className={`px-2 py-1.5 rounded-lg text-[11px] font-extrabold border text-center cursor-pointer transition ${
+                                itemCondition === cond
+                                  ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                                  : getConditionBadgeStyle(cond) + ' hover:brightness-95'
+                              }`}
+                            >
+                              {cond}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="pt-1 border-t border-slate-100 space-y-1">
+                          {CONDITION_OPTIONS.slice(6).map(cond => (
+                            <button
+                              key={cond}
+                              type="button"
+                              onClick={() => {
+                                setItemCondition(cond);
+                                setOpenConditionDropdown(null);
+                              }}
+                              className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-extrabold border text-left flex items-center justify-between cursor-pointer transition ${
+                                itemCondition === cond
+                                  ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                                  : getConditionBadgeStyle(cond) + ' hover:brightness-95'
+                              }`}
+                            >
+                              <span>{cond}</span>
+                              {cond === 'Repairable' && <Wrench className="w-3.5 h-3.5 shrink-0" />}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {itemCondition === 'Repairable' && (
+                      <p className="text-[10px] font-bold text-rose-600 mt-1 flex items-center gap-1">
+                        <Wrench className="w-3 h-3 shrink-0" /> Hourly repair notification active
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <div className={`${(isMobile || isUsedCategoryName(category)) ? 'sm:col-span-7' : 'sm:col-span-12'} bg-slate-50/70 px-2.5 py-1.5 rounded-xl border border-slate-200/70`}>
+                  <label className="flex items-center gap-1 font-bold text-slate-700 mb-0.5 text-[10px]">
+                    <FileText className="w-3 h-3 text-blue-600" />
+                    Product Note (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={itemNote}
+                    onChange={e => setItemNote(e.target.value)}
+                    placeholder="e.g. Warranty details, supplier info, box condition..."
+                    className="compact-mobile-input w-full bg-white border border-slate-200 rounded-lg px-2.5 h-8.5 text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-600"
+                  />
+                </div>
               </div>
 
               {/* If editing and stock quantity is modified, display structured Stock Adjustment audit selector */}

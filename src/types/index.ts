@@ -20,6 +20,9 @@ export interface InventoryItem {
   storage?: string;
   color?: string;
   note?: string;
+  condition?: string;
+  purchasedFrom?: string;
+  purchasedPhone?: string;
   variants?: MobileVariant[];
   updatedAt?: string;
 }
@@ -79,6 +82,7 @@ export interface MobileVariant {
   qty: number | '';
   imeis: string[];
   note?: string;
+  condition?: string;
 }
 
 export interface KhataTransaction {

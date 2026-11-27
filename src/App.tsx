@@ -87,6 +87,7 @@ import { TabSettingsModal } from './components/TabSettingsModal';
 import { PdfExportModal } from './components/PdfExportModal';
 import { PWAUpdateBanner } from './components/PWAUpdateBanner';
 import { MobileHomeLauncher } from './components/MobileHomeLauncher';
+import { UsedMobilesModal } from './components/UsedMobilesModal';
 
 // Modular Custom Hooks
 import { useSales } from './hooks/useSales';
@@ -202,6 +203,9 @@ function AppContent() {
     setEditStockItem,
   } = useInventory({ data, setData, logActivity, showToast });
 
+  const [usedMobilesModalOpen, setUsedMobilesModalOpen] = useState(false);
+  const [stockInitialCategory, setStockInitialCategory] = useState<string | undefined>(undefined);
+
   const {
     handleSaveKhataCustomer,
     handleSettleKhataBalance,
@@ -306,6 +310,7 @@ function AppContent() {
     settleKhataModalOpen,
     addKhataModalOpen,
     stockModalOpen,
+    usedMobilesModalOpen,
     receiptModalOpen,
     currentRole: data.currentRole || 'admin',
   });
@@ -321,6 +326,7 @@ function AppContent() {
     settleKhataModalOpen,
     addKhataModalOpen,
     stockModalOpen,
+    usedMobilesModalOpen,
     receiptModalOpen,
     currentRole: data.currentRole || 'admin',
   };
@@ -411,6 +417,12 @@ function AppContent() {
       }
       if (s.stockModalOpen) {
         setStockModalOpen(false);
+        setStockInitialCategory(undefined);
+        pushGuardSentinel();
+        return;
+      }
+      if (s.usedMobilesModalOpen) {
+        setUsedMobilesModalOpen(false);
         pushGuardSentinel();
         return;
       }
@@ -481,6 +493,77 @@ function AppContent() {
     setStockModalOpen,
     setReceiptModalOpen,
   ]);
+
+  // Hourly Repairable Mobile Reminder ("Please repair this mobile and sell")
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const REPAIRABLE_LAST_KEY = 'mobile_pos_repairable_last_notified_at';
+    const ONE_HOUR_MS = 60 * 60 * 1000;
+
+    const getRepairableNames = (): string[] => {
+      return (dataRef.current.inventory || [])
+        .filter(item => {
+          if (!item || item.status === 'ARCHIVED' || (Number(item.qty) || 0) <= 0) return false;
+          const cond = (item.condition || '').trim().toLowerCase();
+          const note = (item.note || '').toLowerCase();
+          const varHasRepairable = (item.variants || []).some(
+            v =>
+              (v.condition || '').trim().toLowerCase() === 'repairable' ||
+              (v.note || '').toLowerCase().includes('repairable')
+          );
+          return cond === 'repairable' || note.includes('repairable') || varHasRepairable;
+        })
+        .map(item => item.name);
+    };
+
+    const checkAndNotifyRepairable = () => {
+      const repairableNames = getRepairableNames();
+      if (repairableNames.length === 0) return;
+
+      let lastAt = 0;
+      try {
+        lastAt = Number(localStorage.getItem(REPAIRABLE_LAST_KEY) || '0') || 0;
+      } catch {
+        lastAt = 0;
+      }
+
+      const now = Date.now();
+      if (lastAt === 0) {
+        // Initialize timer anchor when first Repairable device is detected
+        try {
+          localStorage.setItem(REPAIRABLE_LAST_KEY, String(now));
+        } catch {
+          // ignore
+        }
+        return;
+      }
+
+      if (now - lastAt >= ONE_HOUR_MS) {
+        try {
+          localStorage.setItem(REPAIRABLE_LAST_KEY, String(now));
+        } catch {
+          // ignore
+        }
+        const previewList =
+          repairableNames.length <= 2
+            ? repairableNames.join(', ')
+            : `${repairableNames.slice(0, 2).join(', ')} (+${repairableNames.length - 2} more)`;
+        const msg = `Please repair this mobile and sell: ${previewList}`;
+        showToast(msg, 'warning');
+        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+          try {
+            new Notification('Repairable Mobile Reminder', { body: msg });
+          } catch {
+            // ignore
+          }
+        }
+      }
+    };
+
+    checkAndNotifyRepairable();
+    const intervalId = window.setInterval(checkAndNotifyRepairable, 60 * 1000);
+    return () => window.clearInterval(intervalId);
+  }, [isAuthenticated, data.inventory, showToast]);
 
   // Apply visual theme to document root & keep system status bar theme-color synced
   useEffect(() => {
@@ -2171,6 +2254,7 @@ function AppContent() {
   const handleOpenModal = (modal: 'stock' | 'khata' | 'expense') => {
     if (modal === 'stock') {
       setEditStockItem(null);
+      setStockInitialCategory(undefined);
       setStockModalOpen(true);
     } else if (modal === 'khata') {
       setAddKhataModalOpen(true);
@@ -2387,8 +2471,21 @@ function AppContent() {
                 pendingKhataTotal={homePendingKhataTotal}
                 inventoryCount={(data.inventory || []).length}
                 activityCount={(data.activities || []).length}
+                inventory={data.inventory}
+                categories={data.categories}
                 onSelectTab={handleSelectTab}
                 onOpenSettings={() => setSettingsModalOpen(true)}
+                onOpenAddUsedStock={() => {
+                  setEditStockItem(null);
+                  setStockInitialCategory('Used Android');
+                  setStockModalOpen(true);
+                }}
+                onEditStockItem={item => {
+                  setStockInitialCategory(undefined);
+                  setEditStockItem(item);
+                  setStockModalOpen(true);
+                }}
+                onOpenUsedMobiles={() => setUsedMobilesModalOpen(true)}
               />
             )}
 
@@ -2416,6 +2513,7 @@ function AppContent() {
                 onCompleteEditedSale={handleReplaceEditedSale}
                 onOpenAddStock={() => {
                   setEditStockItem(null);
+                  setStockInitialCategory(undefined);
                   setStockModalOpen(true);
                 }}
                 onOpenPdfReport={() => handleOpenPdfReport('sales')}
@@ -2447,9 +2545,11 @@ function AppContent() {
                 isAdmin={(data.currentRole || 'admin') === 'admin'}
                 onOpenAddModal={() => {
                   setEditStockItem(null);
+                  setStockInitialCategory(undefined);
                   setStockModalOpen(true);
                 }}
                 onOpenEditModal={item => {
+                  setStockInitialCategory(undefined);
                   setEditStockItem(item);
                   setStockModalOpen(true);
                 }}
@@ -2610,9 +2710,13 @@ function AppContent() {
       {/* Global Application Modals */}
       <StockModal
         isOpen={stockModalOpen}
-        onClose={() => setStockModalOpen(false)}
+        onClose={() => {
+          setStockModalOpen(false);
+          setStockInitialCategory(undefined);
+        }}
         onSave={handleSaveStock}
         editItem={editStockItem}
+        initialCategory={stockInitialCategory}
         currency={data.settings.currency}
         categories={data.categories}
         inventory={data.inventory}
@@ -2623,6 +2727,26 @@ function AppContent() {
         onRenameCategory={handleRenameCategory}
         onStockAdjustment={handleStockAdjustment}
         isAdmin={(data.currentRole || 'admin') === 'admin'}
+      />
+
+      <UsedMobilesModal
+        isOpen={usedMobilesModalOpen}
+        onClose={() => setUsedMobilesModalOpen(false)}
+        inventory={data.inventory}
+        categories={data.categories}
+        settings={data.settings}
+        supplierPurchases={data.supplierPurchases || []}
+        isAdmin={(data.currentRole || 'admin') === 'admin'}
+        onOpenAddUsedStock={() => {
+          setEditStockItem(null);
+          setStockInitialCategory('Used Android');
+          setStockModalOpen(true);
+        }}
+        onEditStockItem={item => {
+          setStockInitialCategory(undefined);
+          setEditStockItem(item);
+          setStockModalOpen(true);
+        }}
       />
 
       <AddKhataModal
