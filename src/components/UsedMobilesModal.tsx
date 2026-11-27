@@ -284,7 +284,7 @@ export const UsedMobilesModal: React.FC<UsedMobilesModalProps> = ({
   const currency = settings.currency || 'Rs';
 
   return (
-    <div className="fixed inset-0 z-50 bg-[var(--theme-app-bg,#f4f7fb)] flex flex-col overflow-hidden animate-liquid-in">
+    <div className="fixed inset-0 z-50 bg-[var(--theme-app-bg,#f4f7fb)] flex flex-col overflow-hidden animate-tab-enter">
       {/* Ambient Liquid Mesh & Color Blobs behind full-screen sheet */}
       <div className="ios-liquid-canvas print:hidden" aria-hidden="true">
         <div
@@ -761,6 +761,16 @@ export const UsedMobilesModal: React.FC<UsedMobilesModalProps> = ({
           </div>
         )}
       </div>
+
+      {/* Floating Bottom Blue Pill CTA */}
+      <button
+        type="button"
+        onClick={onOpenAddUsedStock}
+        className="fixed bottom-[calc(1.25rem+env(safe-area-inset-bottom,0px))] right-4 z-30 h-11 px-4 rounded-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-xs tracking-wide uppercase shadow-lg shadow-blue-600/30 flex items-center gap-2 transition cursor-pointer"
+      >
+        <Plus className="w-4 h-4" />
+        <span>ADD USED MOBILE</span>
+      </button>
 
       {/* Camera Scanner Modal */}
       <BarcodeScannerModal

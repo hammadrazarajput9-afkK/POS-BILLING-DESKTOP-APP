@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { SupplierPurchase } from '../types';
 import {
   ArrowLeft,
@@ -246,8 +247,8 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
     setIsSettleAccountOpen(false);
   };
 
-  return (
-    <div className="fixed inset-0 z-[45] bg-slate-50 flex flex-col overflow-hidden animate-in fade-in">
+  const modalContent = (
+    <div className="fixed inset-0 z-50 h-[100dvh] bg-slate-50 flex flex-col overflow-hidden animate-tab-enter">
       {/* Top Blue Header */}
       <div className="app-fullscreen-modal-header bg-blue-600 text-white px-3 sm:px-5 pt-[calc(env(safe-area-inset-top,0px)+0.85rem)] pb-11 shrink-0 relative">
         <div className="flex items-center justify-between gap-2 max-w-5xl mx-auto">
@@ -841,7 +842,7 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
       </div>
 
       {/* Pinned Bottom Dual Pill Action Footer */}
-      <div className="fixed bottom-0 left-0 right-0 z-20 bg-white/95 backdrop-blur-md border-t border-slate-200 px-3 sm:px-5 pt-2.5 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]">
+      <div className="fixed bottom-0 left-0 right-0 z-20 ios-liquid-dock px-3 sm:px-5 pt-2.5 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]">
         <div className="max-w-5xl mx-auto flex items-center gap-2.5">
           <button
             type="button"
@@ -966,4 +967,6 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
       )}
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 };

@@ -341,7 +341,7 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
   if (collectionMode) {
     const pendingTotal = collectionCustomers.reduce((sum, c) => sum + c.balance, 0);
     return (
-      <div className="space-y-3 pb-20 animate-liquid-in">
+      <div className="space-y-3 pb-20 animate-tab-enter">
         {/* Collection Emerald Header */}
         <div className="ios-liquid-banner-emerald ios-liquid-sheen-layer text-white rounded-2xl overflow-hidden">
           <div className="px-4 py-3.5 flex items-center justify-between gap-2">
@@ -579,7 +579,7 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
   // MAIN PARTY SCREEN (Screenshot 1 adapted to Emerald Green)
   // =========================================================================
   return (
-    <div className="space-y-3 pb-24 animate-liquid-in">
+    <div className="space-y-3 pb-24 animate-tab-enter">
       {/* Top Emerald Header + Overlapping Summary Card */}
       <div>
         <div className="ios-liquid-banner-emerald ios-liquid-sheen-layer text-white rounded-2xl pt-3.5 pb-11 px-3.5 sm:px-5">

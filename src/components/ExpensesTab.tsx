@@ -125,7 +125,7 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
     hideAmounts ? `${currency} ••••` : `${currency} ${amount.toLocaleString()}`;
 
   return (
-    <div className="space-y-3 pb-24 max-w-full overflow-hidden animate-liquid-in">
+    <div className="space-y-3 pb-24 max-w-full overflow-x-hidden animate-tab-enter">
       {/* Top Rose Header + Overlapping Frosted Summary Card */}
       <div>
         <div className="ios-liquid-banner-rose ios-liquid-sheen-layer text-white rounded-2xl pt-3.5 pb-11 px-3.5 sm:px-5">
@@ -478,16 +478,14 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
       </div>
 
       {/* Floating Bottom Rose CTA */}
-      <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-30">
-        <button
-          type="button"
-          onClick={onOpenAddModal}
-          className="h-11 px-5 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-black text-xs tracking-wide uppercase shadow-lg shadow-rose-600/30 flex items-center gap-2 transition active:scale-[0.97] cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add Expense</span>
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={onOpenAddModal}
+        className="fixed bottom-[calc(1.25rem+env(safe-area-inset-bottom,0px))] right-4 z-30 h-11 px-4 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-black text-xs tracking-wide uppercase shadow-lg shadow-rose-600/30 flex items-center gap-2 transition active:scale-95 cursor-pointer"
+      >
+        <Plus className="w-4 h-4" />
+        <span>Add Expense</span>
+      </button>
 
       {/* Delete Confirmation Modal */}
       <ConfirmModal

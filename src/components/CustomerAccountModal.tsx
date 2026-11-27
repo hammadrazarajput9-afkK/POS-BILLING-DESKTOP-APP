@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { KhataCustomer, SaleItem, SaleRecord, SalesReturnRecord, ShopSettings } from '../types';
 import {
   X,
@@ -793,6 +794,9 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     });
   };
 
+  const renderInPortal = (content: React.ReactNode) =>
+    typeof document !== 'undefined' ? createPortal(content, document.body) : content;
+
   // =========================================================================
   // VIEW A: ENTRY DETAIL SCREEN (Screenshot 3, Green Theme)
   // =========================================================================
@@ -824,9 +828,9 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     const entryWaUrl = `https://wa.me/${waPhone}?text=${encodeURIComponent(entryMessage)}`;
     const entrySmsUrl = `sms:${customer.phone.replace(/[^0-9+]/g, '')}?body=${encodeURIComponent(entryMessage)}`;
 
-    return (
+    return renderInPortal(
       <>
-        <div className="fixed inset-0 z-[55] bg-slate-50 flex flex-col overflow-hidden animate-in fade-in pb-[env(safe-area-inset-bottom,0px)]">
+        <div className="fixed inset-0 z-[55] h-[100dvh] bg-slate-50 flex flex-col overflow-hidden animate-tab-enter">
           {/* Green Header */}
           <div className="app-fullscreen-modal-header bg-emerald-600 text-white px-3 sm:px-5 pt-[calc(env(safe-area-inset-top,0px)+0.85rem)] sm:pt-3 pb-3 flex items-center justify-between gap-2 shrink-0 shadow-xs">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -857,7 +861,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
           </div>
 
           {/* Main Entry Detail Card Stack */}
-          <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-3 max-w-2xl w-full mx-auto">
+          <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-5 space-y-3 max-w-2xl w-full mx-auto">
             {/* Primary Card */}
             <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden divide-y divide-slate-100">
               {/* Top Customer & Amount Row */}
@@ -1082,7 +1086,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
           </div>
 
           {/* Bottom Dual Outline Buttons: WHATSAPP & SMS */}
-          <div className="bg-white border-t border-slate-200 px-3 sm:px-5 py-2.5 grid grid-cols-2 gap-2.5 shrink-0 max-w-2xl w-full mx-auto">
+          <div className="ios-liquid-dock px-3 sm:px-5 pt-2.5 pb-[calc(0.65rem+env(safe-area-inset-bottom,0px))] grid grid-cols-2 gap-2.5 shrink-0 max-w-2xl w-full mx-auto">
             <a
               href={entryWaUrl}
               target="_blank"
@@ -1148,9 +1152,9 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   // VIEW B: PROFILE / MAP LOCATION / INVOICES SETTINGS WORKSPACE
   // =========================================================================
   if (workspaceView === 'settings') {
-    return (
+    return renderInPortal(
       <>
-        <div className="fixed inset-0 z-50 bg-slate-50 flex flex-col overflow-hidden animate-in fade-in pb-[env(safe-area-inset-bottom,0px)]">
+        <div className="fixed inset-0 z-50 h-[100dvh] bg-slate-50 flex flex-col overflow-hidden animate-tab-enter pb-[env(safe-area-inset-bottom,0px)]">
           {/* Green Header */}
           <div className="app-fullscreen-modal-header bg-emerald-600 text-white px-3 sm:px-5 pt-[calc(env(safe-area-inset-top,0px)+0.85rem)] sm:pt-3 pb-3 flex items-center justify-between gap-2 shrink-0">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -1221,7 +1225,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
           </div>
 
           {/* Body */}
-          <div className="flex-1 overflow-y-auto p-3 sm:p-5 max-w-4xl w-full mx-auto">
+          <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-5 max-w-4xl w-full mx-auto">
             {settingsSubTab === 'profile' && (
               <form onSubmit={handleSaveFullProfile} className="space-y-4 text-xs bg-white border border-slate-200 rounded-2xl p-4">
                 <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
@@ -1528,9 +1532,9 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   // =========================================================================
   // VIEW C: MAIN PARTY LEDGER SCREEN (Screenshot 2, Green Theme)
   // =========================================================================
-  return (
+  return renderInPortal(
     <>
-      <div className="fixed inset-0 z-50 bg-slate-50 flex flex-col overflow-hidden animate-in fade-in pb-[env(safe-area-inset-bottom,0px)]">
+      <div className="fixed inset-0 z-50 h-[100dvh] bg-slate-50 flex flex-col overflow-hidden animate-tab-enter">
         {/* Green Header + Overlapping White Balance Card */}
         <div className="app-fullscreen-modal-header bg-emerald-600 text-white px-3 sm:px-5 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] sm:pt-3 pb-10 shrink-0 relative">
           <div className="flex items-center justify-between gap-2">
@@ -1769,7 +1773,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
         </div>
 
         {/* Scrollable Ledger Entries Rows */}
-        <div className="flex-1 overflow-y-auto touch-pan-y bg-white divide-y divide-slate-100">
+        <div className="flex-1 min-h-0 overflow-y-auto touch-pan-y bg-white divide-y divide-slate-100">
           {filteredLedger.length === 0 ? (
             <div className="py-12 text-center text-xs text-slate-400 space-y-1.5 px-4">
               <FileText className="w-8 h-8 mx-auto text-slate-300" />
@@ -1829,19 +1833,19 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
           )}
         </div>
 
-        {/* Pinned Bottom Action Bar: YOU GAVE Rs | YOU GOT Rs */}
-        <div className="bg-white border-t border-slate-200 px-3 sm:px-5 py-2.5 grid grid-cols-2 gap-2.5 shrink-0">
+        {/* Pinned Floating Bottom Action Bar: YOU GAVE Rs | YOU GOT Rs */}
+        <div className="ios-liquid-dock px-3 sm:px-5 pt-2.5 pb-[calc(0.65rem+env(safe-area-inset-bottom,0px))] grid grid-cols-2 gap-2.5 shrink-0">
           <button
             type="button"
             onClick={() => setCalculatorConfig({ type: 'credit' })}
-            className="h-11 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs sm:text-sm tracking-wide shadow-md shadow-rose-600/20 flex items-center justify-center transition cursor-pointer"
+            className="h-11 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs sm:text-sm tracking-wide shadow-md shadow-rose-600/25 flex items-center justify-center transition cursor-pointer"
           >
             YOU GAVE {currency}
           </button>
           <button
             type="button"
             onClick={() => setCalculatorConfig({ type: 'payment' })}
-            className="h-11 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm tracking-wide shadow-md shadow-emerald-600/20 flex items-center justify-center transition cursor-pointer"
+            className="h-11 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm tracking-wide shadow-md shadow-emerald-600/25 flex items-center justify-center transition cursor-pointer"
           >
             YOU GOT {currency}
           </button>

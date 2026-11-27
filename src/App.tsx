@@ -2828,6 +2828,9 @@ function AppContent() {
         onClose={() => setAddKhataModalOpen(false)}
         onSave={handleSaveKhataCustomer}
         currency={data.settings.currency}
+        sales={data.sales || []}
+        supplierPurchases={data.supplierPurchases || []}
+        existingKhata={data.khata || []}
       />
 
       <SettleKhataModal

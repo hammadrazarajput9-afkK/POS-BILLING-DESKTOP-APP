@@ -1425,7 +1425,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
   );
 
   return (
-    <div className="space-y-3 pb-24 animate-liquid-in">
+    <div className="space-y-3 pb-24 animate-tab-enter">
       {/* Top Blue Header + Overlapping Summary Card (iOS Liquid Glass) */}
       <div>
         <div className="ios-liquid-banner-blue ios-liquid-sheen-layer text-white rounded-2xl pt-3.5 pb-11 px-3.5 sm:px-5">
