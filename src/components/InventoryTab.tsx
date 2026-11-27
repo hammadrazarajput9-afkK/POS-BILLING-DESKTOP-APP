@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { InventoryItem, ItemCategory, StockAdjustment, SaleRecord, MobileVariant, SupplierPurchase, ImeiRecord, ActivityLog } from '../types';
@@ -1362,32 +1363,57 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
           )}
         </div>
 
-      {/* Animated Product Details Popup Modal (WhatsApp Share & Product PDF excluding wholesale/cost) */}
-      {selectedProductPopup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
-          <div className="glass-modal-panel animate-modal-pop rounded-3xl max-w-xl w-full p-4 sm:p-5 space-y-4 my-auto overflow-y-auto max-h-[82dvh]">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-                  <Package className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-black text-slate-900 text-sm sm:text-base">Product Details & IMEI Record</h3>
-                  <p className="text-[11px] text-slate-500">Complete stock specifications & customer share options</p>
+      {/* Full-Screen Product Details View (WhatsApp Share & Product PDF excluding wholesale/cost) */}
+      {selectedProductPopup && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[60] h-[100dvh] flex flex-col bg-slate-50 text-slate-800 overflow-hidden animate-tab-enter">
+          {/* Top Liquid Blue Header with Safe Area support */}
+          <div className="app-fullscreen-modal-header bg-gradient-to-r from-blue-700 via-blue-600 to-indigo-700 text-white px-3 sm:px-6 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pb-4 shrink-0 shadow-md">
+            <div className="flex items-center justify-between gap-3 max-w-5xl mx-auto">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => setSelectedProductPopup(null)}
+                  className="w-9 h-9 -ml-1 rounded-full hover:bg-white/20 active:scale-95 flex items-center justify-center transition cursor-pointer shrink-0"
+                  aria-label="Back to Inventory"
+                >
+                  <ArrowLeft className="w-5 h-5 text-white" />
+                </button>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] font-black uppercase tracking-wider bg-white/20 text-white px-2 py-0.5 rounded-full">
+                      {selectedProductPopup.category}
+                    </span>
+                    <span className="text-xs font-semibold text-blue-100">
+                      Product Specifications
+                    </span>
+                  </div>
+                  <h2 className="text-base sm:text-lg font-black tracking-tight truncate text-white mt-0.5">
+                    {selectedProductPopup.name}
+                  </h2>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedProductPopup(null)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-[11px] font-black px-2.5 py-1 rounded-full inline-flex items-center gap-1 shadow-xs bg-emerald-500 text-white">
+                  <Package className="w-3.5 h-3.5" />
+                  {selectedProductPopup.qty} In Stock
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedProductPopup(null)}
+                  className="w-8 h-8 rounded-full bg-white/15 hover:bg-white/25 text-white flex items-center justify-center transition cursor-pointer"
+                  aria-label="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Scrollable Content Body */}
+          <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-6 py-4 space-y-4 max-w-5xl mx-auto w-full pb-28">
             {/* Product Card / Image & Info */}
-            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-3 sm:gap-4 bg-slate-50 p-3 sm:p-4 rounded-2xl border border-slate-200/80">
+            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-3 sm:gap-4 bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs">
               {selectedProductPopup.image ? (
                 <div className="w-20 h-20 sm:w-28 sm:h-28 rounded-xl border border-slate-200 overflow-hidden bg-white shadow-xs shrink-0 flex items-center justify-center p-1">
                   <img
@@ -1679,57 +1705,65 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
               )}
             </div>
 
-            {/* Action Buttons: WhatsApp Share & Separate Product PDF (strictly excluding wholesale & cost) */}
-            <div className="space-y-2 pt-2 border-t border-slate-100">
-              <div className="flex flex-col sm:flex-row items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleWhatsAppShareProduct(selectedProductPopup)}
-                  className="w-full sm:flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-2 min-h-[42px]"
-                >
-                  <Share2 className="w-4 h-4" /> Share to WhatsApp
-                </button>
+          </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleDownloadProductPdf(selectedProductPopup)}
-                  className="w-full sm:flex-1 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-2 min-h-[42px]"
-                >
-                  <FileText className="w-4 h-4" /> Download Product PDF
-                </button>
-              </div>
-
+          {/* Fixed Bottom Action Dock (iOS Liquid bar) */}
+          <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-6 py-2.5 sm:py-3 border-t border-slate-200/80 bg-white/95 backdrop-blur-md shrink-0 shadow-lg">
+            <div className="flex items-center gap-2 flex-wrap">
               {(isAdmin || selectedProductPopup.status !== 'ARCHIVED') && (
-                <div className="flex items-center gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const item = selectedProductPopup;
-                      setSelectedProductPopup(null);
-                      onOpenEditModal(item);
-                    }}
-                    className="flex-1 py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 min-h-[38px]"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" /> Edit Product
-                  </button>
-                  {isAdmin && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const item = selectedProductPopup;
-                        setSelectedProductPopup(null);
-                        setProductToDelete(item);
-                      }}
-                      className="py-2 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 min-h-[38px]"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" /> Delete
-                    </button>
-                  )}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const item = selectedProductPopup;
+                    setSelectedProductPopup(null);
+                    onOpenEditModal(item);
+                  }}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-2xs"
+                >
+                  <Edit2 className="w-3.5 h-3.5" /> Edit Product
+                </button>
+              )}
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const item = selectedProductPopup;
+                    setSelectedProductPopup(null);
+                    setProductToDelete(item);
+                  }}
+                  className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95 border border-rose-200"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Delete
+                </button>
               )}
             </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => handleWhatsAppShareProduct(selectedProductPopup)}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition cursor-pointer flex items-center gap-1.5 active:scale-95"
+              >
+                <Share2 className="w-3.5 h-3.5" /> WhatsApp Specs
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDownloadProductPdf(selectedProductPopup)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm transition cursor-pointer flex items-center gap-1.5 active:scale-95"
+              >
+                <FileText className="w-3.5 h-3.5" /> PDF Specs
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedProductPopup(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer active:scale-95"
+              >
+                Close
+              </button>
+            </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
       {/* Floating Bottom Blue Pill CTA */}
       <button

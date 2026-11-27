@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import {
   X,
@@ -671,10 +672,10 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     ? 'Rear Cam'
     : 'Front Cam';
 
-  return (
+  const modalContent = (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-[80] flex items-center justify-center p-2.5 sm:p-4 bg-slate-950/55 overflow-y-auto"
+      className="fixed inset-0 z-[85] flex items-center justify-center p-2.5 sm:p-4 bg-slate-950/55 overflow-y-auto"
     >
       <div
         onClick={e => e.stopPropagation()}
@@ -998,4 +999,6 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 };

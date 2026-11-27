@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { AppData, SupplierPurchase, PurchaseItem, InventoryItem, ImeiRecord, SaleRecord, OnlineAccount } from '../types';
 import {
   Truck,
@@ -35,6 +36,7 @@ import {
   ScanLine,
   Lock,
   Copy,
+  Check,
   ArrowLeft,
   EyeOff,
   SlidersHorizontal,
@@ -50,7 +52,7 @@ import { sharePurchaseOnWhatsApp } from '../utils/whatsappInvoice';
 import { compressImage } from '../utils/imageCompressor';
 import { smartFilterAndSort, smartMatch } from '../utils/smartSearch';
 import { SupplierAccountModal, SupplierAccountSummary } from './SupplierAccountModal';
-import { formatLedgerTimestamp, getInitials } from '../utils/ledgerFormatters';
+import { formatLedgerTimestamp, getInitials, cleanWhatsAppPhone } from '../utils/ledgerFormatters';
 
 const normalizeSupplierKey = (name?: string): string =>
   (name || 'Unknown Supplier').trim().replace(/\s+/g, ' ').toLowerCase();
@@ -205,6 +207,18 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
   const [reversalNotes, setReversalNotes] = useState<string>('');
   const [reversedBy, setReversedBy] = useState<string>('Admin');
   const [zoomImage, setZoomImage] = useState<string | null>(null);
+  const [copiedImei, setCopiedImei] = useState<string | null>(null);
+
+  const handleCopyImei = (imeiStr: string) => {
+    const clean = imeiStr.trim();
+    if (!clean) return;
+    navigator.clipboard.writeText(clean);
+    setCopiedImei(clean);
+    showToast(`Copied IMEI: ${clean}`, 'success');
+    setTimeout(() => {
+      setCopiedImei(prev => (prev === clean ? null : prev));
+    }, 2000);
+  };
 
   // Intercept hardware/navigation Back button for topmost PurchasesTab modals
   useEffect(() => {
@@ -1992,8 +2006,8 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
       {/* ========================================================= */}
       {/* ADD PURCHASE / STOCK INWARD MODAL (COMPACT SMART DESIGN)  */}
       {/* ========================================================= */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 glass-modal-backdrop">
+      {isAddModalOpen && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[65] flex items-center justify-center p-2 sm:p-4 glass-modal-backdrop">
           <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-2xl lg:max-w-3xl w-full max-h-[82dvh] flex flex-col overflow-hidden">
             {/* Compact Pinned Header */}
             <div className="flex items-center justify-between border-b border-slate-200/70 px-3.5 py-2 sm:px-4 sm:py-2.5 shrink-0">
@@ -2765,156 +2779,394 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ========================================================= */}
-      {/* VIEW PURCHASE DETAIL MODAL */}
+      {/* FULL-SCREEN IMMERSIVE VIEW PURCHASE DETAIL MODAL          */}
       {/* ========================================================= */}
-      {selectedPurchaseForView && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
-          <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-2xl w-full max-h-[82dvh] flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between border-b border-slate-200/70 px-4 py-3 sm:px-5 shrink-0">
-              <div>
-                <span className="text-[10px] font-black uppercase tracking-wider text-blue-600">
-                  Supplier Invoice Record
-                </span>
-                <h3 className="font-black text-slate-900 text-base flex items-center gap-2">
-                  Bill #{selectedPurchaseForView.billNo}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedPurchaseForView(null)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {selectedPurchaseForView && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[60] h-[100dvh] flex flex-col bg-slate-50 text-slate-800 overflow-hidden animate-tab-enter">
+          {/* Top Liquid Blue Header with Safe Area support */}
+          <div className="app-fullscreen-modal-header bg-gradient-to-r from-blue-700 via-blue-600 to-indigo-700 text-white px-3 sm:px-6 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pb-4 shrink-0 shadow-md">
+            <div className="flex items-center justify-between gap-3 max-w-5xl mx-auto">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => setSelectedPurchaseForView(null)}
+                  className="w-9 h-9 -ml-1 rounded-full hover:bg-white/20 active:scale-95 flex items-center justify-center transition cursor-pointer shrink-0"
+                  aria-label="Back to Stock Inward"
+                >
+                  <ArrowLeft className="w-5 h-5 text-white" />
+                </button>
 
-            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 sm:px-5 space-y-3.5">
-            <div className={`grid gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs ${isAdmin ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2'}`}>
-              <div>
-                <span className="text-[10px] text-slate-400 block font-bold">Party / Vendor</span>
-                <span className="font-extrabold text-slate-900">{selectedPurchaseForView.partyName}</span>
-              </div>
-              <div>
-                <span className="text-[10px] text-slate-400 block font-bold">Date</span>
-                <span className="font-bold text-slate-700">
-                  {new Date(selectedPurchaseForView.date).toLocaleDateString()}
-                </span>
-              </div>
-              {isAdmin && (
-                <div>
-                  <span className="text-[10px] text-slate-400 block font-bold">Status</span>
-                  <span
-                    className={`font-black text-[10px] px-2 py-0.5 rounded-full inline-block ${
-                      selectedPurchaseForView.balanceDue <= 0
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-rose-100 text-rose-800'
-                    }`}
-                  >
-                    {selectedPurchaseForView.balanceDue <= 0 ? 'FULLY PAID' : 'PENDING DUE'}
-                  </span>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] font-black uppercase tracking-wider bg-white/20 text-white px-2 py-0.5 rounded-full">
+                      Inward Consignment
+                    </span>
+                    <span className="text-xs font-semibold text-blue-100">
+                      {formatLedgerTimestamp(selectedPurchaseForView.date)}
+                    </span>
+                  </div>
+                  <h2 className="text-base sm:text-lg font-black tracking-tight truncate flex items-center gap-2 text-white mt-0.5">
+                    <span>Bill #{selectedPurchaseForView.billNo}</span>
+                    <span className="text-blue-200 font-normal">·</span>
+                    <span className="truncate text-white font-extrabold">{selectedPurchaseForView.partyName}</span>
+                  </h2>
                 </div>
-              )}
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <span
+                  className={`text-[11px] font-black px-2.5 py-1 rounded-full inline-flex items-center gap-1 shadow-xs ${
+                    selectedPurchaseForView.status === 'REVERSED'
+                      ? 'bg-rose-500 text-white'
+                      : selectedPurchaseForView.balanceDue <= 0
+                      ? 'bg-emerald-500 text-white'
+                      : 'bg-amber-400 text-slate-900'
+                  }`}
+                >
+                  {selectedPurchaseForView.status === 'REVERSED' ? (
+                    <>
+                      <RotateCcw className="w-3.5 h-3.5" /> Reversed
+                    </>
+                  ) : selectedPurchaseForView.balanceDue <= 0 ? (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Fully Paid
+                    </>
+                  ) : (
+                    <>
+                      <Clock className="w-3.5 h-3.5" /> Due {currency} {selectedPurchaseForView.balanceDue.toLocaleString()}
+                    </>
+                  )}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPurchaseForView(null)}
+                  className="w-8 h-8 rounded-full bg-white/15 hover:bg-white/25 text-white flex items-center justify-center transition cursor-pointer"
+                  aria-label="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Scrollable Content Body */}
+          <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-6 py-4 space-y-4 max-w-5xl mx-auto w-full pb-28">
+            {/* Reversal Banner if reversed */}
+            {selectedPurchaseForView.status === 'REVERSED' && (
+              <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-rose-900 space-y-1.5 shadow-xs">
+                <div className="flex items-center gap-2 font-black text-xs text-rose-700">
+                  <RotateCcw className="w-4 h-4" />
+                  <span>THIS INWARD BILL WAS REVERSED / CANCELLED</span>
+                </div>
+                <p className="text-xs font-semibold">
+                  Reason: <span className="font-normal">{selectedPurchaseForView.reversalReason || 'Goods Returned'}</span>
+                  {selectedPurchaseForView.reversedBy && ` · Authorized by: ${selectedPurchaseForView.reversedBy}`}
+                  {selectedPurchaseForView.reversedAt && ` · Date: ${formatLedgerTimestamp(selectedPurchaseForView.reversedAt)}`}
+                </p>
+                {selectedPurchaseForView.reversalNotes && (
+                  <p className="text-[11px] text-rose-800 bg-white/70 p-2 rounded-xl border border-rose-200/60">
+                    Note: {selectedPurchaseForView.reversalNotes}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* 3 Metric Cards for Financial Summary */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Total Consignment Value */}
+              <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs relative overflow-hidden">
+                <div className="flex items-center justify-between text-slate-500 mb-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Inward Bill</span>
+                  <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                    <Package className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-xl sm:text-2xl font-black text-slate-900 tabular-nums">
+                  {currency} {selectedPurchaseForView.totalAmount.toLocaleString()}
+                </div>
+                <div className="text-[11px] text-slate-500 font-semibold mt-1 flex items-center gap-1.5">
+                  <span>{selectedPurchaseForView.items.length} items</span>
+                  <span>•</span>
+                  <span>{selectedPurchaseForView.items.reduce((s, i) => s + (Number(i.qty) || 0), 0)} pcs total</span>
+                </div>
+              </div>
+
+              {/* Paid Outflow */}
+              <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs relative overflow-hidden">
+                <div className="flex items-center justify-between text-slate-500 mb-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Amount Paid</span>
+                  <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                    <CheckCircle2 className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-xl sm:text-2xl font-black text-emerald-600 tabular-nums">
+                  {currency} {selectedPurchaseForView.paidAmount.toLocaleString()}
+                </div>
+                <div className="text-[11px] text-slate-500 font-semibold mt-1">
+                  Method: <span className="text-slate-800 font-bold">{selectedPurchaseForView.paymentMethod || 'Cash'}</span>
+                </div>
+              </div>
+
+              {/* Balance Due */}
+              <div className={`p-3.5 sm:p-4 rounded-2xl border shadow-xs relative overflow-hidden ${
+                selectedPurchaseForView.balanceDue > 0
+                  ? 'bg-rose-50/70 border-rose-200/90'
+                  : 'bg-white border-slate-200/80'
+              }`}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                    selectedPurchaseForView.balanceDue > 0 ? 'text-rose-600' : 'text-slate-400'
+                  }`}>
+                    Payable Balance
+                  </span>
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold ${
+                    selectedPurchaseForView.balanceDue > 0 ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-400'
+                  }`}>
+                    <Clock className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className={`text-xl sm:text-2xl font-black tabular-nums ${
+                  selectedPurchaseForView.balanceDue > 0 ? 'text-rose-600' : 'text-slate-700'
+                }`}>
+                  {currency} {selectedPurchaseForView.balanceDue.toLocaleString()}
+                </div>
+                <div className="text-[11px] font-semibold mt-1">
+                  {selectedPurchaseForView.balanceDue <= 0 ? (
+                    <span className="text-emerald-700 font-bold">Fully Settled ✓</span>
+                  ) : (
+                    <span className="text-rose-700 font-bold">Pending Payment to Party</span>
+                  )}
+                </div>
+              </div>
             </div>
 
-            {/* Attached Image preview if any */}
+            {/* Supplier & Entry Details Card */}
+            <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-700 border border-blue-200 font-black text-sm flex items-center justify-center shrink-0 shadow-2xs">
+                  {getInitials(selectedPurchaseForView.partyName)}
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Supplier / Vendor</div>
+                  <h4 className="font-black text-slate-900 text-sm sm:text-base leading-tight">
+                    {selectedPurchaseForView.partyName}
+                  </h4>
+                  <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500 font-semibold">
+                    <span>Bill #{selectedPurchaseForView.billNo}</span>
+                    <span>•</span>
+                    <span>{formatLedgerTimestamp(selectedPurchaseForView.date)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end flex-wrap">
+                {selectedPurchaseForView.partyPhone && (
+                  <a
+                    href={`tel:${selectedPurchaseForView.partyPhone}`}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl flex items-center gap-1.5 transition"
+                  >
+                    <Phone className="w-3.5 h-3.5 text-blue-600" />
+                    <span>{selectedPurchaseForView.partyPhone}</span>
+                  </a>
+                )}
+                {selectedPurchaseForView.partyPhone && (
+                  <a
+                    href={`https://wa.me/${cleanWhatsAppPhone(selectedPurchaseForView.partyPhone)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold rounded-xl flex items-center gap-1.5 transition"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>WhatsApp</span>
+                  </a>
+                )}
+              </div>
+            </div>
+
+            {/* Scanned Physical Receipt Card (if available) */}
             {selectedPurchaseForView.invoiceImage && (
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Camera className="w-4 h-4 text-blue-600" />
-                  <span className="text-xs font-bold text-slate-800">Scanned Physical Invoice Attached</span>
+              <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl border border-slate-200 overflow-hidden bg-slate-100 shrink-0">
+                    <img
+                      src={selectedPurchaseForView.invoiceImage}
+                      alt="Physical Invoice"
+                      className="w-full h-full object-cover cursor-pointer hover:scale-105 transition"
+                      onClick={() => setZoomImage(selectedPurchaseForView.invoiceImage!)}
+                    />
+                  </div>
+                  <div>
+                    <div className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+                      <Camera className="w-4 h-4 text-blue-600" />
+                      <span>Physical Supplier Invoice Attached</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Tap to inspect original paper slip, stamp, and notes
+                    </p>
+                  </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setZoomImage(selectedPurchaseForView.invoiceImage!)}
-                  className="px-3 py-1 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition cursor-pointer"
+                  className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1 shrink-0"
                 >
-                  View Large Image
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>View Full Image</span>
                 </button>
               </div>
             )}
 
-            {/* Items Table */}
-            <div>
-              <h4 className="text-xs font-bold text-slate-700 mb-2">Itemized Breakdown:</h4>
-              <div className="border border-slate-200 rounded-xl overflow-hidden">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase">
-                    <tr>
-                      <th className="py-2 px-3">Item</th>
-                      <th className="py-2 px-3 text-center">Qty</th>
-                      {isAdmin && <th className="py-2 px-3 text-right">Cost Price</th>}
-                      {isAdmin && <th className="py-2 px-3 text-right">Subtotal</th>}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {selectedPurchaseForView.items.map((i, idx) => (
-                      <tr key={idx}>
-                        <td className="py-2 px-3">
-                          <div className="font-bold text-slate-900">
-                            {i.name}
-                            {(i.ram || i.storage || i.color) && (
-                              <span className="text-[10px] font-semibold text-indigo-600 ml-1.5">
-                                {[i.ram, i.storage, i.color].filter(Boolean).join(' / ')}
-                              </span>
-                            )}
+            {/* Clean Itemized Cards (Spacious, easy-to-read, replacing cramped table) */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between px-1">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  <Smartphone className="w-4 h-4 text-blue-600" />
+                  <span>Items & Dedicated IMEIs ({selectedPurchaseForView.items.length})</span>
+                </h4>
+                <span className="text-[11px] text-slate-500 font-bold tabular-nums">
+                  {selectedPurchaseForView.items.reduce((s, i) => s + (Number(i.qty) || 0), 0)} Total Pcs
+                </span>
+              </div>
+
+              <div className="space-y-2.5">
+                {selectedPurchaseForView.items.map((item, idx) => {
+                  const itemImeis = (item.imeis && item.imeis.length > 0)
+                    ? item.imeis.map(x => x.trim()).filter(Boolean)
+                    : (item.imei ? item.imei.split(',').map(x => x.trim()).filter(Boolean) : []);
+                  const specs = [item.ram, item.storage, item.color].filter(Boolean);
+
+                  return (
+                    <div
+                      key={idx}
+                      className="bg-white rounded-2xl border border-slate-200/80 p-3.5 sm:p-4 shadow-xs space-y-3 transition hover:border-blue-200"
+                    >
+                      {/* Item Top Row */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-2.5 min-w-0">
+                          <span className="w-6 h-6 rounded-lg bg-blue-50 text-blue-700 font-black text-xs flex items-center justify-center shrink-0 mt-0.5">
+                            #{idx + 1}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {item.category && (
+                                <span className="text-[9.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200/60">
+                                  {item.category}
+                                </span>
+                              )}
+                              {specs.length > 0 && (
+                                <span className="text-[10.5px] font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-200/60 px-2 py-0.5 rounded-md">
+                                  {specs.join(' · ')}
+                                </span>
+                              )}
+                            </div>
+                            <h5 className="font-black text-slate-900 text-sm sm:text-base mt-1 leading-snug">
+                              {item.name}
+                            </h5>
                           </div>
-                          {i.imei && <div className="text-[10px] text-slate-400 tabular-nums">IMEI: {i.imei}</div>}
-                          {i.barcode && <div className="text-[10px] text-slate-400 tabular-nums">Code: {i.barcode}</div>}
-                          {i.note && (
-                            <div className="text-[10px] text-amber-800 bg-amber-50 border border-amber-200/70 rounded px-1.5 py-0.5 mt-0.5 inline-block font-medium">
-                              Note: {i.note}
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <span className="inline-block px-2.5 py-1 rounded-xl bg-slate-100 text-slate-800 text-xs font-black tabular-nums">
+                            {item.qty} {item.qty > 1 ? 'Pcs' : 'Pc'}
+                          </span>
+                          {isAdmin && (
+                            <div className="mt-1 text-right">
+                              <span className="text-[10px] text-slate-400 block font-bold">Subtotal</span>
+                              <span className="text-xs sm:text-sm font-black text-blue-700 tabular-nums">
+                                {currency} {(item.costPrice * item.qty).toLocaleString()}
+                              </span>
                             </div>
                           )}
-                        </td>
-                        <td className="py-2 px-3 text-center font-bold">{i.qty}</td>
-                        {isAdmin && (
-                          <td className="py-2 px-3 text-right font-medium">
-                            {currency} {i.costPrice.toLocaleString()}
-                          </td>
-                        )}
-                        {isAdmin && (
-                          <td className="py-2 px-3 text-right font-black">
-                            {currency} {(i.costPrice * i.qty).toLocaleString()}
-                          </td>
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                  {isAdmin && (
-                    <tfoot className="bg-slate-50 border-t border-slate-200 font-bold text-xs">
-                      <tr>
-                        <td colSpan={3} className="py-2 px-3 text-right">Grand Total:</td>
-                        <td className="py-2 px-3 text-right font-black text-slate-900">
-                          {currency} {selectedPurchaseForView.totalAmount.toLocaleString()}
-                        </td>
-                      </tr>
-                      <tr>
-                        <td colSpan={3} className="py-2 px-3 text-right text-emerald-700">Amount Paid:</td>
-                        <td className="py-2 px-3 text-right font-black text-emerald-700">
-                          {currency} {selectedPurchaseForView.paidAmount.toLocaleString()}
-                        </td>
-                      </tr>
-                      {selectedPurchaseForView.balanceDue > 0 && (
-                        <tr>
-                          <td colSpan={3} className="py-2 px-3 text-right text-rose-600">Balance Due:</td>
-                          <td className="py-2 px-3 text-right font-black text-rose-600">
-                            {currency} {selectedPurchaseForView.balanceDue.toLocaleString()}
-                          </td>
-                        </tr>
+                        </div>
+                      </div>
+
+                      {/* Pricing & Cost breakdown strip */}
+                      {isAdmin && (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-xs">
+                          <div>
+                            <span className="text-[10px] text-slate-400 block font-bold">Cost per unit</span>
+                            <span className="font-black text-slate-800 tabular-nums">
+                              {currency} {item.costPrice.toLocaleString()}
+                            </span>
+                          </div>
+                          {item.salePrice !== undefined && item.salePrice > 0 && (
+                            <div>
+                              <span className="text-[10px] text-slate-400 block font-bold">Retail Sale</span>
+                              <span className="font-extrabold text-blue-600 tabular-nums">
+                                {currency} {item.salePrice.toLocaleString()}
+                              </span>
+                            </div>
+                          )}
+                          {item.wholesalePrice !== undefined && item.wholesalePrice > 0 && (
+                            <div>
+                              <span className="text-[10px] text-purple-600 block font-bold">Wholesale</span>
+                              <span className="font-extrabold text-purple-700 tabular-nums">
+                                {currency} {item.wholesalePrice.toLocaleString()}
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       )}
-                    </tfoot>
-                  )}
-                </table>
+
+                      {/* Recorded IMEIs */}
+                      {itemImeis.length > 0 && (
+                        <div className="space-y-1.5 pt-1">
+                          <span className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider block">
+                            Dedicated IMEIs ({itemImeis.length}):
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {itemImeis.map((im, imIdx) => (
+                              <button
+                                key={imIdx}
+                                type="button"
+                                onClick={() => handleCopyImei(im)}
+                                className="tabular-nums text-xs bg-slate-50 hover:bg-blue-50 text-slate-800 hover:text-blue-700 border border-slate-200 hover:border-blue-300 px-2.5 py-1 rounded-xl flex items-center gap-1.5 cursor-pointer transition shadow-2xs font-bold"
+                                title="Click to copy IMEI"
+                              >
+                                <span className="text-[10px] text-slate-400 font-semibold">#{imIdx + 1}</span>
+                                <span>{im}</span>
+                                {copiedImei === im ? (
+                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5 text-slate-400 hover:text-blue-600" />
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Barcode & Note row */}
+                      {(item.barcode || item.note) && (
+                        <div className="flex items-center gap-2 flex-wrap pt-1 text-xs">
+                          {item.barcode && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-bold tabular-nums">
+                              <Barcode className="w-3 h-3 text-slate-500" /> {item.barcode}
+                            </span>
+                          )}
+                          {item.note && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-50 text-amber-800 border border-amber-200/70 text-[11px] font-medium">
+                              Note: {item.note}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
+          </div>
 
-            </div>
-
-            <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-2.5 sm:px-5 border-t border-slate-200/80 bg-white/85 dark:bg-black/80 shrink-0">
+          {/* Fixed Bottom Action Dock (iOS Liquid bar) */}
+          <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-6 py-2.5 sm:py-3 border-t border-slate-200/80 bg-white/95 backdrop-blur-md shrink-0 shadow-lg">
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Edit Bill button */}
               {selectedPurchaseForView.status !== 'REVERSED' &&
                 onUpdatePurchase &&
                 (isAdmin || canSalesmanEditPurchase(selectedPurchaseForView)) && (
@@ -2925,41 +3177,14 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                       setSelectedPurchaseForView(null);
                       openEditModal(target);
                     }}
-                    className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5"
+                    className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-2xs"
                   >
                     <Edit2 className="w-3.5 h-3.5" />
-                    <span>{isAdmin ? 'Edit Bill' : 'Edit Entry (1 Edit Left)'}</span>
+                    <span>{isAdmin ? 'Edit Bill' : 'Edit Bill (1x)'}</span>
                   </button>
                 )}
-              {!isAdmin &&
-                selectedPurchaseForView.status !== 'REVERSED' &&
-                selectedPurchaseForView.createdByRole === 'salesman' &&
-                (selectedPurchaseForView.salesmanEditCount || 0) >= 1 && (
-                  <span className="px-3 py-2 bg-slate-100 text-slate-500 text-xs font-bold rounded-xl inline-flex items-center gap-1.5">
-                    <Lock className="w-3.5 h-3.5" />
-                    Edited Once (Locked)
-                  </span>
-                )}
-              {isAdmin && (
-                <button
-                  type="button"
-                  onClick={() => handleDownloadSinglePdf(selectedPurchaseForView)}
-                  className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download PDF</span>
-                </button>
-              )}
-              {isAdmin && (
-                <button
-                  type="button"
-                  onClick={() => handleShareWhatsApp(selectedPurchaseForView)}
-                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm"
-                >
-                  <MessageCircle className="w-3.5 h-3.5" />
-                  <span>Send on WhatsApp</span>
-                </button>
-              )}
+
+              {/* Pay Due Button */}
               {isAdmin && selectedPurchaseForView.balanceDue > 0 && selectedPurchaseForView.status !== 'REVERSED' && (
                 <button
                   type="button"
@@ -2969,12 +3194,37 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                     setSettlementNotes('');
                     setSelectedPurchaseForView(null);
                   }}
-                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm"
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-md shadow-rose-600/25 active:scale-95"
                 >
-                  <CreditCard className="w-4 h-4" />
+                  <CreditCard className="w-3.5 h-3.5" />
                   <span>Pay Due ({currency} {selectedPurchaseForView.balanceDue.toLocaleString()})</span>
                 </button>
               )}
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => handleDownloadSinglePdf(selectedPurchaseForView)}
+                  className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>PDF</span>
+                </button>
+              )}
+
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => handleShareWhatsApp(selectedPurchaseForView)}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+                >
+                  <MessageCircle className="w-3.5 h-3.5" />
+                  <span>WhatsApp</span>
+                </button>
+              )}
+
               {isAdmin && selectedPurchaseForView.status !== 'REVERSED' && onReversePurchase && (
                 <button
                   type="button"
@@ -2985,29 +3235,31 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                     setReversalReason('Goods Returned to Supplier');
                     setReversalNotes('');
                   }}
-                  className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5"
+                  className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>Reverse</span>
                 </button>
               )}
+
               <button
                 type="button"
                 onClick={() => setSelectedPurchaseForView(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer active:scale-95"
               >
                 Close
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ========================================================= */}
       {/* IMAGE ZOOM MODAL */}
       {/* ========================================================= */}
-      {zoomImage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 glass-modal-backdrop">
+      {zoomImage && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-4 glass-modal-backdrop">
           <div className="relative max-w-3xl max-h-[84dvh] glass-modal-panel animate-modal-pop rounded-2xl p-2 overflow-hidden flex flex-col">
             <button
               type="button"
@@ -3024,14 +3276,15 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
               />
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ========================================================= */}
       {/* REVERSE / CANCEL PURCHASE MODAL */}
       {/* ========================================================= */}
-      {purchaseToReverse && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
+      {purchaseToReverse && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
           <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-xl w-full max-h-[82dvh] flex flex-col overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-200/70 px-4 py-3 sm:px-5 shrink-0">
               <div className="flex items-center gap-2">
@@ -3186,7 +3439,8 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ========================================================= */}
@@ -3361,8 +3615,8 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
       {/* ========================================================= */}
       {/* SETTLE DUE PAYMENT MODAL */}
       {/* ========================================================= */}
-      {selectedPurchaseForSettlement && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 glass-modal-backdrop">
+      {selectedPurchaseForSettlement && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 glass-modal-backdrop">
           <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-md w-full max-h-[82dvh] overflow-y-auto p-4 sm:p-5 space-y-3.5 my-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
@@ -3454,7 +3708,8 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ========================================================= */}

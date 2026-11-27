@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, Trash2, X } from 'lucide-react';
 
 interface ConfirmModalProps {
@@ -34,8 +35,8 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 glass-modal-backdrop">
+  const modalContent = (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-4 glass-modal-backdrop">
       <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-sm w-full p-4 sm:p-5 space-y-4">
         <div className="flex items-start gap-3">
           <div
@@ -88,4 +89,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 };
+
