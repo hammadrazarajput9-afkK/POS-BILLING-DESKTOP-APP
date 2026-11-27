@@ -571,7 +571,7 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
                 </p>
               </div>
             ) : (
-              <div className="bg-white border border-slate-200/90 rounded-2xl divide-y divide-slate-100 overflow-hidden shadow-2xs">
+              <div className="space-y-3 mt-1.5">
                 {filteredBills.map(p => {
                   const isReversed = p.status === 'REVERSED';
                   const isFullyPaid = (p.balanceDue || 0) <= 0;
@@ -590,107 +590,151 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
                   return (
                     <div
                       key={p.id}
-                      onClick={() => onViewBill(p)}
-                      className={`px-3 py-3 transition cursor-pointer hover:bg-blue-50/25 ${
-                        isReversed ? 'bg-rose-50/20' : ''
-                      }`}
+                      className={`bg-white rounded-2xl border ${
+                        isReversed
+                          ? 'border-rose-200 bg-rose-50/15'
+                          : isFullyPaid
+                          ? 'border-slate-200 shadow-2xs hover:border-emerald-300'
+                          : 'border-rose-200 shadow-2xs hover:border-rose-300'
+                      } overflow-hidden transition active:scale-[0.99]`}
                     >
-                      <div className="grid grid-cols-12 items-start gap-2">
-                        {/* Left Column: Bill # & Items */}
-                        <div className="col-span-6 min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-[13px] font-extrabold text-slate-900 tabular-nums">
-                              #{p.billNo}
+                      {/* Distinct Card Header */}
+                      <div
+                        onClick={() => onViewBill(p)}
+                        className={`px-3 py-2 sm:px-3.5 flex items-center justify-between border-b cursor-pointer ${
+                          isReversed
+                            ? 'bg-rose-50/70 border-rose-200 text-rose-800'
+                            : isFullyPaid
+                            ? 'bg-slate-50 border-slate-100 text-slate-700'
+                            : 'bg-rose-50/40 border-rose-100 text-slate-800'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div
+                            className={`w-6 h-6 rounded-lg flex items-center justify-center font-black text-xs shrink-0 ${
+                              isReversed
+                                ? 'bg-rose-100 text-rose-700'
+                                : isFullyPaid
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-rose-600 text-white'
+                            }`}
+                          >
+                            #
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-xs sm:text-sm font-black text-slate-900 tabular-nums">
+                              {p.billNo}
                             </span>
-                            <span className="text-[11px] text-slate-400">
+                            <span className="text-[10.5px] text-slate-400 font-medium ml-1.5">
                               · {formatLedgerTimestamp(p.date, true)}
                             </span>
                           </div>
-                          <p className="text-[11px] text-slate-600 font-medium truncate mt-0.5">
-                            {itemsPreview || `${p.items?.length || 0} item(s)`}
-                            {(p.items?.length || 0) > 2 ? ` +${(p.items?.length || 0) - 2} more` : ''}
-                          </p>
-                          <p className="text-[10px] text-slate-400 mt-0.5 tabular-nums">
-                            {totalUnits} pcs
-                            {p.notes ? ` · ${p.notes}` : ''}
-                          </p>
                         </div>
 
-                        {isAdmin ? (
-                          <>
-                            {/* Middle Column: Paid */}
-                            <div className="col-span-3 text-right tabular-nums">
-                              <span className="text-xs font-extrabold text-emerald-600">
-                                {isReversed ? '—' : `${currency} ${(p.paidAmount || 0).toLocaleString()}`}
-                              </span>
-                            </div>
+                        <span
+                          className={`text-[10.5px] font-black px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 shrink-0 ${
+                            isReversed
+                              ? 'bg-rose-100 text-rose-700'
+                              : isFullyPaid
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-rose-600 text-white'
+                          }`}
+                        >
+                          {isReversed
+                            ? 'Reversed'
+                            : isFullyPaid
+                            ? '✓ Fully Paid'
+                            : `Due: ${currency} ${(p.balanceDue || 0).toLocaleString()}`}
+                        </span>
+                      </div>
 
-                            {/* Right Column: Total & Due status */}
-                            <div className="col-span-3 text-right tabular-nums">
+                      {/* Card Middle: Products & 3-Metric Strip */}
+                      <div onClick={() => onViewBill(p)} className="p-3 sm:p-3.5 space-y-2 cursor-pointer">
+                        {/* Product Items Summary */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-slate-800 leading-snug">
+                              {itemsPreview || `${p.items?.length || 0} item(s)`}
+                              {(p.items?.length || 0) > 2 ? ` +${(p.items?.length || 0) - 2} more` : ''}
+                            </p>
+                            {p.notes && (
+                              <p className="text-[10.5px] text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded inline-block mt-1 font-medium">
+                                Note: {p.notes}
+                              </p>
+                            )}
+                          </div>
+                          <span className="text-[10.5px] font-black px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 shrink-0 tabular-nums">
+                            {totalUnits} pcs
+                          </span>
+                        </div>
+
+                        {/* 3 Metrics Mini Grid (Total, Paid, Due) */}
+                        {isAdmin && (
+                          <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-100 text-center">
+                            <div className="bg-slate-50/80 rounded-xl p-1.5">
+                              <span className="text-[9.5px] font-bold text-slate-400 block uppercase">Bill Total</span>
                               <span
-                                className={`text-xs font-extrabold block ${
-                                  isReversed
-                                    ? 'line-through text-slate-400'
-                                    : isFullyPaid
-                                    ? 'text-slate-900'
-                                    : 'text-rose-600'
+                                className={`text-xs font-black tabular-nums ${
+                                  isReversed ? 'line-through text-slate-400' : 'text-slate-900'
                                 }`}
                               >
                                 {currency} {(p.totalAmount || 0).toLocaleString()}
                               </span>
-                              <span
-                                className={`inline-block mt-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                                  isReversed
-                                    ? 'bg-rose-100 text-rose-700'
-                                    : isFullyPaid
-                                    ? 'bg-emerald-50 text-emerald-700'
-                                    : 'bg-rose-50 text-rose-600'
-                                }`}
-                              >
-                                {isReversed
-                                  ? 'Reversed'
-                                  : isFullyPaid
-                                  ? 'Paid'
-                                  : `Due ${currency} ${(p.balanceDue || 0).toLocaleString()}`}
+                            </div>
+                            <div className="bg-emerald-50/50 rounded-xl p-1.5">
+                              <span className="text-[9.5px] font-bold text-emerald-600 block uppercase">Paid</span>
+                              <span className="text-xs font-black tabular-nums text-emerald-600">
+                                {isReversed ? '—' : `${currency} ${(p.paidAmount || 0).toLocaleString()}`}
                               </span>
                             </div>
-                          </>
-                        ) : (
-                          <div className="col-span-6 text-right tabular-nums">
-                            <span className="text-xs font-extrabold text-blue-600">
-                              {totalUnits} pcs
-                            </span>
-                            {isReversed && (
-                              <span className="block text-[10px] font-bold text-rose-600">Reversed</span>
-                            )}
+                            <div
+                              className={`rounded-xl p-1.5 ${
+                                p.balanceDue > 0 && !isReversed ? 'bg-rose-50' : 'bg-slate-50/80'
+                              }`}
+                            >
+                              <span
+                                className={`text-[9.5px] font-bold block uppercase ${
+                                  p.balanceDue > 0 && !isReversed ? 'text-rose-600' : 'text-slate-400'
+                                }`}
+                              >
+                                Balance Due
+                              </span>
+                              <span
+                                className={`text-xs font-black tabular-nums ${
+                                  p.balanceDue > 0 && !isReversed ? 'text-rose-600' : 'text-slate-700'
+                                }`}
+                              >
+                                {isReversed ? '—' : `${currency} ${(p.balanceDue || 0).toLocaleString()}`}
+                              </span>
+                            </div>
                           </div>
                         )}
                       </div>
 
-                      {/* Subtle Quick Action Strip */}
+                      {/* Card Bottom: Clear Action Buttons */}
                       <div
-                        className="flex flex-wrap items-center justify-between gap-1.5 mt-2 pt-2 border-t border-slate-100/80 text-[11px]"
+                        className="px-3 py-2 bg-slate-50/60 border-t border-slate-100 flex flex-wrap items-center justify-between gap-1.5 text-[11px]"
                         onClick={e => e.stopPropagation()}
                       >
                         <div className="flex items-center gap-1.5">
-                          {p.invoiceImage && (
-                            <button
-                              type="button"
-                              onClick={() => onZoomImage(p.invoiceImage!)}
-                              className="h-7 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-[10px] inline-flex items-center gap-1 cursor-pointer"
-                            >
-                              <Camera className="w-3 h-3 text-blue-600" />
-                              <span>Photo</span>
-                            </button>
-                          )}
                           {isAdmin && !isReversed && (p.balanceDue || 0) > 0 && (
                             <button
                               type="button"
                               onClick={() => onPayBillDue(p)}
-                              className="h-7 px-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-[10px] inline-flex items-center gap-1 cursor-pointer"
+                              className="h-7 px-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-lg text-[10px] inline-flex items-center gap-1 cursor-pointer active:scale-95 shadow-xs"
                             >
                               <CreditCard className="w-3 h-3" />
                               <span>Pay Due</span>
+                            </button>
+                          )}
+                          {p.invoiceImage && (
+                            <button
+                              type="button"
+                              onClick={() => onZoomImage(p.invoiceImage!)}
+                              className="h-7 px-2 bg-white hover:bg-blue-50 text-slate-700 border border-slate-200 font-bold rounded-lg text-[10px] inline-flex items-center gap-1 cursor-pointer active:scale-95"
+                            >
+                              <Camera className="w-3 h-3 text-blue-600" />
+                              <span>Photo</span>
                             </button>
                           )}
                         </div>
@@ -699,19 +743,19 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
                           <button
                             type="button"
                             onClick={() => onViewBill(p)}
-                            className="h-7 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-[10px] inline-flex items-center gap-1 cursor-pointer"
+                            className="h-7 px-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-black rounded-lg text-[10px] inline-flex items-center gap-1 cursor-pointer active:scale-95 border border-blue-200/60"
                           >
-                            <Eye className="w-3 h-3" />
-                            <span>View</span>
+                            <Eye className="w-3 h-3 text-blue-600" />
+                            <span>View Bill</span>
                           </button>
 
                           {!isReversed && (isAdmin || salesmanCanEdit) && (
                             <button
                               type="button"
                               onClick={() => onEditBill(p)}
-                              className="h-7 px-2 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 font-bold rounded-lg text-[10px] inline-flex items-center gap-1 cursor-pointer"
+                              className="h-7 px-2 bg-white hover:bg-slate-100 text-slate-700 font-bold rounded-lg text-[10px] inline-flex items-center gap-1 cursor-pointer active:scale-95 border border-slate-200"
                             >
-                              <Edit2 className="w-3 h-3" />
+                              <Edit2 className="w-3 h-3 text-indigo-600" />
                               <span>{isAdmin ? 'Edit' : 'Edit (1x)'}</span>
                             </button>
                           )}
@@ -727,8 +771,8 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
                             <button
                               type="button"
                               onClick={() => onDownloadPdf(p)}
-                              className="h-7 w-7 text-slate-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg border border-slate-200 flex items-center justify-center cursor-pointer"
-                              title="Download Bill PDF"
+                              className="h-7 w-7 text-slate-600 hover:text-blue-700 hover:bg-white rounded-lg border border-slate-200 flex items-center justify-center cursor-pointer active:scale-95"
+                              title="Download PDF"
                             >
                               <Download className="w-3.5 h-3.5" />
                             </button>
@@ -738,8 +782,8 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
                             <button
                               type="button"
                               onClick={() => onShareWhatsApp(p)}
-                              className="h-7 w-7 text-emerald-600 hover:bg-emerald-50 rounded-lg border border-slate-200 flex items-center justify-center cursor-pointer"
-                              title="Share on WhatsApp"
+                              className="h-7 w-7 text-emerald-600 hover:bg-white rounded-lg border border-slate-200 flex items-center justify-center cursor-pointer active:scale-95"
+                              title="Share WhatsApp"
                             >
                               <MessageCircle className="w-3.5 h-3.5" />
                             </button>
@@ -749,7 +793,7 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
                             <button
                               type="button"
                               onClick={() => onReverseBill(p)}
-                              className="h-7 w-7 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition border border-slate-200 flex items-center justify-center cursor-pointer"
+                              className="h-7 w-7 text-slate-400 hover:text-rose-600 hover:bg-white rounded-lg border border-slate-200 flex items-center justify-center cursor-pointer active:scale-95"
                               title="Reverse Bill"
                             >
                               <RotateCcw className="w-3.5 h-3.5" />

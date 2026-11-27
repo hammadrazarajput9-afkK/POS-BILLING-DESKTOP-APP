@@ -2876,150 +2876,99 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
               </div>
             )}
 
-            {/* 3 Metric Cards for Financial Summary */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {/* Total Consignment Value */}
-              <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs relative overflow-hidden">
-                <div className="flex items-center justify-between text-slate-500 mb-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Inward Bill</span>
-                  <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-                    <Package className="w-4 h-4" />
-                  </div>
+            {/* High-density 3-Metric Summary Card (Compact 3-col on all screens) */}
+            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
+              <div className="grid grid-cols-3 divide-x divide-slate-100 text-center py-2.5 px-1 sm:px-2">
+                {/* Total Bill */}
+                <div className="px-1.5">
+                  <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">
+                    Total Bill
+                  </span>
+                  <span className="text-sm sm:text-base font-black text-slate-900 tabular-nums block mt-0.5">
+                    {currency} {selectedPurchaseForView.totalAmount.toLocaleString()}
+                  </span>
+                  <span className="text-[10.5px] text-slate-500 font-semibold block">
+                    {selectedPurchaseForView.items.reduce((s, i) => s + (Number(i.qty) || 0), 0)} pcs total
+                  </span>
                 </div>
-                <div className="text-xl sm:text-2xl font-black text-slate-900 tabular-nums">
-                  {currency} {selectedPurchaseForView.totalAmount.toLocaleString()}
-                </div>
-                <div className="text-[11px] text-slate-500 font-semibold mt-1 flex items-center gap-1.5">
-                  <span>{selectedPurchaseForView.items.length} items</span>
-                  <span>•</span>
-                  <span>{selectedPurchaseForView.items.reduce((s, i) => s + (Number(i.qty) || 0), 0)} pcs total</span>
-                </div>
-              </div>
 
-              {/* Paid Outflow */}
-              <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs relative overflow-hidden">
-                <div className="flex items-center justify-between text-slate-500 mb-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Amount Paid</span>
-                  <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-                    <CheckCircle2 className="w-4 h-4" />
-                  </div>
+                {/* Paid */}
+                <div className="px-1.5">
+                  <span className="text-[10px] font-bold text-emerald-600 block uppercase tracking-wider">
+                    Paid
+                  </span>
+                  <span className="text-sm sm:text-base font-black text-emerald-600 tabular-nums block mt-0.5">
+                    {currency} {selectedPurchaseForView.paidAmount.toLocaleString()}
+                  </span>
+                  <span className="text-[10.5px] text-slate-500 font-semibold block">
+                    {selectedPurchaseForView.paymentMethod || 'Cash'}
+                  </span>
                 </div>
-                <div className="text-xl sm:text-2xl font-black text-emerald-600 tabular-nums">
-                  {currency} {selectedPurchaseForView.paidAmount.toLocaleString()}
-                </div>
-                <div className="text-[11px] text-slate-500 font-semibold mt-1">
-                  Method: <span className="text-slate-800 font-bold">{selectedPurchaseForView.paymentMethod || 'Cash'}</span>
-                </div>
-              </div>
 
-              {/* Balance Due */}
-              <div className={`p-3.5 sm:p-4 rounded-2xl border shadow-xs relative overflow-hidden ${
-                selectedPurchaseForView.balanceDue > 0
-                  ? 'bg-rose-50/70 border-rose-200/90'
-                  : 'bg-white border-slate-200/80'
-              }`}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                {/* Balance Due */}
+                <div className={`px-1.5 ${selectedPurchaseForView.balanceDue > 0 ? 'bg-rose-50/40' : ''}`}>
+                  <span className={`text-[10px] font-bold block uppercase tracking-wider ${
                     selectedPurchaseForView.balanceDue > 0 ? 'text-rose-600' : 'text-slate-400'
                   }`}>
-                    Payable Balance
+                    Balance Due
                   </span>
-                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold ${
-                    selectedPurchaseForView.balanceDue > 0 ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-400'
+                  <span className={`text-sm sm:text-base font-black tabular-nums block mt-0.5 ${
+                    selectedPurchaseForView.balanceDue > 0 ? 'text-rose-600' : 'text-slate-700'
                   }`}>
-                    <Clock className="w-4 h-4" />
-                  </div>
+                    {currency} {selectedPurchaseForView.balanceDue.toLocaleString()}
+                  </span>
+                  <span className={`text-[10.5px] font-bold block ${
+                    selectedPurchaseForView.balanceDue > 0 ? 'text-rose-600' : 'text-emerald-700'
+                  }`}>
+                    {selectedPurchaseForView.balanceDue > 0 ? 'Pending' : 'Settled ✓'}
+                  </span>
                 </div>
-                <div className={`text-xl sm:text-2xl font-black tabular-nums ${
-                  selectedPurchaseForView.balanceDue > 0 ? 'text-rose-600' : 'text-slate-700'
-                }`}>
-                  {currency} {selectedPurchaseForView.balanceDue.toLocaleString()}
+              </div>
+
+              {/* Slim Supplier & Quick Action Strip */}
+              <div className="px-3 py-1.5 bg-slate-50/70 border-t border-slate-100 flex items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-black text-[10px] flex items-center justify-center shrink-0">
+                    {getInitials(selectedPurchaseForView.partyName)}
+                  </span>
+                  <span className="font-extrabold text-slate-900 truncate text-xs">
+                    {selectedPurchaseForView.partyName}
+                  </span>
+                  {selectedPurchaseForView.partyPhone && (
+                    <a
+                      href={`tel:${selectedPurchaseForView.partyPhone}`}
+                      className="text-blue-600 font-bold hover:underline tabular-nums text-[11px] hidden xs:inline"
+                    >
+                      {selectedPurchaseForView.partyPhone}
+                    </a>
+                  )}
                 </div>
-                <div className="text-[11px] font-semibold mt-1">
-                  {selectedPurchaseForView.balanceDue <= 0 ? (
-                    <span className="text-emerald-700 font-bold">Fully Settled ✓</span>
-                  ) : (
-                    <span className="text-rose-700 font-bold">Pending Payment to Party</span>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {selectedPurchaseForView.invoiceImage && (
+                    <button
+                      type="button"
+                      onClick={() => setZoomImage(selectedPurchaseForView.invoiceImage!)}
+                      className="px-2 py-0.5 bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-[10.5px] font-bold flex items-center gap-1 cursor-pointer active:scale-95 shadow-2xs"
+                    >
+                      <Camera className="w-3 h-3 text-blue-600" />
+                      <span>Slip</span>
+                    </button>
+                  )}
+                  {selectedPurchaseForView.partyPhone && (
+                    <a
+                      href={`https://wa.me/${cleanWhatsAppPhone(selectedPurchaseForView.partyPhone)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2 py-0.5 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-[10.5px] font-bold flex items-center gap-1 active:scale-95 shadow-2xs"
+                    >
+                      <MessageCircle className="w-3 h-3 text-emerald-600" />
+                      <span>WhatsApp</span>
+                    </a>
                   )}
                 </div>
               </div>
             </div>
-
-            {/* Supplier & Entry Details Card */}
-            <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-700 border border-blue-200 font-black text-sm flex items-center justify-center shrink-0 shadow-2xs">
-                  {getInitials(selectedPurchaseForView.partyName)}
-                </div>
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Supplier / Vendor</div>
-                  <h4 className="font-black text-slate-900 text-sm sm:text-base leading-tight">
-                    {selectedPurchaseForView.partyName}
-                  </h4>
-                  <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500 font-semibold">
-                    <span>Bill #{selectedPurchaseForView.billNo}</span>
-                    <span>•</span>
-                    <span>{formatLedgerTimestamp(selectedPurchaseForView.date)}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end flex-wrap">
-                {selectedPurchaseForView.partyPhone && (
-                  <a
-                    href={`tel:${selectedPurchaseForView.partyPhone}`}
-                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl flex items-center gap-1.5 transition"
-                  >
-                    <Phone className="w-3.5 h-3.5 text-blue-600" />
-                    <span>{selectedPurchaseForView.partyPhone}</span>
-                  </a>
-                )}
-                {selectedPurchaseForView.partyPhone && (
-                  <a
-                    href={`https://wa.me/${cleanWhatsAppPhone(selectedPurchaseForView.partyPhone)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold rounded-xl flex items-center gap-1.5 transition"
-                  >
-                    <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>WhatsApp</span>
-                  </a>
-                )}
-              </div>
-            </div>
-
-            {/* Scanned Physical Receipt Card (if available) */}
-            {selectedPurchaseForView.invoiceImage && (
-              <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl border border-slate-200 overflow-hidden bg-slate-100 shrink-0">
-                    <img
-                      src={selectedPurchaseForView.invoiceImage}
-                      alt="Physical Invoice"
-                      className="w-full h-full object-cover cursor-pointer hover:scale-105 transition"
-                      onClick={() => setZoomImage(selectedPurchaseForView.invoiceImage!)}
-                    />
-                  </div>
-                  <div>
-                    <div className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
-                      <Camera className="w-4 h-4 text-blue-600" />
-                      <span>Physical Supplier Invoice Attached</span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Tap to inspect original paper slip, stamp, and notes
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setZoomImage(selectedPurchaseForView.invoiceImage!)}
-                  className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1 shrink-0"
-                >
-                  <Eye className="w-3.5 h-3.5" />
-                  <span>View Full Image</span>
-                </button>
-              </div>
-            )}
 
             {/* Clean Itemized Cards (Spacious, easy-to-read, replacing cramped table) */}
             <div className="space-y-3">
