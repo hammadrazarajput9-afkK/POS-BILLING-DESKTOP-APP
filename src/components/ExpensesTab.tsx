@@ -125,10 +125,10 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
     hideAmounts ? `${currency} ••••` : `${currency} ${amount.toLocaleString()}`;
 
   return (
-    <div className="space-y-3 pb-24 max-w-full overflow-hidden animate-in fade-in duration-200">
-      {/* Top Rose Header + Overlapping White Summary Card */}
+    <div className="space-y-3 pb-24 max-w-full overflow-hidden animate-liquid-in">
+      {/* Top Rose Header + Overlapping Frosted Summary Card */}
       <div>
-        <div className="bg-rose-600 text-white rounded-2xl shadow-sm pt-3.5 pb-11 px-3.5 sm:px-5">
+        <div className="ios-liquid-banner-rose ios-liquid-sheen-layer text-white rounded-2xl pt-3.5 pb-11 px-3.5 sm:px-5">
           {/* Row 1: Title & Header Controls */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -201,8 +201,8 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
           </div>
         </div>
 
-        {/* Overlapping White Expense Summary Card */}
-        <div className="-mt-8 mx-2 sm:mx-4 bg-white rounded-2xl border border-slate-200/90 shadow-sm px-3.5 py-3">
+        {/* Overlapping Frosted Expense Summary Card */}
+        <div className="-mt-8 mx-2 sm:mx-4 ios-liquid-surface rounded-2xl px-3.5 py-3 relative z-10">
           <div className="flex items-center justify-between gap-2 mb-1.5">
             <button
               type="button"
@@ -254,7 +254,7 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search expense description..."
-            className="w-full h-10 pl-9 pr-8 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-rose-600 shadow-2xs"
+            className="w-full h-10 pl-9 pr-8 ios-liquid-chip rounded-xl text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-rose-600 transition"
           />
           {search && (
             <button
@@ -268,7 +268,7 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
           )}
         </div>
 
-        <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-2.5 h-10 text-xs shadow-2xs shrink-0">
+        <div className="flex items-center gap-1 ios-liquid-chip rounded-xl px-2.5 h-10 text-xs shrink-0">
           <Calendar className="w-3.5 h-3.5 text-rose-500 shrink-0" />
           <input
             type="date"
@@ -302,7 +302,7 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
               className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer shrink-0 whitespace-nowrap flex items-center gap-1.5 border ${
                 active
                   ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
-                  : 'bg-white text-slate-600 border-slate-200 hover:border-rose-300 hover:text-rose-700'
+                  : 'ios-liquid-chip text-slate-600 hover:border-rose-300 hover:text-rose-700'
               }`}
             >
               <span>{cat === 'ALL' ? 'All Categories' : cat}</span>
@@ -317,7 +317,7 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
       </div>
 
       {/* MOBILE VIEW: Unified Clean Card Rows */}
-      <div className="block md:hidden bg-white border border-slate-200/90 rounded-2xl overflow-hidden shadow-xs divide-y divide-slate-100">
+      <div className="block md:hidden ios-liquid-surface rounded-2xl overflow-hidden divide-y divide-slate-200/60">
         {filtered.length === 0 ? (
           <div className="text-center py-10 px-4 text-slate-400">
             <Receipt className="w-8 h-8 mx-auto mb-2 text-slate-300" />
@@ -395,7 +395,7 @@ const ExpensesTabComponent: React.FC<ExpensesTabProps> = ({
       </div>
 
       {/* DESKTOP VIEW: Clean Data Table */}
-      <div className="hidden md:block bg-white border border-slate-200/90 rounded-2xl overflow-hidden shadow-xs">
+      <div className="hidden md:block ios-liquid-surface rounded-2xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">

@@ -208,6 +208,175 @@ export function isUsedAndroidCategory(cat?: string): boolean {
   return c.includes('used') && c.includes('android');
 }
 
+export function isUsedCategory(cat?: string): boolean {
+  const c = (cat || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!c) return false;
+  return (
+    c.includes('used') ||
+    c.includes('second hand') ||
+    c.includes('second-hand') ||
+    c.includes('pre-owned') ||
+    c.includes('preowned') ||
+    c.includes('refurbished')
+  );
+}
+
+/**
+ * Computes the accurate map of currently SOLD IMEIs, properly excluding:
+ * - Cancelled / Voided invoices (`sale.status === 'CANCELLED'`)
+ * - Returned items/IMEIs tracked via `salesReturns` OR inline `sale.returnStatus` / `soldItem.returnedImeis`
+ * - `imeiRecords` whose status has been restored to `'AVAILABLE'` / `'RETURNED'` (unless a newer un-returned sale exists)
+ */
+export function getActiveSoldImeiMap({
+  imeiRecords = [],
+  sales = [],
+  salesReturns = [],
+}: {
+  imeiRecords?: ImeiRecord[];
+  sales?: SaleRecord[];
+  salesReturns?: SalesReturnRecord[];
+}): Map<string, { invoiceNo?: string; soldDate?: string }> {
+  const cancelledInvSet = new Set<string>();
+  for (const sale of sales) {
+    if (sale.status === 'CANCELLED' && sale.invNo) {
+      cancelledInvSet.add(sale.invNo.trim().toLowerCase());
+    }
+  }
+
+  // Track returned IMEIs by specific original invoice AND latest return timestamp per IMEI
+  const returnedInvImeiSet = new Set<string>();
+  const latestReturnTimeByImei = new Map<string, number>();
+
+  const parseTime = (iso?: string): number => {
+    if (!iso) return 0;
+    const ms = new Date(iso).getTime();
+    return Number.isNaN(ms) ? 0 : ms;
+  };
+
+  for (const ret of salesReturns) {
+    const retTime = parseTime(ret.returnDate || ret.updatedAt);
+    const origInvLower = (ret.originalInvNo || '').trim().toLowerCase();
+    for (const retItem of ret.items || []) {
+      const retItemImeis = extractItemImeis(retItem);
+      for (const im of retItemImeis) {
+        const lower = im.toLowerCase();
+        if (origInvLower) {
+          returnedInvImeiSet.add(`${origInvLower}:::${lower}`);
+        }
+        const prevT = latestReturnTimeByImei.get(lower) ?? -1;
+        if (retTime >= prevT) {
+          latestReturnTimeByImei.set(lower, retTime);
+        }
+      }
+    }
+  }
+
+  // Scan active (non-cancelled) sales and keep only the latest UN-RETURNED sale per IMEI
+  const latestActiveSaleByImei = new Map<
+    string,
+    { invoiceNo: string; soldDate?: string; time: number }
+  >();
+
+  for (const sale of sales) {
+    if (sale.status === 'CANCELLED') continue;
+    const saleTime = parseTime(sale.date);
+    const invLower = (sale.invNo || '').trim().toLowerCase();
+
+    for (const soldItem of sale.items || []) {
+      const itemRetImeis = new Set(
+        (soldItem.returnedImeis || []).map(x => x.trim().toLowerCase()).filter(Boolean)
+      );
+      const isItemFullyReturned =
+        sale.returnStatus === 'FULL' ||
+        (Number(soldItem.returnedQty) || 0) >= Math.max(1, Number(soldItem.qty) || 1);
+
+      const soldItemImeis = extractItemImeis(soldItem);
+      for (const im of soldItemImeis) {
+        const lower = im.toLowerCase();
+        const returnedForThisInv = invLower && returnedInvImeiSet.has(`${invLower}:::${lower}`);
+        const latestRetT = latestReturnTimeByImei.get(lower);
+        const returnedInline = isItemFullyReturned || itemRetImeis.has(lower);
+        const returnedLater =
+          latestRetT !== undefined &&
+          (invLower ? returnedForThisInv || latestRetT > saleTime : latestRetT >= saleTime);
+
+        if (returnedInline || returnedForThisInv || returnedLater) {
+          // If inline sale item says it was returned, also record return time if missing
+          if ((returnedInline || returnedForThisInv) && latestRetT === undefined) {
+            latestReturnTimeByImei.set(lower, parseTime(soldItem.returnedAt || sale.updatedAt || sale.date));
+          }
+          continue;
+        }
+
+        const prev = latestActiveSaleByImei.get(lower);
+        if (!prev || saleTime >= prev.time) {
+          latestActiveSaleByImei.set(lower, {
+            invoiceNo: sale.invNo,
+            soldDate: sale.date,
+            time: saleTime,
+          });
+        }
+      }
+    }
+  }
+
+  const soldImeis = new Map<string, { invoiceNo?: string; soldDate?: string }>();
+
+  // First seed from latest un-returned active sales
+  for (const [lower, info] of latestActiveSaleByImei.entries()) {
+    soldImeis.set(lower, {
+      invoiceNo: info.invoiceNo,
+      soldDate: info.soldDate,
+    });
+  }
+
+  // Reconcile against imeiRecords
+  for (const rec of imeiRecords) {
+    const lower = (rec.imei || '').trim().toLowerCase();
+    if (!lower) continue;
+    const recInvLower = (rec.invoiceNo || '').trim().toLowerCase();
+    const recTime = parseTime(rec.updatedAt || rec.soldDate);
+    const activeSale = latestActiveSaleByImei.get(lower);
+
+    if (rec.status === 'SOLD') {
+      const wasCancelled = Boolean(recInvLower && cancelledInvSet.has(recInvLower));
+      const wasReturnedForInv = Boolean(recInvLower && returnedInvImeiSet.has(`${recInvLower}:::${lower}`));
+      const latestRetT = latestReturnTimeByImei.get(lower);
+      const wasReturnedAfter = latestRetT !== undefined && latestRetT >= recTime;
+
+      if (wasCancelled || wasReturnedForInv || wasReturnedAfter) {
+        // Only keep sold if a newer un-returned sale exists
+        if (activeSale && (!latestRetT || activeSale.time > latestRetT)) {
+          soldImeis.set(lower, {
+            invoiceNo: activeSale.invoiceNo,
+            soldDate: activeSale.soldDate,
+          });
+        } else {
+          soldImeis.delete(lower);
+        }
+      } else if (!soldImeis.has(lower)) {
+        soldImeis.set(lower, {
+          invoiceNo: rec.invoiceNo,
+          soldDate: rec.soldDate,
+        });
+      }
+    } else {
+      // rec.status is AVAILABLE / RETURNED
+      // Clear stale sale match unless an active un-returned sale happened strictly AFTER this record was restored
+      if (activeSale && activeSale.time > recTime) {
+        soldImeis.set(lower, {
+          invoiceNo: activeSale.invoiceNo,
+          soldDate: activeSale.soldDate,
+        });
+      } else {
+        soldImeis.delete(lower);
+      }
+    }
+  }
+
+  return soldImeis;
+}
+
 export function validateImeis({
   imeisToCheck,
   currentProductId,
@@ -283,51 +452,10 @@ export function validateImeis({
     }
   }
 
-  // 3. Build set of SOLD IMEIs from imeiRecords and historical sales
-  const soldImeis = new Map<string, { invoiceNo?: string; soldDate?: string }>();
+  // 3. Build accurate map of currently SOLD IMEIs (reconciled with cancellations & sales returns)
+  const soldImeis = getActiveSoldImeiMap({ imeiRecords, sales, salesReturns });
 
-  // Check imeiRecords with status === 'SOLD'
-  for (const rec of imeiRecords) {
-    if (rec.status === 'SOLD') {
-      soldImeis.set(rec.imei.toLowerCase(), {
-        invoiceNo: rec.invoiceNo,
-        soldDate: rec.soldDate,
-      });
-    }
-  }
-
-  // Also check all historical sales
-  for (const sale of sales) {
-    for (const soldItem of sale.items) {
-      const soldItemImeis = extractItemImeis(soldItem);
-      for (const imei of soldItemImeis) {
-        if (!soldImeis.has(imei.toLowerCase())) {
-          soldImeis.set(imei.toLowerCase(), {
-            invoiceNo: sale.invNo,
-            soldDate: sale.date,
-          });
-        }
-      }
-    }
-  }
-
-  // 4. Build set of returned IMEIs from salesReturns ledger
-  const returnedImeisMap = new Map<string, { returnNo: string; returnDate: string }>();
-  for (const ret of salesReturns) {
-    for (const retItem of ret.items) {
-      const retItemImeis = extractItemImeis(retItem);
-      for (const imei of retItemImeis) {
-        if (!returnedImeisMap.has(imei.toLowerCase())) {
-          returnedImeisMap.set(imei.toLowerCase(), {
-            returnNo: ret.returnNo,
-            returnDate: ret.returnDate,
-          });
-        }
-      }
-    }
-  }
-
-  // 5. Validate each entered IMEI against Available Stock, Sold History, and Returns
+  // 4. Validate each entered IMEI against Available Stock & Active Sold History
   for (const imei of cleanedList) {
     const lower = imei.toLowerCase();
 
@@ -341,7 +469,7 @@ export function validateImeis({
       };
     }
 
-    // Check if was already sold (unless explicitly permitted for historical bill/item preservation)
+    // Check if was currently sold (excluding cancelled/returned invoices and current item's existing IMEIs)
     if (soldImeis.has(lower) && !allowedSoldSet.has(lower)) {
       const soldInfo = soldImeis.get(lower);
       return {

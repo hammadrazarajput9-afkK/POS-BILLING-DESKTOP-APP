@@ -35,6 +35,8 @@ import {
   validateImeis,
   extractItemImeis,
   distributeImeiInput,
+  getActiveSoldImeiMap,
+  isUsedCategory,
   MAX_SINGLE_IMEI_LENGTH,
 } from '../utils/imeiManager';
 
@@ -511,8 +513,6 @@ export const StockModal: React.FC<StockModalProps> = ({
   // Build sets of all existing database IMEIs for real-time validation and cross-checking
   const existingDbImeis = useMemo(() => {
     const invMap = new Map<string, string>(); // lowercase imei -> product name
-    const soldMap = new Map<string, string>(); // lowercase imei -> invoice #
-    const returnsMap = new Map<string, string>(); // lowercase imei -> return #
 
     for (const item of inventory) {
       if (editItem && item.id === editItem.id) continue;
@@ -523,23 +523,18 @@ export const StockModal: React.FC<StockModalProps> = ({
       }
     }
 
-    for (const rec of imeiRecords) {
-      if (rec.status === 'SOLD') {
-        soldMap.set(rec.imei.toLowerCase(), rec.invoiceNo || 'Sold Record');
+    const activeSold = getActiveSoldImeiMap({ imeiRecords, sales, salesReturns });
+    const soldMap = new Map<string, string>();
+    const editOwnedSet = new Set(
+      (editItem ? extractItemImeis(editItem) : []).map(i => i.trim().toLowerCase()).filter(Boolean)
+    );
+    activeSold.forEach((info, lowerImei) => {
+      if (!editOwnedSet.has(lowerImei)) {
+        soldMap.set(lowerImei, info.invoiceNo || 'Sold Record');
       }
-    }
+    });
 
-    for (const s of sales) {
-      for (const item of s.items) {
-        const itemImeis = extractItemImeis(item);
-        for (const im of itemImeis) {
-          if (!soldMap.has(im.toLowerCase())) {
-            soldMap.set(im.toLowerCase(), s.invNo);
-          }
-        }
-      }
-    }
-
+    const returnsMap = new Map<string, string>();
     for (const ret of salesReturns) {
       for (const item of ret.items) {
         const itemImeis = extractItemImeis(item);
@@ -583,6 +578,23 @@ export const StockModal: React.FC<StockModalProps> = ({
         return `Duplicate: Also entered in Variant #${otherVariants.join(', #')}`;
       }
       return 'Duplicate IMEI in this variant!';
+    }
+    if (existingDbImeis.invMap.has(clean)) {
+      return `Already in inventory (${existingDbImeis.invMap.get(clean)})`;
+    }
+    if (existingDbImeis.soldMap.has(clean)) {
+      return `Already sold on Invoice #${existingDbImeis.soldMap.get(clean)}`;
+    }
+    return null;
+  };
+
+  // Helper to get real-time validation error for a single-mode IMEI input
+  const getSingleImeiError = (imeiVal: string, currentIdx: number): string | null => {
+    const clean = (imeiVal || '').trim().toLowerCase();
+    if (!clean) return null;
+    const dupIdx = imeis.findIndex((other, oIdx) => oIdx !== currentIdx && (other || '').trim().toLowerCase() === clean);
+    if (dupIdx >= 0) {
+      return `Duplicate IMEI in Box #${dupIdx + 1}`;
     }
     if (existingDbImeis.invMap.has(clean)) {
       return `Already in inventory (${existingDbImeis.invMap.get(clean)})`;
@@ -1225,40 +1237,85 @@ export const StockModal: React.FC<StockModalProps> = ({
         primaryCondition === 'Repairable' ||
         synchronizedVariants.some(v => v.condition === 'Repairable');
 
-      const singleProduct: Omit<InventoryItem, 'id' | 'createdAt'> = {
-        name: name.trim(),
-        category,
-        image: image || undefined,
-        imei: allVariantImeis.length > 0 ? allVariantImeis.join(', ') : undefined,
-        imeis: allVariantImeis.length > 0 ? allVariantImeis : undefined,
-        costPrice: primaryCost,
-        wholesalePrice: primaryWholesale,
-        salePrice: primarySale,
-        qty: totalQuantity,
-        status: editItem?.status || 'ACTIVE',
-        ram: isAndroid ? synchronizedVariants[0]?.ram : undefined,
-        storage: isAndroid ? synchronizedVariants[0]?.storage : undefined,
-        color: allColors || undefined,
-        note: itemNote.trim() || synchronizedVariants[0]?.note?.trim() || undefined,
-        condition: primaryCondition,
-        purchasedFrom: purchasedFrom.trim() || undefined,
-        purchasedPhone: purchasedPhone.trim() || undefined,
-        variants: synchronizedVariants,
-      };
+      if (!editItem && isUsedCategory(category) && synchronizedVariants.length > 1) {
+        // For Used Mobiles with multiple pieces, save each piece as an independent InventoryItem
+        // so different Cost Prices, Sale Prices, Conditions, and IMEIs never mix!
+        const separateUsedItems: Omit<InventoryItem, 'id' | 'createdAt'>[] = synchronizedVariants.map(v => {
+          const vImeis = (v.imeis || []).map(s => s.trim()).filter(Boolean);
+          const vCost = Number(v.costPrice) || 0;
+          const vSale = Number(v.salePrice) || 0;
+          const vWholesale =
+            v.wholesalePrice !== '' && v.wholesalePrice !== undefined
+              ? Number(v.wholesalePrice)
+              : undefined;
+          const vQty = Math.max(1, Number(v.qty) || 1);
+          const vCond = v.condition?.trim() || itemCondition.trim() || undefined;
+          return {
+            name: name.trim(),
+            category,
+            image: image || undefined,
+            imei: vImeis.length > 0 ? vImeis.join(', ') : undefined,
+            imeis: vImeis.length > 0 ? vImeis : undefined,
+            costPrice: vCost,
+            wholesalePrice: vWholesale,
+            salePrice: vSale,
+            qty: vQty,
+            status: 'ACTIVE' as const,
+            ram: isAndroid ? v.ram : undefined,
+            storage: isAndroid ? v.storage : undefined,
+            color: v.color?.trim() || undefined,
+            note: v.note?.trim() || itemNote.trim() || undefined,
+            condition: vCond,
+            purchasedFrom: purchasedFrom.trim() || undefined,
+            purchasedPhone: purchasedPhone.trim() || undefined,
+            variants: [{ ...v, condition: vCond }],
+          };
+        });
 
-      onSave(singleProduct, editItem ? editItem.id : undefined, adjustmentData);
-      if (hasRepairable && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission().catch(() => {});
+        onSave(separateUsedItems);
+        if (hasRepairable && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+          Notification.requestPermission().catch(() => {});
+        }
+        showToast(
+          `Added ${separateUsedItems.length} separate "${name.trim()}" pieces with individual Cost & Sale prices!`,
+          'success'
+        );
+      } else {
+        const singleProduct: Omit<InventoryItem, 'id' | 'createdAt'> = {
+          name: name.trim(),
+          category,
+          image: image || undefined,
+          imei: allVariantImeis.length > 0 ? allVariantImeis.join(', ') : undefined,
+          imeis: allVariantImeis.length > 0 ? allVariantImeis : undefined,
+          costPrice: primaryCost,
+          wholesalePrice: primaryWholesale,
+          salePrice: primarySale,
+          qty: totalQuantity,
+          status: editItem?.status || 'ACTIVE',
+          ram: isAndroid ? synchronizedVariants[0]?.ram : undefined,
+          storage: isAndroid ? synchronizedVariants[0]?.storage : undefined,
+          color: allColors || undefined,
+          note: itemNote.trim() || synchronizedVariants[0]?.note?.trim() || undefined,
+          condition: primaryCondition,
+          purchasedFrom: purchasedFrom.trim() || undefined,
+          purchasedPhone: purchasedPhone.trim() || undefined,
+          variants: synchronizedVariants,
+        };
+
+        onSave(singleProduct, editItem ? editItem.id : undefined, adjustmentData);
+        if (hasRepairable && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+          Notification.requestPermission().catch(() => {});
+        }
+        showToast(
+          editItem
+            ? `Product "${singleProduct.name}" updated with ${synchronizedVariants.length} variants!`
+            : `Product "${singleProduct.name}" added with ${synchronizedVariants.length} variants!`,
+          'success'
+        );
       }
-      showToast(
-        editItem
-          ? `Product "${singleProduct.name}" updated with ${synchronizedVariants.length} variants!`
-          : `Product "${singleProduct.name}" added with ${synchronizedVariants.length} variants!`,
-        'success'
-      );
       if (hasRepairable) {
         setTimeout(() => {
-          showToast(`Repairable Reminder Active: "${singleProduct.name}" — hourly reminder enabled!`, 'warning');
+          showToast(`Repairable Reminder Active: "${name.trim()}" — hourly reminder enabled!`, 'warning');
         }, 450);
       }
       if (missingAlerts.length > 0) {
@@ -2362,42 +2419,59 @@ export const StockModal: React.FC<StockModalProps> = ({
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1.5 max-h-36 overflow-y-auto pr-0.5">
-                    {imeis.map((imeiVal, idx) => (
-                      <div key={idx} className="flex items-center gap-1 px-1.5 bg-white border border-slate-200 focus-within:border-blue-500 rounded-lg h-8.5">
-                        <span className="tabular-nums text-[10px] font-bold text-slate-500 w-6 shrink-0">
-                          #{idx + 1}
-                        </span>
-                        <div className="relative flex-1 flex items-center min-w-0">
-                          <Hash className="w-3 h-3 absolute left-1 top-1/2 -translate-y-1/2 text-slate-400" />
-                          <input
-                            id={`single-imei-${idx}`}
-                            type="text"
-                            maxLength={MAX_SINGLE_IMEI_LENGTH}
-                            value={imeiVal}
-                            onChange={e => handleSingleImeiChange(idx, e.target.value)}
-                            onKeyDown={e => handleSingleImeiKeyDown(e, idx)}
-                            onPaste={e => handleSingleImeiPaste(e, idx)}
-                            placeholder="1 IMEI (15 digits)"
-                            className="compact-mobile-input w-full pl-4.5 pr-8 py-1 bg-transparent text-[11px] tabular-nums font-medium focus:outline-none rounded"
-                            autoComplete="off"
-                          />
-                          <button
-                            type="button"
-                            onClick={() =>
-                              openBarcodeScanner(
-                                `Scan 1 IMEI for Device #${idx + 1}`,
-                                code => handleSingleImeiChange(idx, code)
-                              )
-                            }
-                            className="absolute right-0 w-7 h-7 text-blue-600 hover:bg-blue-50 rounded cursor-pointer flex items-center justify-center"
-                            title="Camera Scan 1 IMEI"
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1.5 max-h-40 overflow-y-auto pr-0.5">
+                    {imeis.map((imeiVal, idx) => {
+                      const singleErr = getSingleImeiError(imeiVal, idx);
+                      return (
+                        <div key={idx} className="space-y-0.5">
+                          <div
+                            className={`flex items-center gap-1 px-1.5 bg-white border rounded-lg h-8.5 ${
+                              singleErr
+                                ? 'border-rose-400 bg-rose-50/40'
+                                : 'border-slate-200 focus-within:border-blue-500'
+                            }`}
                           >
-                            <Camera className="w-3.5 h-3.5" />
-                          </button>
+                            <span className="tabular-nums text-[10px] font-bold text-slate-500 w-6 shrink-0">
+                              #{idx + 1}
+                            </span>
+                            <div className="relative flex-1 flex items-center min-w-0">
+                              <Hash className="w-3 h-3 absolute left-1 top-1/2 -translate-y-1/2 text-slate-400" />
+                              <input
+                                id={`single-imei-${idx}`}
+                                type="text"
+                                maxLength={MAX_SINGLE_IMEI_LENGTH}
+                                value={imeiVal}
+                                onChange={e => handleSingleImeiChange(idx, e.target.value)}
+                                onKeyDown={e => handleSingleImeiKeyDown(e, idx)}
+                                onPaste={e => handleSingleImeiPaste(e, idx)}
+                                placeholder="1 IMEI (15 digits)"
+                                className="compact-mobile-input w-full pl-4.5 pr-8 py-1 bg-transparent text-[11px] tabular-nums font-medium focus:outline-none rounded"
+                                autoComplete="off"
+                              />
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openBarcodeScanner(
+                                    `Scan 1 IMEI for Device #${idx + 1}`,
+                                    code => handleSingleImeiChange(idx, code)
+                                  )
+                                }
+                                className="absolute right-0 w-7 h-7 text-blue-600 hover:bg-blue-50 rounded cursor-pointer flex items-center justify-center"
+                                title="Camera Scan 1 IMEI"
+                              >
+                                <Camera className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                          {singleErr && (
+                            <p className="text-[10px] font-bold text-rose-600 px-1 flex items-center gap-1 leading-tight">
+                              <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
+                              <span className="truncate">{singleErr}</span>
+                            </p>
+                          )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ) : (

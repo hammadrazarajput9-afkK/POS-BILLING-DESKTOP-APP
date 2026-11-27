@@ -333,7 +333,7 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
       </div>
 
       {/* Screen View */}
-      <div className="print:hidden space-y-3.5 sm:space-y-5">
+      <div className="print:hidden space-y-3.5 sm:space-y-5 animate-liquid-in">
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 sm:gap-4">
           <div className="min-w-0">
@@ -350,7 +350,7 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
               <button
                 type="button"
                 onClick={handleDownloadSVG}
-                className="inline-flex items-center justify-center gap-1.5 h-8 sm:h-9 px-3 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-[11px] sm:text-xs font-bold rounded-lg sm:rounded-xl transition cursor-pointer shadow-2xs"
+                className="inline-flex items-center justify-center gap-1.5 h-8 sm:h-9 px-3 ios-liquid-chip text-slate-700 hover:bg-white/90 text-[11px] sm:text-xs font-bold rounded-lg sm:rounded-xl transition cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5 text-slate-600" />
                 <span>Download SVG</span>
@@ -369,7 +369,7 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
         </div>
 
         {/* Mode Switcher Tabs */}
-        <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 max-w-md">
+        <div className="ios-liquid-chip p-1 rounded-xl flex items-center gap-1 max-w-md">
           <button
             type="button"
             onClick={() => setPrintMode('batch')}
@@ -403,7 +403,7 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
           <div className="lg:col-span-7 space-y-3 sm:space-y-4">
             {/* Multi-Product Custom Builder Panel OR Single Item Custom Panel */}
             {printMode === 'batch' ? (
-              <div className="bg-white p-3 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
+              <div className="ios-liquid-surface p-3 sm:p-5 rounded-xl sm:rounded-2xl space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
                   <div>
                     <h3 className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
@@ -608,7 +608,7 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
               </div>
             ) : (
               /* Custom Single Product Mode */
-              <div className="bg-white p-3 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
+              <div className="ios-liquid-surface p-3 sm:p-5 rounded-xl sm:rounded-2xl space-y-3">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                   <h3 className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
                     <Tag className="w-3.5 h-3.5 text-blue-600" />
@@ -697,7 +697,7 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
             )}
 
             {/* Layout & Printer Sheet Configuration */}
-            <div className="bg-white p-3 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
+            <div className="ios-liquid-surface p-3 sm:p-5 rounded-xl sm:rounded-2xl space-y-3">
               <h3 className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
                 <Sliders className="w-3.5 h-3.5 text-blue-600" />
                 Sheet Layout &amp; Printer Settings
@@ -873,7 +873,7 @@ const BarcodeGeneratorComponent: React.FC<BarcodeGeneratorProps> = ({
 
           {/* Live Preview Column (5 cols) */}
           <div className="lg:col-span-5 space-y-3">
-            <div className="bg-white p-3 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
+            <div className="ios-liquid-surface p-3 sm:p-5 rounded-xl sm:rounded-2xl space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-blue-600" />

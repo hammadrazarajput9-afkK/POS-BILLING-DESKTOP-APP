@@ -6,7 +6,7 @@ import {
   StockAdjustmentReason,
   ActivityLog,
 } from '../types';
-import { recordImeisAvailable, diffChangedImeiRecords, isUsedAndroidCategory } from '../utils/imeiManager';
+import { recordImeisAvailable, diffChangedImeiRecords, isUsedCategory } from '../utils/imeiManager';
 import {
   saveInventoryItemToFirestore,
   deleteInventoryItemFromFirestore,
@@ -173,18 +173,21 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
 
       const cleanBase = singleItem.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
       const otherLegacyIds: string[] = [];
-      data.inventory.forEach(item => {
-        if (item.id === existingId) return;
-        const itemBase = item.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
-        if (
-          singleItem.variants &&
-          singleItem.variants.length > 0 &&
-          item.category.toLowerCase() === singleItem.category.toLowerCase() &&
-          itemBase === cleanBase
-        ) {
-          otherLegacyIds.push(item.id);
-        }
-      });
+      if (!isUsedCategory(singleItem.category)) {
+        data.inventory.forEach(item => {
+          if (item.id === existingId) return;
+          if (isUsedCategory(item.category)) return;
+          const itemBase = item.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
+          if (
+            singleItem.variants &&
+            singleItem.variants.length > 0 &&
+            item.category.toLowerCase() === singleItem.category.toLowerCase() &&
+            itemBase === cleanBase
+          ) {
+            otherLegacyIds.push(item.id);
+          }
+        });
+      }
 
       let nextTombstones = removeTombstoneFromMap(
         data.deletedIds,
@@ -288,7 +291,7 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
         return list.map(existing => {
           if (existing.status === 'ARCHIVED') return existing;
           const matchingNew = newItems.find(ni => {
-            if (isUsedAndroidCategory(ni.category || existing.category)) return false;
+            if (isUsedCategory(ni.category || existing.category)) return false;
             return (
               normKey(ni.name) === normKey(existing.name) &&
               normKey(ni.category) === normKey(existing.category)
@@ -429,13 +432,17 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
 
     const now = new Date().toISOString();
     const cleanBase = itemToDelete.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
-    const relatedIds = data.inventory
-      .filter(i => {
-        if (i.id === id) return true;
-        const iBase = i.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
-        return i.category.toLowerCase() === itemToDelete.category.toLowerCase() && iBase === cleanBase;
-      })
-      .map(i => i.id);
+    const isUsedItem = isUsedCategory(itemToDelete.category);
+    const relatedIds = isUsedItem
+      ? [id]
+      : data.inventory
+          .filter(i => {
+            if (i.id === id) return true;
+            if (isUsedCategory(i.category)) return false;
+            const iBase = i.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
+            return i.category.toLowerCase() === itemToDelete.category.toLowerCase() && iBase === cleanBase;
+          })
+          .map(i => i.id);
 
     setData(prev => ({
       ...prev,
@@ -481,13 +488,17 @@ export function useInventory({ data, setData, logActivity, showToast }: UseInven
 
     const now = new Date().toISOString();
     const cleanBase = itemToDelete.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
-    const relatedIds = data.inventory
-      .filter(i => {
-        if (i.id === id) return true;
-        const iBase = i.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
-        return i.category.toLowerCase() === itemToDelete.category.toLowerCase() && iBase === cleanBase;
-      })
-      .map(i => i.id);
+    const isUsedItem = isUsedCategory(itemToDelete.category);
+    const relatedIds = isUsedItem
+      ? [id]
+      : data.inventory
+          .filter(i => {
+            if (i.id === id) return true;
+            if (isUsedCategory(i.category)) return false;
+            const iBase = i.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
+            return i.category.toLowerCase() === itemToDelete.category.toLowerCase() && iBase === cleanBase;
+          })
+          .map(i => i.id);
 
     const removedImeiIds = (data.imeiRecords || [])
       .filter(rec => relatedIds.includes(rec.productId))

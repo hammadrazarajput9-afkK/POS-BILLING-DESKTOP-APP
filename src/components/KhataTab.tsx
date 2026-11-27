@@ -341,9 +341,9 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
   if (collectionMode) {
     const pendingTotal = collectionCustomers.reduce((sum, c) => sum + c.balance, 0);
     return (
-      <div className="space-y-3 pb-20">
+      <div className="space-y-3 pb-20 animate-liquid-in">
         {/* Collection Emerald Header */}
-        <div className="bg-emerald-600 text-white rounded-2xl shadow-sm overflow-hidden">
+        <div className="ios-liquid-banner-emerald ios-liquid-sheen-layer text-white rounded-2xl overflow-hidden">
           <div className="px-4 py-3.5 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2.5">
               <button
@@ -406,7 +406,7 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search pending customer by name, phone, area..."
-            className="w-full pl-10 pr-9 h-10 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-emerald-600 shadow-2xs"
+            className="w-full pl-10 pr-9 h-10 ios-liquid-chip rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-emerald-600 transition"
           />
           {search && (
             <button
@@ -421,7 +421,7 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
 
         {/* Pending Customer List */}
         {collectionCustomers.length === 0 ? (
-          <div className="bg-white border border-slate-200 rounded-2xl py-12 text-center space-y-2">
+          <div className="ios-liquid-surface rounded-2xl py-12 text-center space-y-2">
             <CheckCircle2 className="w-10 h-10 mx-auto text-emerald-500" />
             <p className="text-sm font-bold text-slate-800">
               {collectionOnlyOverdue ? 'No overdue customers' : 'All customer balances cleared'}
@@ -429,7 +429,7 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
             <p className="text-xs text-slate-400">Great job keeping recoveries up to date.</p>
           </div>
         ) : (
-          <div className="bg-white border border-slate-200 rounded-2xl divide-y divide-slate-100 overflow-hidden shadow-2xs">
+          <div className="ios-liquid-surface rounded-2xl divide-y divide-slate-200/60 overflow-hidden">
             {collectionCustomers.map(cust => {
               const overdue = isDueOverdue(cust);
               const trackUrl = buildGoogleMapsTrackUrl({
@@ -579,10 +579,10 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
   // MAIN PARTY SCREEN (Screenshot 1 adapted to Emerald Green)
   // =========================================================================
   return (
-    <div className="space-y-3 pb-24">
+    <div className="space-y-3 pb-24 animate-liquid-in">
       {/* Top Emerald Header + Overlapping Summary Card */}
       <div>
-        <div className="bg-emerald-600 text-white rounded-2xl shadow-sm pt-3.5 pb-11 px-3.5 sm:px-5">
+        <div className="ios-liquid-banner-emerald ios-liquid-sheen-layer text-white rounded-2xl pt-3.5 pb-11 px-3.5 sm:px-5">
           {/* Header Top Row */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2.5">
@@ -643,8 +643,8 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
           </div>
         </div>
 
-        {/* Overlapping White Balance Summary Card */}
-        <div className="-mt-8 mx-2 sm:mx-4 bg-white rounded-2xl border border-slate-200/90 shadow-sm px-3.5 py-3">
+        {/* Overlapping Frosted Balance Summary Card */}
+        <div className="-mt-8 mx-2 sm:mx-4 ios-liquid-surface rounded-2xl px-3.5 py-3 relative z-10">
           <div className="flex items-center justify-between mb-1.5">
             <button
               type="button"
@@ -700,7 +700,7 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder={tabCountLabel}
-            className="w-full pl-9 pr-8 h-10 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 shadow-2xs transition"
+            className="w-full pl-9 pr-8 h-10 ios-liquid-chip rounded-xl text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 transition"
           />
           {search && (
             <button
@@ -719,7 +719,7 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
           className={`h-10 w-10 rounded-xl border flex items-center justify-center transition cursor-pointer shrink-0 ${
             showFilterMenu || filterType !== 'all' || sortType !== 'latest'
               ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
-              : 'bg-white border-slate-200 text-emerald-600 hover:bg-slate-50'
+              : 'ios-liquid-chip text-emerald-600 hover:bg-white/90'
           }`}
           title="Filter & Sort Parties"
         >
@@ -730,7 +730,7 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
           <button
             type="button"
             onClick={onOpenPdfReport}
-            className="h-10 px-2.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-emerald-600 flex flex-col items-center justify-center transition cursor-pointer shrink-0"
+            className="h-10 px-2.5 rounded-xl ios-liquid-chip hover:bg-white/90 text-emerald-600 flex flex-col items-center justify-center transition cursor-pointer shrink-0"
             title="Export Khata PDF Report"
           >
             <FileText className="w-3.5 h-3.5 leading-none" />
@@ -741,7 +741,7 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
 
       {/* Expandable Filter & Sort Strip */}
       {showFilterMenu && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-3 space-y-2.5 shadow-2xs">
+        <div className="ios-liquid-surface rounded-2xl p-3 space-y-2.5">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1">
               Filter:
@@ -799,7 +799,7 @@ const KhataTabComponent: React.FC<KhataTabProps> = ({
       )}
 
       {/* Clean Party List Rows */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl divide-y divide-slate-100 overflow-hidden shadow-2xs">
+      <div className="ios-liquid-surface rounded-2xl divide-y divide-slate-200/60 overflow-hidden">
         {filteredRows.length === 0 ? (
           <div className="py-12 px-4 text-center space-y-2">
             <BookOpen className="w-9 h-9 mx-auto text-slate-300" />

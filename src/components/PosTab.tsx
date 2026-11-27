@@ -30,7 +30,7 @@ import {
 import { useToast } from './Toast';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { useFormDraft } from '../hooks/useFormDraft';
-import { generateNextInvoiceNumber, extractItemImeis } from '../utils/imeiManager';
+import { generateNextInvoiceNumber, extractItemImeis, isUsedCategory } from '../utils/imeiManager';
 import { InvoiceShareModal } from './InvoiceShareModal';
 import { smartFilterAndSort, smartMatch, smartSearchScore } from '../utils/smartSearch';
 
@@ -1347,7 +1347,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
       className={`rounded-2xl flex flex-col ${
         isMobile
           ? 'bg-transparent p-2.5 space-y-2'
-          : 'bg-white/88 backdrop-blur-xl border border-white/90 shadow-xl shadow-sky-900/5 p-3 sm:p-3.5 gap-2.5'
+          : 'ios-liquid-surface p-3 sm:p-3.5 gap-2.5'
       }`}
     >
       {/* Cart Header */}
@@ -1595,7 +1595,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
               return (
                 <div
                   key={`${item.id}::${item.selectedVariantId || 'default'}`}
-                  className={`bg-white/92 border border-slate-200/80 shadow-2xs rounded-xl transition hover:bg-white ${
+                  className={`ios-liquid-tile rounded-xl ${
                     isMobile ? 'p-2 space-y-1.5' : 'p-2.5 space-y-2'
                   }`}
                 >
@@ -2000,14 +2000,14 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
   return (
     <>
-      <div className="relative rounded-2xl sm:rounded-3xl p-1 sm:p-2 bg-gradient-to-br from-sky-100/75 via-slate-50/90 to-indigo-100/75 border border-white/80 flex flex-col lg:flex-1 lg:min-h-0 overflow-hidden">
+      <div className="relative rounded-2xl sm:rounded-3xl p-0.5 sm:p-1.5 bg-white/30 border border-white/55 flex flex-col lg:flex-1 lg:min-h-0 overflow-hidden">
         <div className="relative space-y-2.5 sm:space-y-3 flex flex-col lg:flex-1 lg:min-h-0">
         {/* Smart Frosted App Header */}
         <div
-          className={`backdrop-blur-xl text-white rounded-2xl px-3 sm:px-4 pt-2.5 pb-1 shadow-lg border border-white/25 shrink-0 transition-colors ${
+          className={`ios-liquid-sheen-layer text-white rounded-2xl px-3 sm:px-4 pt-2.5 pb-1 shrink-0 transition-colors ${
             saleMode === 'wholesale'
-              ? 'bg-gradient-to-r from-purple-700/90 via-indigo-700/90 to-violet-700/90 shadow-purple-900/15'
-              : 'bg-gradient-to-r from-sky-600/90 via-blue-600/90 to-indigo-600/90 shadow-blue-900/15'
+              ? 'ios-liquid-hero bg-gradient-to-r from-purple-700/95 via-indigo-700/92 to-violet-700/95 shadow-purple-900/20'
+              : 'ios-liquid-banner-blue'
           }`}
         >
           {/* Row 1: Back, Title, Retail/Wholesale Pill & Quick Utilities */}
@@ -2032,7 +2032,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
             <div className="flex items-center gap-1.5 shrink-0">
               {/* Compact Retail / Wholesale Mode Switcher */}
-              <div className="flex items-center p-0.5 rounded-xl bg-white/15 backdrop-blur-md border border-white/20 shrink-0">
+              <div className="flex items-center p-0.5 rounded-xl bg-white/18 border border-white/25 shrink-0">
                 <button
                   type="button"
                   onClick={() => setSaleMode('retail')}
@@ -2061,7 +2061,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                 <button
                   type="button"
                   onClick={() => onOpenSalesReturn(null)}
-                  className="px-2 sm:px-2.5 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 backdrop-blur-md border border-white/20 text-white text-[10.5px] sm:text-xs font-bold transition cursor-pointer inline-flex items-center gap-1 whitespace-nowrap"
+                  className="px-2 sm:px-2.5 py-1.5 rounded-xl bg-white/18 hover:bg-white/28 border border-white/25 text-white text-[10.5px] sm:text-xs font-bold transition cursor-pointer inline-flex items-center gap-1 whitespace-nowrap"
                   title="Process Customer Sales Return & Refund"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
@@ -2073,7 +2073,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                 <button
                   type="button"
                   onClick={onOpenPosSettings}
-                  className="w-8 h-8 rounded-xl bg-white/15 hover:bg-white/25 backdrop-blur-md border border-white/20 text-white flex items-center justify-center transition cursor-pointer shrink-0"
+                  className="w-8 h-8 rounded-xl bg-white/18 hover:bg-white/28 border border-white/25 text-white flex items-center justify-center transition cursor-pointer shrink-0"
                   title="POS & Billing Settings"
                   aria-label="POS Settings"
                 >
@@ -2134,9 +2134,9 @@ const PosTabComponent: React.FC<PosTabProps> = ({
             {/* Left Column: Frosted Catalog & Search (7 Cols) */}
             <div className="lg:col-span-7 flex flex-col lg:min-h-0 lg:sticky lg:top-0 lg:max-h-[calc(100dvh-9rem)] space-y-2.5 sm:space-y-3">
               {/* Frosted Search & Category Filter Dock */}
-              <div className="bg-white/75 backdrop-blur-xl border border-white/90 rounded-2xl p-2.5 sm:p-3 space-y-2 shadow-sm shrink-0">
+              <div className="ios-liquid-surface rounded-2xl p-2.5 sm:p-3 space-y-2 shrink-0">
                 {duplicateScanAlert && (
-                  <div className="bg-rose-50/90 backdrop-blur-md border border-rose-300 text-rose-900 rounded-xl px-3 py-2 flex items-start justify-between gap-2 shadow-xs animate-in fade-in">
+                  <div className="bg-rose-50/95 border border-rose-300 text-rose-900 rounded-xl px-3 py-2 flex items-start justify-between gap-2 shadow-xs animate-in fade-in">
                     <div className="flex items-start gap-2 min-w-0">
                       <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                       <div className="text-xs min-w-0">
@@ -2177,7 +2177,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                       }
                     }}
                     placeholder="Scan IMEI / barcode or search product..."
-                    className="compact-mobile-input w-full pl-9 pr-20 sm:pr-24 py-1.5 bg-white/80 backdrop-blur-sm border border-slate-200/80 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white transition h-9.5 sm:h-10"
+                    className="compact-mobile-input w-full pl-9 pr-20 sm:pr-24 py-1.5 bg-white/90 border border-slate-200/80 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white transition h-9.5 sm:h-10"
                   />
                   <div className="absolute right-1.5 flex items-center gap-1">
                     {search && (
@@ -2217,7 +2217,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                           ? saleMode === 'wholesale'
                             ? 'bg-purple-600 text-white shadow-sm'
                             : 'bg-blue-600 text-white shadow-sm'
-                          : 'bg-white/70 border border-slate-200/70 text-slate-700 hover:bg-white'
+                          : 'ios-liquid-chip text-slate-700 hover:bg-white/90'
                       }`}
                     >
                       {cat === 'ALL' ? 'All' : cat}
@@ -2246,7 +2246,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                   const scannedObj = activeInventory.find(i => i.id === lastScannedItem.itemId);
                   if (!scannedObj) return null;
                   return (
-                    <div className="bg-emerald-50/85 backdrop-blur-md border border-emerald-300/80 rounded-2xl px-3 py-2 flex items-center justify-between gap-2 shadow-xs">
+                    <div className="bg-emerald-50/95 border border-emerald-300/80 rounded-2xl px-3 py-2 flex items-center justify-between gap-2 shadow-xs">
                       <div className="flex items-center gap-2 min-w-0">
                         <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
                         <div className="min-w-0 text-xs">
@@ -2283,7 +2283,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                 })()}
 
                 {filteredItems.length === 0 ? (
-                  <div className="text-center py-12 bg-white/75 backdrop-blur-xl rounded-2xl border border-white/90 text-xs text-slate-400 space-y-2 shadow-sm">
+                  <div className="text-center py-12 ios-liquid-surface rounded-2xl text-xs text-slate-400 space-y-2">
                     <Package className="w-8 h-8 mx-auto text-slate-300" />
                     <p className="font-semibold text-slate-600">No matching products found</p>
                     <button
@@ -2310,17 +2310,22 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                           ].filter(Boolean)
                         )
                       );
+                      const isUsed = isUsedCategory(item.category);
+                      const cardImeis = isUsed ? extractItemImeis(item) : [];
+                      const cardCond = isUsed
+                        ? item.condition || item.variants?.find(v => v.condition)?.condition || ''
+                        : '';
 
                       return (
                         <div
                           key={item.id}
                           onClick={() => setSelectedProductDetails(item)}
-                          className={`bg-white/92 hover:bg-white border rounded-2xl p-2 sm:p-2.5 shadow-sm hover:shadow-md transition-colors duration-150 cursor-pointer flex flex-col justify-between group relative min-w-0 ${
+                          className={`ios-liquid-tile rounded-2xl p-2 sm:p-2.5 cursor-pointer flex flex-col justify-between group relative min-w-0 ${
                             isLastScanned
-                              ? 'border-emerald-500 ring-2 ring-emerald-400/60'
+                              ? '!border-emerald-500 ring-2 ring-emerald-400/60'
                               : remainingStock <= 0
-                              ? 'opacity-60 border-white/80'
-                              : 'border-white/95 hover:border-blue-400'
+                              ? 'opacity-60'
+                              : 'hover:!border-blue-400'
                           }`}
                         >
                           <div className="min-w-0">
@@ -2363,7 +2368,17 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                               {item.name}
                             </h4>
                             <p className="text-[10.5px] text-slate-500 font-medium truncate mt-0.5">
-                              {itemSpecs.length > 0 ? itemSpecs[0] : item.category}
+                              {isUsed
+                                ? [
+                                    itemSpecs[0] || item.color || item.category,
+                                    cardCond,
+                                    cardImeis.length === 1 ? `#${cardImeis[0].slice(-5)}` : '',
+                                  ]
+                                    .filter(Boolean)
+                                    .join(' · ')
+                                : itemSpecs.length > 0
+                                ? itemSpecs[0]
+                                : item.category}
                               {item.variants && item.variants.length > 1 ? ` · ${item.variants.length}v` : ''}
                             </p>
                           </div>
@@ -2396,7 +2411,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                                     }`}
                                   >
                                     {minP !== maxP
-                                      ? `${currency} ${minP.toLocaleString()}+`
+                                      ? `${currency} ${minP.toLocaleString()}–${maxP.toLocaleString()}`
                                       : `${currency} ${minP.toLocaleString()}`}
                                   </span>
                                 );
@@ -2457,7 +2472,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
           /* ================= FROSTED HISTORY SUB-TAB VIEW ================= */
           <div className="space-y-3 sm:space-y-4 lg:flex-1 lg:min-h-0 lg:overflow-y-auto pr-0.5 pb-20 lg:pb-6">
             {/* Filters & Actions Control Bar */}
-            <div className="bg-white/75 backdrop-blur-xl border border-white/90 rounded-2xl p-2.5 sm:p-4 shadow-sm space-y-2.5 sm:space-y-3">
+            <div className="ios-liquid-surface rounded-2xl p-2.5 sm:p-4 space-y-2.5 sm:space-y-3">
               <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 sm:gap-4">
                 <div className="md:col-span-6 relative flex items-center">
                   <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -2562,7 +2577,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
             {/* Frosted Metrics Summary */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
-              <div className="bg-white/75 backdrop-blur-xl border border-white/90 rounded-2xl p-2.5 sm:p-3.5 shadow-sm flex flex-col justify-between">
+              <div className="ios-liquid-tile rounded-2xl p-2.5 sm:p-3.5 flex flex-col justify-between">
                 <p className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider line-clamp-1">Net Sales Volume</p>
                 <p className="text-sm sm:text-lg font-black tabular-nums text-blue-600 mt-0.5 truncate">
                   {currency} {stats.netRevenue.toLocaleString()}
@@ -2570,7 +2585,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                 <p className="text-[10px] text-slate-500 mt-0.5 font-semibold truncate">{stats.totalInvoices} active bills</p>
               </div>
 
-              <div className="bg-white/75 backdrop-blur-xl border border-white/90 rounded-2xl p-2.5 sm:p-3.5 shadow-sm flex flex-col justify-between">
+              <div className="ios-liquid-tile rounded-2xl p-2.5 sm:p-3.5 flex flex-col justify-between">
                 <p className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider line-clamp-1">Credit Receivables</p>
                 <p className="text-sm sm:text-lg font-black tabular-nums text-purple-600 mt-0.5 truncate">
                   {currency} {stats.totalCredit.toLocaleString()}
@@ -2578,7 +2593,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                 <p className="text-[10px] text-slate-500 mt-0.5 font-semibold truncate">balance due</p>
               </div>
 
-              <div className="bg-white/75 backdrop-blur-xl border border-white/90 rounded-2xl p-2.5 sm:p-3.5 shadow-sm flex flex-col justify-between">
+              <div className="ios-liquid-tile rounded-2xl p-2.5 sm:p-3.5 flex flex-col justify-between">
                 <p className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider line-clamp-1">Cancelled Bills</p>
                 <p className="text-sm sm:text-lg font-black tabular-nums text-rose-600 mt-0.5 truncate">
                   {stats.cancelledCount} Bills
@@ -2586,7 +2601,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                 <p className="text-[10px] text-slate-500 mt-0.5 font-semibold truncate">Void: {currency} {stats.cancelledSum.toLocaleString()}</p>
               </div>
 
-              <div className="bg-white/75 backdrop-blur-xl border border-white/90 rounded-2xl p-2.5 sm:p-3.5 shadow-sm flex flex-col justify-between">
+              <div className="ios-liquid-tile rounded-2xl p-2.5 sm:p-3.5 flex flex-col justify-between">
                 <p className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider line-clamp-1">Total Invoices</p>
                 <p className="text-sm sm:text-lg font-black tabular-nums text-slate-900 mt-0.5 truncate">
                   {filteredSales.length} Bills
@@ -2598,7 +2613,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
             {/* Historical Invoices List */}
             <div className="space-y-2.5">
               {filteredSales.length === 0 ? (
-                <div className="text-center py-12 bg-white/75 backdrop-blur-xl rounded-2xl border border-white/90 text-xs text-slate-400 space-y-2 shadow-sm">
+                <div className="text-center py-12 ios-liquid-surface rounded-2xl text-xs text-slate-400 space-y-2">
                   <FileText className="w-10 h-10 mx-auto text-slate-300" />
                   <p className="font-bold text-slate-600">No matching sales records found</p>
                   <p className="text-slate-400 max-w-xs mx-auto">Try typing another query or selecting a different date range filter above.</p>
@@ -2611,12 +2626,12 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                   return (
                     <div
                       key={sale.invNo}
-                      className={`bg-white/92 hover:bg-white border rounded-2xl p-3 sm:p-4 flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-4 transition-colors shadow-sm ${
+                      className={`ios-liquid-tile rounded-2xl p-3 sm:p-4 flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-4 ${
                         isCancelled
-                          ? 'border-red-200/80 bg-red-50/40'
+                          ? '!border-red-300/80 !bg-red-50/55'
                           : sale.invoiceType === 'credit'
-                            ? 'border-purple-200/70 hover:border-purple-400'
-                            : 'border-white/95 hover:border-blue-400'
+                            ? '!border-purple-200/80 hover:!border-purple-400'
+                            : 'hover:!border-blue-400'
                       }`}
                     >
                       <div className="space-y-1.5 min-w-0 flex-1">
@@ -2776,7 +2791,7 @@ const PosTabComponent: React.FC<PosTabProps> = ({
         <div className="lg:hidden fixed bottom-[calc(4.3rem+env(safe-area-inset-bottom,0px))] left-3 right-3 sm:left-4 sm:right-4 z-30 animate-in slide-in-from-bottom duration-200">
           <div
             onClick={() => setIsMobileCartOpen(true)}
-            className="bg-slate-900/80 backdrop-blur-2xl text-white rounded-2xl p-2.5 sm:p-3 shadow-2xl shadow-slate-950/35 flex items-center justify-between gap-2.5 cursor-pointer border border-white/20 active:scale-[0.99] transition"
+            className="ios-liquid-hero ios-liquid-sheen-layer !bg-slate-900/85 text-white rounded-2xl p-2.5 sm:p-3 shadow-2xl shadow-slate-950/35 flex items-center justify-between gap-2.5 cursor-pointer border border-white/25 active:scale-[0.99] transition"
           >
             <div className="flex items-center gap-2.5 min-w-0">
               <div
@@ -3253,11 +3268,16 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                       <div key={v.id || vIdx} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 shadow-2xs">
                         <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0">
-                            <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                            <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5 flex-wrap">
                               <span className="w-5 h-5 rounded-md bg-blue-100 text-blue-700 flex items-center justify-center tabular-nums text-[10px] shrink-0">
                                 #{vIdx + 1}
                               </span>
                               <span className="truncate">{getVariantLabel(v)}</span>
+                              {v.condition && (
+                                <span className="text-[9.5px] font-extrabold bg-amber-50 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded">
+                                  {v.condition}
+                                </span>
+                              )}
                             </span>
                             {vUnadjusted ? (
                               <span className="text-[10px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 ml-6.5 inline-block mt-0.5">
@@ -3473,13 +3493,18 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                     }`}
                   >
                     <div className="min-w-0 space-y-1">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="w-5 h-5 rounded-md bg-purple-100 text-purple-700 flex items-center justify-center tabular-nums text-[10px] font-bold shrink-0">
                           #{vIdx + 1}
                         </span>
                         <span className="font-extrabold text-xs sm:text-sm text-slate-900 truncate">
                           {getVariantLabel(v)}
                         </span>
+                        {v.condition && (
+                          <span className="text-[9.5px] font-extrabold bg-amber-50 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded">
+                            {v.condition}
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 text-[11px] pl-6.5 flex-wrap">
                         <span
@@ -3495,7 +3520,9 @@ const PosTabComponent: React.FC<PosTabProps> = ({
                         </span>
                         {imeiCount > 0 && (
                           <span className="text-[10px] text-slate-500 font-semibold tabular-nums">
-                            {imeiCount} IMEI{imeiCount > 1 ? 's' : ''}
+                            {imeiCount === 1 && v.imeis?.[0]
+                              ? `IMEI: ...${v.imeis[0].slice(-6)}`
+                              : `${imeiCount} IMEIs`}
                           </span>
                         )}
                       </div>

@@ -14,7 +14,7 @@ import {
   User,
   Wrench,
 } from 'lucide-react';
-import { InventoryItem, ShopSettings, SupplierPurchase } from '../types';
+import { InventoryItem, MobileVariant, ShopSettings, SupplierPurchase } from '../types';
 import { useToast } from './Toast';
 import { extractItemImeis } from '../utils/imeiManager';
 
@@ -22,6 +22,7 @@ interface UsedReceiptModalProps {
   isOpen: boolean;
   onClose: () => void;
   item: InventoryItem | null;
+  variant?: MobileVariant | null;
   settings: ShopSettings;
   supplierPurchases?: SupplierPurchase[];
   onEditItem?: (item: InventoryItem) => void;
@@ -31,6 +32,7 @@ export const UsedReceiptModal: React.FC<UsedReceiptModalProps> = ({
   isOpen,
   onClose,
   item,
+  variant = null,
   settings,
   supplierPurchases = [],
   onEditItem,
@@ -56,7 +58,9 @@ export const UsedReceiptModal: React.FC<UsedReceiptModalProps> = ({
   const shopAddress = settings.address || '';
   const logoSrc = settings.logo || settings.shopLogo;
 
-  const itemImeis = extractItemImeis(item);
+  const itemImeis = variant
+    ? (variant.imeis || []).map(s => s.trim()).filter(Boolean)
+    : extractItemImeis(item);
   const itemImeiSet = new Set(itemImeis.map(i => i.toLowerCase()));
   const cleanItemBase = item.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
 
@@ -69,9 +73,9 @@ export const UsedReceiptModal: React.FC<UsedReceiptModalProps> = ({
         ...(pi.imei ? pi.imei.split(',').map(s => s.trim()) : []),
       ].filter(Boolean);
       if (piImeis.some(im => itemImeiSet.has(im.toLowerCase()))) return true;
-      if (item.barcode && pi.barcode && pi.barcode.toLowerCase() === item.barcode.toLowerCase()) return true;
+      if (!variant && item.barcode && pi.barcode && pi.barcode.toLowerCase() === item.barcode.toLowerCase()) return true;
       const piBase = (pi.name || '').replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
-      return piBase === cleanItemBase && (pi.category || '').toLowerCase() === (item.category || '').toLowerCase();
+      return !variant && piBase === cleanItemBase && (pi.category || '').toLowerCase() === (item.category || '').toLowerCase();
     });
   });
 
@@ -96,17 +100,28 @@ export const UsedReceiptModal: React.FC<UsedReceiptModalProps> = ({
   const purchaseDate = matchedPurchase?.date || item.createdAt || new Date().toISOString();
   const slipNo =
     matchedPurchase?.billNo ||
-    `USED-${(item.id || '').slice(-6).toUpperCase() || 'SLIP'}`;
+    `USED-${(variant?.id || item.id || '').slice(-6).toUpperCase() || 'SLIP'}`;
 
-  const specsLabel = [item.ram, item.storage, item.color].filter(Boolean).join(' • ');
-  const conditionLabel =
-    item.condition ||
-    item.variants?.find(v => v.condition)?.condition ||
-    '';
+  const specsLabel = variant
+    ? [variant.ram || item.ram, variant.storage || item.storage, variant.color || item.color].filter(Boolean).join(' • ')
+    : [item.ram, item.storage, item.color].filter(Boolean).join(' • ');
+  const conditionLabel = variant
+    ? variant.condition || item.condition || ''
+    : item.condition || item.variants?.find(v => v.condition)?.condition || '';
 
-  const unitCost = Number(matchedPurchaseItem?.costPrice ?? item.costPrice) || 0;
-  const qty = Math.max(1, Number(item.qty) || 1);
+  const variantCost =
+    variant && variant.costPrice !== '' && variant.costPrice !== undefined
+      ? Number(variant.costPrice)
+      : undefined;
+  const unitCost =
+    variantCost !== undefined && !isNaN(variantCost) && variantCost > 0
+      ? variantCost
+      : Number(matchedPurchaseItem?.costPrice ?? item.costPrice) || 0;
+  const qty = variant
+    ? Math.max(1, Number(variant.qty) || 1)
+    : Math.max(1, Number(item.qty) || 1);
   const totalCost = unitCost * qty;
+  const displayNote = variant ? (variant.note || item.note) : item.note;
 
   const formattedDate = new Date(purchaseDate).toLocaleDateString('en-PK', {
     day: '2-digit',
@@ -131,7 +146,7 @@ export const UsedReceiptModal: React.FC<UsedReceiptModalProps> = ({
       `*Category:* ${item.category}`,
       `*Qty:* ${qty} Pcs`,
       ...(itemImeis.length > 0 ? [`*IMEI:* ${itemImeis.join(', ')}`] : []),
-      ...(item.note ? [`*Note:* ${item.note}`] : []),
+      ...(displayNote ? [`*Note:* ${displayNote}`] : []),
       `--------------------------------`,
       `*Purchase Cost:* ${currency} ${unitCost.toLocaleString()} x ${qty}`,
       `*TOTAL PAID:* ${currency} ${totalCost.toLocaleString()}`,
@@ -353,10 +368,10 @@ export const UsedReceiptModal: React.FC<UsedReceiptModalProps> = ({
               )}
 
               {/* Notes if present */}
-              {item.note && (
+              {displayNote && (
                 <div className="pt-2 border-t border-dashed border-slate-200 text-[11px]">
                   <span className="font-bold text-slate-500">Note: </span>
-                  <span className="font-medium text-slate-800">{item.note}</span>
+                  <span className="font-medium text-slate-800">{displayNote}</span>
                 </div>
               )}
             </div>

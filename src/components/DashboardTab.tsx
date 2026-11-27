@@ -302,17 +302,17 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
       {/* ======================================================== */}
       {/* DASHBOARD PERIOD FILTER BAR (APPLIES TO ALL BOXES)       */}
       {/* ======================================================== */}
-      <div className="bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-2xl p-2.5 sm:p-3 shadow-xs dark:shadow-none flex flex-col lg:flex-row lg:items-center justify-between gap-2 animate-card-in">
+      <div className="ios-liquid-surface rounded-2xl p-2.5 sm:p-3 flex flex-col lg:flex-row lg:items-center justify-between gap-2 animate-liquid-in">
         <div className="flex items-center justify-between lg:justify-start gap-2 shrink-0 px-0.5">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-blue-50 border border-blue-200/70 text-blue-600 shrink-0">
+            <div className="p-1.5 rounded-lg bg-blue-50/90 border border-blue-200/70 text-blue-600 shrink-0">
               <CalendarCheck className="w-3.5 h-3.5" />
             </div>
             <span className="text-[11px] sm:text-xs font-extrabold text-slate-800 dark:text-white">
               Period:
             </span>
           </div>
-          <span className="text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-200/70">
+          <span className="text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-lg bg-blue-50/90 text-blue-700 border border-blue-200/70">
             {periodLabel}
           </span>
         </div>
@@ -336,7 +336,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
               className={`px-2.5 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold transition-all duration-200 cursor-pointer shrink-0 whitespace-nowrap ${
                 periodMode === opt.id
                   ? 'theme-active-pill scale-[1.02]'
-                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 dark:text-neutral-300'
+                  : 'ios-liquid-chip text-slate-700 dark:text-neutral-300'
               }`}
             >
               {opt.label}
@@ -411,7 +411,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
             <button
               type="button"
               onClick={toggleShowBalance}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold transition cursor-pointer shadow-2xs"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl ios-liquid-chip text-slate-700 text-xs font-bold transition cursor-pointer"
               title={showBalance ? 'Hide cash drawer balances' : 'Show cash drawer balances'}
             >
               {showBalance ? (
@@ -430,7 +430,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
             <button
               type="button"
               onClick={() => openCashDrilldown('ALL', 'ALL')}
-              className="group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition cursor-pointer shadow-xs"
+              className="group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold transition cursor-pointer shadow-sm shadow-blue-600/25 active:scale-95"
             >
               <Wallet className="w-3.5 h-3.5" />
               <span>Cash Ledger</span>
@@ -443,14 +443,14 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           {/* BOX 1: CASH IN HAND (LIVE DRAWER) */}
           <div
             onClick={() => openCashDrilldown('ALL', 'ALL')}
-            className="col-span-2 lg:col-span-1 dashboard-hero-card animate-card-in animate-stagger-1 rounded-xl sm:rounded-2xl p-3 sm:p-4 text-white border flex flex-col justify-between cursor-pointer group relative overflow-hidden"
+            className="col-span-2 lg:col-span-1 dashboard-hero-card ios-liquid-hero ios-liquid-sheen-layer animate-card-in animate-stagger-1 rounded-xl sm:rounded-2xl p-3 sm:p-4 text-white border flex flex-col justify-between cursor-pointer group relative overflow-hidden"
             title="Click to view full Cash Ledger Drill-Down"
           >
             <div className="flex items-center justify-between mb-1.5 sm:mb-2 relative z-10">
               <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-300 truncate">
                 {periodMode === 'live' ? 'Cash In Hand (Live)' : `Drawer Cash (${periodLabel})`}
               </span>
-              <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-white/12 text-emerald-300 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300">
+              <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-white/15 backdrop-blur-md border border-white/20 text-emerald-300 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300">
                 <Wallet className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
             </div>
@@ -472,7 +472,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           {/* BOX 2: (+) CASH SALES */}
           <div
             onClick={() => openCashDrilldown('SALE', 'IN')}
-            className="dashboard-metric-card metric-profit animate-card-in animate-stagger-2 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs dark:shadow-none hover:border-emerald-400 hover:shadow-md flex flex-col justify-between cursor-pointer group"
+            className="dashboard-metric-card ios-liquid-tile metric-profit animate-card-in animate-stagger-2 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 flex flex-col justify-between cursor-pointer group"
             title="Click to view all Cash Sales"
           >
             <div className="flex items-center justify-between mb-1 sm:mb-2">
@@ -497,7 +497,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           {/* BOX 3: (+) KHATA RECOVERIES */}
           <div
             onClick={() => openCashDrilldown('KHATA_RECOVERY', 'IN')}
-            className="dashboard-metric-card metric-stock animate-card-in animate-stagger-3 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs dark:shadow-none hover:border-blue-400 hover:shadow-md flex flex-col justify-between cursor-pointer group"
+            className="dashboard-metric-card ios-liquid-tile metric-stock animate-card-in animate-stagger-3 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 flex flex-col justify-between cursor-pointer group"
             title="Click to view all Khata Recoveries"
           >
             <div className="flex items-center justify-between mb-1 sm:mb-2">
@@ -522,7 +522,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           {/* BOX 4: (-) CASH EXPENSES */}
           <div
             onClick={() => openCashDrilldown('EXPENSE', 'OUT')}
-            className="dashboard-metric-card metric-expense animate-card-in animate-stagger-4 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs dark:shadow-none hover:border-rose-400 hover:shadow-md flex flex-col justify-between cursor-pointer group"
+            className="dashboard-metric-card ios-liquid-tile metric-expense animate-card-in animate-stagger-4 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 flex flex-col justify-between cursor-pointer group"
             title="Click to view all Cash Expenses"
           >
             <div className="flex items-center justify-between mb-1 sm:mb-2">
@@ -547,7 +547,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           {/* BOX 5: (-) SUPPLIER PAID */}
           <div
             onClick={() => openCashDrilldown('SUPPLIER_PAYMENT', 'OUT')}
-            className="dashboard-metric-card metric-purchase animate-card-in animate-stagger-5 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs dark:shadow-none hover:border-amber-400 hover:shadow-md flex flex-col justify-between cursor-pointer group"
+            className="dashboard-metric-card ios-liquid-tile metric-purchase animate-card-in animate-stagger-5 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 flex flex-col justify-between cursor-pointer group"
             title="Click to view all Supplier Cash Payments"
           >
             <div className="flex items-center justify-between mb-1 sm:mb-2">
@@ -588,7 +588,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           <button
             type="button"
             onClick={toggleShowBottomMetrics}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-[11px] sm:text-xs font-bold transition cursor-pointer shadow-2xs"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl ios-liquid-chip text-slate-700 text-[11px] sm:text-xs font-bold transition cursor-pointer"
             title={showBottomMetrics ? 'Hide performance figures' : 'Unhide performance figures'}
           >
             {showBottomMetrics ? (
@@ -609,7 +609,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           {/* 1. REAL-TIME NET PROFIT */}
           <div
             onClick={() => openMetricDetail('profit')}
-            className="dashboard-metric-card metric-profit animate-card-in animate-stagger-2 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs dark:shadow-none hover:border-emerald-400 hover:shadow-md flex flex-col justify-between cursor-pointer group"
+            className="dashboard-metric-card ios-liquid-tile metric-profit animate-card-in animate-stagger-2 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 flex flex-col justify-between cursor-pointer group"
             title="Click to view complete Profit & Sales Margin breakdown"
           >
             <div className="flex items-center justify-between mb-1 sm:mb-2">
@@ -647,7 +647,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           {/* 2. PERIOD EXPENSES */}
           <div
             onClick={() => openMetricDetail('expenses')}
-            className="dashboard-metric-card metric-expense animate-card-in animate-stagger-3 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs dark:shadow-none hover:border-rose-400 hover:shadow-md flex flex-col justify-between cursor-pointer group"
+            className="dashboard-metric-card ios-liquid-tile metric-expense animate-card-in animate-stagger-3 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 flex flex-col justify-between cursor-pointer group"
             title="Click to view all recorded expenses & breakdown"
           >
             <div className="flex items-center justify-between mb-1 sm:mb-2">
@@ -681,7 +681,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           {/* 3. SUPPLIER PURCHASES */}
           <div
             onClick={() => openMetricDetail('outflow')}
-            className="dashboard-metric-card metric-purchase animate-card-in animate-stagger-4 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs dark:shadow-none hover:border-amber-400 hover:shadow-md flex flex-col justify-between cursor-pointer group"
+            className="dashboard-metric-card ios-liquid-tile metric-purchase animate-card-in animate-stagger-4 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 flex flex-col justify-between cursor-pointer group"
             title="Click to view all Supplier Outflow & Purchase Bills"
           >
             <div className="flex items-center justify-between mb-1 sm:mb-2">
@@ -715,7 +715,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           {/* 4. TOTAL STOCK VALUE */}
           <div
             onClick={() => openMetricDetail('stock')}
-            className="dashboard-metric-card metric-stock animate-card-in animate-stagger-5 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs dark:shadow-none hover:border-blue-400 hover:shadow-md flex flex-col justify-between cursor-pointer group"
+            className="dashboard-metric-card ios-liquid-tile metric-stock animate-card-in animate-stagger-5 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 flex flex-col justify-between cursor-pointer group"
             title="Click to view complete Inventory Stock Asset valuation"
           >
             <div className="flex items-center justify-between mb-1 sm:mb-2">
@@ -747,7 +747,7 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
           {/* 5. PERIOD CREDIT (UDHAR) GIVEN */}
           <div
             onClick={() => openMetricDetail('credit')}
-            className="dashboard-metric-card metric-credit animate-card-in animate-stagger-6 col-span-2 lg:col-span-1 bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs dark:shadow-none hover:border-orange-500 hover:shadow-md flex flex-col justify-between cursor-pointer group"
+            className="dashboard-metric-card ios-liquid-tile metric-credit animate-card-in animate-stagger-6 col-span-2 lg:col-span-1 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 flex flex-col justify-between cursor-pointer group"
             title="Click to view all Credit & Khata details"
           >
             <div className="flex items-center justify-between mb-1 sm:mb-2">
@@ -782,8 +782,8 @@ const DashboardTabComponent: React.FC<DashboardTabProps> = ({
       {/* ======================================================== */}
       <div className="w-full animate-card-in animate-stagger-5">
         {/* Low Stock Alerts */}
-        <div className="bg-white dark:bg-black rounded-2xl border border-slate-200/80 dark:border-neutral-900 p-3.5 sm:p-4.5 shadow-xs dark:shadow-none space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-100 dark:border-neutral-900 pb-3">
+        <div className="ios-liquid-surface rounded-2xl p-3.5 sm:p-4.5 space-y-3">
+          <div className="flex items-center justify-between border-b border-slate-100/80 dark:border-neutral-900 pb-3">
             <div className="flex items-center gap-2.5">
               <div className="p-2 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 rounded-xl">
                 <AlertCircle className="w-4 h-4" />

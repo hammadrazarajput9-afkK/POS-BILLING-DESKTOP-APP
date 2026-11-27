@@ -471,10 +471,10 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
     hideTotals ? `${currency} ••••` : `${currency} ${val.toLocaleString()}`;
 
   return (
-    <div className="space-y-3.5 pb-10 max-w-full overflow-hidden animate-in fade-in duration-200">
-      {/* Top Indigo Header + Overlapping White Summary Card */}
+    <div className="space-y-3.5 pb-10 max-w-full overflow-hidden animate-liquid-in">
+      {/* Top Indigo Header + Overlapping Frosted Summary Card */}
       <div>
-        <div className="bg-indigo-600 text-white rounded-2xl shadow-sm pt-3.5 pb-11 px-3.5 sm:px-5">
+        <div className="ios-liquid-banner-indigo ios-liquid-sheen-layer text-white rounded-2xl pt-3.5 pb-11 px-3.5 sm:px-5">
           {/* Row 1: Back, Title, Date Picker & Settings */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
@@ -546,8 +546,8 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
           </div>
         </div>
 
-        {/* Overlapping White Cash + Digital Reconciliation Summary Card */}
-        <div className="-mt-8 mx-2 sm:mx-4 bg-white rounded-2xl border border-slate-200/90 shadow-sm px-3.5 py-3">
+        {/* Overlapping Frosted Cash + Digital Reconciliation Summary Card */}
+        <div className="-mt-8 mx-2 sm:mx-4 ios-liquid-surface rounded-2xl px-3.5 py-3 relative z-10">
           <div className="flex items-center justify-between gap-2 mb-1.5">
             <button
               type="button"
@@ -658,7 +658,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
           {/* Side-by-Side Workspace: Left = Physical Cash Notes | Right = Digital Accounts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 items-start">
             {/* LEFT SIDE: Physical Cash Notes Counter */}
-            <div className="bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-4 space-y-2.5 shadow-xs min-w-0">
+            <div className="ios-liquid-surface rounded-2xl p-3 sm:p-4 space-y-2.5 min-w-0">
               <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
                 <div>
                   <h3 className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
@@ -812,7 +812,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
             </div>
 
             {/* RIGHT SIDE: Digital Accounts Closing Balances */}
-            <div className="bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-4 space-y-2.5 shadow-xs min-w-0">
+            <div className="ios-liquid-surface rounded-2xl p-3 sm:p-4 space-y-2.5 min-w-0">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
                 <div>
                   <h3 className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
@@ -936,7 +936,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
           </div>
 
           {/* Compact Bottom Verification & Save Closing Strip */}
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-4 shadow-xs">
+          <div className="ios-liquid-surface rounded-2xl p-3 sm:p-4">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
               <div className="lg:col-span-3">
                 <label className="block font-semibold text-slate-700 mb-1 text-[11px]">
@@ -999,7 +999,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
       {/* ================================================================= */}
       {activeSubTab === 'accounts' && (
         <div className="space-y-3">
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-xs">
+          <div className="ios-liquid-surface rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
             <div>
               <h3 className="text-sm font-extrabold text-slate-900">
                 Digital &amp; Bank Accounts
@@ -1019,7 +1019,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
           </div>
 
           {onlineAccounts.length === 0 ? (
-            <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center space-y-2.5 shadow-xs">
+            <div className="ios-liquid-surface rounded-2xl p-10 text-center space-y-2.5">
               <Smartphone className="w-10 h-10 mx-auto text-indigo-400" />
               <h4 className="text-sm font-extrabold text-slate-800">No Digital Accounts Yet</h4>
               <p className="text-xs text-slate-500 max-w-sm mx-auto">
@@ -1042,7 +1042,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
                 return (
                   <div
                     key={acc.id}
-                    className="bg-white border border-slate-200/90 rounded-2xl p-3.5 space-y-3 shadow-xs hover:border-indigo-300 transition"
+                    className="ios-liquid-tile rounded-2xl p-3.5 space-y-3 hover:!border-indigo-300"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2.5 min-w-0">
@@ -1138,7 +1138,7 @@ const DailyClosingTabComponent: React.FC<DailyClosingTabProps> = ({
       {/* TAB 3: CLOSING HISTORY                                            */}
       {/* ================================================================= */}
       {activeSubTab === 'history' && (
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-4 space-y-3 shadow-xs">
+        <div className="ios-liquid-surface rounded-2xl p-3 sm:p-4 space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-slate-100 pb-3">
             <div>
               <h3 className="font-bold text-slate-900 text-xs sm:text-sm">

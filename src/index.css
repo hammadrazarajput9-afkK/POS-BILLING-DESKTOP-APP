@@ -1051,26 +1051,6 @@ body,
   }
 }
 
-@keyframes ambientBreathe {
-  0%, 100% {
-    opacity: 0.72;
-    transform: scale(1) translate3d(0, 0, 0);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.08) translate3d(4px, -4px, 0);
-  }
-}
-
-@keyframes heroSheen {
-  0% {
-    transform: translateX(-120%) skewX(-18deg);
-  }
-  45%, 100% {
-    transform: translateX(220%) skewX(-18deg);
-  }
-}
-
 @keyframes chartDraw {
   from {
     stroke-dashoffset: 1800;
@@ -1092,19 +1072,19 @@ body,
 }
 
 .animate-tab-enter {
-  animation: tabEnter 0.16s ease-out;
+  animation: tabEnter 0.14s ease-out;
 }
 
 .animate-card-in {
-  animation: fadeInUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: fadeInUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.animate-stagger-1 { animation-delay: 20ms; }
-.animate-stagger-2 { animation-delay: 45ms; }
-.animate-stagger-3 { animation-delay: 70ms; }
-.animate-stagger-4 { animation-delay: 95ms; }
-.animate-stagger-5 { animation-delay: 120ms; }
-.animate-stagger-6 { animation-delay: 145ms; }
+.animate-stagger-1 { animation-delay: 15ms; }
+.animate-stagger-2 { animation-delay: 30ms; }
+.animate-stagger-3 { animation-delay: 45ms; }
+.animate-stagger-4 { animation-delay: 60ms; }
+.animate-stagger-5 { animation-delay: 75ms; }
+.animate-stagger-6 { animation-delay: 90ms; }
 
 .animate-ambient-glow {
   opacity: 0.75;
@@ -1325,9 +1305,17 @@ button:not(:disabled):active {
   }
 
   .no-print,
-  .no-print * {
+  .no-print *,
+  .ios-liquid-canvas,
+  .ios-liquid-canvas *,
+  .ios-liquid-sheen-layer::after {
     display: none !important;
     visibility: hidden !important;
+  }
+
+  * {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
   }
 }
 
@@ -1407,41 +1395,59 @@ button:not(:disabled):active {
 }
 
 .glass-modal-backdrop {
-  background-color: rgba(15, 23, 42, 0.24);
-  backdrop-filter: blur(5px);
-  -webkit-backdrop-filter: blur(5px);
+  background-color: rgba(15, 23, 42, 0.28);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   overscroll-behavior: contain;
 }
 
 .glass-modal-panel {
-  background-color: rgba(255, 255, 255, 0.90) !important;
-  backdrop-filter: blur(18px) saturate(150%);
-  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  background: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.94) 0%,
+    rgba(248, 250, 252, 0.88) 100%
+  ) !important;
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
   border: 1px solid rgba(255, 255, 255, 0.92);
   box-shadow:
-    0 24px 48px -12px rgba(15, 23, 42, 0.16),
-    0 0 0 1px rgba(148, 163, 184, 0.12);
+    0 24px 48px -14px rgba(15, 23, 42, 0.22),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.98),
+    0 0 0 1px rgba(148, 163, 184, 0.14);
 }
 
 [data-theme="dark"] .glass-modal-backdrop,
 .dark .glass-modal-backdrop {
-  background-color: rgba(0, 0, 0, 0.56);
+  background-color: rgba(0, 0, 0, 0.58);
 }
 
 [data-theme="dark"] .glass-modal-panel,
 .dark .glass-modal-panel {
-  background-color: rgba(12, 12, 14, 0.94) !important;
-  border: 1px solid #26262a !important;
-  box-shadow: none !important;
+  background: linear-gradient(
+    155deg,
+    rgba(24, 26, 34, 0.84) 0%,
+    rgba(12, 13, 18, 0.88) 100%
+  ) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  box-shadow:
+    0 24px 52px -12px rgba(0, 0, 0, 0.75),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16) !important;
 }
 
 [data-theme="gold-black"] .glass-modal-backdrop {
-  background-color: rgba(0, 0, 0, 0.56);
+  background-color: rgba(0, 0, 0, 0.6);
 }
 
 [data-theme="gold-black"] .glass-modal-panel {
-  background-color: rgba(18, 18, 23, 0.94) !important;
-  border: 1px solid #3f3319 !important;
+  background: linear-gradient(
+    155deg,
+    rgba(28, 24, 17, 0.86) 0%,
+    rgba(15, 13, 10, 0.9) 100%
+  ) !important;
+  border: 1px solid rgba(251, 191, 36, 0.28) !important;
+  box-shadow:
+    0 24px 52px -12px rgba(0, 0, 0, 0.8),
+    inset 0 1px 0 rgba(251, 191, 36, 0.22) !important;
 }
 
 .safe-pb {
@@ -1453,9 +1459,17 @@ button:not(:disabled):active {
 }
 
 .mobile-glass-dock {
-  backdrop-filter: blur(16px);
-  background-color: rgba(255, 255, 255, 0.88);
-  border-top: 1px solid rgba(226, 232, 240, 0.8);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.88) 0%,
+    rgba(248, 250, 252, 0.94) 100%
+  );
+  border-top: 1px solid rgba(255, 255, 255, 0.88);
+  box-shadow:
+    0 -10px 30px -12px rgba(15, 23, 42, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
 }
 
 .touch-target {
@@ -1478,30 +1492,12 @@ button:not(:disabled):active {
 }
 
 /* ========================================================
-   iOS FLUID LIQUID GLASS HOME LAUNCHER
+   iOS FLUID LIQUID GLASS DESIGN SYSTEM (FULL APP)
    ======================================================== */
-@keyframes liquidFloatA {
-  0%, 100% {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  50% {
-    transform: translate3d(18px, -14px, 0) scale(1.08);
-  }
-}
-
-@keyframes liquidFloatB {
-  0%, 100% {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  50% {
-    transform: translate3d(-16px, 14px, 0) scale(1.1);
-  }
-}
-
 @keyframes liquidEnter {
   from {
     opacity: 0;
-    transform: translate3d(0, 10px, 0) scale(0.96);
+    transform: translate3d(0, 8px, 0) scale(0.98);
   }
   to {
     opacity: 1;
@@ -1509,112 +1505,370 @@ button:not(:disabled):active {
   }
 }
 
-@keyframes liquidSheen {
-  0% {
-    transform: translateX(-140%) skewX(-20deg);
-  }
-  35%, 100% {
-    transform: translateX(240%) skewX(-20deg);
-  }
-}
-
-.ios-liquid-orb-a {
-  animation: liquidFloatA 9s ease-in-out infinite;
-  will-change: transform;
-}
-
-.ios-liquid-orb-b {
-  animation: liquidFloatB 11s ease-in-out infinite;
-  will-change: transform;
+.ios-liquid-orb-a,
+.ios-liquid-orb-b,
+.ios-liquid-orb-c {
+  pointer-events: none;
 }
 
 .animate-liquid-in {
-  animation: liquidEnter 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: liquidEnter 0.18s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* Global Ambient Mesh Background (Zero-cost GPU radial gradient canvas) */
+.ios-liquid-canvas {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
+  background: radial-gradient(
+      110% 80% at 8% 0%,
+      rgba(56, 189, 248, 0.16) 0%,
+      transparent 55%
+    ),
+    radial-gradient(
+      95% 75% at 96% 14%,
+      rgba(139, 92, 246, 0.13) 0%,
+      transparent 52%
+    ),
+    radial-gradient(
+      90% 80% at 35% 100%,
+      rgba(16, 185, 129, 0.11) 0%,
+      transparent 55%
+    );
+}
+
+[data-theme="dark"] .ios-liquid-canvas,
+.dark .ios-liquid-canvas {
+  background: radial-gradient(
+      100% 75% at 10% 0%,
+      rgba(37, 99, 235, 0.18) 0%,
+      transparent 55%
+    ),
+    radial-gradient(
+      85% 70% at 92% 18%,
+      rgba(99, 102, 241, 0.15) 0%,
+      transparent 52%
+    ),
+    radial-gradient(
+      90% 75% at 45% 100%,
+      rgba(16, 185, 129, 0.11) 0%,
+      transparent 55%
+    );
+}
+
+[data-theme="gold-black"] .ios-liquid-canvas {
+  background: radial-gradient(
+      100% 75% at 12% 0%,
+      rgba(245, 158, 11, 0.16) 0%,
+      transparent 55%
+    ),
+    radial-gradient(
+      85% 70% at 90% 22%,
+      rgba(217, 119, 6, 0.13) 0%,
+      transparent 52%
+    ),
+    radial-gradient(
+      85% 75% at 40% 100%,
+      rgba(16, 185, 129, 0.09) 0%,
+      transparent 55%
+    );
+}
+
+/* Primary Tile & Button Liquid Glass (Launcher + Floating Controls) */
 .ios-liquid-glass {
   background: linear-gradient(
     145deg,
-    rgba(255, 255, 255, 0.62) 0%,
-    rgba(255, 255, 255, 0.36) 55%,
-    rgba(241, 245, 249, 0.46) 100%
+    rgba(255, 255, 255, 0.78) 0%,
+    rgba(255, 255, 255, 0.56) 55%,
+    rgba(241, 245, 249, 0.68) 100%
   );
-  backdrop-filter: blur(22px) saturate(190%);
-  -webkit-backdrop-filter: blur(22px) saturate(190%);
-  border: 1px solid rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(10px) saturate(145%);
+  -webkit-backdrop-filter: blur(10px) saturate(145%);
+  border: 1px solid rgba(255, 255, 255, 0.82);
   box-shadow:
-    0 10px 26px -10px rgba(15, 23, 42, 0.14),
-    inset 0 1.5px 0 rgba(255, 255, 255, 0.92),
+    0 10px 24px -10px rgba(15, 23, 42, 0.14),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.94),
     inset 0 -1px 0 rgba(148, 163, 184, 0.18);
-  transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease, border-color 0.25s ease, background 0.25s ease !important;
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
 }
 
 .ios-liquid-glass:active {
   transform: scale(0.95) !important;
-  box-shadow:
-    0 4px 12px -6px rgba(15, 23, 42, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.78);
 }
 
+/* Frosted Top App Header */
+.ios-liquid-header {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.86) 0%,
+    rgba(248, 250, 252, 0.78) 100%
+  ) !important;
+  backdrop-filter: blur(12px) saturate(155%);
+  -webkit-backdrop-filter: blur(12px) saturate(155%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.85) !important;
+  box-shadow:
+    0 6px 20px -10px rgba(15, 23, 42, 0.09),
+    inset 0 -1px 0 rgba(148, 163, 184, 0.14);
+}
+
+/* Frosted Left Navigation Sidebar */
+.ios-liquid-sidebar {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(248, 250, 252, 0.84) 100%
+  ) !important;
+  backdrop-filter: blur(14px) saturate(155%);
+  -webkit-backdrop-filter: blur(14px) saturate(155%);
+  border-right: 1px solid rgba(255, 255, 255, 0.85) !important;
+  box-shadow:
+    6px 0 26px -14px rgba(15, 23, 42, 0.12),
+    inset -1px 0 0 rgba(148, 163, 184, 0.12);
+}
+
+/* Frosted Floating Bottom Navigation & Mobile Cart Dock */
+.ios-liquid-dock {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.88) 0%,
+    rgba(248, 250, 252, 0.84) 100%
+  ) !important;
+  backdrop-filter: blur(14px) saturate(155%);
+  -webkit-backdrop-filter: blur(14px) saturate(155%);
+  border-top: 1px solid rgba(255, 255, 255, 0.9) !important;
+  box-shadow:
+    0 -10px 26px -12px rgba(15, 23, 42, 0.14),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.96);
+}
+
+/* Translucent Specular Cards, Filter Docks, Chart & Table Panels (Zero scroll lag) */
+.ios-liquid-surface {
+  background: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.88) 0%,
+    rgba(248, 250, 252, 0.78) 100%
+  ) !important;
+  border: 1px solid rgba(255, 255, 255, 0.92) !important;
+  box-shadow:
+    0 10px 26px -14px rgba(15, 23, 42, 0.12),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.98),
+    inset 0 -1px 0 rgba(148, 163, 184, 0.14);
+}
+
+/* Fast Interactive KPI Tiles, Product Cards, Report Modules & Invoice Cards */
+.ios-liquid-tile {
+  background: linear-gradient(
+    150deg,
+    rgba(255, 255, 255, 0.92) 0%,
+    rgba(248, 250, 252, 0.82) 100%
+  ) !important;
+  border: 1px solid rgba(255, 255, 255, 0.92) !important;
+  box-shadow:
+    0 6px 18px -10px rgba(15, 23, 42, 0.11),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.96),
+    inset 0 -1px 0 rgba(148, 163, 184, 0.14);
+  transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.16s ease !important;
+}
+
+@media (hover: hover) {
+  .ios-liquid-tile:hover {
+    transform: translateY(-2px);
+  }
+}
+
+.ios-liquid-tile:active {
+  transform: scale(0.975) !important;
+}
+
+/* Crisp Specular Chips, Segmented Switches & Search Docks (Zero scroll lag) */
+.ios-liquid-chip {
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.88) 0%,
+    rgba(241, 245, 249, 0.78) 100%
+  ) !important;
+  border: 1px solid rgba(255, 255, 255, 0.90) !important;
+  box-shadow:
+    0 4px 10px -6px rgba(15, 23, 42, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+}
+
+.ios-liquid-chip:active {
+  transform: scale(0.96);
+}
+
+/* Hero Cards (Dashboard Cash Drawer, POS Header, Launcher Sale Card) */
 .ios-liquid-hero {
-  backdrop-filter: blur(24px) saturate(195%);
-  -webkit-backdrop-filter: blur(24px) saturate(195%);
   border: 1px solid rgba(255, 255, 255, 0.34);
   box-shadow:
-    0 14px 30px -12px rgba(37, 99, 235, 0.36),
+    0 14px 28px -12px rgba(37, 99, 235, 0.32),
     inset 0 1.5px 0 rgba(255, 255, 255, 0.48),
     inset 0 -1px 0 rgba(15, 23, 42, 0.18);
-  transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease !important;
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
 }
 
 .ios-liquid-hero:active {
-  transform: scale(0.955) !important;
+  transform: scale(0.975) !important;
+}
+
+/* Luminous Frosted Section Header Banners (Inventory, Used, Khata, Purchases, Expenses, Closing) */
+.ios-liquid-banner-blue {
+  background: linear-gradient(
+    135deg,
+    rgba(37, 99, 235, 0.94) 0%,
+    rgba(29, 78, 216, 0.90) 52%,
+    rgba(67, 56, 202, 0.94) 100%
+  ) !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+  box-shadow:
+    0 14px 30px -14px rgba(37, 99, 235, 0.36),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.42),
+    inset 0 -1px 0 rgba(15, 23, 42, 0.16);
+}
+
+.ios-liquid-banner-emerald {
+  background: linear-gradient(
+    135deg,
+    rgba(5, 150, 105, 0.94) 0%,
+    rgba(4, 120, 87, 0.90) 52%,
+    rgba(13, 148, 136, 0.94) 100%
+  ) !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+  box-shadow:
+    0 14px 30px -14px rgba(5, 150, 105, 0.34),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.42),
+    inset 0 -1px 0 rgba(15, 23, 42, 0.16);
+}
+
+.ios-liquid-banner-rose {
+  background: linear-gradient(
+    135deg,
+    rgba(225, 29, 72, 0.94) 0%,
+    rgba(190, 18, 60, 0.90) 52%,
+    rgba(159, 18, 57, 0.94) 100%
+  ) !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+  box-shadow:
+    0 14px 30px -14px rgba(225, 29, 72, 0.34),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.42),
+    inset 0 -1px 0 rgba(15, 23, 42, 0.16);
+}
+
+.ios-liquid-banner-indigo {
+  background: linear-gradient(
+    135deg,
+    rgba(79, 70, 229, 0.94) 0%,
+    rgba(67, 56, 202, 0.90) 52%,
+    rgba(91, 33, 182, 0.94) 100%
+  ) !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+  box-shadow:
+    0 14px 30px -14px rgba(79, 70, 229, 0.34),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.42),
+    inset 0 -1px 0 rgba(15, 23, 42, 0.16);
+}
+
+.ios-liquid-sheen-layer {
+  position: relative;
+  overflow: hidden;
 }
 
 .ios-liquid-sheen-layer::after {
   content: '';
   position: absolute;
   inset: 0;
-  width: 45%;
   background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.28) 50%,
-    transparent 100%
+    115deg,
+    rgba(255, 255, 255, 0.22) 0%,
+    rgba(255, 255, 255, 0.06) 36%,
+    transparent 60%
   );
-  animation: liquidSheen 6.5s ease-in-out infinite;
   pointer-events: none;
 }
 
+/* Dark Theme Liquid Obsidian Glass Overrides */
 [data-theme="dark"] .ios-liquid-glass,
-.dark .ios-liquid-glass {
+.dark .ios-liquid-glass,
+[data-theme="dark"] .ios-liquid-surface,
+.dark .ios-liquid-surface,
+[data-theme="dark"] .ios-liquid-tile,
+.dark .ios-liquid-tile {
   background: linear-gradient(
-    145deg,
-    rgba(32, 34, 42, 0.68) 0%,
-    rgba(20, 22, 28, 0.52) 100%
-  );
-  border: 1px solid rgba(255, 255, 255, 0.14);
+    150deg,
+    rgba(26, 28, 36, 0.72) 0%,
+    rgba(14, 15, 21, 0.62) 100%
+  ) !important;
+  border: 1px solid rgba(255, 255, 255, 0.11) !important;
   box-shadow:
     0 12px 28px -12px rgba(0, 0, 0, 0.65),
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.4);
+    inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
 }
 
-[data-theme="gold-black"] .ios-liquid-glass {
+[data-theme="dark"] .ios-liquid-header,
+.dark .ios-liquid-header,
+[data-theme="dark"] .ios-liquid-sidebar,
+.dark .ios-liquid-sidebar,
+[data-theme="dark"] .ios-liquid-dock,
+.dark .ios-liquid-dock {
   background: linear-gradient(
-    145deg,
-    rgba(34, 29, 20, 0.72) 0%,
-    rgba(20, 17, 12, 0.56) 100%
-  );
-  border: 1px solid rgba(251, 191, 36, 0.24);
+    170deg,
+    rgba(16, 18, 24, 0.80) 0%,
+    rgba(10, 11, 15, 0.74) 100%
+  ) !important;
+  border-color: rgba(255, 255, 255, 0.10) !important;
   box-shadow:
-    0 12px 28px -12px rgba(0, 0, 0, 0.65),
-    inset 0 1px 0 rgba(251, 191, 36, 0.22);
+    0 10px 26px -12px rgba(0, 0, 0, 0.72),
+    inset 0 1px 0 rgba(255, 255, 255, 0.10) !important;
+}
+
+[data-theme="dark"] .ios-liquid-chip,
+.dark .ios-liquid-chip {
+  background: rgba(24, 26, 34, 0.72) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10) !important;
+}
+
+/* Gold-Black Royal Liquid Glass Overrides */
+[data-theme="gold-black"] .ios-liquid-glass,
+[data-theme="gold-black"] .ios-liquid-surface,
+[data-theme="gold-black"] .ios-liquid-tile {
+  background: linear-gradient(
+    150deg,
+    rgba(30, 25, 17, 0.76) 0%,
+    rgba(16, 14, 10, 0.66) 100%
+  ) !important;
+  border: 1px solid rgba(251, 191, 36, 0.24) !important;
+  box-shadow:
+    0 12px 28px -12px rgba(0, 0, 0, 0.72),
+    inset 0 1px 0 rgba(251, 191, 36, 0.18) !important;
+}
+
+[data-theme="gold-black"] .ios-liquid-header,
+[data-theme="gold-black"] .ios-liquid-sidebar,
+[data-theme="gold-black"] .ios-liquid-dock {
+  background: linear-gradient(
+    170deg,
+    rgba(22, 19, 13, 0.82) 0%,
+    rgba(12, 10, 7, 0.78) 100%
+  ) !important;
+  border-color: rgba(251, 191, 36, 0.22) !important;
+  box-shadow:
+    0 10px 26px -12px rgba(0, 0, 0, 0.75),
+    inset 0 1px 0 rgba(251, 191, 36, 0.18) !important;
+}
+
+[data-theme="gold-black"] .ios-liquid-chip {
+  background: rgba(30, 25, 17, 0.74) !important;
+  border: 1px solid rgba(251, 191, 36, 0.22) !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .ios-liquid-orb-a,
   .ios-liquid-orb-b,
+  .ios-liquid-orb-c,
   .animate-liquid-in,
   .ios-liquid-sheen-layer::after {
     animation: none !important;

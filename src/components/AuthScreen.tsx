@@ -436,21 +436,37 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   return (
     <div className="auth-root-container h-screen h-[100dvh] max-h-[100dvh] w-full flex items-center justify-center bg-gradient-to-br from-[#7e22ce] via-[#6366f1] to-[#4c1d95] p-0 sm:p-4 md:p-8 relative overflow-hidden font-sans text-slate-800 select-none">
       
-      {/* Background Decorative Blur Blobs */}
-      <div className="hidden sm:block absolute -top-24 -left-24 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl pointer-events-none" />
-      <div className="hidden sm:block absolute -bottom-28 -right-28 w-96 h-96 bg-indigo-500/30 rounded-full blur-3xl pointer-events-none" />
+      {/* Background Decorative Ambient Glows */}
+      <div
+        className="ios-liquid-orb-a hidden sm:block absolute -top-24 -left-24 w-96 h-96 rounded-full pointer-events-none"
+        style={{ background: 'radial-gradient(circle, rgba(192,132,252,0.32) 0%, transparent 70%)' }}
+      />
+      <div
+        className="ios-liquid-orb-b hidden sm:block absolute -bottom-28 -right-28 w-96 h-96 rounded-full pointer-events-none"
+        style={{ background: 'radial-gradient(circle, rgba(129,140,248,0.35) 0%, transparent 70%)' }}
+      />
+      <div
+        className="ios-liquid-orb-c hidden sm:block absolute top-1/2 left-1/3 w-72 h-72 rounded-full pointer-events-none"
+        style={{ background: 'radial-gradient(circle, rgba(56,189,248,0.22) 0%, transparent 70%)' }}
+      />
 
       {/* Main Glassmorphic Card - Strictly 100% Height Non-Scrollable on Mobile */}
-      <div className="auth-card-container relative w-full h-full max-h-[100dvh] sm:h-auto sm:max-h-[92vh] max-w-md lg:max-w-5xl bg-white sm:rounded-[2.5rem] shadow-[0_25px_80px_rgba(0,0,0,0.3)] border-0 sm:border sm:border-white/30 overflow-hidden z-10 flex flex-col justify-between">
+      <div className="auth-card-container ios-liquid-surface animate-liquid-in relative w-full h-full max-h-[100dvh] sm:h-auto sm:max-h-[92vh] max-w-md lg:max-w-5xl sm:rounded-[2.5rem] shadow-[0_25px_80px_rgba(0,0,0,0.32)] overflow-hidden z-10 flex flex-col justify-between">
         
         {/* ================= MOBILE-ONLY PROMINENT HERO HEADER WITH LARGE LOGO & STORE NAME ================= */}
-        <div className="auth-mobile-hero lg:hidden pt-4 px-4 pb-6 bg-gradient-to-br from-[#7e22ce] via-[#6366f1] to-[#4c1d95] text-white flex flex-col items-center justify-center text-center relative overflow-hidden shrink-0 shadow-lg z-10">
+        <div className="auth-mobile-hero ios-liquid-sheen-layer lg:hidden pt-4 px-4 pb-6 bg-gradient-to-br from-[#7e22ce] via-[#6366f1] to-[#4c1d95] text-white flex flex-col items-center justify-center text-center relative overflow-hidden shrink-0 shadow-lg z-10">
           {/* Background Glow Blobs */}
-          <div className="absolute top-[-30%] right-[-20%] w-56 h-56 bg-white/10 rounded-full blur-2xl pointer-events-none" />
-          <div className="absolute -bottom-10 -left-10 w-48 h-48 bg-purple-400/20 rounded-full blur-xl pointer-events-none" />
+          <div
+            className="ios-liquid-orb-a absolute top-[-30%] right-[-20%] w-56 h-56 rounded-full pointer-events-none"
+            style={{ background: 'radial-gradient(circle, rgba(255,255,255,0.18) 0%, transparent 70%)' }}
+          />
+          <div
+            className="ios-liquid-orb-b absolute -bottom-10 -left-10 w-48 h-48 rounded-full pointer-events-none"
+            style={{ background: 'radial-gradient(circle, rgba(192,132,252,0.28) 0%, transparent 70%)' }}
+          />
 
           {/* Extra Large Circle Logo on Mobile (Pure circle, no extra border) */}
-          <div className="w-40 h-40 sm:w-48 sm:h-48 rounded-full overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.4)] flex items-center justify-center shrink-0 mb-3 relative z-10 animate-in zoom-in-95 duration-300">
+          <div className="w-40 h-40 sm:w-48 sm:h-48 rounded-full overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.4)] flex items-center justify-center shrink-0 mb-3 relative z-10 animate-in zoom-in-95 duration-300 ring-2 ring-white/35">
             <img
               src={loginPageLogo}
               alt={loginPageName}
@@ -467,9 +483,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           </div>
 
           {/* Organic Wave Edge Cutout SVG Transition */}
-          <div className="absolute -bottom-1 left-0 right-0 w-full overflow-hidden leading-none z-20 text-white fill-current">
+          <div className="absolute -bottom-1 left-0 right-0 w-full overflow-hidden leading-none z-20 text-white/90 fill-current">
             <svg className="w-full h-4 sm:h-6" viewBox="0 0 1200 120" preserveAspectRatio="none">
-              <path d="M0,0 C150,80 350,-30 500,50 C650,130 900,10 1200,30 L1200,120 L0,120 Z" fill="#ffffff" />
+              <path d="M0,0 C150,80 350,-30 500,50 C650,130 900,10 1200,30 L1200,120 L0,120 Z" fill="rgba(255,255,255,0.88)" />
             </svg>
           </div>
 
@@ -485,7 +501,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         <div className="flex-1 flex flex-col lg:grid lg:grid-cols-12 overflow-hidden min-h-0">
           
           {/* ================= LEFT SIDE: FORM INPUTS ================= */}
-          <div className="lg:col-span-7 p-4 sm:p-8 lg:p-10 bg-white flex flex-col justify-between flex-1 overflow-hidden z-20">
+          <div className="lg:col-span-7 p-4 sm:p-8 lg:p-10 bg-white/70 backdrop-blur-xl flex flex-col justify-between flex-1 overflow-hidden z-20">
             
             {/* Desktop-only Top Bar */}
             <div className="hidden lg:flex items-center justify-between mb-2">

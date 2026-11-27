@@ -62,6 +62,7 @@ interface PurchasesTabProps {
   inventory: InventoryItem[];
   imeiRecords?: ImeiRecord[];
   sales?: SaleRecord[];
+  salesReturns?: import('../types').SalesReturnRecord[];
   onlineAccounts?: OnlineAccount[];
   appData?: AppData;
   isAdmin?: boolean;
@@ -139,6 +140,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
   inventory,
   imeiRecords = [],
   sales = [],
+  salesReturns = [],
   appData,
   isAdmin = true,
   currentUserId,
@@ -727,6 +729,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
           inventory,
           imeiRecords,
           sales,
+          salesReturns,
         });
 
         if (!valCheck.valid) {
@@ -786,6 +789,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
           inventory,
           imeiRecords,
           sales,
+          salesReturns,
         });
 
         if (!valCheck.valid) {
@@ -1036,6 +1040,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
         inventory,
         imeiRecords,
         sales,
+        salesReturns,
       });
 
       if (!validation.valid) {
@@ -1420,10 +1425,10 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
   );
 
   return (
-    <div className="space-y-3 pb-24 animate-in fade-in duration-200">
-      {/* Top Blue Header + Overlapping Summary Card (White & Blue Theme) */}
+    <div className="space-y-3 pb-24 animate-liquid-in">
+      {/* Top Blue Header + Overlapping Summary Card (iOS Liquid Glass) */}
       <div>
-        <div className="bg-blue-600 text-white rounded-2xl shadow-sm pt-3.5 pb-11 px-3.5 sm:px-5">
+        <div className="ios-liquid-banner-blue ios-liquid-sheen-layer text-white rounded-2xl pt-3.5 pb-11 px-3.5 sm:px-5">
           {/* Row 1: Title & Quick Pill CTA */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -1500,8 +1505,8 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
           </div>
         </div>
 
-        {/* Overlapping White Summary Card */}
-        <div className="animate-card-in animate-stagger-1 -mt-8 mx-2 sm:mx-4 bg-white rounded-2xl border border-slate-200/90 shadow-sm px-3.5 py-3">
+        {/* Overlapping Frosted Summary Card */}
+        <div className="animate-card-in animate-stagger-1 -mt-8 mx-2 sm:mx-4 ios-liquid-surface rounded-2xl px-3.5 py-3 relative z-10">
           <div className="flex items-center justify-between mb-1.5">
             {isAdmin ? (
               <button
@@ -1595,7 +1600,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
             placeholder={`Search ${supplierAccounts.length} Suppliers, IMEI, bill #...`}
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="w-full pl-9 pr-8 h-10 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 shadow-2xs transition"
+            className="w-full pl-9 pr-8 h-10 ios-liquid-chip rounded-xl text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 transition"
           />
           {search && (
             <button
@@ -1612,7 +1617,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
         <button
           type="button"
           onClick={() => setIsSearchScannerOpen(true)}
-          className="h-10 px-2.5 sm:px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shrink-0"
+          className="h-10 px-2.5 sm:px-3 bg-blue-50/90 hover:bg-blue-100 text-blue-700 border border-blue-200/80 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shrink-0 backdrop-blur-md"
           title="Scan IMEI / Barcode to find Supplier Party"
         >
           <ScanLine className="w-4 h-4" />
@@ -1625,7 +1630,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
           className={`h-10 w-10 rounded-xl border flex items-center justify-center transition cursor-pointer shrink-0 ${
             showFilterPanel || statusFilter !== 'ALL' || !!dateFilter
               ? 'bg-blue-50 border-blue-300 text-blue-700'
-              : 'bg-white border-slate-200 text-blue-600 hover:bg-slate-50'
+              : 'ios-liquid-chip text-blue-600 hover:bg-white/90'
           }`}
           title="Filter, Sort & Recovery Tools"
         >
@@ -1636,7 +1641,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
           <button
             type="button"
             onClick={onOpenPdfReport}
-            className="h-10 px-2.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-blue-600 flex flex-col items-center justify-center transition cursor-pointer shrink-0"
+            className="h-10 px-2.5 rounded-xl ios-liquid-chip hover:bg-white/90 text-blue-600 flex flex-col items-center justify-center transition cursor-pointer shrink-0"
             title="Download Purchase PDF Report"
           >
             <FileText className="w-3.5 h-3.5 leading-none" />
@@ -1647,7 +1652,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
 
       {/* Expandable Filter, Sort & Recovery Strip */}
       {showFilterPanel && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-3 space-y-2.5 shadow-2xs">
+        <div className="ios-liquid-surface rounded-2xl p-3 space-y-2.5">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1">
               Status:
@@ -1738,7 +1743,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
 
       {/* Prominent IMEI -> Supplier / Party Match Card */}
       {imeiPartyMatches.length > 0 && (
-        <div className="bg-blue-50/80 border border-blue-200 rounded-2xl p-3.5 space-y-2 shadow-2xs animate-in fade-in">
+        <div className="ios-liquid-surface !border-blue-300/80 rounded-2xl p-3.5 space-y-2 animate-liquid-in">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 text-xs font-extrabold text-blue-900">
               <Smartphone className="w-4 h-4 text-blue-600" />
@@ -1752,7 +1757,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
             {imeiPartyMatches.map((m, idx) => (
               <div
                 key={idx}
-                className="bg-white border border-blue-200/80 rounded-xl p-2.5 flex items-center justify-between gap-3"
+                className="ios-liquid-tile rounded-xl p-2.5 flex items-center justify-between gap-3"
               >
                 <div className="min-w-0 space-y-0.5">
                   <div className="flex items-center gap-1.5 flex-wrap">
@@ -1797,7 +1802,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
 
       {/* Main Clean Ledger List: Suppliers OR All Bills */}
       {inwardTab === 'bills' ? (
-        <div className="animate-card-in animate-stagger-2 bg-white border border-slate-200/90 rounded-2xl divide-y divide-slate-100 overflow-hidden shadow-2xs">
+        <div className="animate-card-in animate-stagger-2 ios-liquid-surface rounded-2xl divide-y divide-slate-200/60 overflow-hidden">
           {filteredAllBills.length === 0 ? (
             <div className="py-12 px-4 text-center space-y-2">
               <FileText className="w-9 h-9 mx-auto text-slate-300" />
@@ -1870,7 +1875,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
           )}
         </div>
       ) : displayedSupplierAccounts.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center space-y-2.5">
+        <div className="ios-liquid-surface rounded-2xl p-10 text-center space-y-2.5">
           <Truck className="w-9 h-9 text-slate-300 mx-auto" />
           <h3 className="text-sm font-bold text-slate-800">
             {inwardTab === 'due' ? 'No Pending Supplier Dues' : 'No Supplier Accounts Found'}
@@ -1893,7 +1898,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
           )}
         </div>
       ) : (
-        <div className="animate-card-in animate-stagger-2 bg-white border border-slate-200/90 rounded-2xl divide-y divide-slate-100 overflow-hidden shadow-2xs">
+        <div className="animate-card-in animate-stagger-2 ios-liquid-surface rounded-2xl divide-y divide-slate-200/60 overflow-hidden">
           {displayedSupplierAccounts.map(acc => {
             const hasDue = isAdmin && acc.totalDue > 0;
             const timeStr = formatLedgerTimestamp(acc.latestDate, true);
@@ -3322,6 +3327,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
           inventory={inventory}
           imeiRecords={imeiRecords}
           sales={sales}
+          salesReturns={salesReturns}
           onAddCategory={onAddCategory || (() => {})}
           onRenameCategory={onRenameCategory}
           isAdmin={isAdmin}

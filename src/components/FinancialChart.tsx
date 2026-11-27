@@ -307,9 +307,9 @@ export const FinancialChart: React.FC<FinancialChartProps> = ({ data }) => {
   const isDark = data.settings?.theme === 'dark' || data.settings?.theme === 'gold-black';
 
   return (
-    <div className="bg-white dark:bg-black border border-slate-200/90 dark:border-neutral-900 rounded-2xl p-4 sm:p-6 space-y-5 shadow-sm dark:shadow-none animate-card-in animate-stagger-4">
+    <div className="ios-liquid-surface rounded-2xl p-4 sm:p-6 space-y-5 animate-card-in animate-stagger-4">
       {/* Top Header & Selector Bar */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 dark:border-neutral-900 pb-4">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100/80 dark:border-neutral-900 pb-4">
         <div>
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-blue-50 border border-blue-200/70 text-blue-600 dark:text-blue-400 shrink-0">

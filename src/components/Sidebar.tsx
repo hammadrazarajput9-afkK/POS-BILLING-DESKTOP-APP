@@ -85,13 +85,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {isOpen && (
         <div
           onClick={onClose}
-          className="fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-2xs lg:hidden animate-in fade-in"
+          className="fixed inset-0 z-40 glass-modal-backdrop lg:hidden animate-in fade-in"
         />
       )}
 
       {/* Sidebar Panel */}
       <aside
-        className={`fixed lg:static top-0 left-0 bottom-0 z-40 bg-white dark:bg-black border-r border-slate-200 dark:border-neutral-900 flex flex-col overflow-y-auto transition-all duration-300 ease-in-out shrink-0 ${
+        className={`fixed lg:static top-0 left-0 bottom-0 z-40 ios-liquid-sidebar flex flex-col overflow-y-auto transition-all duration-300 ease-in-out shrink-0 ${
           isOpen
             ? 'w-64 translate-x-0 opacity-100 shadow-xl lg:shadow-none'
             : 'w-0 -translate-x-full lg:-translate-x-full opacity-0 pointer-events-none overflow-hidden border-none'
@@ -99,10 +99,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       >
         <div className="w-64 min-w-[16rem]">
           {/* Brand Header */}
-          <div className="app-sidebar-header min-h-[4rem] pt-[calc(env(safe-area-inset-top,0px)+0.85rem)] pb-3 lg:py-0 lg:h-16 flex items-center justify-between px-5 border-b border-slate-100 dark:border-neutral-900">
+          <div className="app-sidebar-header min-h-[4rem] pt-[calc(env(safe-area-inset-top,0px)+0.85rem)] pb-3 lg:py-0 lg:h-16 flex items-center justify-between px-5 border-b border-white/50 dark:border-white/10">
             <div className="flex items-center gap-2.5 min-w-0">
               {logoSrc ? (
-                <div className="w-11 h-11 rounded-full overflow-hidden flex items-center justify-center shrink-0">
+                <div className="w-11 h-11 rounded-full overflow-hidden flex items-center justify-center shrink-0 ring-2 ring-white/70 shadow-sm">
                   <img
                     src={logoSrc}
                     alt={settings.shopName}
@@ -110,7 +110,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   />
                 </div>
               ) : (
-                <div className="w-11 h-11 rounded-full brand-badge bg-blue-600 text-white flex items-center justify-center font-extrabold text-lg shrink-0">
+                <div className="w-11 h-11 rounded-full brand-badge bg-blue-600 text-white flex items-center justify-center font-extrabold text-lg shrink-0 shadow-sm">
                   <Smartphone className="w-5 h-5" />
                 </div>
               )}
@@ -128,7 +128,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer shrink-0"
+              className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-white/60 transition cursor-pointer shrink-0"
               title="Close Menu"
             >
               <X className="w-5 h-5" />
@@ -145,12 +145,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   key={item.id}
                   type="button"
                   onClick={() => handleNavClick(item.id)}
-                  className={`group relative w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer ${
+                  className={`group relative w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer active:scale-[0.98] ${
                     item.mobileOnly ? 'lg:hidden ' : ''
                   }${
                     isActive
-                      ? 'text-blue-600 bg-blue-50/90 border border-blue-200/70 shadow-2xs font-bold'
-                      : 'text-slate-600 hover:text-blue-600 hover:bg-slate-50 border border-transparent'
+                      ? 'ios-liquid-chip text-blue-600 font-bold ring-1 ring-blue-300/60'
+                      : 'text-slate-600 hover:text-blue-600 hover:bg-white/55 dark:hover:bg-white/5 border border-transparent'
                   }`}
                 >
                   {isActive && (
@@ -166,7 +166,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </div>
 
                   {item.badge !== undefined && item.badge > 0 && (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 tabular-nums">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100/80 text-blue-700 tabular-nums">
                       {item.badge}
                     </span>
                   )}

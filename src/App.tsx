@@ -57,7 +57,7 @@ import {
   recordImeisReversed,
   recordImeisAvailable,
   diffChangedImeiRecords,
-  isUsedAndroidCategory,
+  isUsedCategory,
   extractItemImeis,
 } from './utils/imeiManager';
 import { generateEntityId } from './utils/id';
@@ -639,12 +639,48 @@ function AppContent() {
     };
   }, []);
 
-  // Sync to local storage mirror on state updates (offline-first IndexedDB + localStorage mirror)
+  // Sync to local storage mirror on state updates (debounced so rapid state updates stay instant & 60fps)
+  const pendingLocalSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (isInitialSyncDoneRef.current || (data.users && data.users.length > 0) || data.inventory.length > 0) {
-      saveStoredData(data, DEFAULT_STORE_ID);
+    const canPersist =
+      isInitialSyncDoneRef.current || (data.users && data.users.length > 0) || data.inventory.length > 0;
+    if (!canPersist) return;
+
+    if (pendingLocalSaveRef.current) {
+      clearTimeout(pendingLocalSaveRef.current);
     }
+    pendingLocalSaveRef.current = setTimeout(() => {
+      pendingLocalSaveRef.current = null;
+      saveStoredData(dataRef.current, DEFAULT_STORE_ID);
+    }, 320);
+
+    return () => {
+      if (pendingLocalSaveRef.current) {
+        clearTimeout(pendingLocalSaveRef.current);
+      }
+    };
   }, [data]);
+
+  useEffect(() => {
+    const flushPendingSave = () => {
+      if (pendingLocalSaveRef.current) {
+        clearTimeout(pendingLocalSaveRef.current);
+        pendingLocalSaveRef.current = null;
+        saveStoredData(dataRef.current, DEFAULT_STORE_ID);
+      }
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        flushPendingSave();
+      }
+    };
+    window.addEventListener('beforeunload', flushPendingSave);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.removeEventListener('beforeunload', flushPendingSave);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
 
   // Live Real-Time Multi-Device Firestore Synchronization (Incremental Deltas + Root Config + Tombstones)
   useEffect(() => {
@@ -1348,6 +1384,11 @@ function AppContent() {
       if (bcIdx >= 0) return bcIdx;
     }
 
+    // Never merge separate Used Mobiles into a single product card by name — each piece has its own Cost, Sale, Seller & Condition
+    if (isUsedCategory(pCat)) {
+      return -1;
+    }
+
     if (pCat) {
       const exactCatIdx = list.findIndex(
         inv =>
@@ -1395,7 +1436,7 @@ function AppContent() {
       const combinedImeis = Array.from(new Set([...existingImeis, ...newImeis]));
 
       const targetCategory = purchaseItem.category || existing.category;
-      const shouldSyncOldPrices = !isUsedAndroidCategory(targetCategory);
+      const shouldSyncOldPrices = !isUsedCategory(targetCategory);
       const hasNewSale = pSaleInput !== undefined;
       const hasNewWholesale = pWholesale !== undefined;
 
@@ -1636,7 +1677,23 @@ function AppContent() {
       ].map(s => s.trim()).filter(Boolean))
     );
 
-    const matchIndex = findPurchaseInventoryMatchIndex(list, oldItem);
+    let matchIndex = -1;
+    if (oldItemImeis.length > 0) {
+      const oldImeiSet = new Set(oldItemImeis.map(i => i.toLowerCase()));
+      matchIndex = list.findIndex(inv => extractItemImeis(inv).some(im => oldImeiSet.has(im.toLowerCase())));
+    }
+    if (matchIndex < 0) {
+      matchIndex = findPurchaseInventoryMatchIndex(list, oldItem);
+    }
+    if (matchIndex < 0 && isUsedCategory(oldItem.category)) {
+      matchIndex = list.findIndex(
+        inv =>
+          norm(inv.name) === norm(oldItem.name) &&
+          norm(inv.category) === norm(oldItem.category) &&
+          Number(inv.costPrice || 0) === Number(oldItem.costPrice || 0) &&
+          Number(inv.salePrice || 0) === Number(oldItem.salePrice || 0)
+      );
+    }
     if (matchIndex < 0) {
       return { nextList: list, oldItemImeis };
     }
@@ -2390,7 +2447,23 @@ function AppContent() {
   }
 
   return (
-    <div className="flex h-[100dvh] w-full overflow-hidden bg-slate-50 text-slate-800 app-root-container">
+    <div className="relative flex h-[100dvh] w-full overflow-hidden bg-slate-50 text-slate-800 app-root-container">
+      {/* Global iOS Fluid Liquid Ambient Canvas (Zero-cost radial gradient glow, no GPU blur lag) */}
+      <div className="ios-liquid-canvas print:hidden" aria-hidden="true">
+        <div
+          className="ios-liquid-orb-a absolute -top-20 -left-20 w-80 h-80 sm:w-[28rem] sm:h-[28rem] rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(56,189,248,0.22) 0%, rgba(99,102,241,0.08) 52%, transparent 72%)' }}
+        />
+        <div
+          className="ios-liquid-orb-b absolute top-1/3 -right-24 w-80 h-80 sm:w-[30rem] sm:h-[30rem] rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(167,139,250,0.18) 0%, rgba(192,132,252,0.07) 52%, transparent 72%)' }}
+        />
+        <div
+          className="ios-liquid-orb-c absolute -bottom-24 left-1/4 w-72 h-72 sm:w-[26rem] sm:h-[26rem] rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(52,211,153,0.16) 0%, rgba(45,212,191,0.06) 52%, transparent 72%)' }}
+        />
+      </div>
+
       {/* PWA Offline & Automatic Update Notification */}
       <PWAUpdateBanner />
 
@@ -2407,7 +2480,7 @@ function AppContent() {
       />
 
       {/* Main Viewport Container */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative z-10">
         {gmpQuotaExceeded && (
           <div className="bg-amber-50 border-b border-amber-200 text-amber-900 px-4 py-2.5 text-xs md:text-sm text-center sticky top-0 z-50 shadow-sm">
             <span>
@@ -2572,6 +2645,7 @@ function AppContent() {
                 inventory={data.inventory}
                 imeiRecords={data.imeiRecords || []}
                 sales={data.sales || []}
+                salesReturns={data.salesReturns || []}
                 onlineAccounts={data.onlineAccounts || []}
                 appData={data}
                 isAdmin={(data.currentRole || 'admin') === 'admin'}

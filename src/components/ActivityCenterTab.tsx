@@ -154,9 +154,9 @@ const ActivityCenterTabComponent: React.FC<ActivityCenterTabProps> = ({
   };
 
   return (
-    <div className="space-y-3 sm:space-y-5 w-full max-w-full overflow-x-hidden">
+    <div className="space-y-3 sm:space-y-5 w-full max-w-full overflow-x-hidden animate-liquid-in">
       {/* 24-Hour Rolling Window Information Banner */}
-      <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+      <div className="ios-liquid-banner-blue ios-liquid-sheen-layer text-white rounded-xl sm:rounded-2xl p-2.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-white/10 flex items-center justify-center font-bold shrink-0">
             <History className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
@@ -180,25 +180,25 @@ const ActivityCenterTabComponent: React.FC<ActivityCenterTabProps> = ({
 
       {/* Metrics Row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3.5">
-        <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs flex flex-col justify-between">
+        <div className="ios-liquid-tile rounded-xl sm:rounded-2xl p-2.5 sm:p-4 flex flex-col justify-between">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 line-clamp-1">24h Total</span>
           <h3 className="text-sm sm:text-2xl font-extrabold tabular-nums text-slate-900 mt-0.5 truncate">{stats.total}</h3>
           <p className="text-[10px] sm:text-[11px] text-slate-400 truncate">Live activities</p>
         </div>
 
-        <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs flex flex-col justify-between">
+        <div className="ios-liquid-tile rounded-xl sm:rounded-2xl p-2.5 sm:p-4 flex flex-col justify-between">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 line-clamp-1">Sales Done</span>
           <h3 className="text-sm sm:text-2xl font-extrabold tabular-nums text-emerald-600 mt-0.5 truncate">{stats.sales}</h3>
           <p className="text-[10px] sm:text-[11px] text-slate-400 truncate">Invoices made</p>
         </div>
 
-        <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs flex flex-col justify-between">
+        <div className="ios-liquid-tile rounded-xl sm:rounded-2xl p-2.5 sm:p-4 flex flex-col justify-between">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 line-clamp-1">Stock Updates</span>
           <h3 className="text-sm sm:text-2xl font-extrabold tabular-nums text-blue-600 mt-0.5 truncate">{stats.inventory}</h3>
           <p className="text-[10px] sm:text-[11px] text-slate-400 truncate">Stock modified</p>
         </div>
 
-        <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-4 shadow-xs flex flex-col justify-between">
+        <div className="ios-liquid-tile rounded-xl sm:rounded-2xl p-2.5 sm:p-4 flex flex-col justify-between">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 line-clamp-1">Expenses Logged</span>
           <h3 className="text-sm sm:text-2xl font-extrabold tabular-nums text-rose-600 mt-0.5 truncate">{stats.expense}</h3>
           <p className="text-[10px] sm:text-[11px] text-slate-400 truncate">Disbursements</p>
@@ -206,7 +206,7 @@ const ActivityCenterTabComponent: React.FC<ActivityCenterTabProps> = ({
       </div>
 
       {/* Main Audit Feed Card */}
-      <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-2.5 sm:p-5 space-y-2.5 sm:space-y-4 shadow-xs overflow-hidden">
+      <div className="ios-liquid-surface rounded-xl sm:rounded-2xl p-2.5 sm:p-5 space-y-2.5 sm:space-y-4 overflow-hidden">
         {/* Controls Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 border-b border-slate-100 pb-2.5 sm:pb-4">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
@@ -286,7 +286,7 @@ const ActivityCenterTabComponent: React.FC<ActivityCenterTabProps> = ({
               return (
                 <div
                   key={act.id}
-                  className="p-2.5 sm:p-3 rounded-xl border border-slate-100 bg-slate-50/60 hover:bg-slate-50 hover:border-slate-200 transition flex items-start justify-between gap-2 text-xs"
+                  className="ios-liquid-tile p-2.5 sm:p-3 rounded-xl flex items-start justify-between gap-2 text-xs"
                 >
                   <div className="flex items-start gap-2 sm:gap-3 min-w-0">
                     <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white border border-slate-200/80 flex items-center justify-center shrink-0 shadow-2xs mt-0.5">

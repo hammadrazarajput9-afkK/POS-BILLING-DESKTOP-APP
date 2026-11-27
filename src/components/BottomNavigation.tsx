@@ -65,7 +65,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
   ];
 
   return (
-    <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] px-2 pt-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom,0px))]">
+    <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 ios-liquid-dock px-2 pt-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom,0px))]">
       <div className="flex items-center justify-around max-w-lg mx-auto">
         {navButtons.map(btn => {
           const Icon = btn.icon;
@@ -76,9 +76,9 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
               key={btn.id}
               type="button"
               onClick={() => onSelectTab(btn.id)}
-              className={`relative flex flex-col items-center justify-center py-1 px-2 rounded-xl transition cursor-pointer min-w-[56px] min-h-[44px] ${
+              className={`relative flex flex-col items-center justify-center py-1 px-2.5 rounded-2xl transition cursor-pointer min-w-[56px] min-h-[44px] active:scale-95 ${
                 isActive
-                  ? 'text-blue-600 font-extrabold'
+                  ? 'ios-liquid-chip text-blue-600 font-extrabold'
                   : 'text-slate-500 hover:text-slate-800 font-medium'
               }`}
             >
@@ -102,7 +102,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
                 {btn.label}
               </span>
               {isActive && (
-                <span className="absolute bottom-0 w-6 h-0.5 bg-blue-600 rounded-full" />
+                <span className="absolute bottom-0.5 w-6 h-0.5 bg-blue-600 rounded-full" />
               )}
             </button>
           );
@@ -112,7 +112,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
         <button
           type="button"
           onClick={onOpenMenu}
-          className="flex flex-col items-center justify-center py-1 px-2 rounded-xl text-slate-500 hover:text-slate-800 font-medium transition cursor-pointer min-w-[56px] min-h-[44px]"
+          className="flex flex-col items-center justify-center py-1 px-2 rounded-2xl text-slate-500 hover:text-slate-800 font-medium transition cursor-pointer min-w-[56px] min-h-[44px] active:scale-95"
         >
           <Menu className="w-5 h-5 text-slate-500" />
           <span className="text-[10px] mt-0.5 font-semibold">More</span>

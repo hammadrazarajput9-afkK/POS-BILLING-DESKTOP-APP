@@ -40,6 +40,7 @@ import { ConfirmModal } from './ConfirmModal';
 import { CategoryModal } from './CategoryModal';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { smartFilterAndSort } from '../utils/smartSearch';
+import { isUsedCategory, extractItemImeis } from '../utils/imeiManager';
 
 interface InventoryTabProps {
   inventory: InventoryItem[];
@@ -448,7 +449,11 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
     for (const item of inventory) {
       // Remove any trailing parentheses from older legacy items (e.g. "Model (Black)" -> "Model")
       const baseName = item.name.replace(/\s*\([^)]*\)\s*$/, '').trim();
-      const groupKey = `${(item.category || '').trim().toLowerCase()}:::${(baseName || item.name).toLowerCase()}`;
+      const catKey = (item.category || '').trim().toLowerCase();
+      // NEVER merge separate Used Mobile entries by model name — each piece has its own Cost, Sale, Condition & Seller
+      const groupKey = isUsedCategory(item.category)
+        ? `${catKey}:::${item.id}`
+        : `${catKey}:::${(baseName || item.name).toLowerCase()}`;
 
       if (!map.has(groupKey)) {
         const initialVariants: MobileVariant[] = item.variants && item.variants.length > 0
@@ -463,12 +468,13 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
               salePrice: item.salePrice,
               qty: item.qty,
               note: item.note,
+              condition: item.condition,
               imeis: item.imeis && item.imeis.length > 0 ? [...item.imeis] : item.imei ? [item.imei] : [],
             }];
 
         map.set(groupKey, {
           ...item,
-          name: baseName || item.name,
+          name: isUsedCategory(item.category) ? item.name : baseName || item.name,
           variants: initialVariants,
         });
       } else {
@@ -680,10 +686,10 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
   };
 
   return (
-    <div className="space-y-3 pb-24 animate-in fade-in duration-200">
-      {/* Top Blue Header + Overlapping Summary Card (Smart App Layout) */}
+    <div className="space-y-3 pb-24 animate-liquid-in">
+      {/* Top Blue Header + Overlapping Summary Card (iOS Liquid Glass) */}
       <div>
-        <div className="bg-blue-600 text-white rounded-2xl shadow-sm pt-3.5 pb-11 px-3.5 sm:px-5">
+        <div className="ios-liquid-banner-blue ios-liquid-sheen-layer text-white rounded-2xl pt-3.5 pb-11 px-3.5 sm:px-5">
           {/* Row 1: Title & Quick Action Pills */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -762,8 +768,8 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
           </div>
         </div>
 
-        {/* Overlapping White Valuation & Stock Card */}
-        <div className="-mt-8 mx-2 sm:mx-4 bg-white rounded-2xl border border-slate-200/90 shadow-sm px-3.5 py-3">
+        {/* Overlapping Frosted Valuation & Stock Card */}
+        <div className="-mt-8 mx-2 sm:mx-4 ios-liquid-surface rounded-2xl px-3.5 py-3 relative z-10">
           <div className="flex items-center justify-between gap-2 mb-1.5">
             {isAdmin ? (
               <button
@@ -873,7 +879,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search Model, Brand, IMEI, Barcode..."
-            className="w-full pl-9 pr-20 h-10 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 shadow-2xs transition"
+            className="w-full pl-9 pr-20 h-10 ios-liquid-chip rounded-xl text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 transition"
           />
           <div className="absolute right-1.5 flex items-center gap-1">
             {search && (
@@ -899,7 +905,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
         </div>
 
         {/* Clean View Switcher */}
-        <div className="h-10 bg-white border border-slate-200 p-1 rounded-xl inline-flex items-center gap-0.5 shadow-2xs shrink-0">
+        <div className="h-10 ios-liquid-chip p-1 rounded-xl inline-flex items-center gap-0.5 shrink-0">
           <button
             type="button"
             onClick={() => setViewMode('grid')}
@@ -933,7 +939,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
           className={`shrink-0 px-3 py-1.5 rounded-xl border text-left transition cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap ${
             categoryFilter === 'ALL'
               ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-              : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+              : 'ios-liquid-chip text-slate-700 hover:bg-white/90'
           }`}
         >
           <span className="text-[11px] font-extrabold">All</span>
@@ -956,7 +962,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
               className={`shrink-0 px-3 py-1.5 rounded-xl border text-left transition cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap ${
                 isActive
                   ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                  : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+                  : 'ios-liquid-chip text-slate-700 hover:bg-white/90'
               }`}
             >
               <span className="text-[11px] font-extrabold">{cat}</span>
@@ -995,7 +1001,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
           /* Smart App 3-Column Card Grid on Mobile (Bigger & Taller Cards) -> 4/5/6 on Larger Screens */
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2.5 sm:gap-3.5">
             {filtered.length === 0 ? (
-              <div className="col-span-full text-center py-14 bg-white rounded-2xl border border-dashed border-slate-300">
+              <div className="col-span-full text-center py-14 ios-liquid-surface rounded-2xl">
                 <Package className="w-10 h-10 mx-auto mb-2 text-slate-300" />
                 <p className="font-bold text-slate-700 text-sm">No matching products found</p>
                 <p className="text-xs text-slate-400 mt-0.5">
@@ -1013,6 +1019,9 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                     ].filter(Boolean)
                   )
                 );
+                const isUsed = isUsedCategory(item.category);
+                const condLabel = item.condition || (item.variants || []).find(v => v.condition)?.condition;
+                const cardImeis = isUsed ? extractItemImeis(item) : [];
                 const prices = (item.variants || []).map(v => Number(v.salePrice)).filter(p => !isNaN(p) && p > 0);
                 if (prices.length === 0) prices.push(item.salePrice);
                 const minPrice = Math.min(...prices);
@@ -1026,8 +1035,8 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                   <div
                     key={item.id}
                     onClick={() => setSelectedProductPopup(item)}
-                    className={`bg-white border border-slate-200/90 rounded-2xl p-2 sm:p-3 shadow-2xs hover:shadow-md hover:border-blue-400 active:scale-[0.98] transition-all duration-150 cursor-pointer flex flex-col justify-between group min-w-0 ${
-                      isArchived ? 'opacity-75 bg-slate-50/70' : ''
+                    className={`ios-liquid-tile rounded-2xl p-2 sm:p-3 hover:!border-blue-400 cursor-pointer flex flex-col justify-between group min-w-0 ${
+                      isArchived ? 'opacity-75' : ''
                     }`}
                   >
                     <div className="min-w-0">
@@ -1067,6 +1076,8 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
                       {/* Subtle Spec / Category Subtitle */}
                       <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium truncate mt-0.5 leading-tight">
                         {specs.length > 0 ? specs[0] : item.category}
+                        {condLabel ? ` · ${condLabel}` : ''}
+                        {cardImeis.length === 1 ? ` · #${cardImeis[0].slice(-5)}` : ''}
                         {item.variants && item.variants.length > 1 ? ` · ${item.variants.length}v` : ''}
                       </p>
                     </div>
@@ -1095,7 +1106,7 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
           </div>
         ) : (
             /* Table View */
-            <div className="bg-white border border-slate-200/90 rounded-2xl overflow-hidden shadow-2xs">
+            <div className="ios-liquid-surface rounded-2xl overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">

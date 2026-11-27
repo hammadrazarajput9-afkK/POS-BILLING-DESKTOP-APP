@@ -566,9 +566,9 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
   ];
 
   return (
-    <div className="space-y-4 sm:space-y-5">
+    <div className="space-y-4 sm:space-y-5 animate-liquid-in">
       {/* EXECUTIVE FINANCIAL HEADER + INTEGRATED PERIOD FILTER */}
-      <div className="animate-card-in bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-4 shadow-2xs space-y-3">
+      <div className="animate-card-in ios-liquid-surface rounded-2xl p-3 sm:p-4 space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
@@ -602,8 +602,8 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
         </div>
 
         {/* Period Filter Strip */}
-        <div className="pt-2.5 border-t border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-2">
-          <div className="no-scrollbar flex items-center gap-1 bg-slate-50 border border-slate-200/80 p-1 rounded-xl overflow-x-auto max-w-full">
+        <div className="pt-2.5 border-t border-slate-200/60 flex flex-col lg:flex-row lg:items-center justify-between gap-2">
+          <div className="no-scrollbar flex items-center gap-1 ios-liquid-chip p-1 rounded-xl overflow-x-auto max-w-full">
             {DATE_FILTER_OPTIONS.map(opt => {
               const isActive = dateFilterMode === opt.id;
               return (
@@ -675,7 +675,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
         <button
           type="button"
           onClick={() => openReport('sales')}
-          className="text-left bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-3.5 shadow-2xs hover:border-blue-400 hover:shadow-sm transition cursor-pointer flex flex-col justify-between group"
+          className="text-left ios-liquid-tile rounded-2xl p-3 sm:p-3.5 hover:!border-blue-400 cursor-pointer flex flex-col justify-between group"
         >
           <div className="flex items-center justify-between gap-1 w-full">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 truncate">
@@ -695,7 +695,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
         <button
           type="button"
           onClick={() => openReport('wholesale')}
-          className="text-left bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-3.5 shadow-2xs hover:border-purple-400 hover:shadow-sm transition cursor-pointer flex flex-col justify-between group"
+          className="text-left ios-liquid-tile rounded-2xl p-3 sm:p-3.5 hover:!border-purple-400 cursor-pointer flex flex-col justify-between group"
         >
           <div className="flex items-center justify-between gap-1 w-full">
             <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600 truncate">
@@ -715,7 +715,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
         <button
           type="button"
           onClick={() => openReport('pnl')}
-          className="text-left bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-3.5 shadow-2xs hover:border-emerald-400 hover:shadow-sm transition cursor-pointer flex flex-col justify-between group"
+          className="text-left ios-liquid-tile rounded-2xl p-3 sm:p-3.5 hover:!border-emerald-400 cursor-pointer flex flex-col justify-between group"
         >
           <div className="flex items-center justify-between gap-1 w-full">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 truncate">
@@ -748,7 +748,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
         <button
           type="button"
           onClick={() => openReport('expenses')}
-          className="text-left bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-3.5 shadow-2xs hover:border-rose-400 hover:shadow-sm transition cursor-pointer flex flex-col justify-between group"
+          className="text-left ios-liquid-tile rounded-2xl p-3 sm:p-3.5 hover:!border-rose-400 cursor-pointer flex flex-col justify-between group"
         >
           <div className="flex items-center justify-between gap-1 w-full">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 truncate">
@@ -768,7 +768,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
         <button
           type="button"
           onClick={() => openReport('inventory')}
-          className="col-span-2 sm:col-span-1 text-left bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-3.5 shadow-2xs hover:border-indigo-400 hover:shadow-sm transition cursor-pointer flex flex-col justify-between group"
+          className="col-span-2 sm:col-span-1 text-left ios-liquid-tile rounded-2xl p-3 sm:p-3.5 hover:!border-indigo-400 cursor-pointer flex flex-col justify-between group"
         >
           <div className="flex items-center justify-between gap-1 w-full">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 truncate">
@@ -802,7 +802,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
               key={mod.id}
               type="button"
               onClick={() => openReport(mod.id)}
-              className={`text-left bg-white border border-slate-200/90 rounded-xl p-2.5 sm:p-3 shadow-2xs transition cursor-pointer flex flex-col justify-between group ${mod.hoverBorder}`}
+              className={`text-left ios-liquid-tile rounded-xl p-2.5 sm:p-3 cursor-pointer flex flex-col justify-between group ${mod.hoverBorder}`}
             >
               <div className="space-y-2 w-full">
                 <div className="flex items-center justify-between gap-2">
@@ -830,7 +830,7 @@ const ReportsTabComponent: React.FC<ReportsTabProps> = ({
       </div>
 
       {/* COMPLETED SALES HISTORY AUDIT TABLE */}
-      <div className="animate-card-in animate-stagger-3 bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-4 space-y-3 shadow-2xs">
+      <div className="animate-card-in animate-stagger-3 ios-liquid-surface rounded-2xl p-3 sm:p-4 space-y-3">
         <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 gap-2">
           <div>
             <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm">

@@ -46,7 +46,7 @@ interface LauncherBox {
   action: () => void;
 }
 
-export const MobileHomeLauncher: React.FC<MobileHomeLauncherProps> = ({
+export const MobileHomeLauncher: React.FC<MobileHomeLauncherProps> = React.memo(({
   currentRole = 'admin',
   currency = 'Rs',
   inventoryCount = 0,
@@ -59,33 +59,58 @@ export const MobileHomeLauncher: React.FC<MobileHomeLauncherProps> = ({
 }) => {
   const isAdmin = currentRole === 'admin';
 
-  // Filter active used mobile items
-  const usedItems = inventory.filter(item => {
-    if (item.status === 'ARCHIVED') return false;
-    const cat = (item.category || '').toLowerCase();
-    const name = (item.name || '').toLowerCase();
-    return (
-      cat.includes('used') ||
-      cat.includes('second') ||
-      cat.includes('pre-owned') ||
-      cat.includes('refurbished') ||
-      name.includes('used') ||
-      name.includes('second hand')
+  // Filter active used mobile items & totals (memoized for smooth re-renders)
+  const { usedItems, usedTotals } = React.useMemo(() => {
+    const items = inventory.filter(item => {
+      if (item.status === 'ARCHIVED') return false;
+      const cat = (item.category || '').toLowerCase();
+      const name = (item.name || '').toLowerCase();
+      return (
+        cat.includes('used') ||
+        cat.includes('second') ||
+        cat.includes('pre-owned') ||
+        cat.includes('refurbished') ||
+        name.includes('used') ||
+        name.includes('second hand')
+      );
+    });
+
+    const totals = items.reduce(
+      (acc, item) => {
+        if (item.variants && item.variants.length > 0) {
+          const varQtySum = item.variants.reduce((s, v) => s + Math.max(0, Number(v.qty) || 0), 0);
+          if (varQtySum > 0) {
+            for (const v of item.variants) {
+              const vq = Math.max(0, Number(v.qty) || 0);
+              if (vq <= 0) continue;
+              const vc =
+                v.costPrice !== '' && v.costPrice !== undefined && Number(v.costPrice) > 0
+                  ? Number(v.costPrice)
+                  : Number(item.costPrice) || 0;
+              const vs =
+                v.salePrice !== '' && v.salePrice !== undefined && Number(v.salePrice) > 0
+                  ? Number(v.salePrice)
+                  : Number(item.salePrice) || 0;
+              acc.cost += vc * vq;
+              acc.sale += vs * vq;
+              acc.pcs += vq;
+            }
+            return acc;
+          }
+        }
+        const q = Math.max(0, Number(item.qty) || 0);
+        acc.cost += (Number(item.costPrice) || 0) * q;
+        acc.sale += (Number(item.salePrice) || 0) * q;
+        acc.pcs += q;
+        return acc;
+      },
+      { cost: 0, sale: 0, pcs: 0 }
     );
-  });
 
-  const usedTotals = usedItems.reduce(
-    (acc, item) => {
-      const q = Math.max(0, Number(item.qty) || 0);
-      acc.cost += (Number(item.costPrice) || 0) * q;
-      acc.sale += (Number(item.salePrice) || 0) * q;
-      acc.pcs += q;
-      return acc;
-    },
-    { cost: 0, sale: 0, pcs: 0 }
-  );
+    return { usedItems: items, usedTotals: totals };
+  }, [inventory]);
 
-  const secondaryBoxes: LauncherBox[] = [
+  const secondaryBoxes: LauncherBox[] = React.useMemo(() => [
     {
       id: 'inventory',
       label: 'Inventory',
@@ -143,16 +168,10 @@ export const MobileHomeLauncher: React.FC<MobileHomeLauncherProps> = ({
       adminOnly: true,
       action: onOpenSettings,
     },
-  ].filter(item => isAdmin || !item.adminOnly);
+  ].filter(item => isAdmin || !item.adminOnly), [inventoryCount, activityCount, isAdmin, onSelectTab, onOpenSettings]);
 
   return (
     <div className="relative h-full w-full flex flex-col justify-between gap-2.5 overflow-y-auto select-none px-1.5 py-2 pb-20">
-      {/* Ambient Fluid iOS Liquid Mesh Background (refraction layer behind glass tiles) */}
-      <div className="pointer-events-none fixed inset-0 overflow-hidden z-0">
-        <div className="ios-liquid-orb-a absolute -top-12 -left-14 w-64 h-64 rounded-full bg-gradient-to-br from-sky-400/28 via-blue-500/20 to-indigo-400/15 blur-3xl" />
-        <div className="ios-liquid-orb-b absolute top-1/3 -right-16 w-72 h-72 rounded-full bg-gradient-to-br from-violet-400/24 via-purple-400/18 to-pink-400/15 blur-3xl" />
-        <div className="ios-liquid-orb-a absolute bottom-12 left-8 w-60 h-60 rounded-full bg-gradient-to-tr from-emerald-400/20 via-teal-300/15 to-cyan-400/15 blur-3xl" />
-      </div>
 
       {/* Section 1: Quick Actions (Sale, Party, Khata, Daily Closing) */}
       <div className="relative z-10 space-y-1.5 shrink-0 animate-liquid-in">
@@ -169,8 +188,11 @@ export const MobileHomeLauncher: React.FC<MobileHomeLauncherProps> = ({
             onClick={() => onSelectTab('pos')}
             className="ios-liquid-hero ios-liquid-sheen-layer relative overflow-hidden bg-gradient-to-br from-blue-500/88 via-blue-600/82 to-indigo-700/90 text-white rounded-[22px] px-3 py-2.5 flex items-center gap-2.5 h-[60px] text-left cursor-pointer"
           >
-            <div className="absolute -right-5 -bottom-5 w-20 h-20 bg-white/20 rounded-full blur-xl pointer-events-none" />
-            <div className="w-9 h-9 rounded-[14px] bg-white/22 border border-white/35 backdrop-blur-md flex items-center justify-center shrink-0 shadow-inner">
+            <div
+              className="absolute -right-5 -bottom-5 w-24 h-24 rounded-full pointer-events-none"
+              style={{ background: 'radial-gradient(circle, rgba(255,255,255,0.22) 0%, transparent 70%)' }}
+            />
+            <div className="w-9 h-9 rounded-[14px] bg-white/22 border border-white/35 flex items-center justify-center shrink-0 shadow-inner">
               <ShoppingCart className="w-4.5 h-4.5 text-white" />
             </div>
             <div className="min-w-0 flex-1 relative z-10">
@@ -269,9 +291,12 @@ export const MobileHomeLauncher: React.FC<MobileHomeLauncherProps> = ({
           onClick={onOpenUsedMobiles}
           className="ios-liquid-hero ios-liquid-sheen-layer w-full relative overflow-hidden bg-gradient-to-r from-violet-600/86 via-purple-600/82 to-indigo-700/88 text-white rounded-[22px] p-3 flex items-center justify-between gap-3 cursor-pointer text-left"
         >
-          <div className="absolute -right-6 -top-6 w-28 h-28 bg-white/18 rounded-full blur-2xl pointer-events-none" />
+          <div
+            className="absolute -right-6 -top-6 w-32 h-32 rounded-full pointer-events-none"
+            style={{ background: 'radial-gradient(circle, rgba(255,255,255,0.20) 0%, transparent 70%)' }}
+          />
           <div className="flex items-center gap-3 min-w-0 relative z-10">
-            <div className="w-10 h-10 rounded-[15px] bg-white/20 border border-white/35 backdrop-blur-md flex items-center justify-center shrink-0 shadow-inner">
+            <div className="w-10 h-10 rounded-[15px] bg-white/20 border border-white/35 flex items-center justify-center shrink-0 shadow-inner">
               <Smartphone className="w-5 h-5 text-white" />
             </div>
             <div className="min-w-0 text-left">
@@ -285,7 +310,7 @@ export const MobileHomeLauncher: React.FC<MobileHomeLauncherProps> = ({
               </span>
             </div>
           </div>
-          <div className="w-8 h-8 rounded-[12px] bg-white/18 border border-white/25 backdrop-blur-sm flex items-center justify-center shrink-0 relative z-10">
+          <div className="w-8 h-8 rounded-[12px] bg-white/18 border border-white/25 flex items-center justify-center shrink-0 relative z-10">
             <ChevronRight className="w-4 h-4 text-white" />
           </div>
         </button>
@@ -338,7 +363,7 @@ export const MobileHomeLauncher: React.FC<MobileHomeLauncherProps> = ({
           className="animate-liquid-in animate-stagger-5 ios-liquid-hero ios-liquid-sheen-layer relative z-10 overflow-hidden rounded-[22px] bg-gradient-to-r from-slate-900/88 via-neutral-900/84 to-emerald-950/90 px-3.5 py-2.5 text-white flex items-center justify-between gap-2.5 shrink-0 cursor-pointer h-[60px]"
         >
           <div className="flex items-center gap-3 min-w-0 relative z-10">
-            <div className="w-9 h-9 rounded-[14px] bg-emerald-400/22 border border-emerald-300/35 backdrop-blur-md flex items-center justify-center shrink-0 shadow-inner">
+            <div className="w-9 h-9 rounded-[14px] bg-emerald-400/22 border border-emerald-300/35 flex items-center justify-center shrink-0 shadow-inner">
               <LayoutDashboard className="w-4.5 h-4.5 text-emerald-300" />
             </div>
             <div className="text-left min-w-0">
@@ -350,11 +375,11 @@ export const MobileHomeLauncher: React.FC<MobileHomeLauncherProps> = ({
               </span>
             </div>
           </div>
-          <div className="w-8 h-8 rounded-[12px] bg-white/14 border border-white/25 backdrop-blur-sm flex items-center justify-center shrink-0 relative z-10">
+          <div className="w-8 h-8 rounded-[12px] bg-white/14 border border-white/25 flex items-center justify-center shrink-0 relative z-10">
             <ChevronRight className="w-4 h-4 text-emerald-300" />
           </div>
         </button>
       )}
     </div>
   );
-};
+});
