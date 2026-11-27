@@ -284,9 +284,9 @@ export const UsedMobilesModal: React.FC<UsedMobilesModalProps> = ({
   const currency = settings.currency || 'Rs';
 
   return (
-    <div className="fixed inset-0 z-50 ios-liquid-canvas flex flex-col overflow-hidden animate-liquid-in">
-      {/* Ambient Liquid Color Blobs behind full-screen sheet */}
-      <div className="pointer-events-none fixed inset-0 overflow-hidden z-0 print:hidden" aria-hidden="true">
+    <div className="fixed inset-0 z-50 bg-[var(--theme-app-bg,#f4f7fb)] flex flex-col overflow-hidden animate-liquid-in">
+      {/* Ambient Liquid Mesh & Color Blobs behind full-screen sheet */}
+      <div className="ios-liquid-canvas print:hidden" aria-hidden="true">
         <div
           className="ios-liquid-orb-a absolute -top-24 -left-20 w-72 h-72 rounded-full"
           style={{ background: 'radial-gradient(circle, rgba(125,211,252,0.28) 0%, transparent 72%)' }}
@@ -302,7 +302,7 @@ export const UsedMobilesModal: React.FC<UsedMobilesModalProps> = ({
       </div>
 
       {/* Main Scrollable Container matching InventoryTab layout */}
-      <div className="relative z-10 flex-1 overflow-y-auto px-2.5 sm:px-6 pt-2.5 pb-24 max-w-7xl w-full mx-auto space-y-3">
+      <div className="relative z-10 flex-1 overflow-y-auto px-2.5 sm:px-6 pt-[calc(env(safe-area-inset-top,0px)+0.625rem)] sm:pt-2.5 pb-24 max-w-7xl w-full mx-auto space-y-3">
         {/* Top Blue Header + Overlapping Summary Card (iOS Liquid Glass) */}
         <div>
           <div className="ios-liquid-banner-blue ios-liquid-sheen-layer text-white rounded-2xl pt-3.5 pb-11 px-3.5 sm:px-5">
