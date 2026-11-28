@@ -82,29 +82,58 @@
     }
   }
 
-  /* iOS-only (iPhone/iPad): eliminate initial-load 100dvh bottom gap, clear top blur/Dynamic Island for headers & all modals */
+  /* iOS-only (iPhone/iPad): fill edge-to-edge down to the very bottom on both Safari and Home Screen PWA, clear top blur/Dynamic Island for headers & all modals */
   @media screen {
-    html.ios-device,
-    html.ios-device body {
-      height: 100% !important;
-      min-height: 100% !important;
+    html.ios-device.ios-standalone,
+    html.ios-device.ios-standalone body,
+    html.ios-device.ios-standalone #root,
+    html.ios-device.ios-standalone .app-root-container,
+    html.ios-device.ios-standalone .auth-root-container {
+      position: relative !important;
+      top: auto !important;
+      right: auto !important;
+      bottom: auto !important;
+      left: auto !important;
+      width: 100% !important;
+      height: 100lvh !important;
+      min-height: 100lvh !important;
+      max-height: 100lvh !important;
+      overflow: hidden !important;
+      padding: 0 !important;
+    }
+
+    html.ios-device.ios-standalone .h-\[100dvh\] {
+      height: 100lvh !important;
+      min-height: 100lvh !important;
+    }
+
+    html.ios-device:not(.ios-standalone),
+    html.ios-device:not(.ios-standalone) body {
+      height: var(--ios-app-height, 100dvh) !important;
+      min-height: 100dvh !important;
       max-height: none !important;
       overflow: hidden !important;
     }
 
-    html.ios-device #root,
-    html.ios-device .app-root-container,
-    html.ios-device .auth-root-container {
-      position: fixed !important;
-      top: 0 !important;
-      right: 0 !important;
-      bottom: 0 !important;
-      left: 0 !important;
+    html.ios-device:not(.ios-standalone) #root,
+    html.ios-device:not(.ios-standalone) .app-root-container,
+    html.ios-device:not(.ios-standalone) .auth-root-container {
+      position: relative !important;
+      top: auto !important;
+      right: auto !important;
+      bottom: auto !important;
+      left: auto !important;
       width: 100% !important;
-      height: auto !important;
-      min-height: 0 !important;
-      max-height: none !important;
+      height: var(--ios-app-height, 100dvh) !important;
+      min-height: 100dvh !important;
+      max-height: var(--ios-app-height, 100dvh) !important;
+      overflow: hidden !important;
       padding: 0 !important;
+    }
+
+    html.ios-device .app-root-container > .ios-liquid-canvas {
+      position: absolute !important;
+      inset: 0 !important;
     }
 
     @media (max-width: 639px) {

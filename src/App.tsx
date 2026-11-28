@@ -12,6 +12,7 @@ import {
   MobileVariant,
   UserAccount,
   SyncCollectionKey,
+  KhataCustomer,
 } from './types';
 import { hasPermission } from './utils/permissions';
 import {
@@ -42,6 +43,7 @@ import {
   savePurchasesLedgerBatchToFirestore,
   saveImeiRecordsBatchToFirestore,
   mergeAppData,
+  mergeKhataCustomerRecords,
   recoverAllMissingStoreData,
   addTombstonesToMap,
   isItemTombstoned,
@@ -250,7 +252,7 @@ function AppContent() {
         return updatedData;
       });
       isInitialSyncDoneRef.current = true;
-    }, DEFAULT_STORE_ID);
+    }, DEFAULT_STORE_ID, { skipCloudIfUnauthenticated: !sessionUser });
   }, []);
 
   // Safeguard: Ensure salesman role is never on admin-only tabs & desktop never stays on mobile 'home'
@@ -596,7 +598,16 @@ function AppContent() {
 
     document.documentElement.classList.add('ios-device');
 
+    const syncStandaloneClass = () => {
+      const isStandalone =
+        Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone) ||
+        window.matchMedia('(display-mode: standalone)').matches ||
+        window.matchMedia('(display-mode: fullscreen)').matches;
+      document.documentElement.classList.toggle('ios-standalone', isStandalone);
+    };
+
     const syncIOSViewport = () => {
+      syncStandaloneClass();
       const active = document.activeElement as HTMLElement | null;
       const isTyping =
         active &&
@@ -605,7 +616,9 @@ function AppContent() {
           active.tagName === 'SELECT' ||
           active.isContentEditable);
 
-      document.documentElement.style.setProperty('--ios-app-height', `${Math.round(window.innerHeight)}px`);
+      if (!isTyping && window.innerHeight > 0) {
+        document.documentElement.style.setProperty('--ios-app-height', `${Math.round(window.innerHeight)}px`);
+      }
 
       if (!isTyping && (window.scrollY !== 0 || window.scrollX !== 0)) {
         window.scrollTo(0, 0);
@@ -621,7 +634,9 @@ function AppContent() {
     const t2 = window.setTimeout(syncIOSViewport, 250);
     const t3 = window.setTimeout(syncIOSViewport, 600);
 
+    const vv = window.visualViewport;
     window.addEventListener('resize', syncIOSViewport);
+    vv?.addEventListener('resize', syncIOSViewport);
     window.addEventListener('orientationchange', syncIOSViewport);
     window.addEventListener('pageshow', syncIOSViewport);
     document.addEventListener('visibilitychange', syncIOSViewport);
@@ -632,6 +647,7 @@ function AppContent() {
       window.clearTimeout(t2);
       window.clearTimeout(t3);
       window.removeEventListener('resize', syncIOSViewport);
+      vv?.removeEventListener('resize', syncIOSViewport);
       window.removeEventListener('orientationchange', syncIOSViewport);
       window.removeEventListener('pageshow', syncIOSViewport);
       document.removeEventListener('visibilitychange', syncIOSViewport);
@@ -672,6 +688,8 @@ function AppContent() {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         flushPendingSave();
+      } else if (document.visibilityState === 'visible') {
+        processPendingWritesQueue().catch(() => {});
       }
     };
     window.addEventListener('beforeunload', flushPendingSave);
@@ -684,6 +702,7 @@ function AppContent() {
 
   // Live Real-Time Multi-Device Firestore Synchronization (Incremental Deltas + Root Config + Tombstones)
   useEffect(() => {
+    if (!isAuthenticated) return;
     const activeSid = DEFAULT_STORE_ID;
 
     const parseMs = (val?: string): number => {
@@ -830,28 +849,26 @@ function AppContent() {
               const localMs = parseMs(meta.getTime(existingItem));
               const remoteMs = parseMs(itemTimeStr);
 
-              // Keep local item if it has a strictly newer timestamp
-              if (localMs > remoteMs) {
-                continue;
-              }
-
-              let mergedItem: any = { ...existingItem, ...item };
-              if (colKey === 'inventory' || colKey === 'expenses') {
-                mergedItem.image = (item as any).image || existingItem.image;
-              } else if (colKey === 'supplierPurchases') {
-                mergedItem.invoiceImage = (item as any).invoiceImage || existingItem.invoiceImage;
-              } else if (colKey === 'khata') {
-                mergedItem.image = (item as any).image || existingItem.image;
-                const deletedTxIds = Array.from(
-                  new Set([
-                    ...(Array.isArray(existingItem.deletedTxIds) ? existingItem.deletedTxIds : []),
-                    ...(Array.isArray((item as any).deletedTxIds) ? (item as any).deletedTxIds : []),
-                  ])
+              let mergedItem: any;
+              if (colKey === 'khata') {
+                // Merge Khata transactions and tombstones across devices even if local has a newer timestamp
+                mergedItem = mergeKhataCustomerRecords(
+                  existingItem as KhataCustomer,
+                  item as unknown as KhataCustomer,
+                  true
                 );
-                const deletedTxSet = new Set(deletedTxIds);
-                const incHist = Array.isArray((item as any).history) ? (item as any).history : [];
-                mergedItem.deletedTxIds = deletedTxIds.length > 0 ? deletedTxIds : undefined;
-                mergedItem.history = incHist.filter((tx: any) => !deletedTxSet.has(tx.id));
+              } else {
+                // Keep local item if it has a strictly newer timestamp
+                if (localMs > remoteMs) {
+                  continue;
+                }
+
+                mergedItem = { ...existingItem, ...item };
+                if (colKey === 'inventory' || colKey === 'expenses') {
+                  mergedItem.image = (item as any).image || existingItem.image;
+                } else if (colKey === 'supplierPurchases') {
+                  mergedItem.invoiceImage = (item as any).invoiceImage || existingItem.invoiceImage;
+                }
               }
 
               if (JSON.stringify(existingItem) !== JSON.stringify(mergedItem)) {
@@ -887,7 +904,7 @@ function AppContent() {
     return () => {
       unsubscribe();
     };
-  }, [data.currentUser?.storeId, data.currentUser?.id]);
+  }, [isAuthenticated]);
 
   // Mobile keyboard scroll into view handler
   useEffect(() => {
@@ -929,7 +946,7 @@ function AppContent() {
           }));
         },
         activeSid,
-        { currentState: dataRef.current }
+        { currentState: dataRef.current, forceServer: true, forceFullSync: true }
       );
       showToast('Latest data & images synchronized cleanly!', 'success');
     } catch (err) {
@@ -2393,22 +2410,25 @@ function AppContent() {
               })
               .catch(() => {});
 
-            // 3. Background refresh & authoritative reconciliation from Cloud Firestore (main_store)
+            // 3. Background refresh from Cloud Firestore (incremental delta or skip if just synced)
             (async () => {
               try {
                 await processPendingWritesQueue().catch(() => {});
                 const pendingOps = await getPendingWrites();
-                const { data: remoteData, fromServer } = await loadAppDataFromFirestoreWithMeta(activeStoreId);
+                const { data: remoteData, fromServer, isFullSnapshot } = await loadAppDataFromFirestoreWithMeta(
+                  activeStoreId,
+                  { skipSubcollectionsIfRecentMs: 10 * 60 * 1000 }
+                );
                 if (remoteData) {
                   const preMerged =
-                    pendingOps.length === 0 && fromServer
-                      ? reconcileWithAuthoritativeCloud(dataRef.current, remoteData)
+                    pendingOps.length === 0 && fromServer && isFullSnapshot
+                      ? reconcileWithAuthoritativeCloud(dataRef.current, remoteData as AppData)
                       : mergeAppData(dataRef.current, remoteData);
 
                   setData(prev => {
                     const merged =
-                      pendingOps.length === 0 && fromServer
-                        ? reconcileWithAuthoritativeCloud(prev, remoteData)
+                      pendingOps.length === 0 && fromServer && isFullSnapshot
+                        ? reconcileWithAuthoritativeCloud(prev, remoteData as AppData)
                         : mergeAppData(prev, remoteData);
 
                     const rUsers = (merged.users || []).filter(
@@ -2425,7 +2445,7 @@ function AppContent() {
                     saveStoredData(finalData, activeStoreId);
                     return finalData;
                   });
-                  if (fromServer) {
+                  if (fromServer && isFullSnapshot) {
                     enqueuePreservedLocalSalesIfMissingFromCloud(
                       preMerged,
                       remoteData,
@@ -2438,7 +2458,17 @@ function AppContent() {
               }
             })();
 
-            saveUserToFirestore(user, activeStoreId).catch(() => {});
+            const knownUser = (localStoreData.users || dataRef.current.users || []).find(u => u.id === user.id);
+            const userNeedsCloudSync =
+              !knownUser ||
+              knownUser.storeId !== activeStoreId ||
+              knownUser.password !== user.password ||
+              knownUser.role !== user.role ||
+              knownUser.is2faEnabled !== user.is2faEnabled ||
+              knownUser.totpSecret !== user.totpSecret;
+            if (userNeedsCloudSync) {
+              saveUserToFirestore(user, activeStoreId).catch(() => {});
+            }
           }}
           settings={data.settings}
         />
@@ -2522,7 +2552,7 @@ function AppContent() {
               ? 'overflow-hidden p-2.5 pb-[calc(0.65rem+env(safe-area-inset-bottom,0px))] lg:hidden flex flex-col'
               : activeTab === 'pos'
               ? 'overflow-y-auto touch-pan-y p-2 sm:p-3 lg:p-3 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] lg:pb-4'
-              : 'overflow-y-auto touch-pan-y p-2.5 sm:p-5 pb-[calc(4rem+env(safe-area-inset-bottom,0px))] lg:pb-6'
+              : 'overflow-y-auto touch-pan-y p-2.5 sm:p-5 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] lg:pb-6'
           }`}
         >
           <div
@@ -2801,6 +2831,8 @@ function AppContent() {
         onRenameCategory={handleRenameCategory}
         onStockAdjustment={handleStockAdjustment}
         isAdmin={(data.currentRole || 'admin') === 'admin'}
+        khata={data.khata || []}
+        supplierPurchases={data.supplierPurchases || []}
       />
 
       <UsedMobilesModal

@@ -66,16 +66,21 @@ export interface FirestoreErrorInfo {
 const QUOTA_STORAGE_KEY = 'MOBILE_POS_QUOTA_EXCEEDED_AT';
 const LEGACY_QUOTA_KEY = 'MOBILE_POS_QUOTA_EXCEEDED';
 const USAGE_STORAGE_KEY = 'MOBILE_POS_DAILY_CLOUD_USAGE';
-const QUOTA_RESET_MS = 60 * 60 * 1000; // 1 hour retry cooldown
+const QUOTA_RESET_MS = 60 * 60 * 1000; // 1 hour retry cooldown for daily quota
+const RATE_QUOTA_RESET_MS = 5 * 60 * 1000; // 5 min cooldown for burst rate limits
 
 export const FIREBASE_FREE_DAILY_WRITES_LIMIT = 20000;
 export const FIREBASE_FREE_DAILY_READS_LIMIT = 50000;
+
+export type QuotaReasonType = 'write' | 'read' | 'rate' | 'unknown';
 
 export interface DailyCloudUsage {
   pacificDate: string;
   writesToday: number;
   readsToday: number;
   serverQuotaFull: boolean;
+  quotaReason?: QuotaReasonType;
+  lastRawQuotaError?: string;
   lastServerQuotaAt?: string;
   lastSuccessfulWriteAt?: string;
 }
@@ -129,6 +134,8 @@ function loadRawDailyUsage(): DailyCloudUsage {
           writesToday: Number(parsed.writesToday) || 0,
           readsToday: Number(parsed.readsToday) || 0,
           serverQuotaFull: Boolean(parsed.serverQuotaFull),
+          quotaReason: parsed.quotaReason,
+          lastRawQuotaError: parsed.lastRawQuotaError,
           lastServerQuotaAt: parsed.lastServerQuotaAt,
           lastSuccessfulWriteAt: parsed.lastSuccessfulWriteAt,
         };
@@ -163,6 +170,8 @@ export function recordCloudWrite(count = 1): void {
   usage.writesToday += count;
   usage.lastSuccessfulWriteAt = new Date().toISOString();
   usage.serverQuotaFull = false;
+  usage.quotaReason = undefined;
+  usage.lastRawQuotaError = undefined;
   saveRawDailyUsage(usage);
 }
 
@@ -174,6 +183,7 @@ export function recordCloudRead(count = 1): void {
 }
 
 let quotaExceededAt: number | null = null;
+let quotaExceededReason: QuotaReasonType = 'unknown';
 const quotaListeners: Array<(isExceeded: boolean) => void> = [];
 
 let lastCloudErrorMessage: string | null = null;
@@ -222,8 +232,17 @@ export function isQuotaError(error: unknown): boolean {
   );
 }
 
+export function detectQuotaReason(error: unknown, fallback?: QuotaReasonType): QuotaReasonType {
+  const msg = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
+  if (/read units|free daily read|read quota/i.test(msg)) return 'read';
+  if (/write units|free daily write|write quota|mutations/i.test(msg)) return 'write';
+  if (/rate|per minute|too many requests|429|burst/i.test(msg)) return 'rate';
+  return fallback || 'unknown';
+}
+
 function clearQuotaStorage(): void {
   quotaExceededAt = null;
+  quotaExceededReason = 'unknown';
   try {
     localStorage.removeItem(QUOTA_STORAGE_KEY);
     localStorage.removeItem(LEGACY_QUOTA_KEY);
@@ -232,29 +251,66 @@ function clearQuotaStorage(): void {
   }
 }
 
-export function setQuotaExceededFlag(val: boolean): void {
+export function setQuotaExceededFlag(
+  val: boolean,
+  rawError?: unknown,
+  opKind?: QuotaReasonType
+): void {
   const prevActive = getQuotaExceededFlag();
   if (val) {
     const now = Date.now();
+    const pacificDate = getPacificDateKey(new Date(now));
+    const reason = detectQuotaReason(rawError, opKind);
+    const rawMsg =
+      rawError instanceof Error
+        ? rawError.message
+        : typeof rawError === 'string'
+        ? rawError
+        : '';
+    const cleanRaw = rawMsg.trim().slice(0, 400);
+
     quotaExceededAt = now;
+    quotaExceededReason = reason;
     try {
-      localStorage.setItem(QUOTA_STORAGE_KEY, String(now));
+      localStorage.setItem(
+        QUOTA_STORAGE_KEY,
+        JSON.stringify({ ts: now, pacificDate, reason })
+      );
     } catch {
       // ignore
     }
+
     const usage = loadRawDailyUsage();
     usage.serverQuotaFull = true;
+    usage.quotaReason = reason;
+    if (cleanRaw) {
+      usage.lastRawQuotaError = cleanRaw;
+    }
     usage.lastServerQuotaAt = new Date(now).toISOString();
     saveRawDailyUsage(usage);
 
-    setLastCloudError(
-      'Daily Firestore free write quota exceeded for today. Changes are safely saved locally and will auto-sync after quota reset (midnight PT).'
-    );
+    const summaryMsg =
+      reason === 'read'
+        ? 'Firestore Free Daily Read / Query Quota Exceeded. Local data & cache remain active.'
+        : reason === 'rate'
+        ? 'Firestore Request Rate Limit reached temporarily. Auto-resuming shortly.'
+        : reason === 'write'
+        ? 'Firestore Daily Write Quota Exceeded. Changes are safely saved locally and will auto-sync after reset.'
+        : 'Firestore Quota Limit Exceeded (server shared limit). Changes are safely saved locally.';
+
+    setLastCloudError(cleanRaw ? `${summaryMsg} (${cleanRaw})` : summaryMsg);
     if (!prevActive) {
       quotaListeners.forEach(l => l(true));
     }
   } else {
     clearQuotaStorage();
+    const usage = loadRawDailyUsage();
+    if (usage.serverQuotaFull) {
+      usage.serverQuotaFull = false;
+      usage.quotaReason = undefined;
+      usage.lastRawQuotaError = undefined;
+      saveRawDailyUsage(usage);
+    }
     enableNetwork(db).catch(() => {});
     if (prevActive) {
       quotaListeners.forEach(l => l(false));
@@ -263,10 +319,19 @@ export function setQuotaExceededFlag(val: boolean): void {
 }
 
 export function getQuotaExceededFlag(): boolean {
+  const todayPt = getPacificDateKey();
+  const cooldownMs = quotaExceededReason === 'rate' ? RATE_QUOTA_RESET_MS : QUOTA_RESET_MS;
+
   if (quotaExceededAt !== null) {
-    if (Date.now() - quotaExceededAt >= QUOTA_RESET_MS) {
-      // Auto-reset after 1 hour
+    const storedDatePt = getPacificDateKey(new Date(quotaExceededAt));
+    if (storedDatePt !== todayPt || Date.now() - quotaExceededAt >= cooldownMs) {
       clearQuotaStorage();
+      const usage = loadRawDailyUsage();
+      if (usage.serverQuotaFull) {
+        usage.serverQuotaFull = false;
+        usage.quotaReason = undefined;
+        saveRawDailyUsage(usage);
+      }
       enableNetwork(db).catch(() => {});
       quotaListeners.forEach(l => l(false));
       return false;
@@ -277,9 +342,28 @@ export function getQuotaExceededFlag(): boolean {
   try {
     const stored = localStorage.getItem(QUOTA_STORAGE_KEY);
     if (stored) {
-      const ts = Number(stored);
-      if (Number.isFinite(ts) && Date.now() - ts < QUOTA_RESET_MS) {
+      let ts = 0;
+      let storedPt = '';
+      let storedReason: QuotaReasonType = 'unknown';
+      if (stored.startsWith('{')) {
+        const parsed = JSON.parse(stored) as { ts?: number; pacificDate?: string; reason?: QuotaReasonType };
+        ts = Number(parsed.ts) || 0;
+        storedPt = parsed.pacificDate || '';
+        storedReason = parsed.reason || 'unknown';
+      } else {
+        ts = Number(stored);
+        storedPt = Number.isFinite(ts) && ts > 0 ? getPacificDateKey(new Date(ts)) : '';
+      }
+
+      const storedCooldown = storedReason === 'rate' ? RATE_QUOTA_RESET_MS : QUOTA_RESET_MS;
+      if (
+        Number.isFinite(ts) &&
+        ts > 0 &&
+        storedPt === todayPt &&
+        Date.now() - ts < storedCooldown
+      ) {
         quotaExceededAt = ts;
+        quotaExceededReason = storedReason;
         return true;
       }
       clearQuotaStorage();
@@ -290,13 +374,16 @@ export function getQuotaExceededFlag(): boolean {
   return false;
 }
 
-// Reset quota flag on app start and ensure Firestore network is enabled
-clearQuotaStorage();
+// Respect persisted quota cooldown across page reloads; auto-clear only if PT day rolled over or cooldown elapsed
+getQuotaExceededFlag();
 enableNetwork(db).catch(() => {});
 
 if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
-    setQuotaExceededFlag(false);
+    // Only clear network/rate errors automatically on reconnect; preserve daily quota cooldown until PT reset/retry
+    if (quotaExceededReason === 'rate') {
+      setQuotaExceededFlag(false);
+    }
     enableNetwork(db).catch(() => {});
   });
 }
@@ -384,7 +471,9 @@ export async function ensureAnonymousAuth(): Promise<User | null> {
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): void {
   if (isQuotaError(error)) {
-    setQuotaExceededFlag(true);
+    const opKind: QuotaReasonType =
+      operationType === OperationType.GET || operationType === OperationType.LIST ? 'read' : 'write';
+    setQuotaExceededFlag(true, error, opKind);
     console.warn(
       `[Firestore Quota Notice] Operation ${operationType} on [${path}] reached daily limit. Pending writes queued locally.`
     );
@@ -432,7 +521,7 @@ onLog(
     if (log.level === 'error') {
       console.error(`[${now}]  ${log.type}:`, ...log.args);
       if (isQuotaError(log.message)) {
-        setQuotaExceededFlag(true);
+        setQuotaExceededFlag(true, log.message);
       }
     }
   },
@@ -441,13 +530,15 @@ onLog(
 
 // Sign in silently and test connection on boot per skill guidelines
 async function testConnection() {
+  if (getQuotaExceededFlag()) return;
   await ensureAnonymousAuth();
   if (getQuotaExceededFlag()) return;
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
+    recordCloudRead(1);
   } catch (error) {
     if (isQuotaError(error)) {
-      setQuotaExceededFlag(true);
+      setQuotaExceededFlag(true, error, 'read');
     }
   }
 }

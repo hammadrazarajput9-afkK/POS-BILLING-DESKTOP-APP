@@ -39,6 +39,9 @@ import {
   isUsedCategory,
   MAX_SINGLE_IMEI_LENGTH,
 } from '../utils/imeiManager';
+import { KhataCustomer, SupplierPurchase } from '../types';
+import { buildMergedContactDirectory } from '../utils/phoneContacts';
+import { PhoneContactInput, useSavedPhoneContacts } from './PhoneContactInput';
 
 export interface StockModalProps {
   isOpen: boolean;
@@ -66,6 +69,8 @@ export interface StockModalProps {
   isAdmin?: boolean;
   allowCostEntry?: boolean;
   initialCategory?: string;
+  khata?: KhataCustomer[];
+  supplierPurchases?: SupplierPurchase[];
 }
 
 interface StockDraftState {
@@ -247,11 +252,25 @@ export const StockModal: React.FC<StockModalProps> = ({
   isAdmin = true,
   allowCostEntry = false,
   initialCategory,
+  khata = [],
+  supplierPurchases = [],
 }) => {
   const canSeeCostAndWholesale = true;
   const canSeeProfitSummary = isAdmin;
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const savedPhoneContacts = useSavedPhoneContacts();
+  const mergedSellerContacts = useMemo(
+    () =>
+      buildMergedContactDirectory({
+        savedPhoneContacts,
+        khata,
+        supplierPurchases,
+        sales,
+        inventory,
+      }),
+    [savedPhoneContacts, khata, supplierPurchases, sales, inventory]
+  );
 
   const [draftData, setDraftData, resetDraft] = useFormDraft<StockDraftState>(
     'stock_add_modal_form_v2',
@@ -1719,24 +1738,39 @@ export const StockModal: React.FC<StockModalProps> = ({
                   <label className="flex items-center gap-1 font-bold text-slate-700 mb-0.5 text-[10px]">
                     <User className="w-3 h-3 text-purple-600" /> Purchased From (Seller / Party Name)
                   </label>
-                  <input
+                  <PhoneContactInput
                     type="text"
                     value={purchasedFrom}
-                    onChange={e => setPurchasedFrom(e.target.value)}
+                    onChange={setPurchasedFrom}
+                    onSelectContact={c => {
+                      if (c.name) setPurchasedFrom(c.name);
+                      if (c.phone) setPurchasedPhone(c.phone);
+                    }}
+                    contacts={mergedSellerContacts}
                     placeholder="e.g. Ali Raza / Walk-in Seller"
-                    className="compact-mobile-input w-full bg-white border border-purple-200 rounded-lg px-2.5 h-8 text-xs font-semibold focus:outline-none focus:border-purple-600"
+                    accent="purple"
+                    showContactPickerButton={false}
+                    openOnFocus={false}
+                    minCharsToOpen={1}
+                    inputClassName="compact-mobile-input w-full bg-white border border-purple-200 rounded-lg px-2.5 h-8 text-xs font-semibold focus:outline-none focus:border-purple-600"
                   />
                 </div>
                 <div>
                   <label className="flex items-center gap-1 font-bold text-slate-700 mb-0.5 text-[10px]">
                     <Smartphone className="w-3 h-3 text-purple-600" /> Seller Phone / CNIC Note
                   </label>
-                  <input
-                    type="text"
+                  <PhoneContactInput
+                    type="tel"
                     value={purchasedPhone}
-                    onChange={e => setPurchasedPhone(e.target.value)}
+                    onChange={setPurchasedPhone}
+                    onSelectContact={c => {
+                      if (c.phone) setPurchasedPhone(c.phone);
+                      if (c.name) setPurchasedFrom(c.name);
+                    }}
+                    contacts={mergedSellerContacts}
                     placeholder="e.g. 0300-1234567"
-                    className="compact-mobile-input w-full bg-white border border-purple-200 rounded-lg px-2.5 h-8 text-xs font-semibold tabular-nums focus:outline-none focus:border-purple-600"
+                    accent="purple"
+                    inputClassName="compact-mobile-input w-full bg-white border border-purple-200 rounded-lg px-2.5 h-8 text-xs font-semibold tabular-nums focus:outline-none focus:border-purple-600"
                   />
                 </div>
               </div>

@@ -71,6 +71,9 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
       remainingImeis?: string[];
       variants?: typeof data.inventory[number]['variants'];
       updatedAt?: string;
+      soldQty?: number;
+      soldImeis?: string[];
+      baseUpdatedAt?: string;
     }> = [];
 
     const updatedInventory = data.inventory.map(invItem => {
@@ -114,6 +117,9 @@ export function useSales({ data, setData, logActivity, showToast }: UseSalesProp
           remainingImeis,
           variants: updatedVariants,
           updatedAt: now,
+          soldQty: totalSoldQty,
+          soldImeis: soldImeisList,
+          baseUpdatedAt: invItem.updatedAt || invItem.createdAt,
         });
 
         return {

@@ -41,6 +41,8 @@ import { buildGoogleMapsTrackUrl, buildGoogleMapsViewUrl } from '../utils/mapsCo
 import { compressImage } from '../utils/imageCompressor';
 import { smartMatch } from '../utils/smartSearch';
 import { cleanWhatsAppPhone, formatLedgerTimestamp, getInitials } from '../utils/ledgerFormatters';
+import { buildMergedContactDirectory } from '../utils/phoneContacts';
+import { PhoneContactInput, useSavedPhoneContacts } from './PhoneContactInput';
 
 export interface CustomerAccountUpdatePayload {
   id: string;
@@ -205,6 +207,16 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
       setWorkspaceView('ledger');
     }
   }, [isOpen, initialTxId]);
+
+  const savedPhoneContacts = useSavedPhoneContacts();
+  const mergedProfileContacts = useMemo(
+    () =>
+      buildMergedContactDirectory({
+        savedPhoneContacts,
+        sales,
+      }),
+    [savedPhoneContacts, sales]
+  );
 
   const history = customer?.history || [];
 
@@ -1283,21 +1295,35 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                   </div>
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1">Primary Phone *</label>
-                    <input
-                      type="text"
+                    <PhoneContactInput
+                      type="tel"
                       required
                       value={profilePhone}
-                      onChange={e => setProfilePhone(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 tabular-nums focus:outline-none focus:border-emerald-600 focus:bg-white"
+                      onChange={setProfilePhone}
+                      onSelectContact={c => {
+                        if (c.phone) setProfilePhone(c.phone);
+                        if (c.name) setProfileName(c.name);
+                        if (c.phone2 && !profilePhone2.trim()) setProfilePhone2(c.phone2);
+                      }}
+                      contacts={mergedProfileContacts}
+                      placeholder="03XX-XXXXXXX"
+                      accent="emerald"
+                      inputClassName="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 tabular-nums focus:outline-none focus:border-emerald-600 focus:bg-white"
                     />
                   </div>
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1">Secondary Phone</label>
-                    <input
-                      type="text"
+                    <PhoneContactInput
+                      type="tel"
                       value={profilePhone2}
-                      onChange={e => setProfilePhone2(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 tabular-nums focus:outline-none focus:border-emerald-600 focus:bg-white"
+                      onChange={setProfilePhone2}
+                      onSelectContact={c => {
+                        if (c.phone) setProfilePhone2(c.phone);
+                      }}
+                      contacts={mergedProfileContacts}
+                      placeholder="Optional"
+                      accent="emerald"
+                      inputClassName="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 tabular-nums focus:outline-none focus:border-emerald-600 focus:bg-white"
                     />
                   </div>
                   <div>
@@ -1399,11 +1425,18 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                   </div>
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1">Guarantor Phone</label>
-                    <input
-                      type="text"
+                    <PhoneContactInput
+                      type="tel"
                       value={profileGuarantorPhone}
-                      onChange={e => setProfileGuarantorPhone(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 tabular-nums focus:outline-none focus:border-emerald-600 focus:bg-white"
+                      onChange={setProfileGuarantorPhone}
+                      onSelectContact={c => {
+                        if (c.phone) setProfileGuarantorPhone(c.phone);
+                        if (c.name) setProfileGuarantorName(c.name);
+                      }}
+                      contacts={mergedProfileContacts}
+                      placeholder="03XX-XXXXXXX"
+                      accent="emerald"
+                      inputClassName="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 tabular-nums focus:outline-none focus:border-emerald-600 focus:bg-white"
                     />
                   </div>
                   <div className="sm:col-span-2">

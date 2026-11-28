@@ -122,11 +122,18 @@ export const OnlineStatusBadge: React.FC<OnlineStatusBadgeProps> = ({
 
   const writesToday = status.dailyUsage?.writesToday || 0;
   const readsToday = status.dailyUsage?.readsToday || 0;
+  const quotaReason = status.dailyUsage?.quotaReason || 'unknown';
+  const rawQuotaError = status.dailyUsage?.lastRawQuotaError;
   const isServerQuotaFull = Boolean(status.isQuotaExceeded || status.dailyUsage?.serverQuotaFull);
-  const writePct = isServerQuotaFull
+  const isServerWriteQuotaFull = isServerQuotaFull && quotaReason === 'write';
+  const isServerReadQuotaFull = isServerQuotaFull && quotaReason === 'read';
+  const isServerRateLimit = isServerQuotaFull && quotaReason === 'rate';
+  const writePct = isServerWriteQuotaFull
     ? 100
     : Math.min(100, Math.round((writesToday / FIREBASE_FREE_DAILY_WRITES_LIMIT) * 100));
-  const readPct = Math.min(100, Math.round((readsToday / FIREBASE_FREE_DAILY_READS_LIMIT) * 100));
+  const readPct = isServerReadQuotaFull
+    ? 100
+    : Math.min(100, Math.round((readsToday / FIREBASE_FREE_DAILY_READS_LIMIT) * 100));
 
   let badgeClasses =
     'bg-emerald-50 text-emerald-700 border-emerald-200/80 hover:bg-emerald-100';
@@ -140,7 +147,7 @@ export const OnlineStatusBadge: React.FC<OnlineStatusBadgeProps> = ({
   } else if (status.isQuotaExceeded) {
     badgeClasses = 'bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100';
     dotClasses = 'bg-rose-500';
-    labelText = 'Quota Full (Local Safe)';
+    labelText = isServerRateLimit ? 'Rate Limit (Local Safe)' : 'Quota Full (Local Safe)';
   } else if (hasCloudError) {
     badgeClasses = 'bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100';
     dotClasses = 'bg-rose-500';
@@ -158,9 +165,23 @@ export const OnlineStatusBadge: React.FC<OnlineStatusBadgeProps> = ({
     offlineReasonDetail =
       'Aapke device ka internet (Wi-Fi / Data) band hai. Nayi entries LocalStorage aur IndexedDB mein save ho rahi hain aur internet aatay hi cloud par upload hongi.';
   } else if (status.offlineReason === 'quota_exceeded') {
-    offlineReasonTitle = 'Firebase Free Daily Write Limit Full (RESOURCE_EXHAUSTED)';
-    offlineReasonDetail =
-      'Aaj ki Firebase Free Tier daily write limit (20,000 writes/day) server par poori ho chuki hai. Aapka data is waqt LocalStorage aur IndexedDB mein safe ho raha hai aur quota reset hotay hi auto-sync hoga.';
+    if (isServerReadQuotaFull) {
+      offlineReasonTitle = 'Firebase Free Daily Read Limit Full (RESOURCE_EXHAUSTED)';
+      offlineReasonDetail =
+        'Aaj ki Firebase Free Tier daily read/query limit (50,000 reads/day — tamam devices par shared) poori ho chuki hai. Aapka data is waqt LocalStorage aur IndexedDB mein bilkul safe hai aur reset hotay hi auto-sync hoga.';
+    } else if (isServerRateLimit) {
+      offlineReasonTitle = 'Firebase Temporary Rate Limit (429 / RESOURCE_EXHAUSTED)';
+      offlineReasonDetail =
+        'Server par temporary request burst limit aayi hai (daily quota khatam nahi hui). Aapka data local save ho raha hai aur 5 minute mein ya Retry dabane par sync ho jayega.';
+    } else if (isServerWriteQuotaFull) {
+      offlineReasonTitle = 'Firebase Free Daily Write Limit Full (RESOURCE_EXHAUSTED)';
+      offlineReasonDetail =
+        'Aaj ki Firebase Free Tier daily write limit (20,000 writes/day — tamam devices par shared) poori ho chuki hai. Aapka data is waqt LocalStorage aur IndexedDB mein safe ho raha hai aur reset hotay hi auto-sync hoga.';
+    } else {
+      offlineReasonTitle = 'Firebase Server Quota Exceeded (RESOURCE_EXHAUSTED)';
+      offlineReasonDetail =
+        'Firebase server ne aaj ka free quota limit block kiya hai (ye limit tamam devices/tabs mein shared hoti hai). Aapka data LocalStorage aur IndexedDB mein safe ho raha hai aur reset hotay hi auto-sync hoga.';
+    }
   } else if (status.offlineReason === 'auth_blocked') {
     offlineReasonTitle = 'Firebase Authentication Blocked';
     offlineReasonDetail =
@@ -322,25 +343,25 @@ export const OnlineStatusBadge: React.FC<OnlineStatusBadgeProps> = ({
                   </span>
                 </div>
 
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   <div>
                     <div className="flex justify-between text-[11px] font-semibold text-slate-700">
                       <span>Writes (This device today)</span>
                       <span className="tabular-nums">
                         {writesToday.toLocaleString()} / {FIREBASE_FREE_DAILY_WRITES_LIMIT.toLocaleString()}
-                        {isServerQuotaFull ? ' (Server Quota Full)' : ` (${writePct}%)`}
+                        {isServerWriteQuotaFull ? ' (Server Quota Full)' : ` (${writePct}%)`}
                       </span>
                     </div>
                     <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden mt-1">
                       <div
                         className={`h-full transition-all ${
-                          isServerQuotaFull || writePct >= 85
+                          isServerWriteQuotaFull || writePct >= 85
                             ? 'bg-rose-500'
                             : writePct >= 50
                             ? 'bg-amber-500'
                             : 'bg-emerald-500'
                         }`}
-                        style={{ width: `${Math.max(writePct, isServerQuotaFull ? 100 : 2)}%` }}
+                        style={{ width: `${Math.max(writePct, isServerWriteQuotaFull ? 100 : 2)}%` }}
                       />
                     </div>
                   </div>
@@ -349,14 +370,27 @@ export const OnlineStatusBadge: React.FC<OnlineStatusBadgeProps> = ({
                     <div className="flex justify-between text-[11px] font-semibold text-slate-600">
                       <span>Reads (This device today)</span>
                       <span className="tabular-nums">
-                        {readsToday.toLocaleString()} / {FIREBASE_FREE_DAILY_READS_LIMIT.toLocaleString()} ({readPct}%)
+                        {readsToday.toLocaleString()} / {FIREBASE_FREE_DAILY_READS_LIMIT.toLocaleString()}
+                        {isServerReadQuotaFull ? ' (Server Quota Full)' : ` (${readPct}%)`}
                       </span>
+                    </div>
+                    <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden mt-1">
+                      <div
+                        className={`h-full transition-all ${
+                          isServerReadQuotaFull || readPct >= 85
+                            ? 'bg-rose-500'
+                            : readPct >= 50
+                            ? 'bg-amber-500'
+                            : 'bg-blue-500'
+                        }`}
+                        style={{ width: `${Math.max(readPct, isServerReadQuotaFull ? 100 : 2)}%` }}
+                      />
                     </div>
                   </div>
                 </div>
 
                 <p className="text-[10px] text-slate-500 leading-snug">
-                  Free quota resets in <strong>{formatTimeUntilQuotaReset()}</strong>. Server quota is shared across all sessions/devices of this project.
+                  Free quota resets in <strong>{formatTimeUntilQuotaReset()}</strong>. Server quota is shared across all devices, browsers &amp; tabs of this project.
                 </p>
               </div>
 
@@ -451,9 +485,9 @@ export const OnlineStatusBadge: React.FC<OnlineStatusBadgeProps> = ({
                   </div>
                   <p className="text-[11px] font-bold text-rose-900">{offlineReasonTitle}</p>
                   <p className="text-[11px] leading-relaxed text-rose-800">{offlineReasonDetail}</p>
-                  {effectiveLastError && (
+                  {(effectiveLastError || rawQuotaError) && (
                     <p className="text-[10px] font-mono bg-white/70 border border-rose-200/70 rounded-lg p-2 break-words text-rose-800">
-                      Detail: {effectiveLastError}
+                      Detail: {effectiveLastError || rawQuotaError}
                     </p>
                   )}
                   {isAnonymousAuthDisabled && (

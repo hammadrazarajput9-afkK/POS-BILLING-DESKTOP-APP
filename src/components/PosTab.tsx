@@ -33,6 +33,8 @@ import { useFormDraft } from '../hooks/useFormDraft';
 import { generateNextInvoiceNumber, extractItemImeis, isUsedCategory } from '../utils/imeiManager';
 import { InvoiceShareModal } from './InvoiceShareModal';
 import { smartFilterAndSort, smartMatch, smartSearchScore } from '../utils/smartSearch';
+import { SavedPhoneContact, buildMergedContactDirectory } from '../utils/phoneContacts';
+import { PhoneContactInput, useSavedPhoneContacts } from './PhoneContactInput';
 
 interface PosTabProps {
   inventory: InventoryItem[];
@@ -729,6 +731,31 @@ const PosTabComponent: React.FC<PosTabProps> = ({
         selectedKhataId: keepsSelection ? prev.selectedKhataId : '',
       };
     });
+  };
+
+  const savedPhoneContacts = useSavedPhoneContacts();
+  const posContactsDirectory = useMemo(
+    () =>
+      buildMergedContactDirectory({
+        savedPhoneContacts,
+        khata: khataCustomers,
+        sales,
+        inventory,
+      }),
+    [savedPhoneContacts, khataCustomers, sales, inventory]
+  );
+
+  const applyPosContact = (c: SavedPhoneContact) => {
+    if (c.khataId) {
+      setSelectedKhataId(c.khataId);
+      return;
+    }
+    setDraft(prev => ({
+      ...prev,
+      custName: c.name || prev.custName,
+      custPhone: c.phone || prev.custPhone,
+      selectedKhataId: '',
+    }));
   };
 
   const setCustPhone = (phone: string) => {
@@ -1506,23 +1533,32 @@ const PosTabComponent: React.FC<PosTabProps> = ({
           )}
 
           <div className={`grid gap-1.5 ${isMobile ? 'grid-cols-2' : 'grid-cols-1 sm:grid-cols-2'}`}>
-            <input
+            <PhoneContactInput
               type="text"
               value={custName}
-              onChange={e => setCustName(e.target.value)}
+              onChange={setCustName}
+              onSelectContact={applyPosContact}
+              contacts={posContactsDirectory}
               placeholder={saleMode === 'wholesale' ? 'Retailer Name *' : 'Customer Name'}
-              className={`compact-mobile-input border rounded-xl px-2.5 py-1 text-xs font-medium focus:outline-none focus:bg-white transition ${isMobile ? 'min-h-[32px]' : 'min-h-[36px]'} ${
+              accent={saleMode === 'wholesale' ? 'purple' : 'blue'}
+              showContactPickerButton={false}
+              openOnFocus={false}
+              minCharsToOpen={1}
+              inputClassName={`compact-mobile-input w-full border rounded-xl px-2.5 py-1 text-xs font-medium focus:outline-none focus:bg-white transition ${isMobile ? 'min-h-[32px]' : 'min-h-[36px]'} ${
                 saleMode === 'wholesale'
                   ? 'bg-purple-50/75 border-purple-200/80 focus:border-purple-600'
                   : 'bg-white/90 border-slate-200/80 focus:border-blue-600'
               }`}
             />
-            <input
-              type="text"
+            <PhoneContactInput
+              type="tel"
               value={custPhone}
-              onChange={e => setCustPhone(e.target.value)}
+              onChange={setCustPhone}
+              onSelectContact={applyPosContact}
+              contacts={posContactsDirectory}
               placeholder="Phone Number"
-              className={`compact-mobile-input border rounded-xl px-2.5 py-1 text-xs font-medium focus:outline-none focus:bg-white transition ${isMobile ? 'min-h-[32px]' : 'min-h-[36px]'} ${
+              accent={saleMode === 'wholesale' ? 'purple' : 'blue'}
+              inputClassName={`compact-mobile-input w-full border rounded-xl px-2.5 py-1 text-xs font-medium tabular-nums focus:outline-none focus:bg-white transition ${isMobile ? 'min-h-[32px]' : 'min-h-[36px]'} ${
                 saleMode === 'wholesale'
                   ? 'bg-purple-50/75 border-purple-200/80 focus:border-purple-600'
                   : 'bg-white/90 border-slate-200/80 focus:border-blue-600'
@@ -3091,12 +3127,18 @@ const PosTabComponent: React.FC<PosTabProps> = ({
 
                   <div>
                     <label className="font-bold text-slate-700 block mb-1">Customer Phone:</label>
-                    <input
-                      type="text"
+                    <PhoneContactInput
+                      type="tel"
                       value={quickCustPhone}
-                      onChange={e => setQuickCustPhone(e.target.value)}
+                      onChange={setQuickCustPhone}
+                      onSelectContact={c => {
+                        if (c.phone) setQuickCustPhone(c.phone);
+                        if (c.name) setQuickCustName(c.name);
+                      }}
+                      contacts={posContactsDirectory}
                       placeholder="0300-1234567"
-                      className="w-full p-2.5 rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                      accent="blue"
+                      inputClassName="w-full p-2.5 rounded-xl border border-slate-200 tabular-nums focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
 

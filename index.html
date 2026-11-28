@@ -24,7 +24,19 @@
           /iPad|iPhone|iPod/.test(ua) ||
           (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
         if (isIOS) {
-          document.documentElement.classList.add('ios-device');
+          var rootEl = document.documentElement;
+          rootEl.classList.add('ios-device');
+          var isStandalone =
+            window.navigator.standalone === true ||
+            (window.matchMedia &&
+              (window.matchMedia('(display-mode: standalone)').matches ||
+                window.matchMedia('(display-mode: fullscreen)').matches));
+          if (isStandalone) {
+            rootEl.classList.add('ios-standalone');
+          }
+          if (window.innerHeight > 0) {
+            rootEl.style.setProperty('--ios-app-height', Math.round(window.innerHeight) + 'px');
+          }
         }
       } catch (e) {}
     </script>

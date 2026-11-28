@@ -53,6 +53,8 @@ import { compressImage } from '../utils/imageCompressor';
 import { smartFilterAndSort, smartMatch } from '../utils/smartSearch';
 import { SupplierAccountModal, SupplierAccountSummary } from './SupplierAccountModal';
 import { formatLedgerTimestamp, getInitials, cleanWhatsAppPhone } from '../utils/ledgerFormatters';
+import { buildMergedContactDirectory, matchContacts } from '../utils/phoneContacts';
+import { PhoneContactInput, useSavedPhoneContacts } from './PhoneContactInput';
 
 const normalizeSupplierKey = (name?: string): string =>
   (name || 'Unknown Supplier').trim().replace(/\s+/g, ' ').toLowerCase();
@@ -1349,6 +1351,19 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
     });
   }, [supplierAccounts, search, statusFilter, dateFilter, billNosFromImeiRecords, isAdmin]);
 
+  const savedPhoneContacts = useSavedPhoneContacts();
+  const inwardContacts = useMemo(
+    () =>
+      buildMergedContactDirectory({
+        savedPhoneContacts,
+        khata: appData?.khata || [],
+        supplierPurchases: purchases,
+        sales,
+        inventory,
+      }),
+    [savedPhoneContacts, appData?.khata, purchases, sales, inventory]
+  );
+
   // Supplier autocomplete suggestions inside Add/Edit Purchase modal
   const matchingFormSuppliers = useMemo(() => {
     const q = partyName.trim().toLowerCase();
@@ -1361,6 +1376,13 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
       )
       .slice(0, 12);
   }, [supplierAccounts, partyName, isAdmin]);
+
+  const matchingExtraContacts = useMemo(() => {
+    const supplierNames = new Set(matchingFormSuppliers.map(s => normalizeSupplierKey(s.partyName)));
+    return matchContacts(inwardContacts, partyName, 10).filter(
+      c => !supplierNames.has(normalizeSupplierKey(c.name))
+    );
+  }, [inwardContacts, matchingFormSuppliers, partyName]);
 
   // Aggregate stats (active non-reversed purchases)
   const stats = useMemo(() => {
@@ -2103,13 +2125,13 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                     className="compact-mobile-input w-full px-2.5 h-8.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500"
                     autoComplete="off"
                   />
-                  {isPartyDropdownOpen && matchingFormSuppliers.length > 0 && (
+                  {isPartyDropdownOpen && (matchingFormSuppliers.length > 0 || matchingExtraContacts.length > 0) && (
                     <>
                       <div
                         className="fixed inset-0 z-20"
                         onClick={() => setIsPartyDropdownOpen(false)}
                       />
-                      <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-48 overflow-y-auto divide-y divide-slate-100">
+                      <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-52 overflow-y-auto divide-y divide-slate-100">
                         {matchingFormSuppliers.map(acc => (
                           <button
                             key={acc.key}
@@ -2135,6 +2157,28 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                             )}
                           </button>
                         ))}
+                        {matchingExtraContacts.map(c => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => {
+                              setPartyName(c.name);
+                              if (c.phone) setPartyPhone(c.phone);
+                              setIsPartyDropdownOpen(false);
+                            }}
+                            className="w-full px-3 py-2 text-left hover:bg-blue-50 transition flex items-center justify-between gap-2 text-xs cursor-pointer"
+                          >
+                            <div className="min-w-0">
+                              <p className="font-bold text-slate-900 truncate">{c.name}</p>
+                              <p className="text-[10px] text-slate-500 tabular-nums truncate">
+                                {c.phone || 'No number'}
+                              </p>
+                            </div>
+                            <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 shrink-0">
+                              {c.source === 'phone' ? 'Phone' : c.source === 'khata' ? 'Khata' : 'Contact'}
+                            </span>
+                          </button>
+                        ))}
                       </div>
                     </>
                   )}
@@ -2144,12 +2188,18 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                   <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
                     Phone
                   </label>
-                  <input
-                    type="text"
+                  <PhoneContactInput
+                    type="tel"
                     placeholder="0300-1234567"
                     value={partyPhone}
-                    onChange={e => setPartyPhone(e.target.value)}
-                    className="compact-mobile-input w-full px-2.5 h-8.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500"
+                    onChange={setPartyPhone}
+                    onSelectContact={c => {
+                      if (c.phone) setPartyPhone(c.phone);
+                      if (c.name) setPartyName(c.name);
+                    }}
+                    contacts={inwardContacts}
+                    accent="blue"
+                    inputClassName="compact-mobile-input w-full px-2.5 h-8.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold tabular-nums focus:outline-none focus:border-blue-500"
                   />
                 </div>
 
