@@ -1750,19 +1750,9 @@ export async function saveSaleAtomic(
       batch.set(actDocRef, sanitizeForFirestore(activityPayload) as Record<string, unknown>);
     }
 
-    const rootDocRef = doc(db, STORES_COLLECTION, storeId);
-    batch.set(
-      rootDocRef,
-      {
-        lastModified: now,
-        backupVersion: CURRENT_BACKUP_VERSION,
-      },
-      { merge: true }
-    );
-
     await awaitWriteWithQuotaAndTimeout(batch.commit());
     await removePendingWritesByRefs(preQueuedRefs);
-    recordCloudWrite(2 + inventoryUpdates.length + (khataUpdate ? 1 : 0) + (activity ? 1 : 0));
+    recordCloudWrite(1 + inventoryUpdates.length + (khataUpdate ? 1 : 0) + (activity ? 1 : 0));
     setLastCloudError(null);
     notifySyncStatusListeners();
   } catch (err) {
@@ -2235,6 +2225,14 @@ export function subscribeToStoreRootConfig(
             onUpdate(patch);
           },
           (err) => {
+            if (unsub) {
+              try {
+                unsub();
+              } catch {
+                // ignore
+              }
+              unsub = null;
+            }
             if (isQuotaError(err)) setQuotaExceededFlag(true, err, 'read');
             else setLastCloudError(`Root config listener error: ${err.message}`);
             console.warn(`Real-time root config subscription warning for store [${storeId}]:`, err);
@@ -2359,8 +2357,20 @@ export function subscribeToStoreFullData(
                 }
               },
               (err) => {
-                if (isQuotaError(err)) setQuotaExceededFlag(true, err, 'read');
-                else setLastCloudError(`Listener error (${subCol}): ${err.message}`);
+                if (isQuotaError(err)) {
+                  subListenersAttached = false;
+                  unsubs.slice(1).forEach(u => {
+                    try {
+                      u();
+                    } catch {
+                      // ignore
+                    }
+                  });
+                  unsubs.length = 1;
+                  setQuotaExceededFlag(true, err, 'read');
+                } else {
+                  setLastCloudError(`Listener error (${subCol}): ${err.message}`);
+                }
                 console.warn(`${subCol} real-time sync notice [${storeId}]:`, err);
               }
             );
@@ -2509,10 +2519,9 @@ export async function fetchLiveUsersFromFirestore(): Promise<UserAccount[]> {
       return null;
     };
 
-    const [globalSnap, storeUsersSnap, rootSnap] = await Promise.all([
+    const [globalSnap, storeUsersSnap] = await Promise.all([
       getDocs(collection(db, 'users')).catch(handleReadErr),
       getDocs(collection(db, STORES_COLLECTION, sid, SUB_COLLECTIONS.USERS)).catch(handleReadErr),
-      getDoc(doc(db, STORES_COLLECTION, sid)).catch(handleReadErr),
     ]);
 
     if (globalSnap) {
@@ -2537,16 +2546,20 @@ export async function fetchLiveUsersFromFirestore(): Promise<UserAccount[]> {
       });
     }
 
-    if (rootSnap) {
-      if (!rootSnap.metadata?.fromCache) recordCloudRead(1);
-      if (rootSnap.exists()) {
-        const rootUsers = (rootSnap.data()?.users as UserAccount[]) || [];
-        rootUsers.forEach(u => {
-          if (u && u.id && !usersMap.has(u.id)) {
-            if (!u.storeId) u.storeId = sid;
-            usersMap.set(u.id, u);
-          }
-        });
+    // Only read the full root store doc (which can include logos & tombstones) as a fallback if no users were found
+    if (usersMap.size === 0 && !getQuotaExceededFlag()) {
+      const rootSnap = await getDoc(doc(db, STORES_COLLECTION, sid)).catch(handleReadErr);
+      if (rootSnap) {
+        if (!rootSnap.metadata?.fromCache) recordCloudRead(1);
+        if (rootSnap.exists()) {
+          const rootUsers = (rootSnap.data()?.users as UserAccount[]) || [];
+          rootUsers.forEach(u => {
+            if (u && u.id && !usersMap.has(u.id)) {
+              if (!u.storeId) u.storeId = sid;
+              usersMap.set(u.id, u);
+            }
+          });
+        }
       }
     }
 
@@ -2664,9 +2677,16 @@ export async function loadAppDataFromFirestoreWithMeta(
   if (getQuotaExceededFlag()) return { data: null, fromServer: false, isFullSnapshot: false };
   const storeId = toValidFirestoreDocId(targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
 
-  try {
-    const authUser = await ensureAnonymousAuth();
-    if (!authUser) return { data: null, fromServer: false, isFullSnapshot: false };
+  // Deduplicate concurrent cloud loads for the same store so listeners/callers don't double-read
+  const existingInFlight = inFlightCloudSyncByStore.get(storeId) as Promise<CloudLoadResult> | undefined;
+  if (existingInFlight && !options?.forceFullSync && !options?.forceServer) {
+    return existingInFlight;
+  }
+
+  const runLoad = async (): Promise<CloudLoadResult> => {
+    try {
+      const authUser = await ensureAnonymousAuth();
+      if (!authUser) return { data: null, fromServer: false, isFullSnapshot: false };
 
     const rootDocRef = doc(db, STORES_COLLECTION, storeId);
     let fromServer = false;
@@ -2825,6 +2845,7 @@ export async function loadAppDataFromFirestoreWithMeta(
       fetchSubSnap(subQuery(SUB_COLLECTIONS.IMEI_RECORDS), true),
     ]);
 
+    let anySubFromServer = false;
     const readSubCollection = <T>(
       snap: any,
       key: SyncCollectionKey,
@@ -2835,6 +2856,8 @@ export async function loadAppDataFromFirestoreWithMeta(
       const arr: T[] = [];
       if (snap && typeof snap.forEach === 'function') {
         let count = 0;
+        const snapFromServer = snap.metadata ? !snap.metadata.fromCache : false;
+        if (snapFromServer) anySubFromServer = true;
         snap.forEach((docSnap: any) => {
           count++;
           const item = docSnap.data() as T;
@@ -2843,7 +2866,7 @@ export async function loadAppDataFromFirestoreWithMeta(
             arr.push(item);
           }
         });
-        if (!snap.metadata?.fromCache && (count > 0 || fromServer)) {
+        if (snapFromServer && (count > 0 || fromServer)) {
           recordCloudRead(Math.max(1, count));
         }
       }
@@ -2928,7 +2951,8 @@ export async function loadAppDataFromFirestoreWithMeta(
       activities,
     };
 
-    if (fromServer) {
+    if (fromServer || anySubFromServer) {
+      fromServer = true;
       setStoreSyncBaselineIso(storeId, new Date().toISOString());
     }
 
@@ -2951,6 +2975,17 @@ export async function loadAppDataFromFirestoreWithMeta(
       handleFirestoreError(error, OperationType.GET, `${STORES_COLLECTION}/${storeId}`);
     }
     return { data: null, fromServer: false, isFullSnapshot: false };
+  }
+  };
+
+  const promise = runLoad();
+  inFlightCloudSyncByStore.set(storeId, promise);
+  try {
+    return await promise;
+  } finally {
+    if (inFlightCloudSyncByStore.get(storeId) === promise) {
+      inFlightCloudSyncByStore.delete(storeId);
+    }
   }
 }
 
@@ -4071,6 +4106,10 @@ export async function recoverAllMissingStoreData(
   if (!getQuotaExceededFlag()) {
     for (const sid of storeIdsToScan) {
       try {
+        if (sid !== storeId) {
+          const checkSnap = await getDoc(doc(db, STORES_COLLECTION, toValidFirestoreDocId(sid, 'STR'))).catch(() => null);
+          if (!checkSnap || !checkSnap.exists()) continue;
+        }
         const remoteStore = await loadAppDataFromFirestore(sid, { forceFullSync: true });
         if (remoteStore) {
           if (sid === storeId) {
@@ -4345,6 +4384,7 @@ export async function migrateAndInitializeData(
     forceServer?: boolean;
     forceFullSync?: boolean;
     skipCloudIfUnauthenticated?: boolean;
+    skipCloudIfBaselineExists?: boolean;
     skipSubcollectionsIfRecentMs?: number;
   }
 ): Promise<void> {
@@ -4393,6 +4433,12 @@ export async function migrateAndInitializeData(
 
     // Wait for login before fetching all 12 store collections unless a session is already active
     if (options?.skipCloudIfUnauthenticated && !getSavedSessionUser()) {
+      onDataLoaded(currentBestData);
+      return;
+    }
+
+    // When a sync baseline already exists on startup, real-time delta listeners handle all incremental syncs
+    if (options?.skipCloudIfBaselineExists && getStoreSyncBaselineIso(storeId)) {
       onDataLoaded(currentBestData);
       return;
     }

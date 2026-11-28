@@ -49,12 +49,33 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
   useEffect(() => {
     let isMounted = true;
+    const USERS_SYNC_TS_KEY = 'MOBILE_POS_USERS_LAST_SYNC_AT';
+    let recentlySynced = false;
+    try {
+      const lastTs = Number(localStorage.getItem(USERS_SYNC_TS_KEY) || '0');
+      if (existingUsers.length > 0 && Number.isFinite(lastTs) && Date.now() - lastTs < 30 * 60 * 1000) {
+        recentlySynced = true;
+      }
+    } catch {
+      // ignore
+    }
+    if (recentlySynced) {
+      return () => {
+        isMounted = false;
+      };
+    }
+
     setIsCheckingCloud(true);
     fetchLiveUsersFromFirestore()
       .then((live) => {
         if (isMounted) {
           setIsCheckingCloud(false);
           if (live && live.length > 0) {
+            try {
+              localStorage.setItem(USERS_SYNC_TS_KEY, String(Date.now()));
+            } catch {
+              // ignore
+            }
             setCloudUsers(live);
             if (onSyncUsers) onSyncUsers(live);
           }

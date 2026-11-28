@@ -31,6 +31,7 @@ import {
   saveCurrentSession,
   getSavedSessionUser,
   getSessionExpirationTimestamp,
+  getStoreSyncBaselineIso,
   SESSION_STORAGE_KEY,
   clearCurrentSession,
   loadAppDataFromFirestoreWithMeta,
@@ -262,7 +263,11 @@ function AppContent() {
         };
       });
       isInitialSyncDoneRef.current = true;
-    }, DEFAULT_STORE_ID, { skipCloudIfUnauthenticated: !sessionUser });
+    }, DEFAULT_STORE_ID, {
+      skipCloudIfUnauthenticated: !sessionUser,
+      skipCloudIfBaselineExists: true,
+      skipSubcollectionsIfRecentMs: 10 * 60 * 1000,
+    });
   }, []);
 
   // Safeguard: Ensure salesman role is never on admin-only tabs & desktop never stays on mobile 'home'
@@ -2493,10 +2498,14 @@ function AppContent() {
               })
               .catch(() => {});
 
-            // 3. Background refresh from Cloud Firestore (incremental delta or skip if just synced)
+            // 3. Background refresh from Cloud Firestore only on first-time device sync (no baseline cursor yet);
+            //    returning devices rely on real-time delta listeners attached immediately on auth
             (async () => {
               try {
                 await processPendingWritesQueue().catch(() => {});
+                if (getStoreSyncBaselineIso(activeStoreId)) {
+                  return;
+                }
                 const pendingOps = await getPendingWrites();
                 const { data: remoteData, fromServer, isFullSnapshot } = await loadAppDataFromFirestoreWithMeta(
                   activeStoreId,

@@ -66,7 +66,7 @@ export interface FirestoreErrorInfo {
 const QUOTA_STORAGE_KEY = 'MOBILE_POS_QUOTA_EXCEEDED_AT';
 const LEGACY_QUOTA_KEY = 'MOBILE_POS_QUOTA_EXCEEDED';
 const USAGE_STORAGE_KEY = 'MOBILE_POS_DAILY_CLOUD_USAGE';
-const QUOTA_RESET_MS = 60 * 60 * 1000; // 1 hour retry cooldown for daily quota
+const QUOTA_RESET_MS = 4 * 60 * 60 * 1000; // 4-hour retry cooldown for daily quota (resets at PT midnight or manual Retry)
 const RATE_QUOTA_RESET_MS = 5 * 60 * 1000; // 5 min cooldown for burst rate limits
 
 export const FIREBASE_FREE_DAILY_WRITES_LIMIT = 20000;

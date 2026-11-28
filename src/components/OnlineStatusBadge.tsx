@@ -390,7 +390,7 @@ export const OnlineStatusBadge: React.FC<OnlineStatusBadgeProps> = ({
                 </div>
 
                 <p className="text-[10px] text-slate-500 leading-snug">
-                  Free quota resets in <strong>{formatTimeUntilQuotaReset()}</strong>. Note: Counts above only track <strong>this device/browser</strong>, while Firebase&apos;s 50,000 daily read limit is shared across all devices &amp; tabs.
+                  Free quota resets in <strong>{formatTimeUntilQuotaReset()}</strong>. Note: Counts above only track <strong>document reads on this device</strong>, while Firebase&apos;s 50,000 daily Read Unit limit is shared across all devices/tabs and counts <strong>4 KB per unit</strong> (so documents with saved photos use ~15–25 Read Units each).
                 </p>
               </div>
 
