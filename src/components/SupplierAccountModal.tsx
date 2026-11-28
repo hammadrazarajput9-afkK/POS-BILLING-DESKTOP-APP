@@ -885,13 +885,13 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
         </div>
       </div>
 
-      {/* Pinned Bottom Dual Pill Action Footer */}
-      <div className="fixed bottom-0 left-0 right-0 z-20 ios-liquid-dock px-3 sm:px-5 pt-2.5 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]">
+      {/* Floating Dual Pill Action Buttons (Transparent background — no white blur) */}
+      <div className="pointer-events-none fixed bottom-0 left-0 right-0 z-20 px-3 sm:px-5 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]">
         <div className="max-w-5xl mx-auto flex items-center gap-2.5">
           <button
             type="button"
             onClick={() => onAddInwardForSupplier(account.partyName, account.partyPhone)}
-            className="flex-1 h-11 rounded-full bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-black text-xs tracking-wide uppercase shadow-md shadow-blue-600/20 flex items-center justify-center gap-1.5 transition cursor-pointer"
+            className="pointer-events-auto flex-1 h-11 rounded-full bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-black text-xs tracking-wide uppercase shadow-lg shadow-blue-600/35 flex items-center justify-center gap-1.5 transition cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>ADD STOCK INWARD</span>
@@ -901,7 +901,7 @@ export const SupplierAccountModal: React.FC<SupplierAccountModalProps> = ({
             <button
               type="button"
               onClick={handleOpenAccountSettle}
-              className="flex-1 h-11 rounded-full bg-rose-600 hover:bg-rose-700 active:scale-[0.98] text-white font-black text-xs tracking-wide uppercase shadow-md shadow-rose-600/20 flex items-center justify-center gap-1.5 transition cursor-pointer tabular-nums"
+              className="pointer-events-auto flex-1 h-11 rounded-full bg-rose-600 hover:bg-rose-700 active:scale-[0.98] text-white font-black text-xs tracking-wide uppercase shadow-lg shadow-rose-600/35 flex items-center justify-center gap-1.5 transition cursor-pointer tabular-nums"
             >
               <CreditCard className="w-4 h-4" />
               <span>PAY DUE · {currency} {account.totalDue.toLocaleString()}</span>

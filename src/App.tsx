@@ -946,7 +946,7 @@ function AppContent() {
           }));
         },
         activeSid,
-        { currentState: dataRef.current, forceServer: true, forceFullSync: true }
+        { currentState: dataRef.current, forceServer: true, forceFullSync: false }
       );
       showToast('Latest data & images synchronized cleanly!', 'success');
     } catch (err) {

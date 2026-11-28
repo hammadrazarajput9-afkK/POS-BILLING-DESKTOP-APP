@@ -1707,59 +1707,61 @@ const InventoryTabComponent: React.FC<InventoryTabProps> = ({
 
           </div>
 
-          {/* Fixed Bottom Action Dock (iOS Liquid bar) */}
-          <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-6 py-2.5 sm:py-3 border-t border-slate-200/80 bg-white/95 backdrop-blur-md shrink-0 shadow-lg">
-            <div className="flex items-center gap-2 flex-wrap">
-              {(isAdmin || selectedProductPopup.status !== 'ARCHIVED') && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const item = selectedProductPopup;
-                    setSelectedProductPopup(null);
-                    onOpenEditModal(item);
-                  }}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-2xs"
-                >
-                  <Edit2 className="w-3.5 h-3.5" /> Edit Product
-                </button>
-              )}
-              {isAdmin && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const item = selectedProductPopup;
-                    setSelectedProductPopup(null);
-                    setProductToDelete(item);
-                  }}
-                  className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95 border border-rose-200"
-                >
-                  <Trash2 className="w-3.5 h-3.5" /> Delete
-                </button>
-              )}
-            </div>
+          {/* Floating Bottom Action Pills (No White Blur Dock) */}
+          <div className="pointer-events-none fixed bottom-0 left-0 right-0 z-20 px-3 sm:px-6 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-2">
+            <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {(isAdmin || selectedProductPopup.status !== 'ARCHIVED') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const item = selectedProductPopup;
+                      setSelectedProductPopup(null);
+                      onOpenEditModal(item);
+                    }}
+                    className="pointer-events-auto px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-extrabold text-xs rounded-full transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-lg"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" /> Edit Product
+                  </button>
+                )}
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const item = selectedProductPopup;
+                      setSelectedProductPopup(null);
+                      setProductToDelete(item);
+                    }}
+                    className="pointer-events-auto px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-extrabold text-xs rounded-full transition cursor-pointer flex items-center gap-1.5 active:scale-95 border border-rose-200 shadow-lg"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Delete
+                  </button>
+                )}
+              </div>
 
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                type="button"
-                onClick={() => handleWhatsAppShareProduct(selectedProductPopup)}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition cursor-pointer flex items-center gap-1.5 active:scale-95"
-              >
-                <Share2 className="w-3.5 h-3.5" /> WhatsApp Specs
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDownloadProductPdf(selectedProductPopup)}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm transition cursor-pointer flex items-center gap-1.5 active:scale-95"
-              >
-                <FileText className="w-3.5 h-3.5" /> PDF Specs
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedProductPopup(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer active:scale-95"
-              >
-                Close
-              </button>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => handleWhatsAppShareProduct(selectedProductPopup)}
+                  className="pointer-events-auto px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-full shadow-lg shadow-emerald-600/25 transition cursor-pointer flex items-center gap-1.5 active:scale-95"
+                >
+                  <Share2 className="w-3.5 h-3.5" /> WhatsApp Specs
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDownloadProductPdf(selectedProductPopup)}
+                  className="pointer-events-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-full shadow-lg shadow-blue-600/25 transition cursor-pointer flex items-center gap-1.5 active:scale-95"
+                >
+                  <FileText className="w-3.5 h-3.5" /> PDF Specs
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedProductPopup(null)}
+                  className="pointer-events-auto px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-extrabold rounded-full transition cursor-pointer active:scale-95 shadow-lg"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>,

@@ -528,14 +528,28 @@ onLog(
   { level: 'warn' }
 );
 
-// Sign in silently and test connection on boot per skill guidelines
+// Sign in silently and test connection once per browser session (avoids wasting server reads on reloads)
 async function testConnection() {
   if (getQuotaExceededFlag()) return;
+  try {
+    if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('MOBILE_POS_BOOT_CONN_TESTED') === '1') {
+      return;
+    }
+  } catch {
+    // ignore
+  }
   await ensureAnonymousAuth();
   if (getQuotaExceededFlag()) return;
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
     recordCloudRead(1);
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem('MOBILE_POS_BOOT_CONN_TESTED', '1');
+      }
+    } catch {
+      // ignore
+    }
   } catch (error) {
     if (isQuotaError(error)) {
       setQuotaExceededFlag(true, error, 'read');

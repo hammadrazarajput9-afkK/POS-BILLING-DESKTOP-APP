@@ -842,7 +842,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
 
     return renderInPortal(
       <>
-        <div className="fixed inset-0 z-[55] h-[100dvh] bg-slate-50 flex flex-col overflow-hidden animate-tab-enter">
+        <div className="relative fixed inset-0 z-[55] h-[100dvh] bg-slate-50 flex flex-col overflow-hidden animate-tab-enter">
           {/* Green Header */}
           <div className="app-fullscreen-modal-header bg-emerald-600 text-white px-3 sm:px-5 pt-[calc(env(safe-area-inset-top,0px)+0.85rem)] sm:pt-3 pb-3 flex items-center justify-between gap-2 shrink-0 shadow-xs">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -873,7 +873,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
           </div>
 
           {/* Main Entry Detail Card Stack */}
-          <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-5 space-y-3 max-w-2xl w-full mx-auto">
+          <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-5 pb-24 space-y-3 max-w-2xl w-full mx-auto">
             {/* Primary Card */}
             <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden divide-y divide-slate-100">
               {/* Top Customer & Amount Row */}
@@ -1097,24 +1097,26 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
             )}
           </div>
 
-          {/* Bottom Dual Outline Buttons: WHATSAPP & SMS */}
-          <div className="ios-liquid-dock px-3 sm:px-5 pt-2.5 pb-[calc(0.65rem+env(safe-area-inset-bottom,0px))] grid grid-cols-2 gap-2.5 shrink-0 max-w-2xl w-full mx-auto">
-            <a
-              href={entryWaUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="h-11 rounded-full border-2 border-emerald-600 bg-white hover:bg-emerald-50 text-emerald-700 font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 transition"
-            >
-              <MessageSquare className="w-4 h-4" />
-              <span>WHATSAPP</span>
-            </a>
-            <a
-              href={entrySmsUrl}
-              className="h-11 rounded-full border-2 border-emerald-600 bg-white hover:bg-emerald-50 text-emerald-700 font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 transition"
-            >
-              <MessageSquare className="w-4 h-4" />
-              <span>SMS</span>
-            </a>
+          {/* Floating Dual Outline Buttons: WHATSAPP & SMS (Transparent background — no white blur) */}
+          <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-20 px-3 sm:px-5 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-2">
+            <div className="grid grid-cols-2 gap-2.5 max-w-2xl w-full mx-auto">
+              <a
+                href={entryWaUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="pointer-events-auto h-11 rounded-full border-2 border-emerald-600 bg-white hover:bg-emerald-50 text-emerald-700 font-extrabold text-xs sm:text-sm shadow-lg shadow-slate-900/10 flex items-center justify-center gap-2 transition"
+              >
+                <MessageSquare className="w-4 h-4" />
+                <span>WHATSAPP</span>
+              </a>
+              <a
+                href={entrySmsUrl}
+                className="pointer-events-auto h-11 rounded-full border-2 border-emerald-600 bg-white hover:bg-emerald-50 text-emerald-700 font-extrabold text-xs sm:text-sm shadow-lg shadow-slate-900/10 flex items-center justify-center gap-2 transition"
+              >
+                <MessageSquare className="w-4 h-4" />
+                <span>SMS</span>
+              </a>
+            </div>
           </div>
         </div>
 
@@ -1806,7 +1808,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
         </div>
 
         {/* Scrollable Ledger Entries Rows */}
-        <div className="flex-1 min-h-0 overflow-y-auto touch-pan-y bg-white divide-y divide-slate-100">
+        <div className="flex-1 min-h-0 overflow-y-auto touch-pan-y bg-white divide-y divide-slate-100 pb-24">
           {filteredLedger.length === 0 ? (
             <div className="py-12 text-center text-xs text-slate-400 space-y-1.5 px-4">
               <FileText className="w-8 h-8 mx-auto text-slate-300" />
@@ -1866,19 +1868,19 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
           )}
         </div>
 
-        {/* Pinned Floating Bottom Action Bar: YOU GAVE Rs | YOU GOT Rs */}
-        <div className="ios-liquid-dock px-3 sm:px-5 pt-2.5 pb-[calc(0.65rem+env(safe-area-inset-bottom,0px))] grid grid-cols-2 gap-2.5 shrink-0">
+        {/* Floating Bottom Action Pills: YOU GAVE Rs | YOU GOT Rs (Transparent background — no white blur) */}
+        <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-20 px-3 sm:px-5 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-2 grid grid-cols-2 gap-2.5">
           <button
             type="button"
             onClick={() => setCalculatorConfig({ type: 'credit' })}
-            className="h-11 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs sm:text-sm tracking-wide shadow-md shadow-rose-600/25 flex items-center justify-center transition cursor-pointer"
+            className="pointer-events-auto h-11 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs sm:text-sm tracking-wide shadow-lg shadow-rose-600/35 flex items-center justify-center transition active:scale-95 cursor-pointer"
           >
             YOU GAVE {currency}
           </button>
           <button
             type="button"
             onClick={() => setCalculatorConfig({ type: 'payment' })}
-            className="h-11 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm tracking-wide shadow-md shadow-emerald-600/25 flex items-center justify-center transition cursor-pointer"
+            className="pointer-events-auto h-11 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm tracking-wide shadow-lg shadow-emerald-600/35 flex items-center justify-center transition active:scale-95 cursor-pointer"
           >
             YOU GOT {currency}
           </button>

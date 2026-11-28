@@ -2030,15 +2030,19 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
       {/* ========================================================= */}
       {isAddModalOpen && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 z-[65] flex items-center justify-center p-2 sm:p-4 glass-modal-backdrop">
-          <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-2xl lg:max-w-3xl w-full max-h-[82dvh] flex flex-col overflow-hidden">
-            {/* Compact Pinned Header */}
-            <div className="flex items-center justify-between border-b border-slate-200/70 px-3.5 py-2 sm:px-4 sm:py-2.5 shrink-0">
+          <div className="glass-modal-panel animate-modal-pop rounded-3xl max-w-2xl lg:max-w-3xl w-full max-h-[85dvh] flex flex-col overflow-hidden relative">
+            {/* Soft Liquid Ambient Glows */}
+            <div className="pointer-events-none absolute -top-20 -right-16 w-56 h-56 rounded-full bg-blue-500/15 blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-20 -left-16 w-56 h-56 rounded-full bg-indigo-500/15 blur-3xl" />
+
+            {/* Fluid Liquid Pinned Header */}
+            <div className="ios-liquid-header flex items-center justify-between px-4 py-3 sm:px-5 sm:py-3.5 shrink-0 relative z-10">
               <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-8 h-8 bg-blue-600 text-white rounded-xl flex items-center justify-center shrink-0">
+                <div className="w-9 h-9 bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-2xl shadow-md shadow-blue-600/25 flex items-center justify-center shrink-0">
                   <Truck className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
-                  <h3 className="font-extrabold text-slate-900 text-xs sm:text-sm truncate">
+                  <h3 className="font-black text-slate-900 text-xs sm:text-sm truncate tracking-tight">
                     {editingPurchaseId
                       ? isAdmin
                         ? `Edit Inward #${billNo}`
@@ -2055,7 +2059,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
 
               <div className="flex items-center gap-1.5 shrink-0">
                 {!editingPurchaseId && hasDraft && (
-                  <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-[10px] font-bold">
+                  <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-amber-50/90 text-amber-700 border border-amber-200/80 rounded-xl text-[10px] font-bold">
                     <Sparkles className="w-3 h-3 text-amber-500" />
                     <span>{draftSavedTime ? `Draft ${draftSavedTime}` : 'Draft'}</span>
                     {items.length === 0 && (
@@ -2084,7 +2088,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                     setIsAddModalOpen(false);
                     setEditingPurchaseId(null);
                   }}
-                  className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                  className="ios-liquid-chip w-8 h-8 rounded-full text-slate-500 hover:text-slate-800 flex items-center justify-center transition cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -2104,10 +2108,10 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                   e.preventDefault();
                 }
               }}
-              className="overflow-y-auto px-3.5 py-2.5 sm:px-4 sm:py-3 flex-1 min-h-0 space-y-2.5"
+              className="overflow-y-auto px-3.5 py-3 sm:px-5 sm:py-3.5 flex-1 min-h-0 space-y-3 relative z-10"
             >
-              {/* Row 1: Compact 4-Col Supplier, Phone, Bill #, Date & Photo */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 bg-slate-50/80 p-2.5 rounded-xl border border-slate-200/80">
+              {/* Row 1: Fluid Liquid 4-Col Supplier, Phone, Bill #, Date & Photo */}
+              <div className="ios-liquid-surface grid grid-cols-2 lg:grid-cols-4 gap-2.5 p-3 rounded-2xl">
                 <div className="relative col-span-2 sm:col-span-1">
                   <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
                     Supplier / Party *
@@ -2122,7 +2126,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                       setPartyName(e.target.value);
                       setIsPartyDropdownOpen(true);
                     }}
-                    className="compact-mobile-input w-full px-2.5 h-8.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500"
+                    className="compact-mobile-input w-full px-2.5 h-9 bg-white/90 border border-slate-200/90 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500"
                     autoComplete="off"
                   />
                   {isPartyDropdownOpen && (matchingFormSuppliers.length > 0 || matchingExtraContacts.length > 0) && (
@@ -2199,7 +2203,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                     }}
                     contacts={inwardContacts}
                     accent="blue"
-                    inputClassName="compact-mobile-input w-full px-2.5 h-8.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold tabular-nums focus:outline-none focus:border-blue-500"
+                    inputClassName="compact-mobile-input w-full px-2.5 h-9 bg-white/90 border border-slate-200/90 rounded-xl text-xs font-semibold tabular-nums focus:outline-none focus:border-blue-500"
                   />
                 </div>
 
@@ -2212,7 +2216,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                     placeholder="FMZ-121126"
                     value={billNo}
                     onChange={e => setBillNo(e.target.value)}
-                    className="compact-mobile-input w-full px-2.5 h-8.5 bg-white border border-slate-200 rounded-lg text-xs tabular-nums font-bold focus:outline-none focus:border-blue-500"
+                    className="compact-mobile-input w-full px-2.5 h-9 bg-white/90 border border-slate-200/90 rounded-xl text-xs tabular-nums font-bold focus:outline-none focus:border-blue-500"
                   />
                 </div>
 
@@ -2232,10 +2236,10 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                           setBillNo(generateInwardBillNo(nextDate, purchases));
                         }
                       }}
-                      className="compact-mobile-input flex-1 min-w-0 px-2 h-8.5 bg-white border border-slate-200 rounded-lg text-xs tabular-nums font-semibold focus:outline-none focus:border-blue-500"
+                      className="compact-mobile-input flex-1 min-w-0 px-2 h-9 bg-white/90 border border-slate-200/90 rounded-xl text-xs tabular-nums font-semibold focus:outline-none focus:border-blue-500"
                     />
                     <label
-                      className="h-8.5 px-2.5 bg-white border border-dashed border-blue-400 rounded-lg text-[11px] font-bold text-blue-600 hover:bg-blue-50 transition cursor-pointer flex items-center gap-1 shrink-0"
+                      className="h-9 px-2.5 bg-white/90 border border-dashed border-blue-400 rounded-xl text-[11px] font-bold text-blue-600 hover:bg-blue-50 transition cursor-pointer flex items-center gap-1 shrink-0"
                       title={invoiceImage ? 'Change attached bill photo' : 'Attach paper bill photo'}
                     >
                       <Camera className="w-3.5 h-3.5" />
@@ -2251,7 +2255,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                       <button
                         type="button"
                         onClick={() => setZoomImage(invoiceImage)}
-                        className="w-8.5 h-8.5 rounded-lg overflow-hidden border border-slate-200 cursor-pointer shrink-0"
+                        className="w-9 h-9 rounded-xl overflow-hidden border border-slate-200 cursor-pointer shrink-0"
                         title="View attached photo"
                       >
                         <img src={invoiceImage} alt="Bill" className="w-full h-full object-cover" />
@@ -2261,9 +2265,9 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                 </div>
               </div>
 
-              {/* Row 2: Compact Product Search + Quick Add Actions */}
-              <div className="space-y-2">
-                <div className="flex flex-wrap items-center gap-2">
+              {/* Row 2: Fluid Liquid Product Search + Quick Add Actions */}
+              <div className="space-y-2.5">
+                <div className="ios-liquid-surface p-2 rounded-2xl flex flex-wrap items-center gap-2">
                   <div className="relative flex-1 min-w-[180px]">
                     <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input
@@ -2275,7 +2279,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                       }}
                       onFocus={() => setIsSearchOpen(true)}
                       placeholder="Pick existing product or add new row..."
-                      className="compact-mobile-input w-full pl-8 pr-7 h-8.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition"
+                      className="compact-mobile-input w-full pl-8 pr-7 h-9 bg-white/90 border border-slate-200/90 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition"
                     />
                     {productSearch && (
                       <button
@@ -2297,7 +2301,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                           className="fixed inset-0 z-20"
                           onClick={() => setIsSearchOpen(false)}
                         />
-                        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-52 overflow-y-auto divide-y divide-slate-100">
+                        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl z-30 max-h-52 overflow-y-auto divide-y divide-slate-100">
                           {filteredSearchInventory.length === 0 ? (
                             <div className="p-3 text-center text-slate-500 text-xs">
                               No match.{' '}
@@ -2337,7 +2341,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                   <button
                     type="button"
                     onClick={handleAddItemRow}
-                    className="h-8.5 inline-flex items-center gap-1 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition cursor-pointer shrink-0"
+                    className="h-9 inline-flex items-center gap-1 px-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold shadow-sm shadow-blue-600/20 transition cursor-pointer shrink-0 active:scale-95"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>New Row</span>
@@ -2345,7 +2349,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsStockModalOpen(true)}
-                    className="h-8.5 inline-flex items-center gap-1 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition cursor-pointer shrink-0"
+                    className="h-9 inline-flex items-center gap-1 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold shadow-sm shadow-emerald-600/20 transition cursor-pointer shrink-0 active:scale-95"
                     title="Register a new product directly into Inventory"
                   >
                     <Plus className="w-3.5 h-3.5" />
@@ -2353,10 +2357,10 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                   </button>
                 </div>
 
-                {/* Selected Inward Products Compact Cards */}
-                <div className="space-y-2">
+                {/* Selected Inward Products Fluid Liquid Cards */}
+                <div className="space-y-2.5">
                   {items.length === 0 ? (
-                    <div className="p-4 text-center border border-dashed border-slate-300 rounded-xl bg-slate-50/50">
+                    <div className="ios-liquid-surface p-4 text-center border-dashed rounded-2xl">
                       <p className="text-xs font-bold text-slate-700">No items added yet</p>
                       <p className="text-[11px] text-slate-400 mt-0.5">
                         Search an existing product above or click <strong>New Row</strong> to add stock.
@@ -2377,7 +2381,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                       return (
                         <div
                           key={idx}
-                          className="p-2.5 sm:p-3 bg-slate-50/90 rounded-xl border border-slate-200/90 space-y-2 animate-scale-in hover:border-blue-300 transition"
+                          className="ios-liquid-tile p-3 rounded-2xl space-y-2 animate-scale-in transition"
                         >
                           {/* Row Header: Title, Category, Qty, Actions */}
                           <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
@@ -2747,8 +2751,8 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                 </div>
               </div>
 
-              {/* Row 3: Compact Payment & Inventory Sync Bar */}
-              <div className="bg-blue-50/50 p-2.5 sm:p-3 rounded-xl border border-blue-200/80 space-y-2">
+              {/* Row 3: Fluid Liquid Payment & Inventory Sync Bar */}
+              <div className="ios-liquid-surface p-3 rounded-2xl border-blue-200/70 space-y-2">
                 {isAdmin && (
                   <div className="grid grid-cols-3 gap-2">
                     <div>
@@ -2761,7 +2765,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                         placeholder="Paid amount"
                         value={paidAmount}
                         onChange={e => setPaidAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                        className="compact-mobile-input w-full px-2.5 h-8 bg-white border border-slate-200 rounded-lg text-xs font-bold text-emerald-700 focus:outline-none focus:border-blue-500"
+                        className="compact-mobile-input w-full px-2.5 h-8.5 bg-white/90 border border-slate-200 rounded-xl text-xs font-bold text-emerald-700 focus:outline-none focus:border-blue-500"
                       />
                     </div>
 
@@ -2769,7 +2773,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                       <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
                         Balance Due
                       </label>
-                      <div className="w-full px-2.5 h-8 flex items-center bg-white/80 border border-slate-200 rounded-lg text-xs font-extrabold tabular-nums text-rose-600">
+                      <div className="w-full px-2.5 h-8.5 flex items-center bg-white/75 border border-slate-200 rounded-xl text-xs font-extrabold tabular-nums text-rose-600">
                         {currency} {balanceDue.toLocaleString()}
                       </div>
                     </div>
@@ -2778,7 +2782,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                       <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
                         Bill Total
                       </label>
-                      <div className="w-full px-2.5 h-8 flex items-center bg-white border border-blue-200 rounded-lg text-xs font-black tabular-nums text-slate-900">
+                      <div className="w-full px-2.5 h-8.5 flex items-center bg-white/90 border border-blue-200 rounded-xl text-xs font-black tabular-nums text-slate-900">
                         {currency} {totalBillAmount.toLocaleString()}
                       </div>
                     </div>
@@ -2797,8 +2801,8 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
               </div>
             </form>
 
-            {/* Compact Pinned Footer */}
-            <div className="flex items-center justify-between gap-2 px-3.5 py-2 sm:px-4 sm:py-2.5 border-t border-slate-200/80 bg-white/85 dark:bg-black/80 shrink-0">
+            {/* Fluid Liquid Pinned Footer */}
+            <div className="ios-liquid-dock flex items-center justify-between gap-2 px-4 py-3 sm:px-5 shrink-0 relative z-10">
               <button
                 type="button"
                 onClick={clearDraft}
@@ -2814,7 +2818,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                     setIsAddModalOpen(false);
                     setEditingPurchaseId(null);
                   }}
-                  className="px-3.5 py-1.5 border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 text-xs font-bold rounded-xl transition cursor-pointer"
+                  className="ios-liquid-chip px-3.5 py-2 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -2822,7 +2826,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                 <button
                   type="submit"
                   form="stock-inward-form"
-                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold rounded-xl shadow-sm transition cursor-pointer"
+                  className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-extrabold rounded-xl shadow-md shadow-blue-600/25 transition cursor-pointer active:scale-95"
                 >
                   {editingPurchaseId ? 'Update Bill' : 'Save Inward Bill'}
                 </button>
@@ -2838,39 +2842,34 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
       {/* ========================================================= */}
       {selectedPurchaseForView && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 z-[60] h-[100dvh] flex flex-col bg-slate-50 text-slate-800 overflow-hidden animate-tab-enter">
-          {/* Top Liquid Blue Header with Safe Area support */}
-          <div className="app-fullscreen-modal-header bg-gradient-to-r from-blue-700 via-blue-600 to-indigo-700 text-white px-3 sm:px-6 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pb-4 shrink-0 shadow-md">
-            <div className="flex items-center justify-between gap-3 max-w-5xl mx-auto">
-              <div className="flex items-center gap-2.5 min-w-0">
+          {/* Sleek Compact Top Header with Safe Area support */}
+          <div className="app-fullscreen-modal-header bg-gradient-to-r from-blue-700 via-blue-600 to-indigo-700 text-white px-3 sm:px-5 pt-[calc(env(safe-area-inset-top,0px)+0.55rem)] pb-2.5 shrink-0 shadow-md">
+            <div className="flex items-center justify-between gap-2 max-w-4xl mx-auto">
+              <div className="flex items-center gap-2 min-w-0">
                 <button
                   type="button"
                   onClick={() => setSelectedPurchaseForView(null)}
-                  className="w-9 h-9 -ml-1 rounded-full hover:bg-white/20 active:scale-95 flex items-center justify-center transition cursor-pointer shrink-0"
+                  className="w-8 h-8 -ml-1 rounded-full hover:bg-white/20 active:scale-95 flex items-center justify-center transition cursor-pointer shrink-0"
                   aria-label="Back to Stock Inward"
                 >
-                  <ArrowLeft className="w-5 h-5 text-white" />
+                  <ArrowLeft className="w-4.5 h-4.5 text-white" />
                 </button>
 
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[10px] font-black uppercase tracking-wider bg-white/20 text-white px-2 py-0.5 rounded-full">
-                      Inward Consignment
-                    </span>
-                    <span className="text-xs font-semibold text-blue-100">
-                      {formatLedgerTimestamp(selectedPurchaseForView.date)}
-                    </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <h2 className="text-sm sm:text-base font-black tracking-tight truncate text-white">
+                      #{selectedPurchaseForView.billNo} · {selectedPurchaseForView.partyName}
+                    </h2>
                   </div>
-                  <h2 className="text-base sm:text-lg font-black tracking-tight truncate flex items-center gap-2 text-white mt-0.5">
-                    <span>Bill #{selectedPurchaseForView.billNo}</span>
-                    <span className="text-blue-200 font-normal">·</span>
-                    <span className="truncate text-white font-extrabold">{selectedPurchaseForView.partyName}</span>
-                  </h2>
+                  <p className="text-[11px] font-semibold text-blue-100/90 truncate">
+                    {formatLedgerTimestamp(selectedPurchaseForView.date)}
+                  </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-1.5 shrink-0">
                 <span
-                  className={`text-[11px] font-black px-2.5 py-1 rounded-full inline-flex items-center gap-1 shadow-xs ${
+                  className={`text-[10.5px] font-black px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 shadow-xs ${
                     selectedPurchaseForView.status === 'REVERSED'
                       ? 'bg-rose-500 text-white'
                       : selectedPurchaseForView.balanceDue <= 0
@@ -2880,22 +2879,22 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                 >
                   {selectedPurchaseForView.status === 'REVERSED' ? (
                     <>
-                      <RotateCcw className="w-3.5 h-3.5" /> Reversed
+                      <RotateCcw className="w-3 h-3" /> Reversed
                     </>
                   ) : selectedPurchaseForView.balanceDue <= 0 ? (
                     <>
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Fully Paid
+                      <CheckCircle2 className="w-3 h-3" /> Paid
                     </>
                   ) : (
                     <>
-                      <Clock className="w-3.5 h-3.5" /> Due {currency} {selectedPurchaseForView.balanceDue.toLocaleString()}
+                      <Clock className="w-3 h-3" /> Due {currency} {selectedPurchaseForView.balanceDue.toLocaleString()}
                     </>
                   )}
                 </span>
                 <button
                   type="button"
                   onClick={() => setSelectedPurchaseForView(null)}
-                  className="w-8 h-8 rounded-full bg-white/15 hover:bg-white/25 text-white flex items-center justify-center transition cursor-pointer"
+                  className="w-7.5 h-7.5 rounded-full bg-white/15 hover:bg-white/25 text-white flex items-center justify-center transition cursor-pointer"
                   aria-label="Close"
                 >
                   <X className="w-4 h-4" />
@@ -2904,81 +2903,67 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
             </div>
           </div>
 
-          {/* Scrollable Content Body */}
-          <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-6 py-4 space-y-4 max-w-5xl mx-auto w-full pb-28">
+          {/* Compact Scrollable Content Body */}
+          <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-5 py-2.5 space-y-2.5 max-w-4xl mx-auto w-full pb-24">
             {/* Reversal Banner if reversed */}
             {selectedPurchaseForView.status === 'REVERSED' && (
-              <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-rose-900 space-y-1.5 shadow-xs">
-                <div className="flex items-center gap-2 font-black text-xs text-rose-700">
-                  <RotateCcw className="w-4 h-4" />
-                  <span>THIS INWARD BILL WAS REVERSED / CANCELLED</span>
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl text-rose-900 space-y-1 shadow-2xs">
+                <div className="flex items-center gap-1.5 font-black text-xs text-rose-700">
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>BILL REVERSED / CANCELLED</span>
                 </div>
-                <p className="text-xs font-semibold">
-                  Reason: <span className="font-normal">{selectedPurchaseForView.reversalReason || 'Goods Returned'}</span>
-                  {selectedPurchaseForView.reversedBy && ` · Authorized by: ${selectedPurchaseForView.reversedBy}`}
-                  {selectedPurchaseForView.reversedAt && ` · Date: ${formatLedgerTimestamp(selectedPurchaseForView.reversedAt)}`}
+                <p className="text-[11px] font-semibold">
+                  {selectedPurchaseForView.reversalReason || 'Goods Returned'}
+                  {selectedPurchaseForView.reversedBy && ` · By: ${selectedPurchaseForView.reversedBy}`}
+                  {selectedPurchaseForView.reversedAt && ` · ${formatLedgerTimestamp(selectedPurchaseForView.reversedAt)}`}
                 </p>
                 {selectedPurchaseForView.reversalNotes && (
-                  <p className="text-[11px] text-rose-800 bg-white/70 p-2 rounded-xl border border-rose-200/60">
-                    Note: {selectedPurchaseForView.reversalNotes}
+                  <p className="text-[11px] text-rose-800 bg-white/70 px-2 py-1 rounded-lg border border-rose-200/60">
+                    {selectedPurchaseForView.reversalNotes}
                   </p>
                 )}
               </div>
             )}
 
-            {/* High-density 3-Metric Summary Card (Compact 3-col on all screens) */}
-            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
-              <div className="grid grid-cols-3 divide-x divide-slate-100 text-center py-2.5 px-1 sm:px-2">
-                {/* Total Bill */}
-                <div className="px-1.5">
-                  <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">
-                    Total Bill
+            {/* Compact 3-Metric Summary Card */}
+            <div className="ios-liquid-surface rounded-2xl overflow-hidden">
+              <div className="grid grid-cols-3 divide-x divide-slate-200/70 text-center py-2 px-1">
+                <div className="px-1">
+                  <span className="text-[9.5px] font-bold text-slate-400 block uppercase tracking-wider">
+                    Bill Total ({selectedPurchaseForView.items.reduce((s, i) => s + (Number(i.qty) || 0), 0)} pcs)
                   </span>
-                  <span className="text-sm sm:text-base font-black text-slate-900 tabular-nums block mt-0.5">
+                  <span className="text-xs sm:text-sm font-black text-slate-900 tabular-nums block">
                     {currency} {selectedPurchaseForView.totalAmount.toLocaleString()}
                   </span>
-                  <span className="text-[10.5px] text-slate-500 font-semibold block">
-                    {selectedPurchaseForView.items.reduce((s, i) => s + (Number(i.qty) || 0), 0)} pcs total
-                  </span>
                 </div>
 
-                {/* Paid */}
-                <div className="px-1.5">
-                  <span className="text-[10px] font-bold text-emerald-600 block uppercase tracking-wider">
-                    Paid
+                <div className="px-1">
+                  <span className="text-[9.5px] font-bold text-emerald-600 block uppercase tracking-wider">
+                    Paid ({selectedPurchaseForView.paymentMethod || 'Cash'})
                   </span>
-                  <span className="text-sm sm:text-base font-black text-emerald-600 tabular-nums block mt-0.5">
+                  <span className="text-xs sm:text-sm font-black text-emerald-600 tabular-nums block">
                     {currency} {selectedPurchaseForView.paidAmount.toLocaleString()}
                   </span>
-                  <span className="text-[10.5px] text-slate-500 font-semibold block">
-                    {selectedPurchaseForView.paymentMethod || 'Cash'}
-                  </span>
                 </div>
 
-                {/* Balance Due */}
-                <div className={`px-1.5 ${selectedPurchaseForView.balanceDue > 0 ? 'bg-rose-50/40' : ''}`}>
-                  <span className={`text-[10px] font-bold block uppercase tracking-wider ${
+                <div className="px-1">
+                  <span className={`text-[9.5px] font-bold block uppercase tracking-wider ${
                     selectedPurchaseForView.balanceDue > 0 ? 'text-rose-600' : 'text-slate-400'
                   }`}>
-                    Balance Due
+                    {selectedPurchaseForView.balanceDue > 0 ? 'Balance Due' : 'Settled ✓'}
                   </span>
-                  <span className={`text-sm sm:text-base font-black tabular-nums block mt-0.5 ${
-                    selectedPurchaseForView.balanceDue > 0 ? 'text-rose-600' : 'text-slate-700'
-                  }`}>
-                    {currency} {selectedPurchaseForView.balanceDue.toLocaleString()}
-                  </span>
-                  <span className={`text-[10.5px] font-bold block ${
+                  <span className={`text-xs sm:text-sm font-black tabular-nums block ${
                     selectedPurchaseForView.balanceDue > 0 ? 'text-rose-600' : 'text-emerald-700'
                   }`}>
-                    {selectedPurchaseForView.balanceDue > 0 ? 'Pending' : 'Settled ✓'}
+                    {currency} {selectedPurchaseForView.balanceDue.toLocaleString()}
                   </span>
                 </div>
               </div>
 
-              {/* Slim Supplier & Quick Action Strip */}
-              <div className="px-3 py-1.5 bg-slate-50/70 border-t border-slate-100 flex items-center justify-between gap-2 text-xs">
+              {/* Slim Supplier & Slip Strip */}
+              <div className="px-3 py-1.5 bg-slate-50/60 border-t border-slate-200/60 flex items-center justify-between gap-2 text-xs">
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-black text-[10px] flex items-center justify-center shrink-0">
+                  <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-black text-[9.5px] flex items-center justify-center shrink-0">
                     {getInitials(selectedPurchaseForView.partyName)}
                   </span>
                   <span className="font-extrabold text-slate-900 truncate text-xs">
@@ -2999,7 +2984,7 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                     <button
                       type="button"
                       onClick={() => setZoomImage(selectedPurchaseForView.invoiceImage!)}
-                      className="px-2 py-0.5 bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-[10.5px] font-bold flex items-center gap-1 cursor-pointer active:scale-95 shadow-2xs"
+                      className="px-2 py-0.5 bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-[10.5px] font-bold flex items-center gap-1 cursor-pointer active:scale-95"
                     >
                       <Camera className="w-3 h-3 text-blue-600" />
                       <span>Slip</span>
@@ -3010,29 +2995,29 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                       href={`https://wa.me/${cleanWhatsAppPhone(selectedPurchaseForView.partyPhone)}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-2 py-0.5 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-[10.5px] font-bold flex items-center gap-1 active:scale-95 shadow-2xs"
+                      className="px-2 py-0.5 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-[10.5px] font-bold flex items-center gap-1 active:scale-95"
                     >
                       <MessageCircle className="w-3 h-3 text-emerald-600" />
-                      <span>WhatsApp</span>
+                      <span>Chat</span>
                     </a>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* Clean Itemized Cards (Spacious, easy-to-read, replacing cramped table) */}
-            <div className="space-y-3">
+            {/* Ultra-Compact Itemized Rows */}
+            <div className="space-y-1.5">
               <div className="flex items-center justify-between px-1">
-                <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                  <Smartphone className="w-4 h-4 text-blue-600" />
-                  <span>Items & Dedicated IMEIs ({selectedPurchaseForView.items.length})</span>
+                <h4 className="text-[11px] font-black uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                  <Smartphone className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Items ({selectedPurchaseForView.items.length})</span>
                 </h4>
                 <span className="text-[11px] text-slate-500 font-bold tabular-nums">
-                  {selectedPurchaseForView.items.reduce((s, i) => s + (Number(i.qty) || 0), 0)} Total Pcs
+                  {selectedPurchaseForView.items.reduce((s, i) => s + (Number(i.qty) || 0), 0)} Pcs
                 </span>
               </div>
 
-              <div className="space-y-2.5">
+              <div className="space-y-1.5">
                 {selectedPurchaseForView.items.map((item, idx) => {
                   const itemImeis = (item.imeis && item.imeis.length > 0)
                     ? item.imeis.map(x => x.trim()).filter(Boolean)
@@ -3042,115 +3027,98 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
                   return (
                     <div
                       key={idx}
-                      className="bg-white rounded-2xl border border-slate-200/80 p-3.5 sm:p-4 shadow-xs space-y-3 transition hover:border-blue-200"
+                      className="ios-liquid-tile rounded-xl px-3 py-2 space-y-1.5 transition"
                     >
-                      {/* Item Top Row */}
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-start gap-2.5 min-w-0">
-                          <span className="w-6 h-6 rounded-lg bg-blue-50 text-blue-700 font-black text-xs flex items-center justify-center shrink-0 mt-0.5">
-                            #{idx + 1}
+                      {/* Compact Single Header Row: #idx + Name + Specs/Category | Qty + Subtotal */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-2 min-w-0">
+                          <span className="w-5 h-5 rounded-md bg-blue-50 text-blue-700 font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5 tabular-nums">
+                            {idx + 1}
                           </span>
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              {item.category && (
-                                <span className="text-[9.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200/60">
-                                  {item.category}
-                                </span>
-                              )}
+                              <h5 className="font-extrabold text-slate-900 text-xs sm:text-sm leading-tight truncate">
+                                {item.name}
+                              </h5>
                               {specs.length > 0 && (
-                                <span className="text-[10.5px] font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-200/60 px-2 py-0.5 rounded-md">
+                                <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50/90 border border-indigo-200/70 px-1.5 py-0 rounded-md">
                                   {specs.join(' · ')}
                                 </span>
                               )}
+                              {item.category && (
+                                <span className="text-[9.5px] font-bold text-slate-500">
+                                  {item.category}
+                                </span>
+                              )}
                             </div>
-                            <h5 className="font-black text-slate-900 text-sm sm:text-base mt-1 leading-snug">
-                              {item.name}
-                            </h5>
+
+                            {/* Compact Inline Pricing Strip */}
+                            {isAdmin && (
+                              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] tabular-nums mt-0.5">
+                                <span className="text-slate-600 font-bold">
+                                  Cost: <strong className="text-slate-900">{currency} {item.costPrice.toLocaleString()}</strong>
+                                </span>
+                                {item.salePrice !== undefined && item.salePrice > 0 && (
+                                  <span className="text-blue-600 font-bold">
+                                    Sale: {currency} {item.salePrice.toLocaleString()}
+                                  </span>
+                                )}
+                                {item.wholesalePrice !== undefined && item.wholesalePrice > 0 && (
+                                  <span className="text-purple-700 font-bold">
+                                    WS: {currency} {item.wholesalePrice.toLocaleString()}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
 
-                        <div className="text-right shrink-0">
-                          <span className="inline-block px-2.5 py-1 rounded-xl bg-slate-100 text-slate-800 text-xs font-black tabular-nums">
+                        <div className="text-right shrink-0 tabular-nums">
+                          <span className="inline-block px-2 py-0.5 rounded-lg bg-slate-100 text-slate-800 text-[11px] font-black">
                             {item.qty} {item.qty > 1 ? 'Pcs' : 'Pc'}
                           </span>
                           {isAdmin && (
-                            <div className="mt-1 text-right">
-                              <span className="text-[10px] text-slate-400 block font-bold">Subtotal</span>
-                              <span className="text-xs sm:text-sm font-black text-blue-700 tabular-nums">
-                                {currency} {(item.costPrice * item.qty).toLocaleString()}
-                              </span>
+                            <div className="text-xs font-black text-blue-700 mt-0.5">
+                              {currency} {(item.costPrice * item.qty).toLocaleString()}
                             </div>
                           )}
                         </div>
                       </div>
 
-                      {/* Pricing & Cost breakdown strip */}
-                      {isAdmin && (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-xs">
-                          <div>
-                            <span className="text-[10px] text-slate-400 block font-bold">Cost per unit</span>
-                            <span className="font-black text-slate-800 tabular-nums">
-                              {currency} {item.costPrice.toLocaleString()}
-                            </span>
-                          </div>
-                          {item.salePrice !== undefined && item.salePrice > 0 && (
-                            <div>
-                              <span className="text-[10px] text-slate-400 block font-bold">Retail Sale</span>
-                              <span className="font-extrabold text-blue-600 tabular-nums">
-                                {currency} {item.salePrice.toLocaleString()}
-                              </span>
-                            </div>
-                          )}
-                          {item.wholesalePrice !== undefined && item.wholesalePrice > 0 && (
-                            <div>
-                              <span className="text-[10px] text-purple-600 block font-bold">Wholesale</span>
-                              <span className="font-extrabold text-purple-700 tabular-nums">
-                                {currency} {item.wholesalePrice.toLocaleString()}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Recorded IMEIs */}
+                      {/* Compact Tap-to-Copy IMEI Chips */}
                       {itemImeis.length > 0 && (
-                        <div className="space-y-1.5 pt-1">
-                          <span className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider block">
-                            Dedicated IMEIs ({itemImeis.length}):
-                          </span>
-                          <div className="flex flex-wrap gap-1.5">
-                            {itemImeis.map((im, imIdx) => (
-                              <button
-                                key={imIdx}
-                                type="button"
-                                onClick={() => handleCopyImei(im)}
-                                className="tabular-nums text-xs bg-slate-50 hover:bg-blue-50 text-slate-800 hover:text-blue-700 border border-slate-200 hover:border-blue-300 px-2.5 py-1 rounded-xl flex items-center gap-1.5 cursor-pointer transition shadow-2xs font-bold"
-                                title="Click to copy IMEI"
-                              >
-                                <span className="text-[10px] text-slate-400 font-semibold">#{imIdx + 1}</span>
-                                <span>{im}</span>
-                                {copiedImei === im ? (
-                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
-                                ) : (
-                                  <Copy className="w-3.5 h-3.5 text-slate-400 hover:text-blue-600" />
-                                )}
-                              </button>
-                            ))}
-                          </div>
+                        <div className="flex flex-wrap gap-1 pt-0.5">
+                          {itemImeis.map((im, imIdx) => (
+                            <button
+                              key={imIdx}
+                              type="button"
+                              onClick={() => handleCopyImei(im)}
+                              className="tabular-nums text-[10.5px] bg-slate-50 hover:bg-blue-50 text-slate-800 hover:text-blue-700 border border-slate-200 hover:border-blue-300 px-2 py-0.5 rounded-lg flex items-center gap-1 cursor-pointer transition font-semibold"
+                              title="Click to copy IMEI"
+                            >
+                              <span className="text-[9.5px] text-slate-400">#{imIdx + 1}</span>
+                              <span>{im}</span>
+                              {copiedImei === im ? (
+                                <Check className="w-3 h-3 text-emerald-600" />
+                              ) : (
+                                <Copy className="w-3 h-3 text-slate-400" />
+                              )}
+                            </button>
+                          ))}
                         </div>
                       )}
 
-                      {/* Barcode & Note row */}
+                      {/* Compact Inline Barcode & Note */}
                       {(item.barcode || item.note) && (
-                        <div className="flex items-center gap-2 flex-wrap pt-1 text-xs">
+                        <div className="flex items-center gap-1.5 flex-wrap text-[10.5px]">
                           {item.barcode && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-bold tabular-nums">
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold tabular-nums">
                               <Barcode className="w-3 h-3 text-slate-500" /> {item.barcode}
                             </span>
                           )}
                           {item.note && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-50 text-amber-800 border border-amber-200/70 text-[11px] font-medium">
-                              Note: {item.note}
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200/70 font-medium">
+                              {item.note}
                             </span>
                           )}
                         </div>
@@ -3162,92 +3130,92 @@ const PurchasesTabComponent: React.FC<PurchasesTabProps> = ({
             </div>
           </div>
 
-          {/* Fixed Bottom Action Dock (iOS Liquid bar) */}
-          <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-6 py-2.5 sm:py-3 border-t border-slate-200/80 bg-white/95 backdrop-blur-md shrink-0 shadow-lg">
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* Edit Bill button */}
-              {selectedPurchaseForView.status !== 'REVERSED' &&
-                onUpdatePurchase &&
-                (isAdmin || canSalesmanEditPurchase(selectedPurchaseForView)) && (
+          {/* Floating Bottom Action Pills (No White Blur Dock) */}
+          <div className="pointer-events-none fixed bottom-0 left-0 right-0 z-20 px-3 sm:px-6 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-2">
+            <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {selectedPurchaseForView.status !== 'REVERSED' &&
+                  onUpdatePurchase &&
+                  (isAdmin || canSalesmanEditPurchase(selectedPurchaseForView)) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = selectedPurchaseForView;
+                        setSelectedPurchaseForView(null);
+                        openEditModal(target);
+                      }}
+                      className="pointer-events-auto px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-extrabold rounded-full transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-lg"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                      <span>{isAdmin ? 'Edit' : 'Edit (1x)'}</span>
+                    </button>
+                  )}
+
+                {isAdmin && selectedPurchaseForView.balanceDue > 0 && selectedPurchaseForView.status !== 'REVERSED' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedPurchaseForSettlement(selectedPurchaseForView);
+                      setSettlementAmount(selectedPurchaseForView.balanceDue);
+                      setSettlementNotes('');
+                      setSelectedPurchaseForView(null);
+                    }}
+                    className="pointer-events-auto px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold rounded-full transition cursor-pointer flex items-center gap-1.5 shadow-lg shadow-rose-600/30 active:scale-95"
+                  >
+                    <CreditCard className="w-3.5 h-3.5" />
+                    <span>Pay Due ({currency} {selectedPurchaseForView.balanceDue.toLocaleString()})</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadSinglePdf(selectedPurchaseForView)}
+                    className="pointer-events-auto px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold rounded-full transition cursor-pointer flex items-center gap-1.5 shadow-lg shadow-blue-600/25 active:scale-95"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>PDF</span>
+                  </button>
+                )}
+
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => handleShareWhatsApp(selectedPurchaseForView)}
+                    className="pointer-events-auto px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold rounded-full transition cursor-pointer flex items-center gap-1.5 shadow-lg shadow-emerald-600/25 active:scale-95"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    <span>WhatsApp</span>
+                  </button>
+                )}
+
+                {isAdmin && selectedPurchaseForView.status !== 'REVERSED' && onReversePurchase && (
                   <button
                     type="button"
                     onClick={() => {
                       const target = selectedPurchaseForView;
                       setSelectedPurchaseForView(null);
-                      openEditModal(target);
+                      setPurchaseToReverse(target);
+                      setReversalReason('Goods Returned to Supplier');
+                      setReversalNotes('');
                     }}
-                    className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-2xs"
+                    className="pointer-events-auto px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-extrabold rounded-full transition cursor-pointer flex items-center gap-1.5 shadow-lg active:scale-95"
                   >
-                    <Edit2 className="w-3.5 h-3.5" />
-                    <span>{isAdmin ? 'Edit Bill' : 'Edit Bill (1x)'}</span>
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Reverse</span>
                   </button>
                 )}
 
-              {/* Pay Due Button */}
-              {isAdmin && selectedPurchaseForView.balanceDue > 0 && selectedPurchaseForView.status !== 'REVERSED' && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setSelectedPurchaseForSettlement(selectedPurchaseForView);
-                    setSettlementAmount(selectedPurchaseForView.balanceDue);
-                    setSettlementNotes('');
-                    setSelectedPurchaseForView(null);
-                  }}
-                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-md shadow-rose-600/25 active:scale-95"
+                  onClick={() => setSelectedPurchaseForView(null)}
+                  className="pointer-events-auto px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-extrabold rounded-full transition cursor-pointer shadow-lg active:scale-95"
                 >
-                  <CreditCard className="w-3.5 h-3.5" />
-                  <span>Pay Due ({currency} {selectedPurchaseForView.balanceDue.toLocaleString()})</span>
+                  Close
                 </button>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2 flex-wrap">
-              {isAdmin && (
-                <button
-                  type="button"
-                  onClick={() => handleDownloadSinglePdf(selectedPurchaseForView)}
-                  className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>PDF</span>
-                </button>
-              )}
-
-              {isAdmin && (
-                <button
-                  type="button"
-                  onClick={() => handleShareWhatsApp(selectedPurchaseForView)}
-                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
-                >
-                  <MessageCircle className="w-3.5 h-3.5" />
-                  <span>WhatsApp</span>
-                </button>
-              )}
-
-              {isAdmin && selectedPurchaseForView.status !== 'REVERSED' && onReversePurchase && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const target = selectedPurchaseForView;
-                    setSelectedPurchaseForView(null);
-                    setPurchaseToReverse(target);
-                    setReversalReason('Goods Returned to Supplier');
-                    setReversalNotes('');
-                  }}
-                  className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Reverse</span>
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={() => setSelectedPurchaseForView(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer active:scale-95"
-              >
-                Close
-              </button>
+              </div>
             </div>
           </div>
         </div>,

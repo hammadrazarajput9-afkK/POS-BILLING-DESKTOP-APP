@@ -390,7 +390,7 @@ export const OnlineStatusBadge: React.FC<OnlineStatusBadgeProps> = ({
                 </div>
 
                 <p className="text-[10px] text-slate-500 leading-snug">
-                  Free quota resets in <strong>{formatTimeUntilQuotaReset()}</strong>. Server quota is shared across all devices, browsers &amp; tabs of this project.
+                  Free quota resets in <strong>{formatTimeUntilQuotaReset()}</strong>. Note: Counts above only track <strong>this device/browser</strong>, while Firebase&apos;s 50,000 daily read limit is shared across all devices &amp; tabs.
                 </p>
               </div>
 

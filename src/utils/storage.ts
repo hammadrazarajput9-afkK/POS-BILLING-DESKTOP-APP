@@ -114,7 +114,8 @@ export function getLocalStorageKey(storeId?: string): string {
 
 const SYNC_BASELINE_PREFIX = 'MOBILE_POS_CLOUD_SYNC_CURSOR_';
 const MIGRATION_DONE_PREFIX = 'MOBILE_POS_MIGRATION_DONE_';
-const SYNC_CURSOR_OVERLAP_MS = 2 * 60 * 60 * 1000; // 2 hours safety overlap for clock skew
+const SYNC_CURSOR_OVERLAP_MS = 2 * 60 * 1000; // 2 minutes safety overlap (prevents re-reading hours of docs on refresh)
+const inFlightCloudSyncByStore = new Map<string, Promise<unknown>>();
 
 export function getStoreSyncBaselineIso(storeId?: string): string | null {
   const sid = toValidFirestoreDocId(storeId || currentActiveStoreId || DEFAULT_STORE_ID, 'STR');
@@ -2249,7 +2250,10 @@ export function subscribeToStoreFullData(
   const attachSubListeners = () => {
     if (!active || subListenersAttached || attachInFlight || getQuotaExceededFlag()) return;
     attachInFlight = true;
-    ensureAnonymousAuth()
+    const waitForPendingInit = inFlightCloudSyncByStore.get(storeId) || Promise.resolve();
+    waitForPendingInit
+      .catch(() => {})
+      .then(() => ensureAnonymousAuth())
       .then((user) => {
         attachInFlight = false;
         if (!active || !user || subListenersAttached || getQuotaExceededFlag()) return;
@@ -2623,8 +2627,7 @@ export async function loadAppDataFromFirestoreWithMeta(
     const rootDocRef = doc(db, STORES_COLLECTION, storeId);
     let fromServer = false;
     let rootDocSnap: any;
-    const isOnline = typeof navigator === 'undefined' || navigator.onLine;
-    const preferServer = Boolean(options?.forceServer || options?.forceFullSync || isOnline);
+    const preferServer = Boolean(options?.forceServer);
 
     if (preferServer) {
       try {
@@ -4343,12 +4346,23 @@ export async function migrateAndInitializeData(
       return;
     }
 
-    // 3. Fetch Firestore (incremental delta cursor when baseline exists, full only on first sync or manual Sync)
-    const { data: remoteData, fromServer, isFullSnapshot } = await loadAppDataFromFirestoreWithMeta(storeId, {
+    // 3. Fetch Firestore (incremental delta cursor when baseline exists, full only on first sync)
+    // Track in-flight load so real-time listeners wait for baseline cursor before attaching (avoids 2x full DB reads)
+    const loadPromise = loadAppDataFromFirestoreWithMeta(storeId, {
       forceServer: options?.forceServer,
       forceFullSync: options?.forceFullSync,
       skipSubcollectionsIfRecentMs: options?.skipSubcollectionsIfRecentMs,
     });
+    inFlightCloudSyncByStore.set(storeId, loadPromise);
+    let remoteRes: CloudLoadResult;
+    try {
+      remoteRes = await loadPromise;
+    } finally {
+      if (inFlightCloudSyncByStore.get(storeId) === loadPromise) {
+        inFlightCloudSyncByStore.delete(storeId);
+      }
+    }
+    const { data: remoteData, fromServer, isFullSnapshot } = remoteRes;
 
     if (remoteData) {
       let mergedData =

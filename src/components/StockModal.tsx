@@ -166,7 +166,7 @@ export const getLastSelectedCategory = (categories: string[]): string => {
 export const isAndroidCategory = (cat: string): boolean => {
   if (!cat) return false;
   const c = cat.toLowerCase().trim();
-  // Exclude non-phone & keypad categories
+  // Exclude non-phone, gadget, wearable & keypad categories first
   if (
     c.includes('keypad') ||
     c.includes('feature') ||
@@ -179,8 +179,15 @@ export const isAndroidCategory = (cat: string): boolean => {
     c.includes('audio') ||
     c.includes('airpod') ||
     c.includes('earbud') ||
+    c.includes('earphone') ||
+    c.includes('headset') ||
     c.includes('handsfree') ||
+    c.includes('hands-free') ||
+    c.includes('handfree') ||
     c.includes('headphone') ||
+    c.includes('neckband') ||
+    c.includes('tws') ||
+    c.includes('buds') ||
     c.includes('speaker') ||
     c.includes('powerbank') ||
     c.includes('power bank') ||
@@ -189,8 +196,43 @@ export const isAndroidCategory = (cat: string): boolean => {
     c.includes('part') ||
     c.includes('cover') ||
     c.includes('case') ||
+    c.includes('pouch') ||
     c.includes('glass') ||
     c.includes('protector') ||
+    c.includes('guard') ||
+    c.includes('temper') ||
+    c.includes('skin') ||
+    c.includes('sheet') ||
+    c.includes('stand') ||
+    c.includes('holder') ||
+    c.includes('mount') ||
+    c.includes('tripod') ||
+    c.includes('ring') ||
+    c.includes('light') ||
+    c.includes('selfie') ||
+    c.includes('stylus') ||
+    c.includes('mic') ||
+    c.includes('adapter') ||
+    c.includes('otg') ||
+    c.includes('usb') ||
+    c.includes('pendrive') ||
+    c.includes('flash') ||
+    c.includes('memory') ||
+    c.includes('card') ||
+    c.includes('watch') ||
+    c.includes('band') ||
+    c.includes('tablet') ||
+    c.includes('ipad') ||
+    c.includes('laptop') ||
+    c.includes('gadget') ||
+    c.includes('router') ||
+    c.includes('modem') ||
+    c.includes('dongle') ||
+    c.includes('lcd') ||
+    c.includes('panel') ||
+    c.includes('folder') ||
+    c.includes('touch') ||
+    c.includes('tool') ||
     c.includes('sim')
   ) {
     return false;
@@ -223,6 +265,16 @@ export const isKeypadCategory = (cat: string): boolean => {
     c.includes('cable') ||
     c.includes('audio') ||
     c.includes('headphone') ||
+    c.includes('earphone') ||
+    c.includes('handsfree') ||
+    c.includes('hands-free') ||
+    c.includes('cover') ||
+    c.includes('case') ||
+    c.includes('glass') ||
+    c.includes('watch') ||
+    c.includes('tablet') ||
+    c.includes('stand') ||
+    c.includes('holder') ||
     c.includes('repair')
   ) {
     return false;
@@ -375,7 +427,11 @@ export const StockModal: React.FC<StockModalProps> = ({
           setImeis(Array(q).fill(''));
         }
 
-        if (editItem.variants && editItem.variants.length > 0) {
+        if (
+          (isAndroidCategory(resolvedEditCategory) || isKeypadCategory(resolvedEditCategory)) &&
+          editItem.variants &&
+          editItem.variants.length > 0
+        ) {
           setVariants(
             editItem.variants.map(v => ({
               ...v,
@@ -391,14 +447,14 @@ export const StockModal: React.FC<StockModalProps> = ({
               imeis: v.imeis && v.imeis.length > 0 ? [...v.imeis] : Array(Math.max(1, Number(v.qty) || 1)).fill(''),
             }))
           );
-        } else if (isMobileCategory(editItem.category)) {
+        } else if (isMobileCategory(resolvedEditCategory)) {
           // If mobile category without variants, seed the current item as Variant #1
           const parenMatch = editItem.name.match(/\(([^)]+)\)/);
           const parenColor = parenMatch ? parenMatch[1].trim() : '';
           setVariants([{
             id: 'var-1',
-            ram: editItem.ram || (isKeypadCategory(editItem.category) ? '' : '6GB'),
-            storage: editItem.storage || (isKeypadCategory(editItem.category) ? '' : '128GB'),
+            ram: editItem.ram || (isKeypadCategory(resolvedEditCategory) ? '' : '6GB'),
+            storage: editItem.storage || (isKeypadCategory(resolvedEditCategory) ? '' : '128GB'),
             color: editItem.color || parenColor || '',
             note: editItem.note || '',
             condition: editItem.condition || '',
@@ -408,6 +464,8 @@ export const StockModal: React.FC<StockModalProps> = ({
             qty: editItem.qty || 1,
             imeis: existingImeis.length > 0 ? existingImeis : [''],
           }]);
+        } else {
+          setVariants([createDefaultVariant('var-1', '', '')]);
         }
       } else {
         isEditingRef.current = false;
@@ -509,7 +567,7 @@ export const StockModal: React.FC<StockModalProps> = ({
   const isAndroid = isAndroidCategory(category);
   const isKeypad = isKeypadCategory(category);
   const isMobile = isMobileCategory(category);
-  const showVariantMode = isAndroid || isKeypad || Boolean(editItem && editItem.variants && editItem.variants.length > 0);
+  const showVariantMode = isAndroid || isKeypad;
 
   useEffect(() => {
     if (isEditingRef.current) return;
@@ -1447,6 +1505,9 @@ export const StockModal: React.FC<StockModalProps> = ({
           wholesalePrice: wholesale,
           salePrice: sale,
           qty: quantity,
+          ram: undefined,
+          storage: undefined,
+          variants: undefined,
           color: color.trim() || undefined,
           note: itemNote.trim() || undefined,
           condition: itemCondition.trim() || undefined,
@@ -1495,40 +1556,50 @@ export const StockModal: React.FC<StockModalProps> = ({
 
   return (
     <>
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-2.5 sm:p-4 glass-modal-backdrop">
-      <div className="glass-modal-panel animate-modal-pop rounded-2xl max-w-2xl lg:max-w-3xl w-full max-h-[82dvh] sm:max-h-[84dvh] flex flex-col overflow-hidden">
-        {/* Compact Pinned Header */}
-        <div className="flex items-center justify-between gap-2 border-b border-slate-200/70 px-3.5 py-2.5 sm:px-4 sm:py-3 shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold shadow-2xs shrink-0">
-              {isMobile ? <Smartphone className="w-4 h-4 text-blue-600" /> : <Package className="w-4 h-4 text-blue-600" />}
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4 glass-modal-backdrop">
+      <div className="glass-modal-panel animate-modal-pop rounded-3xl max-w-2xl lg:max-w-3xl w-full max-h-[86dvh] sm:max-h-[88dvh] flex flex-col overflow-hidden relative">
+        {/* Subtle Ambient Liquid Glows */}
+        <div className="pointer-events-none absolute -top-16 -right-12 w-52 h-52 rounded-full opacity-55" style={{ background: 'radial-gradient(circle, rgba(56,189,248,0.18) 0%, transparent 70%)' }} aria-hidden="true" />
+        <div className="pointer-events-none absolute -bottom-16 -left-12 w-52 h-52 rounded-full opacity-45" style={{ background: 'radial-gradient(circle, rgba(167,139,250,0.16) 0%, transparent 70%)' }} aria-hidden="true" />
+
+        {/* Frosted Fluid Liquid Header */}
+        <div className="ios-liquid-header relative z-10 flex items-center justify-between gap-2.5 px-3.5 py-2.5 sm:px-5 sm:py-3 shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className={`w-9 h-9 rounded-2xl flex items-center justify-center shadow-sm shrink-0 text-white ${
+              isUsedCategoryName(category)
+                ? 'bg-gradient-to-br from-purple-600 to-indigo-600'
+                : isMobile
+                ? 'bg-gradient-to-br from-blue-600 to-cyan-500'
+                : 'bg-gradient-to-br from-emerald-600 to-teal-500'
+            }`}>
+              {isMobile ? <Smartphone className="w-4.5 h-4.5" /> : <Package className="w-4.5 h-4.5" />}
             </div>
-            <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-              <h3 className="font-extrabold text-slate-900 text-xs sm:text-sm leading-tight truncate">
+            <div className="min-w-0">
+              <h3 className="font-black text-slate-900 text-xs sm:text-sm leading-tight truncate">
                 {editItem
-                  ? 'Edit Product'
+                  ? `Edit ${category || 'Product'}`
+                  : isUsedCategoryName(category)
+                  ? 'Used Mobile Purchase & Stock'
                   : isAndroid
-                  ? 'Add Android Mobile (Variants)'
+                  ? 'Add Android Mobile'
                   : isKeypad
-                  ? 'Add Keypad Phone (IMEI & Color)'
-                  : 'Add New Product to Inventory'}
+                  ? 'Add Keypad Phone'
+                  : 'Add Product to Inventory'}
               </h3>
-              {isAndroid && !editItem && (
-                <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200/70 flex items-center gap-1 shrink-0">
-                  <Sparkles className="w-2.5 h-2.5" /> Multi-Variant
-                </span>
-              )}
-              {isKeypad && !editItem && (
-                <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200/70 shrink-0">
-                  Keypad
-                </span>
-              )}
+              <p className="text-[10.5px] text-slate-500 font-medium truncate">
+                {showVariantMode
+                  ? isKeypad
+                    ? 'Color variants with dedicated 1-box IMEI tracking'
+                    : 'Multi-variant RAM/ROM & dedicated IMEI entry'
+                  : 'Single SKU pricing, barcode & stock control'}
+              </p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition cursor-pointer shrink-0"
+            className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-slate-800 rounded-full ios-liquid-chip cursor-pointer shrink-0"
+            aria-label="Close"
           >
             <X className="w-4 h-4" />
           </button>
@@ -1542,65 +1613,64 @@ export const StockModal: React.FC<StockModalProps> = ({
               e.preventDefault();
             }
           }}
-          className="flex-1 min-h-0 overflow-y-auto px-3 py-2.5 sm:px-4 sm:py-3 space-y-2.5 text-xs"
+          className="relative z-10 flex-1 min-h-0 overflow-y-auto px-3 py-2.5 sm:px-5 sm:py-3.5 space-y-3 text-xs"
         >
-          {/* Compact Top Section: Photo + Model Name + Category */}
-          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:gap-2.5 bg-slate-50/70 p-2 sm:p-2.5 rounded-xl border border-slate-200/80 items-end">
-            {/* Compact Photo Picker */}
-            <div className="sm:col-span-3 flex items-center gap-2">
-              {image ? (
-                <div className="relative w-10 h-10 sm:w-11 sm:h-11 rounded-lg border border-slate-200 overflow-hidden bg-white shrink-0 shadow-2xs">
-                  <img src={image} alt="Preview" className="w-full h-full object-cover" />
-                  <button
-                    type="button"
-                    onClick={handleRemoveImage}
-                    className="absolute top-0 right-0 bg-rose-600 text-white rounded-bl-md p-0.5 hover:bg-rose-700 cursor-pointer"
-                    title="Remove Photo"
-                  >
-                    <X className="w-2.5 h-2.5" />
-                  </button>
-                </div>
-              ) : (
-                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-lg border border-dashed border-slate-300 bg-white flex items-center justify-center text-slate-400 shrink-0">
-                  <ImageIcon className="w-4 h-4 text-slate-300" />
-                </div>
-              )}
+          {/* Fluid Liquid Top Identity Card: Photo + Model Name + Category (No overlap on any width!) */}
+          <div className="ios-liquid-surface p-3 rounded-2xl space-y-2.5">
+            <div className="flex flex-col md:flex-row md:items-end gap-2.5">
+              {/* Auto-sized Photo Picker (shrink-0 so Upload & Cam never collide with Name box) */}
+              <div className="flex items-center gap-2.5 shrink-0">
+                {image ? (
+                  <div className="relative w-11 h-11 rounded-xl border border-white/90 overflow-hidden bg-white shrink-0 shadow-xs">
+                    <img src={image} alt="Preview" className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={handleRemoveImage}
+                      className="absolute top-0 right-0 bg-rose-600 text-white rounded-bl-lg p-0.5 hover:bg-rose-700 cursor-pointer"
+                      title="Remove Photo"
+                    >
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="w-11 h-11 rounded-xl border border-dashed border-slate-300/90 bg-white/80 flex items-center justify-center text-slate-400 shrink-0">
+                    <ImageIcon className="w-4.5 h-4.5 text-slate-300" />
+                  </div>
+                )}
 
-              <div className="flex-1 min-w-0">
-                <span className="block font-bold text-slate-700 text-[10px] mb-1">Photo</span>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleImageFileChange}
-                  accept="image/png, image/jpeg, image/jpg, image/webp"
-                  className="hidden"
-                  id="stock-image-file"
-                />
-                <div className="flex items-center gap-1.5">
-                  <label
-                    htmlFor="stock-image-file"
-                    className="inline-flex items-center gap-1 h-7 px-2 bg-white hover:bg-slate-100 text-slate-700 font-semibold rounded-md text-[11px] cursor-pointer transition border border-slate-200"
-                  >
-                    <Upload className="w-3 h-3 text-blue-600" />
-                    <span>{image ? 'Edit' : 'Upload'}</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setIsCameraOpen(true)}
-                    className="inline-flex items-center gap-1 h-7 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold rounded-md text-[11px] cursor-pointer transition border border-emerald-200"
-                  >
-                    <Camera className="w-3 h-3 text-emerald-600" />
-                    <span>Cam</span>
-                  </button>
+                <div className="shrink-0">
+                  <span className="block font-bold text-slate-600 text-[10px] mb-1">Photo</span>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleImageFileChange}
+                    accept="image/png, image/jpeg, image/jpg, image/webp"
+                    className="hidden"
+                    id="stock-image-file"
+                  />
+                  <div className="flex items-center gap-1.5">
+                    <label
+                      htmlFor="stock-image-file"
+                      className="inline-flex items-center gap-1 h-8 px-2.5 ios-liquid-chip hover:bg-white text-slate-700 font-bold rounded-xl text-[11px] cursor-pointer transition whitespace-nowrap"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                      <span>{image ? 'Edit' : 'Upload'}</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setIsCameraOpen(true)}
+                      className="inline-flex items-center gap-1 h-8 px-2.5 bg-emerald-50/90 hover:bg-emerald-100 text-emerald-700 font-bold rounded-xl text-[11px] cursor-pointer transition border border-emerald-200/80 whitespace-nowrap"
+                    >
+                      <Camera className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>Cam</span>
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Model Name + Category side-by-side on mobile */}
-            <div className="sm:col-span-9 grid grid-cols-1 sm:grid-cols-9 gap-2 items-end">
-              {/* Model Name */}
-              <div className="sm:col-span-5">
-                <label className="block font-bold text-slate-700 mb-0.5 text-[10px] sm:text-[11px]">
+              {/* Model Name (flex-1 min-w-0 ensures clean spacing) */}
+              <div className="flex-1 min-w-0">
+                <label className="block font-bold text-slate-700 mb-1 text-[10.5px]">
                   {isMobile ? 'Mobile Model Name *' : 'Product Title / Name *'}
                 </label>
                 <input
@@ -1613,12 +1683,12 @@ export const StockModal: React.FC<StockModalProps> = ({
                       ? 'e.g. Samsung Galaxy A15, Infinix Note 40'
                       : 'e.g. 20W Fast Charger Type-C'
                   }
-                  className="compact-mobile-input w-full bg-white border border-slate-200 rounded-lg px-2.5 h-9 text-xs font-semibold focus:outline-none focus:border-blue-600 shadow-2xs"
+                  className="compact-mobile-input w-full bg-white/95 border border-slate-200/90 rounded-xl px-3 h-9 text-xs font-semibold focus:outline-none focus:border-blue-600 shadow-2xs"
                 />
               </div>
 
               {/* Category selector + Inline category creation & rename */}
-              <div className="sm:col-span-4">
+              <div className="w-full md:w-52 shrink-0">
                 <div className="flex items-center justify-between mb-0.5 gap-1">
                   <label className="font-bold text-slate-700 text-[10px] sm:text-[11px]">Category</label>
                   {!isCreatingCategory && !isEditingCategory ? (
@@ -1717,7 +1787,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                       <select
                         value={category}
                         onChange={e => handleSelectCategory(e.target.value)}
-                        className="compact-mobile-input w-full bg-white border border-slate-200 rounded-lg px-2.5 h-9 text-xs font-semibold focus:outline-none focus:border-blue-600 shadow-2xs"
+                        className="compact-mobile-input w-full bg-white/95 border border-slate-200/90 rounded-xl px-2.5 h-9 text-xs font-semibold focus:outline-none focus:border-blue-600 shadow-2xs"
                       >
                         {modalCategories.map(c => (
                           <option key={c} value={c}>
@@ -1733,9 +1803,9 @@ export const StockModal: React.FC<StockModalProps> = ({
 
             {/* Purchased From / Seller Info (shown for Used Categories) */}
             {isUsedCategoryName(category) && (
-              <div className="sm:col-span-12 grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1.5 border-t border-slate-200/80">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2.5 border-t border-slate-200/70">
                 <div>
-                  <label className="flex items-center gap-1 font-bold text-slate-700 mb-0.5 text-[10px]">
+                  <label className="flex items-center gap-1 font-bold text-slate-700 mb-1 text-[10px]">
                     <User className="w-3 h-3 text-purple-600" /> Purchased From (Seller / Party Name)
                   </label>
                   <PhoneContactInput
@@ -1752,11 +1822,11 @@ export const StockModal: React.FC<StockModalProps> = ({
                     showContactPickerButton={false}
                     openOnFocus={false}
                     minCharsToOpen={1}
-                    inputClassName="compact-mobile-input w-full bg-white border border-purple-200 rounded-lg px-2.5 h-8 text-xs font-semibold focus:outline-none focus:border-purple-600"
+                    inputClassName="compact-mobile-input w-full bg-white/95 border border-purple-200 rounded-xl px-2.5 h-8.5 text-xs font-semibold focus:outline-none focus:border-purple-600"
                   />
                 </div>
                 <div>
-                  <label className="flex items-center gap-1 font-bold text-slate-700 mb-0.5 text-[10px]">
+                  <label className="flex items-center gap-1 font-bold text-slate-700 mb-1 text-[10px]">
                     <Smartphone className="w-3 h-3 text-purple-600" /> Seller Phone / CNIC Note
                   </label>
                   <PhoneContactInput
@@ -1770,7 +1840,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                     contacts={mergedSellerContacts}
                     placeholder="e.g. 0300-1234567"
                     accent="purple"
-                    inputClassName="compact-mobile-input w-full bg-white border border-purple-200 rounded-lg px-2.5 h-8 text-xs font-semibold tabular-nums focus:outline-none focus:border-purple-600"
+                    inputClassName="compact-mobile-input w-full bg-white/95 border border-purple-200 rounded-xl px-2.5 h-8.5 text-xs font-semibold tabular-nums focus:outline-none focus:border-purple-600"
                   />
                 </div>
               </div>
@@ -1800,7 +1870,7 @@ export const StockModal: React.FC<StockModalProps> = ({
               </div>
 
               {/* Variant Cards */}
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 {variants.map((v, vIdx) => {
                   const currentQty = Math.max(1, Number(v.qty) || 1);
                   const effCost = v.costPrice !== '' && v.costPrice !== undefined ? Number(v.costPrice) : 0;
@@ -1812,7 +1882,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                   return (
                     <div
                       key={v.id || vIdx}
-                      className="animate-scale-in bg-white border border-slate-200/90 rounded-xl p-2 sm:p-2.5 space-y-2 shadow-2xs hover:border-blue-300 transition"
+                      className="animate-scale-in ios-liquid-tile rounded-2xl p-2.5 sm:p-3 space-y-2.5 hover:border-blue-300 transition"
                     >
                       {/* Compact Variant Header + Inline Margin Badge */}
                       <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 gap-1.5">
@@ -2222,12 +2292,12 @@ export const StockModal: React.FC<StockModalProps> = ({
             </div>
           ) : (
             /* ========================================================= */
-            /* SINGLE PRODUCT MODE / KEYPAD PHONE / ACCESSORIES / EDIT   */
+            /* SINGLE PRODUCT MODE / NON-MOBILE / ACCESSORIES / EDIT     */
             /* ========================================================= */
-            <div className="space-y-2 sm:space-y-2.5">
+            <div className="ios-liquid-surface rounded-2xl p-3 space-y-2.5">
               {/* If Keypad Phone or editing mobile phone, show Color input */}
               {(isKeypad || (editItem && isMobile)) && (
-                <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 bg-slate-50 p-2 rounded-xl border border-slate-200">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 bg-white/80 p-2 rounded-xl border border-slate-200/80">
                   <label className="font-bold text-slate-700 text-[10px] sm:text-[11px] flex items-center gap-1 shrink-0">
                     <Palette className="w-3.5 h-3.5 text-purple-600" /> Phone Color
                   </label>
@@ -2541,10 +2611,10 @@ export const StockModal: React.FC<StockModalProps> = ({
           )}
         </form>
 
-        {/* Pinned Bottom Summary & Action Bar */}
-        <div className="px-3 py-2.5 sm:px-4 sm:py-3 border-t border-slate-200/80 bg-white/85 dark:bg-black/80 backdrop-blur-xs shrink-0">
+        {/* Pinned Frosted Liquid Summary & Action Bar */}
+        <div className="ios-liquid-dock relative z-10 px-3 py-2.5 sm:px-5 sm:py-3 shrink-0">
           {showVariantMode ? (
-            <div className="bg-slate-900 text-white rounded-xl px-2.5 py-2 sm:px-3 sm:py-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 shadow-sm">
+            <div className="bg-slate-900/95 text-white rounded-2xl px-3 py-2.5 sm:px-3.5 sm:py-2.5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 shadow-md border border-white/10">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]">
                 <span className="font-bold text-amber-400 flex items-center gap-1 tabular-nums">
                   <Sparkles className="w-3.5 h-3.5" />
@@ -2568,14 +2638,14 @@ export const StockModal: React.FC<StockModalProps> = ({
                 <button
                   type="button"
                   onClick={handleExplicitCancel}
-                  className="h-9 px-3.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition cursor-pointer flex items-center justify-center"
+                  className="h-9 px-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition cursor-pointer flex items-center justify-center"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={() => handleSubmit()}
-                  className="h-9 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition cursor-pointer flex items-center justify-center gap-1.5"
+                  className="h-9 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs shadow-md shadow-blue-500/25 transition cursor-pointer flex items-center justify-center gap-1.5"
                 >
                   <Check className="w-3.5 h-3.5 shrink-0" />
                   <span className="truncate">
@@ -2595,14 +2665,14 @@ export const StockModal: React.FC<StockModalProps> = ({
                 <button
                   type="button"
                   onClick={handleExplicitCancel}
-                  className="h-9 px-4 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition cursor-pointer flex items-center justify-center"
+                  className="h-9 px-4 rounded-xl ios-liquid-chip text-slate-700 font-semibold text-xs transition cursor-pointer flex items-center justify-center"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={() => handleSubmit()}
-                  className="h-9 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm shadow-blue-500/20 transition cursor-pointer flex items-center justify-center gap-1.5"
+                  className="h-9 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs shadow-md shadow-blue-500/25 transition cursor-pointer flex items-center justify-center gap-1.5"
                 >
                   <Check className="w-3.5 h-3.5 shrink-0" />
                   <span className="truncate">{editItem ? 'Save Changes' : 'Add to Inventory'}</span>

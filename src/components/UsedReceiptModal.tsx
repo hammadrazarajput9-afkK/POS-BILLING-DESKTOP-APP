@@ -221,11 +221,15 @@ export const UsedReceiptModal: React.FC<UsedReceiptModalProps> = ({
       id="invoice-modal-backdrop"
       className="fixed inset-0 z-[55] flex items-center justify-center glass-modal-backdrop animate-fade-in p-2 sm:p-4 print:static print:block print:p-0 print:bg-white"
     >
-      <div className="w-full max-w-md glass-modal-panel rounded-2xl sm:rounded-3xl flex flex-col shadow-2xl overflow-hidden animate-modal-pop max-h-[90dvh] print:max-h-none print:shadow-none print:rounded-none print:border-none">
-        {/* Top Modal Header (Hidden on Print) */}
-        <div className="no-print px-4 py-3 border-b border-slate-200/80 flex items-center justify-between bg-white/95 backdrop-blur-md shrink-0">
+      <div className="w-full max-w-md glass-modal-panel rounded-3xl flex flex-col shadow-2xl overflow-hidden animate-modal-pop max-h-[90dvh] relative print:max-h-none print:shadow-none print:rounded-none print:border-none">
+        {/* Ambient Liquid Glows */}
+        <div className="no-print pointer-events-none absolute -top-14 -right-12 w-44 h-44 rounded-full opacity-55" style={{ background: 'radial-gradient(circle, rgba(56,189,248,0.18) 0%, transparent 70%)' }} aria-hidden="true" />
+        <div className="no-print pointer-events-none absolute -bottom-14 -left-12 w-44 h-44 rounded-full opacity-45" style={{ background: 'radial-gradient(circle, rgba(167,139,250,0.16) 0%, transparent 70%)' }} aria-hidden="true" />
+
+        {/* Frosted Liquid Modal Header (Hidden on Print) */}
+        <div className="no-print ios-liquid-header relative z-10 px-4 py-3 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-sm shrink-0">
+            <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-sm shrink-0">
               <FileText className="w-4.5 h-4.5" />
             </div>
             <div className="min-w-0">
@@ -241,7 +245,7 @@ export const UsedReceiptModal: React.FC<UsedReceiptModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center cursor-pointer transition shrink-0"
+            className="w-8 h-8 rounded-full ios-liquid-chip text-slate-600 hover:text-slate-900 flex items-center justify-center cursor-pointer transition shrink-0"
             aria-label="Close receipt"
           >
             <X className="w-4 h-4" />
@@ -251,10 +255,10 @@ export const UsedReceiptModal: React.FC<UsedReceiptModalProps> = ({
         {/* Printable Invoice-Style Slip Body */}
         <div
           id="printable-purchase-area"
-          className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 bg-white text-slate-900 tabular-nums"
+          className="relative z-10 flex-1 overflow-y-auto p-4 sm:p-5 space-y-3.5 bg-white/80 text-slate-900 tabular-nums"
         >
           {/* Shop Header */}
-          <div className="text-center pb-3.5 border-b border-dashed border-slate-300 space-y-1">
+          <div className="text-center pb-3 border-b border-dashed border-slate-300 space-y-1">
             {logoSrc ? (
               <img
                 src={logoSrc}
@@ -277,7 +281,7 @@ export const UsedReceiptModal: React.FC<UsedReceiptModalProps> = ({
           </div>
 
           {/* Purchase Party & Date Meta Box */}
-          <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 space-y-2 text-xs">
+          <div className="ios-liquid-surface rounded-2xl p-3 space-y-2 text-xs">
             <div className="flex items-start justify-between gap-2">
               <span className="text-slate-500 font-medium inline-flex items-center gap-1.5 shrink-0">
                 <User className="w-3.5 h-3.5 text-blue-600" /> Purchased From:
@@ -397,8 +401,8 @@ export const UsedReceiptModal: React.FC<UsedReceiptModalProps> = ({
           </div>
         </div>
 
-        {/* Bottom Invoice-Style Action Bar (Share, Print, Edit, Copy) */}
-        <div className="no-print p-3 sm:p-4 bg-slate-50 border-t border-slate-200 grid grid-cols-2 sm:flex items-center gap-2 shrink-0">
+        {/* Bottom Invoice-Style Action Bar (Fluid Liquid Dock) */}
+        <div className="no-print ios-liquid-dock relative z-10 p-3 sm:p-4 grid grid-cols-2 sm:flex items-center gap-2 shrink-0">
           {onEditItem && (
             <button
               type="button"
@@ -411,7 +415,7 @@ export const UsedReceiptModal: React.FC<UsedReceiptModalProps> = ({
           <button
             type="button"
             onClick={handleCopySlip}
-            className="py-2.5 px-3 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer transition"
+            className="py-2.5 px-3 rounded-xl ios-liquid-chip text-slate-700 text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer transition"
           >
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
             {copied ? 'Copied' : 'Copy'}
@@ -419,14 +423,14 @@ export const UsedReceiptModal: React.FC<UsedReceiptModalProps> = ({
           <button
             type="button"
             onClick={handleShareWhatsApp}
-            className="flex-1 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-sm flex items-center justify-center gap-1.5 cursor-pointer transition"
+            className="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-extrabold shadow-md shadow-emerald-600/20 flex items-center justify-center gap-1.5 cursor-pointer transition"
           >
             <Share2 className="w-3.5 h-3.5" /> Share
           </button>
           <button
             type="button"
             onClick={handlePrint}
-            className="flex-1 py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold shadow-sm flex items-center justify-center gap-1.5 cursor-pointer transition"
+            className="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-extrabold shadow-md shadow-blue-600/20 flex items-center justify-center gap-1.5 cursor-pointer transition"
           >
             <Printer className="w-3.5 h-3.5" /> Print
           </button>
