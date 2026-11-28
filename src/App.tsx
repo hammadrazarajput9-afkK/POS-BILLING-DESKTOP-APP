@@ -30,6 +30,8 @@ import {
   setActiveStoreId,
   saveCurrentSession,
   getSavedSessionUser,
+  getSessionExpirationTimestamp,
+  SESSION_STORAGE_KEY,
   clearCurrentSession,
   loadAppDataFromFirestoreWithMeta,
   reconcileWithAuthoritativeCloud,
@@ -241,15 +243,23 @@ function AppContent() {
 
     migrateAndInitializeData(updatedData => {
       setData(prev => {
-        const activeUser = prev.currentUser || getSavedSessionUser() || sessionUser || updatedData.currentUser;
-        if (activeUser) {
+        const activeSessionUser = getSavedSessionUser();
+        if (!activeSessionUser) {
           return {
             ...updatedData,
-            currentUser: activeUser,
-            currentRole: prev.currentRole || activeUser.role || 'admin',
+            currentUser: undefined,
+            currentRole: 'admin',
           };
         }
-        return updatedData;
+        const activeUser =
+          prev.currentUser && prev.currentUser.id === activeSessionUser.id
+            ? prev.currentUser
+            : activeSessionUser;
+        return {
+          ...updatedData,
+          currentUser: activeUser,
+          currentRole: activeUser.role || 'admin',
+        };
       });
       isInitialSyncDoneRef.current = true;
     }, DEFAULT_STORE_ID, { skipCloudIfUnauthenticated: !sessionUser });
@@ -334,6 +344,79 @@ function AppContent() {
   };
 
   const isAuthenticated = Boolean(data.currentUser);
+  const currentUserId = data.currentUser?.id;
+  const currentUserRole = data.currentUser?.role;
+
+  // Role-based session timeout enforcement: Admin = 1 hour, Salesman = 1 day (24 hours)
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    let handledExpiry = false;
+    const expireSessionNow = (showNotice: boolean = true) => {
+      if (handledExpiry) return;
+      handledExpiry = true;
+      clearCurrentSession();
+      setIsMenuOpen(false);
+      setData(prev => {
+        if (!prev.currentUser) return prev;
+        return {
+          ...prev,
+          currentUser: undefined,
+          currentRole: 'admin',
+        };
+      });
+      if (showNotice) {
+        const limitLabel = currentUserRole === 'salesman' ? '1 day (24h)' : '1 hour';
+        const roleLabel = currentUserRole === 'salesman' ? 'Salesman' : 'Admin';
+        showToast(`${roleLabel} session expired (${limitLabel} limit). Please sign in again.`, 'warning');
+      }
+    };
+
+    const checkSessionValidity = () => {
+      const validUser = getSavedSessionUser();
+      const expiresAt = getSessionExpirationTimestamp();
+      if (!validUser || !expiresAt || Date.now() >= expiresAt) {
+        expireSessionNow(true);
+        return false;
+      }
+      return true;
+    };
+
+    if (!checkSessionValidity()) return;
+
+    const expiresAt = getSessionExpirationTimestamp();
+    const remainingMs = expiresAt ? Math.max(1000, expiresAt - Date.now()) : 60 * 1000;
+    const exactTimerId = window.setTimeout(() => {
+      checkSessionValidity();
+    }, Math.min(remainingMs, 24 * 60 * 60 * 1000 + 1000));
+
+    const pollIntervalId = window.setInterval(() => {
+      checkSessionValidity();
+    }, 15 * 1000);
+
+    const handleVisibilityOrFocus = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      checkSessionValidity();
+    };
+
+    const handleStorageSync = (e: StorageEvent) => {
+      if (e.key === SESSION_STORAGE_KEY && !e.newValue) {
+        checkSessionValidity();
+      }
+    };
+
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('storage', handleStorageSync);
+
+    return () => {
+      window.clearTimeout(exactTimerId);
+      window.clearInterval(pollIntervalId);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('storage', handleStorageSync);
+    };
+  }, [currentUserId, currentUserRole, showToast]);
 
   useEffect(() => {
     if (!isAuthenticated || typeof window === 'undefined') return;

@@ -155,11 +155,32 @@ function getDeltaCursorIso(storeId: string): string | null {
 
 export const SESSION_STORAGE_KEY = 'MOBILE_POS_ACTIVE_USER_SESSION';
 export const TAB_SESSION_STORAGE_KEY = 'MOBILE_POS_TAB_USER_SESSION';
+export const ADMIN_SESSION_DURATION_MS = 60 * 60 * 1000; // 1 hour
+export const SALESMAN_SESSION_DURATION_MS = 24 * 60 * 60 * 1000; // 1 day (24 hours)
+
+export interface StoredSessionRecord {
+  user: UserAccount;
+  role: UserRole;
+  issuedAt: number;
+  expiresAt: number;
+}
+
+export function getSessionDurationMsForRole(role?: UserRole): number {
+  return role === 'salesman' ? SALESMAN_SESSION_DURATION_MS : ADMIN_SESSION_DURATION_MS;
+}
 
 export function saveCurrentSession(user?: UserAccount | null, persistAcrossRestarts: boolean = true): void {
   try {
     if (user) {
-      const serialized = JSON.stringify(user);
+      const now = Date.now();
+      const role: UserRole = user.role === 'salesman' ? 'salesman' : 'admin';
+      const record: StoredSessionRecord = {
+        user,
+        role,
+        issuedAt: now,
+        expiresAt: now + getSessionDurationMsForRole(role),
+      };
+      const serialized = JSON.stringify(record);
       if (persistAcrossRestarts) {
         localStorage.setItem(SESSION_STORAGE_KEY, serialized);
       } else {
@@ -172,19 +193,14 @@ export function saveCurrentSession(user?: UserAccount | null, persistAcrossResta
       }
       setActiveStoreId(DEFAULT_STORE_ID);
     } else {
-      localStorage.removeItem(SESSION_STORAGE_KEY);
-      try {
-        sessionStorage.removeItem(TAB_SESSION_STORAGE_KEY);
-      } catch {
-        // ignore
-      }
+      clearCurrentSession();
     }
   } catch (e) {
     console.warn('Session save warning:', e);
   }
 }
 
-export function getSavedSessionUser(): UserAccount | null {
+export function getSavedSessionRecord(): StoredSessionRecord | null {
   try {
     const raw =
       localStorage.getItem(SESSION_STORAGE_KEY) ||
@@ -197,13 +213,41 @@ export function getSavedSessionUser(): UserAccount | null {
       })();
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (parsed && parsed.id && parsed.email) {
-      return parsed as UserAccount;
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      parsed.user &&
+      parsed.user.id &&
+      parsed.user.email &&
+      typeof parsed.expiresAt === 'number' &&
+      Number.isFinite(parsed.expiresAt)
+    ) {
+      if (Date.now() >= parsed.expiresAt) {
+        clearCurrentSession();
+        return null;
+      }
+      return parsed as StoredSessionRecord;
     }
+    // Legacy unstamped session records are cleared so role-based timeout is enforced strictly
+    clearCurrentSession();
   } catch {
     // ignore
   }
   return null;
+}
+
+export function getSavedSessionUser(): UserAccount | null {
+  return getSavedSessionRecord()?.user || null;
+}
+
+export function getSessionExpirationTimestamp(): number | null {
+  return getSavedSessionRecord()?.expiresAt ?? null;
+}
+
+export function getSessionRemainingMs(): number {
+  const expiresAt = getSessionExpirationTimestamp();
+  if (!expiresAt) return 0;
+  return Math.max(0, expiresAt - Date.now());
 }
 
 export function clearCurrentSession(): void {
@@ -3444,6 +3488,13 @@ function applyOfflineJournalToData(data: AppData, storeId?: string): AppData {
 
 export function loadStoredData(targetStoreId?: string): AppData {
   const sid = targetStoreId || currentActiveStoreId || DEFAULT_STORE_ID;
+  const activeSessionUser = getSavedSessionUser();
+  const applySessionGate = (appData: AppData): AppData => ({
+    ...appData,
+    currentUser: activeSessionUser || undefined,
+    currentRole: activeSessionUser?.role || 'admin',
+  });
+
   try {
     const key = getLocalStorageKey(targetStoreId);
     const raw = localStorage.getItem(key);
@@ -3452,7 +3503,7 @@ export function loadStoredData(targetStoreId?: string): AppData {
       const parsed = JSON.parse(raw);
       const validation = validateBackupData(parsed);
       if (validation.valid && validation.data) {
-        return applyOfflineJournalToData(validation.data, sid);
+        return applySessionGate(applyOfflineJournalToData(validation.data, sid));
       }
     }
 
@@ -3462,7 +3513,7 @@ export function loadStoredData(targetStoreId?: string): AppData {
       const parsedMain = JSON.parse(mainRaw);
       const validation = validateBackupData(parsedMain);
       if (validation.valid && validation.data) {
-        return applyOfflineJournalToData(validation.data, sid);
+        return applySessionGate(applyOfflineJournalToData(validation.data, sid));
       }
     }
 
@@ -3471,14 +3522,14 @@ export function loadStoredData(targetStoreId?: string): AppData {
       const parsedLegacy = JSON.parse(legacyRaw);
       const validation = validateBackupData(parsedLegacy);
       if (validation.valid && validation.data) {
-        return applyOfflineJournalToData(validation.data, sid);
+        return applySessionGate(applyOfflineJournalToData(validation.data, sid));
       }
     }
 
-    return applyOfflineJournalToData(initialCleanData, sid);
+    return applySessionGate(applyOfflineJournalToData(initialCleanData, sid));
   } catch (error) {
     console.error('Failed to parse local stored data:', error);
-    return applyOfflineJournalToData(initialCleanData, sid);
+    return applySessionGate(applyOfflineJournalToData(initialCleanData, sid));
   }
 }
 
